@@ -121,21 +121,34 @@ app.post('/tts', async (req, res) => {
   try {
     const { text, language = 'he' } = req.body;
 
-    const voiceId = language === 'en' 
-      ? 'EXAVITQu4vr4xnSDxMaL' // Sarah - English
-      : 'XrExE9yKIg1WjnnlVkGX'; // Matilda - Hebrew
+    const voiceId = language === 'en'
+      ? 'EXAVITQu4vr4xnSDxMaL'
+      : 'XrExE9yKIg1WjnnlVkGX';
 
-    const audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
-      text: text,
-      model_id: 'eleven_multilingual_v2',
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        text: text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+        },
+      }),
     });
 
+    if (!response.ok) {
+      const error = await response.text();
+      return res.status(500).json({ success: false, error });
+    }
+
     res.setHeader('Content-Type', 'audio/mpeg');
-    audioStream.pipe(res);
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
 
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

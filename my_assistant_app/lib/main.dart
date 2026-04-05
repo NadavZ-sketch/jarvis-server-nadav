@@ -42,7 +42,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
   int _currentTab = 0;
 
-  static const String apiUrl = 'http://10.0.2.2:3000';
+  static const String apiUrl = 'https://myassistant-backend-production.up.railway.app';
 
   Future<void> _sendMessage() async {
     final message = _controller.text.trim();

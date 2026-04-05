@@ -64,7 +64,7 @@ async function callLLM(messages, systemPrompt = '') {
 // נקודת קצה - Chat
 app.post('/chat', async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, language = 'he' } = req.body;
 
     // זיהוי כוונה
     const intentResult = detectIntent(message);
@@ -83,7 +83,11 @@ app.post('/chat', async (req, res) => {
     ];
 
     // System prompt חכם
-    const systemPrompt = buildSystemPrompt(intentResult.intent, 'default');
+    const langInstruction = language === 'en' 
+  ? 'Always respond in English.' 
+  : 'תמיד ענה בעברית.';
+
+const systemPrompt = buildSystemPrompt(intentResult.intent, 'default') + '\n' + langInstruction;
 
     // קריאה ל-LLM
     const reply = await callLLM(messages, systemPrompt);

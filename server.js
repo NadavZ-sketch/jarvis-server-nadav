@@ -3,6 +3,11 @@ const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
 const Groq = require('groq-sdk');
+const { ElevenLabsClient } = require('@elevenlabs/elevenlabs-js');
+
+const elevenlabs = new ElevenLabsClient({
+  apiKey: process.env.ELEVENLABS_API_KEY,
+});
 require('dotenv').config();
 
 const { detectIntent, INTENTS } = require('./src/engines/intentEngine');
@@ -108,6 +113,32 @@ const systemPrompt = buildSystemPrompt(intentResult.intent, 'default') + '\n' + 
       success: false,
       error: error.message,
     });
+  }
+});
+
+// נקודת קצה - TTS
+app.post('/tts', async (req, res) => {
+  try {
+    const { text, language = 'he' } = req.body;
+
+    const voiceId = language === 'en' 
+      ? 'EXAVITQu4vr4xnSDxMaL' // Sarah - English
+      : 'XrExE9yKIg1WjnnlVkGX'; // Matilda - Hebrew
+
+    const audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
+      text: text,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.75,
+      },
+    });
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    audioStream.pipe(res);
+
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

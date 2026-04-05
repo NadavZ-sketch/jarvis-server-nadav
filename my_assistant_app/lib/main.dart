@@ -41,6 +41,46 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _tasks = [];
   bool _isLoading = false;
   int _currentTab = 0;
+  String _language = 'he';
+
+  final Map<String, Map<String, String>> _texts = {
+    'he': {
+      'appTitle': '🤖 MyAssistant',
+      'chat': '💬 צ\'אט',
+      'tasks': '✅ משימות',
+      'settings': '⚙️ הגדרות',
+      'inputHint': 'כתוב הודעה...',
+      'newTask': 'משימה חדשה...',
+      'addTask': '+ הוסף',
+      'saveSettings': '💾 שמור הגדרות',
+      'model': '🤖 מודל שפה',
+      'personality': '🎭 אישיות',
+      'language': '🌐 שפה',
+      'modelValue': 'Groq (חינמי מהיר)',
+      'personalityValue': 'ידידותי ומקצועי',
+      'languageValue': 'עברית',
+      'error': '❌ שגיאה בחיבור לשרת',
+    },
+    'en': {
+      'appTitle': '🤖 MyAssistant',
+      'chat': '💬 Chat',
+      'tasks': '✅ Tasks',
+      'settings': '⚙️ Settings',
+      'inputHint': 'Type a message...',
+      'newTask': 'New task...',
+      'addTask': '+ Add',
+      'saveSettings': '💾 Save Settings',
+      'model': '🤖 Language Model',
+      'personality': '🎭 Personality',
+      'language': '🌐 Language',
+      'modelValue': 'Groq (Fast & Free)',
+      'personalityValue': 'Friendly & Professional',
+      'languageValue': 'English',
+      'error': '❌ Connection error',
+    },
+  };
+
+  String t(String key) => _texts[_language]?[key] ?? key;
 
   static const String apiUrl = 'https://myassistant-backend-production.up.railway.app';
 
@@ -57,7 +97,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final response = await http.post(
         Uri.parse('$apiUrl/chat'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'message': message}),
+        body: jsonEncode({'message': message, 'language': _language}),
       );
       final data = jsonDecode(response.body);
       setState(() {
@@ -66,7 +106,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (e) {
       setState(() {
-        _messages.add({'role': 'assistant', 'content': '❌ שגיאה בחיבור לשרת'});
+        _messages.add({'role': 'assistant', 'content': t('error')});
         _isLoading = false;
       });
     }
@@ -93,7 +133,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _tasks = List<Map<String, dynamic>>.from(data['tasks']);
       });
     } catch (e) {
-      debugPrint('שגיאה: $e');
+      debugPrint('Error: $e');
     }
   }
 
@@ -109,7 +149,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       _loadTasks();
     } catch (e) {
-      debugPrint('שגיאה: $e');
+      debugPrint('Error: $e');
     }
   }
 
@@ -118,7 +158,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await http.put(Uri.parse('$apiUrl/tasks/$id/complete'));
       _loadTasks();
     } catch (e) {
-      debugPrint('שגיאה: $e');
+      debugPrint('Error: $e');
     }
   }
 
@@ -127,51 +167,71 @@ class _ChatScreenState extends State<ChatScreen> {
       await http.delete(Uri.parse('$apiUrl/tasks/$id'));
       _loadTasks();
     } catch (e) {
-      debugPrint('שגיאה: $e');
+      debugPrint('Error: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1A1A2E),
-        title: const Text(
-          '🤖 MyAssistant',
-          style: TextStyle(color: Color(0xFF7C6AF7), fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(left: 16),
-            width: 10,
-            height: 10,
-            decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+    final isRtl = _language == 'he';
+    return Directionality(
+      textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F0F1A),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1A1A2E),
+          title: Text(
+            t('appTitle'),
+            style: const TextStyle(color: Color(0xFF7C6AF7), fontWeight: FontWeight.bold),
           ),
-          const SizedBox(width: 16),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            color: const Color(0xFF1A1A2E),
-            child: Row(
-              children: [
-                _buildTab('💬 צ\'אט', 0),
-                _buildTab('✅ משימות', 1),
-                _buildTab('⚙️ הגדרות', 2),
-              ],
+          actions: [
+            GestureDetector(
+              onTap: () => setState(() {
+                _language = _language == 'he' ? 'en' : 'he';
+              }),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2A2A4A),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _language == 'he' ? 'EN' : 'עב',
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+              ),
             ),
-          ),
-          Expanded(
-            child: _currentTab == 0
-                ? _buildChat()
-                : _currentTab == 1
-                    ? _buildTasks()
-                    : _buildSettings(),
-          ),
-          if (_currentTab == 0) _buildInput(),
-        ],
+            Container(
+              margin: const EdgeInsets.only(right: 16),
+              width: 10,
+              height: 10,
+              decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Container(
+              color: const Color(0xFF1A1A2E),
+              child: Row(
+                children: [
+                  _buildTab(t('chat'), 0),
+                  _buildTab(t('tasks'), 1),
+                  _buildTab(t('settings'), 2),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _currentTab == 0
+                  ? _buildChat()
+                  : _currentTab == 1
+                      ? _buildTasks()
+                      : _buildSettings(),
+            ),
+            if (_currentTab == 0) _buildInput(),
+          ],
+        ),
       ),
     );
   }
@@ -214,7 +274,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessage(String content, bool isUser) {
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 6),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -226,8 +286,8 @@ class _ChatScreenState extends State<ChatScreen> {
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isUser ? 16 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 16),
+            bottomLeft: Radius.circular(isUser ? 4 : 16),
+            bottomRight: Radius.circular(isUser ? 16 : 4),
           ),
           boxShadow: [
             BoxShadow(
@@ -242,7 +302,6 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Text(
           content,
           style: const TextStyle(color: Colors.white, fontSize: 15),
-          textDirection: TextDirection.rtl,
         ),
       ),
     );
@@ -250,7 +309,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildTypingIndicator() {
     return Align(
-      alignment: Alignment.centerLeft,
+      alignment: Alignment.centerRight,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 6),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -284,9 +343,8 @@ class _ChatScreenState extends State<ChatScreen> {
             child: TextField(
               controller: _controller,
               style: const TextStyle(color: Colors.white),
-              textDirection: TextDirection.rtl,
               decoration: InputDecoration(
-                hintText: 'כתוב הודעה...',
+                hintText: t('inputHint'),
                 hintStyle: const TextStyle(color: Colors.grey),
                 filled: true,
                 fillColor: const Color(0xFF0F0F1A),
@@ -328,9 +386,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: TextField(
                   controller: _taskController,
                   style: const TextStyle(color: Colors.white),
-                  textDirection: TextDirection.rtl,
                   decoration: InputDecoration(
-                    hintText: 'משימה חדשה...',
+                    hintText: t('newTask'),
                     hintStyle: const TextStyle(color: Colors.grey),
                     filled: true,
                     fillColor: const Color(0xFF1E1E3A),
@@ -395,7 +452,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     Expanded(
                       child: Text(
                         task['title'].toString(),
-                        textDirection: TextDirection.rtl,
                         style: TextStyle(
                           color: completed ? Colors.grey : Colors.white,
                           fontSize: 15,
@@ -422,11 +478,11 @@ class _ChatScreenState extends State<ChatScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          _settingsCard('🤖 מודל שפה', 'Groq (חינמי מהיר)', Icons.psychology),
+          _settingsCard(t('model'), t('modelValue'), Icons.psychology),
           const SizedBox(height: 12),
-          _settingsCard('🎭 אישיות', 'ידידותי ומקצועי', Icons.face),
+          _settingsCard(t('personality'), t('personalityValue'), Icons.face),
           const SizedBox(height: 12),
-          _settingsCard('🌐 שפה', 'עברית', Icons.language),
+          _settingsCard(t('language'), t('languageValue'), Icons.language),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -437,9 +493,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text(
-                '💾 שמור הגדרות',
-                style: TextStyle(fontSize: 16, color: Colors.white),
+              child: Text(
+                t('saveSettings'),
+                style: const TextStyle(fontSize: 16, color: Colors.white),
               ),
             ),
           ),
@@ -466,13 +522,11 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 Text(
                   title,
-                  textDirection: TextDirection.rtl,
                   style: const TextStyle(color: Color(0xFF7C6AF7), fontSize: 13),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  textDirection: TextDirection.rtl,
                   style: const TextStyle(color: Colors.white, fontSize: 15),
                 ),
               ],

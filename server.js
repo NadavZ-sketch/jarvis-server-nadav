@@ -3,17 +3,12 @@ const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
 const Groq = require('groq-sdk');
-const { ElevenLabsClient } = require('@elevenlabs/elevenlabs-js');
-
-const elevenlabs = new ElevenLabsClient({
-  apiKey: process.env.ELEVENLABS_API_KEY,
-});
 require('dotenv').config();
 
 const { detectIntent, INTENTS } = require('./src/engines/intentEngine');
 const { buildSystemPrompt } = require('./src/engines/personalityEngine');
 const tasksRouter = require('./src/routes/tasks');
-const { addToHistory, getRecentHistory, getFullMemory } = require('./src/memory/memoryManager');
+const { addToHistory, getRecentHistory, getFullMemory, saveMemory } = require('./src/memory/memoryManager');
 
 const app = express();
 app.use(cors({
@@ -71,33 +66,27 @@ app.post('/chat', async (req, res) => {
   try {
     const { message, language = 'he' } = req.body;
 
-    // זיהוי כוונה
     const intentResult = detectIntent(message);
 
-    // טעינת היסטוריה
     const recentHistory = getRecentHistory(10);
     const historyMessages = recentHistory.map(h => ({
       role: h.role,
       content: h.content,
     }));
 
-    // בניית הודעות
     const messages = [
       ...historyMessages,
       { role: 'user', content: message },
     ];
 
-    // System prompt חכם
-    const langInstruction = language === 'en' 
-  ? 'Always respond in English.' 
-  : 'תמיד ענה בעברית.';
+    const langInstruction = language === 'en'
+      ? 'Always respond in English.'
+      : 'תמיד ענה בעברית.';
 
-const systemPrompt = buildSystemPrompt(intentResult.intent, 'default') + '\n' + langInstruction;
+    const systemPrompt = buildSystemPrompt(intentResult.intent, 'default') + '\n' + langInstruction;
 
-    // קריאה ל-LLM
     const reply = await callLLM(messages, systemPrompt);
 
-    // שמירה בזיכרון
     addToHistory('user', message);
     addToHistory('assistant', reply);
 
@@ -164,6 +153,15 @@ app.get('/status', (req, res) => {
   });
 });
 
+// נקודת קצה - זיכרון
+app.get('/memory', (req, res) => {
+  const memory = getFullMemory();
+  res.json({
+    success: true,
+    memory: memory,
+  });
+});
+
 // נקודת קצה - קבלת הגדרות
 app.get('/settings', (req, res) => {
   const memory = getFullMemory();
@@ -183,22 +181,12 @@ app.post('/settings', (req, res) => {
   const { provider, personality, assistantName, language } = req.body;
   const memory = getFullMemory();
   memory.settings = { provider, personality, assistantName, language };
-  const { saveMemory } = require('./src/memory/memoryManager');
   saveMemory(memory);
   res.json({ success: true, settings: memory.settings });
 });
 
-// נקודת קצה - זיכרון
-app.get('/memory', (req, res) => {
-  const memory = getFullMemory();
-  res.json({
-    success: true,
-    memory: memory,
-  });
-});
-
 // הפעלת השרת
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`✅ MyAssistant Server running on http://localhost:${PORT}`);
   console.log(`🤖 LLM Provider: ${process.env.LLM_PROVIDER || 'groq'}`);

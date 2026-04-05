@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:html' as html;
 
 void main() {
   runApp(const MyAssistantApp());
@@ -104,6 +105,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.add({'role': 'assistant', 'content': data['reply']});
         _isLoading = false;
       });
+      _speakText(data['reply']);
     } catch (e) {
       setState(() {
         _messages.add({'role': 'assistant', 'content': t('error')});
@@ -124,7 +126,25 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
   }
-
+Future<void> _speakText(String text) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$apiUrl/tts'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'text': text, 'language': _language}),
+      );
+      if (response.statusCode == 200) {
+        final bytes = response.bodyBytes;
+        final blob = html.Blob([bytes], 'audio/mpeg');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final audio = html.AudioElement(url);
+        await audio.play();
+        html.Url.revokeObjectUrl(url);
+      }
+    } catch (e) {
+      debugPrint('TTS error: $e');
+    }
+  }
   Future<void> _loadTasks() async {
     try {
       final response = await http.get(Uri.parse('$apiUrl/tasks'));

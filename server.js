@@ -1,195 +1,147 @@
-const express = require('express');
-const cors = require('cors');
-const Anthropic = require('@anthropic-ai/sdk');
-const OpenAI = require('openai');
-const Groq = require('groq-sdk');
 require('dotenv').config();
-
-const { detectIntent, INTENTS } = require('./src/engines/intentEngine');
-const { buildSystemPrompt } = require('./src/engines/personalityEngine');
-const tasksRouter = require('./src/routes/tasks');
-const { addToHistory, getRecentHistory, getFullMemory, saveMemory } = require('./src/memory/memoryManager');
+const express = require('express');
+const axios = require('axios');
+const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
+const googleTTS = require('google-tts-api');
 
 const app = express();
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-}));
+app.use(cors());
 app.use(express.json());
-app.use(express.static('.'));
-app.use('/app', express.static('./my_assistant_app/build/web'));
-app.use('/tasks', tasksRouter);
 
-// LLM Adapter
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-async function callLLM(messages, systemPrompt = '') {
-  const provider = process.env.LLM_PROVIDER || 'groq';
+let chatMemory = []; 
 
-  if (provider === 'anthropic') {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: messages,
-    });
-    return response.content[0].text;
-
-  } else if (provider === 'openai') {
-    const allMessages = systemPrompt
-      ? [{ role: 'system', content: systemPrompt }, ...messages]
-      : messages;
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 1024,
-      messages: allMessages,
-    });
-    return response.choices[0].message.content;
-
-  } else {
-    const allMessages = systemPrompt
-      ? [{ role: 'system', content: systemPrompt }, ...messages]
-      : messages;
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      max_tokens: 1024,
-      messages: allMessages,
-    });
-    return response.choices[0].message.content;
-  }
+async function generateSpeech(text) {
+    try {
+        const results = await googleTTS.getAllAudioBase64(text, {
+            lang: 'iw',
+            slow: false,
+            host: 'https://translate.google.com',
+            splitPunct: ',.?!:' 
+        });
+        const buffers = results.map(res => Buffer.from(res.base64, 'base64'));
+        return Buffer.concat(buffers).toString('base64');
+    } catch (err) {
+        console.error("❌ Google TTS Error:", err.message);
+        return null;
+    }
 }
 
-// נקודת קצה - Chat
-app.post('/chat', async (req, res) => {
-  try {
-    const { message, language = 'he' } = req.body;
-
-    const intentResult = detectIntent(message);
-
-    const recentHistory = getRecentHistory(10);
-    const historyMessages = recentHistory.map(h => ({
-      role: h.role,
-      content: h.content,
-    }));
-
-    const messages = [
-      ...historyMessages,
-      { role: 'user', content: message },
-    ];
-
-    const langInstruction = language === 'en'
-      ? 'Always respond in English.'
-      : 'תמיד ענה בעברית.';
-
-    const systemPrompt = buildSystemPrompt(intentResult.intent, 'default') + '\n' + langInstruction;
-
-    const reply = await callLLM(messages, systemPrompt);
-
-    addToHistory('user', message);
-    addToHistory('assistant', reply);
-
-    res.json({
-      success: true,
-      reply: reply,
-      intent: intentResult.intent,
-      provider: process.env.LLM_PROVIDER || 'groq',
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
-// נקודת קצה - TTS
-app.post('/tts', async (req, res) => {
-  try {
-    const { text, language = 'he' } = req.body;
-
-    const voiceId = language === 'en'
-      ? 'EXAVITQu4vr4xnSDxMaL'
-      : 'XrExE9yKIg1WjnnlVkGX';
-
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'xi-api-key': process.env.ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: text,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      return res.status(500).json({ success: false, error });
+async function unifiedJarvisBrain(userMessage) {
+    // חוזרים לשליפה פשוטה של עמודת ה-content בלבד
+    const { data: memoriesData } = await supabase.from('memories').select('content');
+    let longTermMemories = "אין עדיין זיכרונות שמורים.";
+    if (memoriesData && memoriesData.length > 0) {
+        longTermMemories = memoriesData.map(m => `- ${m.content}`).join('\n');
     }
 
-    res.setHeader('Content-Type', 'audio/mpeg');
-    const buffer = await response.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    const memoryString = chatMemory.map(msg => `${msg.role === 'user' ? 'Nadav' : 'Jarvis'}: ${msg.text}`).join('\n');
+    
+    const now = new Date();
+    const currentDate = now.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' });
+    const currentDay = now.toLocaleDateString('he-IL', { weekday: 'long', timeZone: 'Asia/Jerusalem' });
+    const currentTime = now.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute:'2-digit' });
 
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+    // הנחיה ל-AI לסדר את הזיכרונות בתוך הטקסט עם הקשר בסוגריים
+    const systemPrompt = `You are Jarvis, an AI assistant. Analyze the user message.
+    Decide the intent: 'add', 'list', 'delete', 'weather', 'remember', or 'chat'.
+    
+    * IMPORTANT: For 'remember' intent, create a concise memory statement including a context tag in brackets at the beginning.
+    Example: "[העדפות] נדב אוהב מוזיקת היפ הופ משנות ה-90."
+    
+    Return ONLY a JSON object:
+    {
+      "intent": "add|list|delete|weather|remember|chat",
+      "parameter": "the contextualized fact to remember or task details",
+      "response": "conversational response in Hebrew"
+    }
+    
+    --- Permanent Memories About Nadav ---
+    ${longTermMemories}
+    --------------------------------------
+    
+    Current DateTime: Today is ${currentDay}, ${currentDate}, and the local time is ${currentTime}.
+    User is Nadav, Mechanical Engineer.
+    
+    --- Recent Conversation History ---
+    ${memoryString}
+    -----------------------------------
+    
+    Current Message from Nadav: `;
+
+    try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
+        const response = await axios.post(url, {
+            contents: [{ parts: [{ text: systemPrompt + userMessage }] }],
+            tools: [{ googleSearch: {} }] 
+        });
+
+        let aiText = response.data.candidates[0].content.parts[0].text;
+        const lastOpen = aiText.lastIndexOf('{');
+        const lastClose = aiText.lastIndexOf('}');
+
+        if (lastOpen !== -1 && lastClose !== -1) {
+            return JSON.parse(aiText.substring(lastOpen, lastClose + 1));
+        }
+    } catch (err) {
+        console.error("AI Brain Error:", err.message);
+    }
+    return { intent: "chat", response: "סליחה נדב, נתקלתי בקושי בעיבוד המידע." };
+}
+
+app.post('/ask-jarvis', async (req, res) => {
+    try {
+        const userMessage = req.body.command;
+        console.log(`\n--- Incoming Task: ${userMessage} ---`);
+        const startTime = Date.now(); 
+
+        const brainData = await unifiedJarvisBrain(userMessage);
+        let answer = "";
+
+        if (brainData.intent === 'add') {
+            await supabase.from('tasks').insert([{ content: brainData.parameter }]); 
+            answer = `הוספתי את המשימה: ${brainData.parameter}`;
+        } else if (brainData.intent === 'list') {
+            const { data } = await supabase.from('tasks').select('*');
+            if (!data || data.length === 0) answer = "אין לך משימות כרגע.";
+            else answer = `המשימות שלך: ` + data.map((t, i) => `${i + 1}. ${t.content}`).join('. ');
+        } else if (brainData.intent === 'delete') {
+            await supabase.from('tasks').delete().ilike('content', `%${brainData.parameter}%`);
+            answer = `מחקתי את המשימה שביקשת.`;
+        } else if (brainData.intent === 'weather') {
+            let city = brainData.parameter || 'אשדוד';
+            try {
+                const weatherRes = await axios.get(`https://wttr.in/${encodeURIComponent(city)}?format=%t+%C&lang=he`);
+                answer = `הטמפרטורה ב${city} היא ${weatherRes.data.trim()}.`;
+            } catch(e) {
+                answer = "תקלה בחיבור למזג האוויר.";
+            }
+        } else if (brainData.intent === 'remember') {
+            // חוזרים לשמור רק בתוך עמודת content
+            await supabase.from('memories').insert([{ content: brainData.parameter }]);
+            answer = `רשמתי לפניי: ${brainData.parameter}`;
+        } else {
+            answer = brainData.response || "לא הצלחתי לגבש תשובה.";
+        }
+
+        console.log(`⏱️ Speed Check: Processed in ${(Date.now() - startTime) / 1000} seconds!`);
+
+        chatMemory.push({ role: 'user', text: userMessage });
+        chatMemory.push({ role: 'jarvis', text: answer });
+        if (chatMemory.length > 10) chatMemory = chatMemory.slice(chatMemory.length - 10);
+
+        const audioBase64 = await generateSpeech(answer);
+        res.json({ answer: answer, audio: audioBase64 });
+
+    } catch (err) {
+        console.error("Route Error:", err.message);
+        res.status(500).json({ answer: "שגיאת מערכת פנימית." });
+    }
 });
 
-// נקודת קצה - סטטוס
-app.get('/status', (req, res) => {
-  res.json({
-    status: 'online',
-    provider: process.env.LLM_PROVIDER || 'groq',
-    version: '1.0.0',
-  });
-});
-
-// נקודת קצה - זיכרון
-app.get('/memory', (req, res) => {
-  const memory = getFullMemory();
-  res.json({
-    success: true,
-    memory: memory,
-  });
-});
-
-// נקודת קצה - קבלת הגדרות
-app.get('/settings', (req, res) => {
-  const memory = getFullMemory();
-  res.json({
-    success: true,
-    settings: memory.settings || {
-      provider: process.env.LLM_PROVIDER || 'groq',
-      personality: 'default',
-      assistantName: 'MyAssistant',
-      language: 'he',
-    },
-  });
-});
-
-// נקודת קצה - שמירת הגדרות
-app.post('/settings', (req, res) => {
-  const { provider, personality, assistantName, language } = req.body;
-  const memory = getFullMemory();
-  memory.settings = { provider, personality, assistantName, language };
-  saveMemory(memory);
-  res.json({ success: true, settings: memory.settings });
-});
-
-// הפעלת השרת
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ MyAssistant Server running on http://localhost:${PORT}`);
-  console.log(`🤖 LLM Provider: ${process.env.LLM_PROVIDER || 'groq'}`);
-  console.log(`🧠 Intent Engine: active`);
-  console.log(`💾 Memory Manager: active`);
+    console.log(`🚀 JARVIS ONLINE | SIMPLE MEMORY MODE | PORT: ${PORT}`);
 });

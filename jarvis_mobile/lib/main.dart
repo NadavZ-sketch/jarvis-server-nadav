@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:audioplayers/audioplayers.dart';
+import 'package:image_picker/image_picker.dart';
 
 void main() => runApp(const JarvisApp());
 
@@ -41,9 +43,13 @@ class _ChatScreenState extends State<ChatScreen> {
   
   late stt.SpeechToText _speech;
   final AudioPlayer _audioPlayer = AudioPlayer();
+  final ImagePicker _picker = ImagePicker();
   
   JarvisState _currentState = JarvisState.idle;
   String _listeningText = "";
+  
+  File? _selectedImage;
+  String? _base64Image;
 
   String _getCurrentTime() {
     final now = DateTime.now();
@@ -51,7 +57,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   late List<Map<String, String>> messages = [
-    {"sender": "jarvis", "text": "מערכת ג'רוויס מחוברת. ממתין לפקודה שלך, נדב.", "time": _getCurrentTime()}
+    {"sender": "jarvis", "text": "מערכת הראייה מחוברת. אני מוכן לסרוק תמונות, נדב.", "time": _getCurrentTime()}
   ];
 
   @override
@@ -92,6 +98,18 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _pickImage() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    
+    if (image != null) {
+      final bytes = await File(image.path).readAsBytes();
+      setState(() {
+        _selectedImage = File(image.path);
+        _base64Image = base64Encode(bytes);
+      });
+    }
+  }
+
   void _listen() async {
     if (_currentState != JarvisState.listening) {
       bool available = await _speech.initialize(
@@ -99,10 +117,6 @@ class _ChatScreenState extends State<ChatScreen> {
           if (val == 'notListening' || val == 'done') {
             setState(() => _currentState = JarvisState.idle);
           }
-        },
-        onError: (val) {
-          print('Mic Error: ${val.errorMsg}');
-          setState(() => _currentState = JarvisState.idle);
         },
       );
       if (available) {
@@ -112,7 +126,6 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         _speech.listen(
           onResult: (val) {
-            // התיקון: מעדכנים טקסט רק אם המיקרופון עדיין אמור להקשיב
             if (_currentState == JarvisState.listening) {
               setState(() {
                 _controller.text = val.recognizedWords;
@@ -133,27 +146,38 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> sendCommand(String text) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty && _base64Image == null) return;
 
-    // התיקון: סוגרים את המיקרופון מיד עם השליחה
     _speech.stop();
 
     setState(() {
-      messages.add({"sender": "user", "text": text, "time": _getCurrentTime()});
+      String displayMsg = text;
+      if (_selectedImage != null) displayMsg += " [תמונה מצורפת]";
+      messages.add({"sender": "user", "text": displayMsg, "time": _getCurrentTime()});
       _currentState = JarvisState.thinking;
       _listeningText = "";
     });
     
     _scrollToBottom();
     _controller.clear();
+    
+    String? imageToSend = _base64Image;
+    setState(() {
+      _selectedImage = null;
+      _base64Image = null;
+    });
 
-    final url = Uri.parse('http://localhost:3000/ask-jarvis'); 
+    // 🛑 החלף את הכתובת כאן לכתובת ה-Render שלך! 🛑
+    final url = Uri.parse('https://jarvis-server-nadav.onrender.com/ask-jarvis'); 
     
     try {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'command': text}),
+        body: jsonEncode({
+          'command': text,
+          'image': imageToSend
+        }),
       );
 
       if (response.statusCode == 200) {
@@ -170,10 +194,16 @@ class _ChatScreenState extends State<ChatScreen> {
         } else {
           setState(() => _currentState = JarvisState.idle);
         }
+      } else {
+        // התיקון: אם השרת מחזיר שגיאה (כמו 413 Payload Too Large), עוצרים את העיבוד!
+        setState(() {
+          messages.add({"sender": "jarvis", "text": "שגיאה מהשרת: קוד ${response.statusCode}", "time": _getCurrentTime()});
+          _currentState = JarvisState.idle;
+        });
       }
     } catch (e) {
       setState(() {
-        messages.add({"sender": "jarvis", "text": "תקלה בתקשורת עם השרת.", "time": _getCurrentTime()});
+        messages.add({"sender": "jarvis", "text": "תקלה בתקשורת עם השרת: $e", "time": _getCurrentTime()});
         _currentState = JarvisState.idle;
       });
     }
@@ -245,4 +275,151 @@ class _ChatScreenState extends State<ChatScreen> {
                          color: Color(0xFF2D2D2D),
                          borderRadius: BorderRadius.only(
                            topLeft: Radius.circular(15),
-                           topRight: Radius
+                           topRight: Radius.circular(15),
+                           bottomLeft: Radius.circular(15),
+                           bottomRight: Radius.circular(0),
+                         ),
+                       ),
+                       child: const Row(
+                         mainAxisSize: MainAxisSize.min,
+                         children: [
+                           SizedBox(
+                             width: 15,
+                             height: 15,
+                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.purpleAccent),
+                           ),
+                           SizedBox(width: 10),
+                           Text("מנתח מידע...", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                         ],
+                       ),
+                     ),
+                   );
+                }
+
+                final msg = messages[index];
+                final isUser = msg['sender'] == 'user';
+                
+                return Align(
+                  alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                    decoration: BoxDecoration(
+                      color: isUser ? Colors.blueGrey[800] : const Color(0xFF2D2D2D),
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(15),
+                        topRight: const Radius.circular(15),
+                        bottomLeft: Radius.circular(isUser ? 0 : 15),
+                        bottomRight: Radius.circular(isUser ? 15 : 0),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          msg['text']!,
+                          style: const TextStyle(fontSize: 16, color: Colors.white),
+                          textDirection: TextDirection.rtl,
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          msg['time'] ?? '',
+                          style: const TextStyle(fontSize: 11, color: Colors.white54),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+            
+          if (isListeningMode)
+             Padding(
+               padding: const EdgeInsets.all(8.0),
+               child: Text(_listeningText, style: const TextStyle(color: Colors.redAccent, fontStyle: FontStyle.italic)),
+             ),
+
+          if (_selectedImage != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Stack(
+                    alignment: Alignment.topRight,
+                    children: [
+                      Container(
+                        height: 80,
+                        width: 80,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          image: DecorationImage(
+                            image: FileImage(_selectedImage!),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedImage = null;
+                            _base64Image = null;
+                          });
+                        },
+                        child: Container(
+                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                          child: const Icon(Icons.close, color: Colors.white, size: 20),
+                        ),
+                      )
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+          Container(
+            padding: const EdgeInsets.all(10),
+            color: const Color(0xFF2D2D2D),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.image),
+                  color: Colors.grey,
+                  onPressed: _pickImage,
+                ),
+                IconButton(
+                  icon: Icon(isListeningMode ? Icons.mic : Icons.mic_none),
+                  color: isListeningMode ? Colors.redAccent : Colors.grey,
+                  onPressed: _listen,
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    textDirection: TextDirection.rtl,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: 'מה תרצה שאעשה?',
+                      hintStyle: TextStyle(color: Colors.grey),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 15),
+                    ),
+                    onSubmitted: (value) => sendCommand(value),
+                  ),
+                ),
+                CircleAvatar(
+                  backgroundColor: Colors.blueAccent,
+                  child: IconButton(
+                    icon: const Icon(Icons.send, color: Colors.white),
+                    onPressed: () => sendCommand(_controller.text),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

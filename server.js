@@ -7,7 +7,8 @@ const googleTTS = require('google-tts-api');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// הגדלנו את מגבלת הגודל כדי שהשרת לא יקרוס כשנשלח לו תמונות באיכות גבוהה!
+app.use(express.json({ limit: '50mb' })); 
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
@@ -29,8 +30,8 @@ async function generateSpeech(text) {
     }
 }
 
-async function unifiedJarvisBrain(userMessage) {
-    // חוזרים לשליפה פשוטה של עמודת ה-content בלבד
+// הפונקציה מקבלת עכשיו גם את התמונה (imageBase64)
+async function unifiedJarvisBrain(userMessage, imageBase64) {
     const { data: memoriesData } = await supabase.from('memories').select('content');
     let longTermMemories = "אין עדיין זיכרונות שמורים.";
     if (memoriesData && memoriesData.length > 0) {
@@ -44,12 +45,11 @@ async function unifiedJarvisBrain(userMessage) {
     const currentDay = now.toLocaleDateString('he-IL', { weekday: 'long', timeZone: 'Asia/Jerusalem' });
     const currentTime = now.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute:'2-digit' });
 
-    // הנחיה ל-AI לסדר את הזיכרונות בתוך הטקסט עם הקשר בסוגריים
-    const systemPrompt = `You are Jarvis, an AI assistant. Analyze the user message.
+    const systemPrompt = `You are Jarvis, an AI assistant. Analyze the user message AND the image if provided.
     Decide the intent: 'add', 'list', 'delete', 'weather', 'remember', or 'chat'.
     
     * IMPORTANT: For 'remember' intent, create a concise memory statement including a context tag in brackets at the beginning.
-    Example: "[העדפות] נדב אוהב מוזיקת היפ הופ משנות ה-90."
+    * If an image is provided, analyze it deeply to answer the user's question accurately.
     
     Return ONLY a JSON object:
     {
@@ -73,8 +73,20 @@ async function unifiedJarvisBrain(userMessage) {
 
     try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
+        
+        // בונים את הבקשה. אם יש תמונה, מצרפים אותה!
+        let promptParts = [{ text: systemPrompt + userMessage }];
+        if (imageBase64) {
+            promptParts.push({
+                inlineData: {
+                    data: imageBase64,
+                    mimeType: "image/jpeg" // ג'מיני יודע להתמודד עם PNG/JPEG בצורה הזו
+                }
+            });
+        }
+
         const response = await axios.post(url, {
-            contents: [{ parts: [{ text: systemPrompt + userMessage }] }],
+            contents: [{ parts: promptParts }],
             tools: [{ googleSearch: {} }] 
         });
 
@@ -88,16 +100,18 @@ async function unifiedJarvisBrain(userMessage) {
     } catch (err) {
         console.error("AI Brain Error:", err.message);
     }
-    return { intent: "chat", response: "סליחה נדב, נתקלתי בקושי בעיבוד המידע." };
+    return { intent: "chat", response: "סליחה נדב, נתקלתי בקושי בעיבוד המידע והתמונה." };
 }
 
 app.post('/ask-jarvis', async (req, res) => {
     try {
-        const userMessage = req.body.command;
-        console.log(`\n--- Incoming Task: ${userMessage} ---`);
+        const userMessage = req.body.command || "";
+        const imageBase64 = req.body.image; // חילוץ התמונה מהאפליקציה
+        
+        console.log(`\n--- Incoming Task: ${userMessage} | Has Image: ${!!imageBase64} ---`);
         const startTime = Date.now(); 
 
-        const brainData = await unifiedJarvisBrain(userMessage);
+        const brainData = await unifiedJarvisBrain(userMessage, imageBase64);
         let answer = "";
 
         if (brainData.intent === 'add') {
@@ -119,7 +133,6 @@ app.post('/ask-jarvis', async (req, res) => {
                 answer = "תקלה בחיבור למזג האוויר.";
             }
         } else if (brainData.intent === 'remember') {
-            // חוזרים לשמור רק בתוך עמודת content
             await supabase.from('memories').insert([{ content: brainData.parameter }]);
             answer = `רשמתי לפניי: ${brainData.parameter}`;
         } else {
@@ -143,5 +156,5 @@ app.post('/ask-jarvis', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 JARVIS ONLINE | SIMPLE MEMORY MODE | PORT: ${PORT}`);
+    console.log(`🚀 JARVIS ONLINE | VISION ACTIVATED | PORT: ${PORT}`);
 });

@@ -171,9 +171,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final url = Uri.parse('https://jarvis-server-nadav.onrender.com/ask-jarvis'); 
     
     try {
+      const appSecret = String.fromEnvironment('APP_SECRET', defaultValue: '');
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': appSecret,
+        },
         body: jsonEncode({
           'command': text,
           'image': imageToSend

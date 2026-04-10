@@ -7,7 +7,6 @@ const googleTTS = require('google-tts-api');
 
 const app = express();
 app.use(cors());
-// הגדלנו את מגבלת הגודל כדי שהשרת לא יקרוס כשנשלח לו תמונות באיכות גבוהה!
 app.use(express.json({ limit: '50mb' })); 
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -30,7 +29,6 @@ async function generateSpeech(text) {
     }
 }
 
-// הפונקציה מקבלת עכשיו גם את התמונה (imageBase64)
 async function unifiedJarvisBrain(userMessage, imageBase64) {
     const { data: memoriesData } = await supabase.from('memories').select('content');
     let longTermMemories = "אין עדיין זיכרונות שמורים.";
@@ -72,23 +70,29 @@ async function unifiedJarvisBrain(userMessage, imageBase64) {
     Current Message from Nadav: `;
 
     try {
+        // נשארים עם גרסת 2.5-flash-lite!
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
         
-        // בונים את הבקשה. אם יש תמונה, מצרפים אותה!
         let promptParts = [{ text: systemPrompt + userMessage }];
         if (imageBase64) {
             promptParts.push({
                 inlineData: {
                     data: imageBase64,
-                    mimeType: "image/jpeg" // ג'מיני יודע להתמודד עם PNG/JPEG בצורה הזו
+                    mimeType: "image/jpeg" 
                 }
             });
         }
 
-        const response = await axios.post(url, {
-            contents: [{ parts: promptParts }],
-            tools: [{ googleSearch: {} }] 
-        });
+        const requestBody = {
+            contents: [{ parts: promptParts }]
+        };
+
+        // התיקון הקריטי: מדליקים את החיפוש רק אם אין תמונה בבקשה
+        if (!imageBase64) {
+            requestBody.tools = [{ googleSearch: {} }];
+        }
+
+        const response = await axios.post(url, requestBody);
 
         let aiText = response.data.candidates[0].content.parts[0].text;
         const lastOpen = aiText.lastIndexOf('{');
@@ -98,7 +102,8 @@ async function unifiedJarvisBrain(userMessage, imageBase64) {
             return JSON.parse(aiText.substring(lastOpen, lastClose + 1));
         }
     } catch (err) {
-        console.error("AI Brain Error:", err.message);
+        // עכשיו נראה בדיוק מה גוגל מתלונן אם משהו קורס
+        console.error("AI Brain Error from Google:", err.response ? JSON.stringify(err.response.data, null, 2) : err.message);
     }
     return { intent: "chat", response: "סליחה נדב, נתקלתי בקושי בעיבוד המידע והתמונה." };
 }
@@ -106,7 +111,7 @@ async function unifiedJarvisBrain(userMessage, imageBase64) {
 app.post('/ask-jarvis', async (req, res) => {
     try {
         const userMessage = req.body.command || "";
-        const imageBase64 = req.body.image; // חילוץ התמונה מהאפליקציה
+        const imageBase64 = req.body.image; 
         
         console.log(`\n--- Incoming Task: ${userMessage} | Has Image: ${!!imageBase64} ---`);
         const startTime = Date.now(); 
@@ -156,5 +161,5 @@ app.post('/ask-jarvis', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 JARVIS ONLINE | VISION ACTIVATED | PORT: ${PORT}`);
+    console.log(`🚀 JARVIS ONLINE | VISION (MODEL 2.5) ACTIVATED | PORT: ${PORT}`);
 });

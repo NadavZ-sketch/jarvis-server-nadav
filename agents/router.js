@@ -7,8 +7,8 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 // ORDER MATTERS: reminder must be before memory to avoid תזכיר לי conflict
 const KEYWORDS = {
     task:     /משימ|הוסף משימ|מחק משימ|רשימת משימ|הראה משימ|כל המשימ/i,
-    reminder: /תזכיר לי ב|תזכיר לי מחר|תזכיר לי בעוד|הזכר לי ב|הזכר לי מחר|הזכר לי בעוד/i,
-    memory:   /זכור ש|תזכור ש|שמור ש|תזכיר לי מה|מה אתה יודע|מה זכרת|ספר לי עליי|מה שמרת/i,
+    reminder: /תזכיר לי|הזכר לי|תזכורת|להזכיר לי/i,
+    memory:   /זכור ש|תזכור ש|שמור ש|מה אתה יודע|מה זכרת|ספר לי עליי|מה שמרת/i,
     sports:   /כדורגל|פרמייר|ליג|מאמן|קבוצ|שחקן|גול|ניצחון|הפסד|תוצא|טבלה|דירוג|העברות|ארסנל|צ'לסי|מנצ'סטר|ליברפול|טוטנהאם|אסטון|ניוקאסל|ברייטון|everton|arsenal|chelsea|liverpool|premier league|epl/i,
 };
 
@@ -33,24 +33,9 @@ async function classifyIntent(userMessage) {
         }
     }
 
-    // Slow path: ask Gemini for ambiguous messages
-    try {
-        const response = await axios.post(GEMINI_URL, {
-            contents: [{ parts: [{ text: CLASSIFY_PROMPT + userMessage }] }]
-        });
-
-        const aiText = response.data.candidates[0].content.parts[0].text;
-        const raw = aiText.trim().toLowerCase().replace(/[^a-z]/g, '');
-        const valid = ['task', 'reminder', 'memory', 'chat', 'sports'];
-
-        const intent = valid.includes(raw) ? raw : 'chat';
-        console.log(`🧭 Router (gemini): "${intent}" ← "${userMessage.slice(0, 50)}"`);
-        return intent;
-
-    } catch (err) {
-        console.error('Router Error:', err.message);
-        return 'chat';
-    }
+    // No keyword match → default to chat (saves a Gemini API call)
+    console.log(`🧭 Router (default): "chat" ← "${userMessage.slice(0, 50)}"`);
+    return 'chat';
 }
 
 module.exports = { classifyIntent };

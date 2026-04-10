@@ -1,7 +1,5 @@
 require('dotenv').config();
-const axios = require('axios');
-
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
+const { callGemma4 } = require('./models');
 
 const TASK_PROMPT = `You are a task management AI. Analyze the Hebrew user message and extract the intent.
 Allowed intents: 'add', 'list', 'delete'.
@@ -11,11 +9,8 @@ User message: `;
 
 async function runTaskAgent(userMessage, supabase) {
     try {
-        const response = await axios.post(GEMINI_URL, {
-            contents: [{ parts: [{ text: TASK_PROMPT + userMessage }] }]
-        });
+        const aiText = await callGemma4(TASK_PROMPT + userMessage);
 
-        let aiText = response.data.candidates[0].content.parts[0].text;
         const lastOpen = aiText.lastIndexOf('{');
         const lastClose = aiText.lastIndexOf('}');
 

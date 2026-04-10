@@ -1,7 +1,5 @@
 require('dotenv').config();
-const axios = require('axios');
-
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
+const { callGemma4 } = require('./models');
 
 const SAVE_PROMPT = `You are a memory manager. The user wants to save a personal fact about Nadav.
 Create a concise memory statement with a context tag in brackets at the beginning.
@@ -28,20 +26,13 @@ async function runMemoryAgent(userMessage, supabase) {
             const memoriesList = memoriesData.map(m => `- ${m.content}`).join('\n');
             const fullPrompt = RECALL_INTRO + memoriesList + `\n\nשאלת הגולש: ${userMessage}`;
 
-            const response = await axios.post(GEMINI_URL, {
-                contents: [{ parts: [{ text: fullPrompt }] }]
-            });
-
-            const answer = response.data.candidates[0].content.parts[0].text.trim();
+            const answer = await callGemma4(fullPrompt);
             return { answer };
         }
 
         // Default: save a memory
-        const response = await axios.post(GEMINI_URL, {
-            contents: [{ parts: [{ text: SAVE_PROMPT + userMessage }] }]
-        });
+        const aiText = await callGemma4(SAVE_PROMPT + userMessage);
 
-        let aiText = response.data.candidates[0].content.parts[0].text;
         const lastOpen = aiText.lastIndexOf('{');
         const lastClose = aiText.lastIndexOf('}');
 

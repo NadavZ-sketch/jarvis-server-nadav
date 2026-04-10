@@ -1,7 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
 
 const SPORTS_PROMPT = `You are a Premier League football expert assistant for Nadav.
 Use Google Search to find the latest, most current information about English Premier League (EPL) football.

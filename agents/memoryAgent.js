@@ -1,7 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
 
 const SAVE_PROMPT = `You are a memory manager. The user wants to save a personal fact about Nadav.
 Create a concise memory statement with a context tag in brackets at the beginning.

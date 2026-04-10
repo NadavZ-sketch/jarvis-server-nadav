@@ -3,6 +3,13 @@ const axios = require('axios');
 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
 
+// Keyword-based fast routing — no Gemini call needed for obvious cases
+const KEYWORDS = {
+    task:   /משימ|הוסף משימ|מחק משימ|רשימת משימ|הראה משימ|כל המשימ/i,
+    memory: /זכור ש|תזכור ש|שמור ש|תזכיר לי|מה אתה יודע|מה זכרת|ספר לי עליי|מה שמרת/i,
+    sports: /כדורגל|פרמייר|ליג|מאמן|קבוצ|שחקן|גול|ניצחון|הפסד|תוצא|טבלה|דירוג|העברות|ארסנל|צ'לסי|מנצ'סטר|ליברפול|טוטנהאם|אסטון|ניוקאסל|ברייטון|everton|arsenal|chelsea|liverpool|premier league|epl/i,
+};
+
 const CLASSIFY_PROMPT = `You are an intent classifier. Given a Hebrew or English user message, classify it into exactly one of these four categories:
 
 - task: adding, listing, checking, deleting, or completing tasks or todo items
@@ -15,6 +22,15 @@ Reply with ONLY the single lowercase word. No punctuation, no explanation.
 User message: `;
 
 async function classifyIntent(userMessage) {
+    // Fast path: keyword match (saves a Gemini API call)
+    for (const [intent, pattern] of Object.entries(KEYWORDS)) {
+        if (pattern.test(userMessage)) {
+            console.log(`🧭 Router (keyword): "${intent}" ← "${userMessage.slice(0, 50)}"`);
+            return intent;
+        }
+    }
+
+    // Slow path: ask Gemini for ambiguous messages
     try {
         const response = await axios.post(GEMINI_URL, {
             contents: [{ parts: [{ text: CLASSIFY_PROMPT + userMessage }] }]
@@ -25,7 +41,7 @@ async function classifyIntent(userMessage) {
         const valid = ['task', 'memory', 'chat', 'sports'];
 
         const intent = valid.includes(raw) ? raw : 'chat';
-        console.log(`🧭 Router: "${intent}" ← "${userMessage.slice(0, 50)}"`);
+        console.log(`🧭 Router (gemini): "${intent}" ← "${userMessage.slice(0, 50)}"`);
         return intent;
 
     } catch (err) {

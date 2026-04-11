@@ -12,7 +12,7 @@ const GEMINI_URL = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${GOOGLE_
 // If not set, falls back to HuggingFace API (needs HF_TOKEN)
 // ─── Gemma 4 via HuggingFace ──────────────────────────────────────────────
 const HF_URL   = 'https://router.huggingface.co/v1/chat/completions';
-const HF_MODEL = 'google/gemma-4-E4B-it';
+const HF_MODEL = 'google/gemma-4-31B-it';
 
 // Local Ollama override (optional — set OLLAMA_URL in .env to use local model)
 const OLLAMA_URL   = process.env.OLLAMA_URL;

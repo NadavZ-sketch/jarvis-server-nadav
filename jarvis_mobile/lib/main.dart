@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -7,25 +6,10 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 
-final FlutterLocalNotificationsPlugin _notificationsPlugin =
-    FlutterLocalNotificationsPlugin();
-
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await _notificationsPlugin.initialize(
-    const InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    ),
-  );
-  await _notificationsPlugin
-      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-      ?.requestNotificationsPermission();
-  runApp(const JarvisApp());
-}
+void main() => runApp(const JarvisApp());
 
 class JarvisApp extends StatelessWidget {
   const JarvisApp({super.key});
@@ -49,6 +33,67 @@ class JarvisApp extends StatelessWidget {
 
 enum JarvisState { idle, listening, thinking, speaking }
 
+// ── Animated Typing Dots ───────────────────────────────────────────────────────
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots> with TickerProviderStateMixin {
+  late final List<AnimationController> _controllers;
+  late final List<Animation<double>> _anims;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = List.generate(3, (i) => AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    ));
+    _anims = _controllers.map((c) =>
+      Tween<double>(begin: 0, end: -7).animate(
+        CurvedAnimation(parent: c, curve: Curves.easeInOut),
+      )
+    ).toList();
+
+    for (int i = 0; i < 3; i++) {
+      Future.delayed(Duration(milliseconds: i * 170), () {
+        if (mounted) _controllers[i].repeat(reverse: true);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers) c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) => AnimatedBuilder(
+        animation: _anims[i],
+        builder: (_, __) => Transform.translate(
+          offset: Offset(0, _anims[i].value),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            width: 7, height: 7,
+            decoration: const BoxDecoration(
+              color: Color(0xFF9E9E9E),
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+      )),
+    );
+  }
+}
+
+// ── Chat Screen ────────────────────────────────────────────────────────────────
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -56,8 +101,8 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _controller    = TextEditingController();
+class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+  final TextEditingController _controller       = TextEditingController();
   final ScrollController       _scrollController = ScrollController();
 
   late stt.SpeechToText _speech;
@@ -71,7 +116,10 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _base64Image;
 
   AppSettings _settings = AppSettings();
-  Timer?      _reminderTimer;
+
+  // ── Orb breathing ──
+  late AnimationController _orbBreathController;
+  late Animation<double>   _orbBreath;
 
   String _getCurrentTime() {
     final now = DateTime.now();
@@ -95,54 +143,26 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() => _settings = s);
     });
 
-    // Poll server every 60s for fired reminders
-    _reminderTimer = Timer.periodic(const Duration(seconds: 60), (_) => _checkReminders());
-    _checkReminders(); // immediate first check
+    // Orb breathing animation
+    _orbBreathController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3200),
+    )..repeat(reverse: true);
+    _orbBreath = Tween<double>(begin: 0.93, end: 1.07).animate(
+      CurvedAnimation(parent: _orbBreathController, curve: Curves.easeInOut),
+    );
   }
 
   @override
   void dispose() {
-    _reminderTimer?.cancel();
+    _orbBreathController.dispose();
+    _controller.dispose();
+    _scrollController.dispose();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
-  Future<void> _checkReminders() async {
-    try {
-      final res = await http.get(
-        Uri.parse('https://jarvis-server-nadav.onrender.com/check-reminders'),
-      );
-      if (res.statusCode != 200) return;
-      final data = jsonDecode(res.body);
-      final reminders = data['reminders'] as List<dynamic>? ?? [];
-      for (int i = 0; i < reminders.length; i++) {
-        final text = reminders[i]['text'] as String? ?? 'תזכורת';
-        await _notificationsPlugin.show(
-          i,
-          '⏰ תזכורת מ-${_settings.assistantName}',
-          text,
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'jarvis_reminders',
-              'תזכורות Jarvis',
-              channelDescription: 'התראות תזכורת מ-Jarvis',
-              importance: Importance.max,
-              priority: Priority.high,
-            ),
-          ),
-        );
-        if (mounted) {
-          setState(() => messages.add({
-            'sender': 'jarvis',
-            'text': '⏰ תזכורת: $text',
-            'time': _getCurrentTime(),
-          }));
-        }
-      }
-    } catch (_) {}
-  }
-
-  // ─── Orb Colors (black/white/gray) ─────────────────────────────────────────
-
+  // ─── Orb Colors ───────────────────────────────────────────────────────────────
   List<Color> _getOrbColors() {
     switch (_currentState) {
       case JarvisState.listening:
@@ -157,8 +177,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ─── Audio ─────────────────────────────────────────────────────────────────
-
+  // ─── Audio ────────────────────────────────────────────────────────────────────
   Future<void> _playAudio(String base64String) async {
     if (!_settings.voiceEnabled) {
       setState(() => _currentState = JarvisState.idle);
@@ -172,8 +191,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ─── Image ─────────────────────────────────────────────────────────────────
-
+  // ─── Image ────────────────────────────────────────────────────────────────────
   Future<void> _pickImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (image != null) {
@@ -185,8 +203,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ─── Voice ─────────────────────────────────────────────────────────────────
-
+  // ─── Voice ────────────────────────────────────────────────────────────────────
   void _listen() async {
     if (_currentState != JarvisState.listening) {
       bool available = await _speech.initialize(
@@ -222,8 +239,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ─── Send ──────────────────────────────────────────────────────────────────
-
+  // ─── Send ──────────────────────────────────────────────────────────────────────
   Future<void> sendCommand(String text) async {
     if (text.trim().isEmpty && _base64Image == null) return;
 
@@ -260,19 +276,25 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       if (response.statusCode == 200) {
-        final data             = jsonDecode(response.body);
-        final String answer    = data['answer'];
-        final String? audioBase64 = data['audio'];
-        final action           = data['action'];
+        final data          = jsonDecode(response.body);
+        final String answer = data['answer'];
+        final String? audio = data['audio'];
+        final action        = data['action'];
 
         setState(() => messages.add({'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()}));
 
-        if (action != null && action is Map<String, dynamic>) {
-          await _handleAction(action);
+        // ── WhatsApp deep link ──
+        if (action != null && action['type'] == 'whatsapp') {
+          final phone   = action['phone'] as String;
+          final message = Uri.encodeComponent(action['message'] as String);
+          final waUrl   = Uri.parse('https://wa.me/$phone?text=$message');
+          if (await canLaunchUrl(waUrl)) {
+            await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+          }
         }
 
-        if (audioBase64 != null && audioBase64.isNotEmpty) {
-          _playAudio(audioBase64);
+        if (audio != null && audio.isNotEmpty) {
+          _playAudio(audio);
         } else {
           setState(() => _currentState = JarvisState.idle);
         }
@@ -292,25 +314,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
-  Future<void> _handleAction(Map<String, dynamic> action) async {
-    final type = action['type'] as String?;
-    Uri? uri;
-
-    if (type == 'whatsapp') {
-      final phone   = action['phone']   as String? ?? '';
-      final message = action['message'] as String? ?? '';
-      uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
-    } else if (type == 'email') {
-      final email   = action['email']   as String? ?? '';
-      final message = action['message'] as String? ?? '';
-      uri = Uri.parse('mailto:$email?body=${Uri.encodeComponent(message)}');
-    }
-
-    if (uri != null && await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
@@ -323,8 +326,7 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  // ─── Settings ──────────────────────────────────────────────────────────────
-
+  // ─── Settings ──────────────────────────────────────────────────────────────────
   void _openSettings() {
     Navigator.push(
       context,
@@ -340,8 +342,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ─── Build ─────────────────────────────────────────────────────────────────
-
+  // ─── Build ─────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final bool isListening = _currentState == JarvisState.listening;
@@ -351,7 +352,14 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Icon(Icons.bolt, color: Colors.white, size: 20),
+            AnimatedBuilder(
+              animation: _orbBreath,
+              builder: (_, __) => Icon(
+                Icons.bolt,
+                color: Colors.white.withOpacity(0.55 + 0.45 * (_orbBreath.value - 0.93) / 0.14),
+                size: 20,
+              ),
+            ),
             const SizedBox(width: 8),
             Text(
               _settings.assistantName.toUpperCase(),
@@ -370,28 +378,35 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
 
-          // ── Orb ──────────────────────────────────────────────────────────
+          // ── Orb ────────────────────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 500),
-              width:  _currentState == JarvisState.thinking ? 90 : 78,
-              height: _currentState == JarvisState.thinking ? 90 : 78,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(colors: _getOrbColors()),
-                boxShadow: [
-                  BoxShadow(
-                    color: _getOrbColors()[0].withOpacity(0.5),
-                    blurRadius:   _currentState == JarvisState.listening ? 28 : 12,
-                    spreadRadius: _currentState == JarvisState.speaking  ? 8  : 2,
-                  ),
-                ],
+            child: AnimatedBuilder(
+              animation: _orbBreath,
+              builder: (context, child) => Transform.scale(
+                scale: _currentState == JarvisState.idle ? _orbBreath.value : 1.0,
+                child: child,
+              ),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 500),
+                width:  _currentState == JarvisState.thinking ? 90 : 78,
+                height: _currentState == JarvisState.thinking ? 90 : 78,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(colors: _getOrbColors()),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _getOrbColors()[0].withOpacity(0.5),
+                      blurRadius:   _currentState == JarvisState.listening ? 28 : 12,
+                      spreadRadius: _currentState == JarvisState.speaking  ? 8  : 2,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
 
-          // ── Messages ─────────────────────────────────────────────────────
+          // ── Messages ────────────────────────────────────────────────────────────
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -401,67 +416,78 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 // Thinking bubble
                 if (index == messages.length && _currentState == JarvisState.thinking) {
-                  return Align(
-                    alignment: Alignment.centerRight,
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF1C1C1C),
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(14), topRight: Radius.circular(14),
-                          bottomLeft: Radius.circular(14), bottomRight: Radius.circular(0),
-                        ),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 14, height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF9E9E9E)),
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 250),
+                    builder: (_, value, child) => Opacity(
+                      opacity: value,
+                      child: Transform.translate(offset: Offset(0, 10 * (1 - value)), child: child),
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF1C1C1C),
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(14), topRight: Radius.circular(14),
+                            bottomLeft: Radius.circular(14), bottomRight: Radius.circular(0),
                           ),
-                          SizedBox(width: 10),
-                          Text('מעבד...', style: TextStyle(color: Color(0xFF6E6E6E), fontSize: 13)),
-                        ],
+                        ),
+                        child: const _TypingDots(),
                       ),
                     ),
                   );
                 }
 
-                // Message bubble
+                // Message bubble with entrance animation
                 final msg    = messages[index];
                 final isUser = msg['sender'] == 'user';
 
-                return Align(
-                  alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-                    decoration: BoxDecoration(
-                      color: isUser ? const Color(0xFF2A2A2A) : const Color(0xFF1C1C1C),
-                      borderRadius: BorderRadius.only(
-                        topLeft:     const Radius.circular(14),
-                        topRight:    const Radius.circular(14),
-                        bottomLeft:  Radius.circular(isUser ? 0 : 14),
-                        bottomRight: Radius.circular(isUser ? 14 : 0),
-                      ),
-                      border: isUser ? null : Border.all(color: const Color(0xFF2A2A2A), width: 0.5),
+                return TweenAnimationBuilder<double>(
+                  key: ValueKey(index),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeOut,
+                  builder: (context, value, child) => Opacity(
+                    opacity: value,
+                    child: Transform.translate(
+                      offset: Offset(0, 16 * (1 - value)),
+                      child: child,
                     ),
-                    child: Column(
-                      crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          msg['text']!,
-                          style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.4),
-                          textDirection: TextDirection.rtl,
+                  ),
+                  child: Align(
+                    alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+                      decoration: BoxDecoration(
+                        color: isUser ? const Color(0xFF2A2A2A) : const Color(0xFF1C1C1C),
+                        borderRadius: BorderRadius.only(
+                          topLeft:     const Radius.circular(14),
+                          topRight:    const Radius.circular(14),
+                          bottomLeft:  Radius.circular(isUser ? 0 : 14),
+                          bottomRight: Radius.circular(isUser ? 14 : 0),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          msg['time'] ?? '',
-                          style: const TextStyle(fontSize: 10, color: Color(0xFF555555)),
-                        ),
-                      ],
+                        border: isUser ? null : Border.all(color: const Color(0xFF2A2A2A), width: 0.5),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            msg['text']!,
+                            style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.4),
+                            textDirection: TextDirection.rtl,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            msg['time'] ?? '',
+                            style: const TextStyle(fontSize: 10, color: Color(0xFF555555)),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -469,7 +495,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
 
-          // ── Listening text ────────────────────────────────────────────────
+          // ── Listening text ──────────────────────────────────────────────────────
           if (isListening)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -479,7 +505,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
-          // ── Image preview ─────────────────────────────────────────────────
+          // ── Image preview ───────────────────────────────────────────────────────
           if (_selectedImage != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -507,10 +533,13 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
-          // ── Input bar ─────────────────────────────────────────────────────
+          // ── Input bar ───────────────────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-            color: const Color(0xFF1C1C1C),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1C1C1C),
+              border: Border(top: BorderSide(color: Color(0xFF2A2A2A), width: 0.5)),
+            ),
             child: Row(
               children: [
                 IconButton(

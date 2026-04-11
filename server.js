@@ -1,9 +1,29 @@
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const cron = require('node-cron');
+const express    = require('express');
+const cors       = require('cors');
+const cron       = require('node-cron');
+const nodemailer = require('nodemailer');
 const { createClient } = require('@supabase/supabase-js');
-const googleTTS = require('google-tts-api');
+const googleTTS  = require('google-tts-api');
+
+// ─── Email transporter ────────────────────────────────────────────────────────
+const mailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+    },
+});
+
+async function sendEmail(to, body) {
+    await mailTransporter.sendMail({
+        from: `"Jarvis" <${process.env.GMAIL_USER}>`,
+        to,
+        subject: 'הודעה מג\'רביס',
+        text: body,
+    });
+    console.log(`📧 Email sent to ${to}`);
+}
 
 const { classifyIntent }   = require('./agents/router');
 const { runTaskAgent }     = require('./agents/taskAgent');
@@ -113,8 +133,20 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
         }
 
-        const answer = result.answer || 'לא הצלחתי לגבש תשובה.';
+        let answer = result.answer || 'לא הצלחתי לגבש תשובה.';
         console.log(`⏱️ ${(Date.now() - startTime) / 1000}s | Agent: ${agentName}`);
+
+        // ── Handle actions ──
+        const action = result.action || null;
+        if (action?.type === 'email' && action.email && action.message) {
+            try {
+                await sendEmail(action.email, action.message);
+                answer += '\n\n✅ המייל נשלח בהצלחה!';
+            } catch (err) {
+                console.error('📧 Email send error:', err.message);
+                answer += '\n\n❌ לא הצלחתי לשלוח את המייל.';
+            }
+        }
 
         await Promise.all([
             saveChatMessage('user', userMessage),
@@ -122,7 +154,8 @@ app.post('/ask-jarvis', async (req, res) => {
         ]);
 
         const audioBase64 = await generateSpeech(answer);
-        res.json({ answer, audio: audioBase64, action: result.action || null });
+        // For WhatsApp — pass action to Flutter to open deep link
+        res.json({ answer, audio: audioBase64, action });
 
     } catch (err) {
         console.error('Route Error:', err.message);

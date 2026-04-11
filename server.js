@@ -12,6 +12,7 @@ const { runMemoryAgent }   = require('./agents/memoryAgent');
 const { runChatAgent }     = require('./agents/chatAgent');
 const { runSportsAgent }     = require('./agents/sportsAgent');
 const { runMessagingAgent }  = require('./agents/messagingAgent');
+const { runDraftAgent }      = require('./agents/draftAgent');
 
 const app = express();
 app.use(cors());
@@ -106,6 +107,8 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runSportsAgent(userMessage);
         } else if (agentName === 'messaging') {
             result = await runMessagingAgent(userMessage, supabase);
+        } else if (agentName === 'draft') {
+            result = await runDraftAgent(userMessage, chatHistory, longTermMemories, settings);
         } else {
             result = await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
         }

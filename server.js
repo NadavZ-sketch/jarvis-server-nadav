@@ -34,9 +34,14 @@ const { runSportsAgent }     = require('./agents/sportsAgent');
 const { runMessagingAgent }  = require('./agents/messagingAgent');
 const { runDraftAgent }      = require('./agents/draftAgent');
 
+const helmet    = require('helmet');
+const rateLimit = require('express-rate-limit');
+
 const app = express();
+app.use(helmet());
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use('/ask-jarvis', rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false }));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
@@ -103,6 +108,10 @@ app.post('/ask-jarvis', async (req, res) => {
     try {
         const userMessage = req.body.command || '';
         const imageBase64 = req.body.image;
+
+        if (userMessage.length > 5000) {
+            return res.status(400).json({ answer: 'ההודעה ארוכה מדי. נסה בקצר יותר.' });
+        }
 
         console.log(`\n--- Incoming: "${userMessage.slice(0, 60)}" | Image: ${!!imageBase64} ---`);
         const startTime = Date.now();
@@ -206,10 +215,9 @@ cron.schedule('* * * * *', async () => {
         if (error) { console.error('⏰ Cron error:', error.message); return; }
         if (!due || due.length === 0) return;
 
-        for (const reminder of due) {
-            console.log(`🔔 REMINDER: ${reminder.text} [${reminder.scheduled_time}]`);
-            await supabase.from('reminders').update({ fired: true }).eq('id', reminder.id);
-        }
+        const ids = due.map(r => r.id);
+        due.forEach(r => console.log(`🔔 REMINDER: ${r.text} [${r.scheduled_time}]`));
+        await supabase.from('reminders').update({ fired: true }).in('id', ids);
     } catch (err) {
         console.error('⏰ Cron unexpected error:', err.message);
     }

@@ -2,9 +2,12 @@ require('dotenv').config();
 const { callGemma4 } = require('./models');
 
 async function findContact(name, supabase) {
-    const { data } = await supabase.from('contacts').select('*');
-    if (!data || data.length === 0) return null;
     const nameLower = name.trim().toLowerCase();
+    const { data } = await supabase
+        .from('contacts')
+        .select('*')
+        .or(`name.ilike.%${nameLower}%`);
+    if (!data || data.length === 0) return null;
     return data.find(c =>
         c.name.toLowerCase().includes(nameLower) ||
         (c.aliases && c.aliases.some(a => a.toLowerCase().includes(nameLower)))

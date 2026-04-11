@@ -18,7 +18,12 @@ async function runTaskAgent(userMessage, supabase, useLocal = true) {
 
         if (lastOpen === -1 || lastClose === -1) throw new Error('No JSON in task agent response');
 
-        const parsed = JSON.parse(aiText.substring(lastOpen, lastClose + 1));
+        let parsed;
+        try {
+            parsed = JSON.parse(aiText.substring(lastOpen, lastClose + 1));
+        } catch {
+            return { answer: 'לא הצלחתי לעבד את הבקשה, נסה לנסח אחרת.' };
+        }
         console.log('📋 TaskAgent:', parsed);
 
         if (parsed.intent === 'add') {

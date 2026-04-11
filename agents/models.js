@@ -26,10 +26,14 @@ async function callGemma4(messages, useLocal = true) {
 
     // ── 1. Local Ollama (only if useLocal is enabled AND OLLAMA_URL is set) ──
     if (useLocal && OLLAMA_URL) {
-        const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
-            model: OLLAMA_MODEL, messages: msgs, stream: false
-        });
-        return response.data.choices[0].message.content.trim();
+        try {
+            const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
+                model: OLLAMA_MODEL, messages: msgs, stream: false
+            }, { timeout: 8000 });
+            return response.data.choices[0].message.content.trim();
+        } catch (ollamaErr) {
+            console.warn('⚠️ Ollama unreachable, falling back to Groq:', ollamaErr.message);
+        }
     }
 
     // ── 2. Groq (free, fast) ──
@@ -37,6 +41,7 @@ async function callGemma4(messages, useLocal = true) {
         const response = await axios.post(GROQ_URL, {
             model: GROQ_MODEL, messages: msgs, max_tokens: 800
         }, {
+            timeout: 10000,
             headers: {
                 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
                 'Content-Type': 'application/json'
@@ -53,6 +58,7 @@ async function callGemma4(messages, useLocal = true) {
         const response = await axios.post(DEEPSEEK_URL, {
             model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 800
         }, {
+            timeout: 10000,
             headers: {
                 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
                 'Content-Type': 'application/json'
@@ -65,10 +71,10 @@ async function callGemma4(messages, useLocal = true) {
     }
 
     // ── 4. Gemini final fallback ──
-    const prompt = msgs.map(m => m.content).join('\n');
+    const prompt = msgs.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n');
     const response = await axios.post(GEMINI_URL, {
         contents: [{ parts: [{ text: prompt }] }]
-    });
+    }, { timeout: 10000 });
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
@@ -78,7 +84,7 @@ async function callGeminiWithSearch(prompt) {
     const response = await axios.post(GEMINI_URL, {
         contents: [{ parts: [{ text: prompt }] }],
         tools: [{ google_search: {} }]
-    });
+    }, { timeout: 10000 });
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
@@ -99,7 +105,7 @@ async function callGeminiVision(prompt, imageBase64) {
                 { inline_data: { mime_type: detectMimeType(imageBase64), data: imageBase64 } }
             ]
         }]
-    });
+    }, { timeout: 10000 });
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 

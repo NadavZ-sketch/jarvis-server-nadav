@@ -12,7 +12,7 @@ const GEMINI_URL = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${GOOGLE_
 // If not set, falls back to HuggingFace API (needs HF_TOKEN)
 const OLLAMA_URL   = process.env.OLLAMA_URL;
 const OLLAMA_MODEL = 'gemma4:e4b';
-const HF_URL       = 'https://api-inference.huggingface.co/v1/chat/completions';
+const HF_URL       = 'https://router.huggingface.co/hf-inference/v1/chat/completions';
 const HF_MODEL     = 'google/gemma-4-27b-it';
 
 async function callGemma4(messages) {

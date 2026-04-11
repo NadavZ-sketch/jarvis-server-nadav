@@ -12,7 +12,7 @@ const GEMINI_URL = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${GOOGLE_
 // If not set, falls back to HuggingFace API (needs HF_TOKEN)
 // ─── Grok (xAI) — cloud fallback (OpenAI-compatible) ──────────────────────
 const GROK_URL   = 'https://api.x.ai/v1/chat/completions';
-const GROK_MODEL = 'grok-3-mini';
+const GROK_MODEL = 'grok-3-mini-latest';
 
 // Local Ollama override (optional — set OLLAMA_URL in .env to use local model)
 const OLLAMA_URL   = process.env.OLLAMA_URL;

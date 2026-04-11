@@ -10,9 +10,9 @@ const GEMINI_URL = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${GOOGLE_
 // ─── Gemma 4 — Local (Ollama) or Cloud (HuggingFace) ──────────────────────
 // Set OLLAMA_URL in .env to use local Ollama (e.g. http://localhost:11434)
 // If not set, falls back to HuggingFace API (needs HF_TOKEN)
-// ─── Grok (xAI) — cloud fallback (OpenAI-compatible) ──────────────────────
-const GROK_URL   = 'https://api.x.ai/v1/chat/completions';
-const GROK_MODEL = 'grok-3-mini-latest';
+// ─── Groq — cloud fallback (free, fast, OpenAI-compatible) ────────────────
+const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 // Local Ollama override (optional — set OLLAMA_URL in .env to use local model)
 const OLLAMA_URL   = process.env.OLLAMA_URL;
@@ -31,20 +31,20 @@ async function callGemma4(messages) {
         return response.data.choices[0].message.content.trim();
     }
 
-    // ── 2. Grok xAI (cloud, separate quota from Google) ──
+    // ── 2. Groq (free, fast, separate quota from Google) ──
     try {
-        const response = await axios.post(GROK_URL, {
-            model: GROK_MODEL, messages: msgs, max_tokens: 800
+        const response = await axios.post(GROQ_URL, {
+            model: GROQ_MODEL, messages: msgs, max_tokens: 800
         }, {
             headers: {
-                'Authorization': `Bearer ${process.env.GROK_API_KEY}`,
+                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
                 'Content-Type': 'application/json'
             }
         });
         return response.data.choices[0].message.content.trim();
-    } catch (grokErr) {
-        const detail = grokErr.response?.data ? JSON.stringify(grokErr.response.data) : grokErr.message;
-        console.warn('⚠️ Grok failed, falling back to Gemini:', detail);
+    } catch (groqErr) {
+        const detail = groqErr.response?.data ? JSON.stringify(groqErr.response.data) : groqErr.message;
+        console.warn('⚠️ Groq failed, falling back to Gemini:', detail);
         // ── 3. Gemini fallback ──
         const prompt = msgs.map(m => m.content).join('\n');
         const response = await axios.post(GEMINI_URL, {

@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 
@@ -197,11 +198,16 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       if (response.statusCode == 200) {
-        final data        = jsonDecode(response.body);
-        final String answer      = data['answer'];
+        final data             = jsonDecode(response.body);
+        final String answer    = data['answer'];
         final String? audioBase64 = data['audio'];
+        final action           = data['action'];
 
         setState(() => messages.add({'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()}));
+
+        if (action != null && action is Map<String, dynamic>) {
+          await _handleAction(action);
+        }
 
         if (audioBase64 != null && audioBase64.isNotEmpty) {
           _playAudio(audioBase64);
@@ -222,6 +228,25 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     _scrollToBottom();
+  }
+
+  Future<void> _handleAction(Map<String, dynamic> action) async {
+    final type = action['type'] as String?;
+    Uri? uri;
+
+    if (type == 'whatsapp') {
+      final phone   = action['phone']   as String? ?? '';
+      final message = action['message'] as String? ?? '';
+      uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
+    } else if (type == 'email') {
+      final email   = action['email']   as String? ?? '';
+      final message = action['message'] as String? ?? '';
+      uri = Uri.parse('mailto:$email?body=${Uri.encodeComponent(message)}');
+    }
+
+    if (uri != null && await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   void _scrollToBottom() {

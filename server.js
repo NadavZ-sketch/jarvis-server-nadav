@@ -10,7 +10,8 @@ const { runTaskAgent }     = require('./agents/taskAgent');
 const { runReminderAgent } = require('./agents/reminderAgent');
 const { runMemoryAgent }   = require('./agents/memoryAgent');
 const { runChatAgent }     = require('./agents/chatAgent');
-const { runSportsAgent }   = require('./agents/sportsAgent');
+const { runSportsAgent }     = require('./agents/sportsAgent');
+const { runMessagingAgent }  = require('./agents/messagingAgent');
 
 const app = express();
 app.use(cors());
@@ -103,6 +104,8 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runMemoryAgent(userMessage, supabase);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
+        } else if (agentName === 'messaging') {
+            result = await runMessagingAgent(userMessage, supabase);
         } else {
             result = await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
         }
@@ -116,7 +119,7 @@ app.post('/ask-jarvis', async (req, res) => {
         ]);
 
         const audioBase64 = await generateSpeech(answer);
-        res.json({ answer, audio: audioBase64 });
+        res.json({ answer, audio: audioBase64, action: result.action || null });
 
     } catch (err) {
         console.error('Route Error:', err.message);

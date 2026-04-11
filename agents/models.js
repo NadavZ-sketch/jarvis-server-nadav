@@ -43,7 +43,8 @@ async function callGemma4(messages) {
         });
         return response.data.choices[0].message.content.trim();
     } catch (hfErr) {
-        console.warn('⚠️ HuggingFace failed, falling back to Gemini:', hfErr.message);
+        const detail = hfErr.response?.data ? JSON.stringify(hfErr.response.data) : hfErr.message;
+        console.warn('⚠️ HuggingFace failed, falling back to Gemini:', detail);
         // ── 3. Gemini fallback ──
         const prompt = msgs.map(m => m.content).join('\n');
         const response = await axios.post(GEMINI_URL, {

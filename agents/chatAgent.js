@@ -1,6 +1,5 @@
 require('dotenv').config();
-const axios = require('axios');
-const { GEMINI_URL } = require('./models');
+const { callGemma4 } = require('./models');
 
 const PERSONALITY_DESC = {
     friendly:  'ידידותי, חם ונגיש. התאם את שפתך וסגנונך לדרך הדיבור של המשתמש.',
@@ -48,27 +47,16 @@ ${historyString}
 Current message from ${userName}: `;
 }
 
-async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings = {}) {
+async function runChatAgent(userMessage, _imageBase64, chatHistory, longTermMemories, settings = {}) {
     try {
         const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings);
 
-        const parts = [{ text: systemPrompt + userMessage }];
-        if (imageBase64) {
-            parts.push({ inlineData: { data: imageBase64, mimeType: 'image/jpeg' } });
-        }
+        const messages = [
+            { role: 'user', content: systemPrompt + userMessage }
+        ];
 
-        const requestBody = { contents: [{ parts }] };
-
-        if (!imageBase64) {
-            requestBody.tools = [{ googleSearch: {} }];
-        }
-
-        const response = await axios.post(GEMINI_URL, requestBody);
-        const responseParts = response.data.candidates[0].content.parts;
-        const textPart = responseParts.find(p => typeof p.text === 'string' && p.text.trim().length > 0);
-        const answer   = textPart ? textPart.text.trim() : 'לא הצלחתי לגבש תשובה.';
-
-        return { answer };
+        const answer = await callGemma4(messages);
+        return { answer: answer || 'לא הצלחתי לגבש תשובה.' };
 
     } catch (err) {
         console.error('ChatAgent Error:', err.response ? JSON.stringify(err.response.data, null, 2) : err.message);

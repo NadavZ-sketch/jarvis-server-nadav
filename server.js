@@ -136,17 +136,7 @@ app.post('/ask-jarvis', async (req, res) => {
         let answer = result.answer || 'לא הצלחתי לגבש תשובה.';
         console.log(`⏱️ ${(Date.now() - startTime) / 1000}s | Agent: ${agentName}`);
 
-        // ── Handle actions ──
         const action = result.action || null;
-        if (action?.type === 'email' && action.email && action.message) {
-            try {
-                await sendEmail(action.email, action.message);
-                answer += '\n\n✅ המייל נשלח בהצלחה!';
-            } catch (err) {
-                console.error('📧 Email send error:', err.message);
-                answer += '\n\n❌ לא הצלחתי לשלוח את המייל.';
-            }
-        }
 
         await Promise.all([
             saveChatMessage('user', userMessage),
@@ -160,6 +150,20 @@ app.post('/ask-jarvis', async (req, res) => {
     } catch (err) {
         console.error('Route Error:', err.message);
         res.status(500).json({ answer: 'שגיאת מערכת פנימית.' });
+    }
+});
+
+// ─── Send Email (called after user confirms in Flutter) ───────────────────────
+
+app.post('/send-email', async (req, res) => {
+    const { to, message } = req.body;
+    if (!to || !message) return res.status(400).json({ ok: false, error: 'Missing to/message' });
+    try {
+        await sendEmail(to, message);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('📧 Email send error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
     }
 });
 

@@ -283,14 +283,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
         setState(() => messages.add({'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()}));
 
-        // ── WhatsApp deep link ──
-        if (action != null && action['type'] == 'whatsapp') {
-          final phone   = action['phone'] as String;
-          final message = Uri.encodeComponent(action['message'] as String);
-          final waUrl   = Uri.parse('https://wa.me/$phone?text=$message');
-          if (await canLaunchUrl(waUrl)) {
-            await launchUrl(waUrl, mode: LaunchMode.externalApplication);
-          }
+        // ── Confirm before sending ──
+        if (action != null && mounted) {
+          await _confirmAndSend(action);
         }
 
         if (audio != null && audio.isNotEmpty) {
@@ -324,6 +319,77 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         );
       }
     });
+  }
+
+  // ─── Confirm & Send ────────────────────────────────────────────────────────────
+  Future<void> _confirmAndSend(Map<String, dynamic> action) async {
+    final type    = action['type'] as String;
+    final message = action['message'] as String;
+    final isWA    = type == 'whatsapp';
+    final label   = isWA ? 'WhatsApp' : 'מייל';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'לשלוח $label?',
+          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          textDirection: TextDirection.rtl,
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(color: Color(0xFF9E9E9E), fontSize: 14, height: 1.5),
+          textDirection: TextDirection.rtl,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ביטול', style: TextStyle(color: Color(0xFF6E6E6E))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('שלח $label', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    if (isWA) {
+      final phone  = action['phone'] as String;
+      final waUrl  = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
+      if (await canLaunchUrl(waUrl)) {
+        await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+      }
+    } else {
+      // Send email via server
+      try {
+        final res = await http.post(
+          Uri.parse('https://jarvis-server-nadav.onrender.com/send-email'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'to': action['email'], 'message': message}),
+        );
+        final ok = jsonDecode(res.body)['ok'] == true;
+        if (mounted) {
+          setState(() => messages.add({
+            'sender': 'jarvis',
+            'text': ok ? '✅ המייל נשלח בהצלחה!' : '❌ שגיאה בשליחת המייל.',
+            'time': _getCurrentTime(),
+          }));
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() => messages.add({
+            'sender': 'jarvis',
+            'text': '❌ לא הצלחתי לשלוח את המייל.',
+            'time': _getCurrentTime(),
+          }));
+        }
+      }
+    }
   }
 
   // ─── Settings ──────────────────────────────────────────────────────────────────

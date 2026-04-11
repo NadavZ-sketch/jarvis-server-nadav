@@ -5,7 +5,7 @@ const key = process.env.GOOGLE_API_KEY;
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 // Gemini 2.0 Flash — Google Search support (chatAgent, sportsAgent)
-const GEMINI_25_URL = `${BASE}/gemini-2.0-flash:generateContent?key=${key}`;
+const GEMINI_URL = `${BASE}/gemini-2.0-flash:generateContent?key=${key}`;
 
 // Gemma 4 via HuggingFace Inference API — separate quota from Google
 // Change model ID here if needed: gemma-4-2b-it / gemma-4-12b-it / gemma-4-27b-it
@@ -31,4 +31,4 @@ async function callGemma4(prompt) {
     return response.data.choices[0].message.content.trim();
 }
 
-module.exports = { GEMINI_25_URL, callGemma4 };
+module.exports = { GEMINI_URL, callGemma4 };

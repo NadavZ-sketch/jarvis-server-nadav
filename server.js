@@ -85,6 +85,7 @@ app.post('/ask-jarvis', async (req, res) => {
         console.log(`\n--- Incoming: "${userMessage.slice(0, 60)}" | Image: ${!!imageBase64} ---`);
         const startTime = Date.now();
 
+        const settings  = req.body.settings || {};
         const agentName = imageBase64 ? 'chat' : await classifyIntent(userMessage);
         console.log(`🎯 Dispatching to: ${agentName}`);
 
@@ -103,7 +104,7 @@ app.post('/ask-jarvis', async (req, res) => {
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
         } else {
-            result = await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories);
+            result = await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
         }
 
         const answer = result.answer || 'לא הצלחתי לגבש תשובה.';

@@ -262,7 +262,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       _base64Image   = null;
     });
 
-    final url = Uri.parse('https://jarvis-server-nadav.onrender.com/ask-jarvis');
+    final url = Uri.parse('${_settings.serverUrl}/ask-jarvis');
 
     try {
       final response = await http.post(
@@ -368,7 +368,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       // Send email via server
       try {
         final res = await http.post(
-          Uri.parse('https://jarvis-server-nadav.onrender.com/send-email'),
+          Uri.parse('${_settings.serverUrl}/send-email'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'to': action['email'], 'message': message}),
         );

@@ -15,6 +15,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late AppSettings _s;
   late TextEditingController _assistantNameCtrl;
   late TextEditingController _userNameCtrl;
+  late TextEditingController _localServerUrlCtrl;
 
   @override
   void initState() {
@@ -26,21 +27,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       voiceEnabled:   widget.settings.voiceEnabled,
       userName:       widget.settings.userName,
       useLocalModel:  widget.settings.useLocalModel,
+      useLocalServer: widget.settings.useLocalServer,
+      localServerUrl: widget.settings.localServerUrl,
     );
-    _assistantNameCtrl = TextEditingController(text: _s.assistantName);
-    _userNameCtrl      = TextEditingController(text: _s.userName);
+    _assistantNameCtrl  = TextEditingController(text: _s.assistantName);
+    _userNameCtrl       = TextEditingController(text: _s.userName);
+    _localServerUrlCtrl = TextEditingController(text: _s.localServerUrl);
   }
 
   @override
   void dispose() {
     _assistantNameCtrl.dispose();
     _userNameCtrl.dispose();
+    _localServerUrlCtrl.dispose();
     super.dispose();
   }
 
   void _save() {
-    _s.assistantName = _assistantNameCtrl.text.trim().isEmpty ? 'Jarvis' : _assistantNameCtrl.text.trim();
-    _s.userName      = _userNameCtrl.text.trim().isEmpty      ? 'נדב'   : _userNameCtrl.text.trim();
+    _s.assistantName  = _assistantNameCtrl.text.trim().isEmpty  ? 'Jarvis'                      : _assistantNameCtrl.text.trim();
+    _s.userName       = _userNameCtrl.text.trim().isEmpty       ? 'נדב'                         : _userNameCtrl.text.trim();
+    _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty ? 'http://192.168.1.100:3000'   : _localServerUrlCtrl.text.trim();
     widget.onSave(_s);
     Navigator.pop(context);
   }
@@ -187,13 +193,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _rowField('השם שלך', _userNameCtrl, 'נדב'),
             ]),
 
+            // ── שרת ────────────────────────────────────────────────────────
+            _sectionHeader('שרת'),
+            _card([
+              SwitchListTile(
+                title: const Text('שרת מקומי', style: TextStyle(color: Colors.white, fontSize: 15)),
+                subtitle: Text(
+                  _s.useLocalServer ? _s.localServerUrl : 'Render (ענן)',
+                  style: const TextStyle(color: Color(0xFF6E6E6E), fontSize: 12),
+                ),
+                value: _s.useLocalServer,
+                activeColor: Colors.white,
+                activeTrackColor: const Color(0xFF4A4A4A),
+                inactiveThumbColor: const Color(0xFF5A5A5A),
+                inactiveTrackColor: const Color(0xFF2A2A2A),
+                onChanged: (val) => setState(() => _s.useLocalServer = val),
+              ),
+              if (_s.useLocalServer) ...[
+                _divider(),
+                _rowField('IP מקומי', _localServerUrlCtrl, 'http://192.168.1.x:3000'),
+              ],
+            ]),
+
             // ── מודל AI ────────────────────────────────────────────────────
             _sectionHeader('מודל AI'),
             _card([
               SwitchListTile(
-                title: const Text('מודל מקומי', style: TextStyle(color: Colors.white, fontSize: 15)),
+                title: const Text('מודל מקומי (Ollama)', style: TextStyle(color: Colors.white, fontSize: 15)),
                 subtitle: Text(
-                  _s.useLocalModel ? 'Ollama (מקומי)' : 'Groq / DeepSeek / Gemini (ענן)',
+                  _s.useLocalModel ? 'Ollama על השרת המקומי' : 'Groq / DeepSeek / Gemini (ענן)',
                   style: const TextStyle(color: Color(0xFF6E6E6E), fontSize: 12),
                 ),
                 value: _s.useLocalModel,

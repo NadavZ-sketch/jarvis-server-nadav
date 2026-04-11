@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -6,10 +7,25 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 
-void main() => runApp(const JarvisApp());
+final FlutterLocalNotificationsPlugin _notificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _notificationsPlugin.initialize(
+    const InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    ),
+  );
+  await _notificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.requestNotificationsPermission();
+  runApp(const JarvisApp());
+}
 
 class JarvisApp extends StatelessWidget {
   const JarvisApp({super.key});
@@ -55,6 +71,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _base64Image;
 
   AppSettings _settings = AppSettings();
+  Timer?      _reminderTimer;
 
   String _getCurrentTime() {
     final now = DateTime.now();
@@ -77,6 +94,51 @@ class _ChatScreenState extends State<ChatScreen> {
     AppSettings.load().then((s) {
       if (mounted) setState(() => _settings = s);
     });
+
+    // Poll server every 60s for fired reminders
+    _reminderTimer = Timer.periodic(const Duration(seconds: 60), (_) => _checkReminders());
+    _checkReminders(); // immediate first check
+  }
+
+  @override
+  void dispose() {
+    _reminderTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkReminders() async {
+    try {
+      final res = await http.get(
+        Uri.parse('https://jarvis-server-nadav.onrender.com/check-reminders'),
+      );
+      if (res.statusCode != 200) return;
+      final data = jsonDecode(res.body);
+      final reminders = data['reminders'] as List<dynamic>? ?? [];
+      for (int i = 0; i < reminders.length; i++) {
+        final text = reminders[i]['text'] as String? ?? 'תזכורת';
+        await _notificationsPlugin.show(
+          i,
+          '⏰ תזכורת מ-${_settings.assistantName}',
+          text,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'jarvis_reminders',
+              'תזכורות Jarvis',
+              channelDescription: 'התראות תזכורת מ-Jarvis',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+          ),
+        );
+        if (mounted) {
+          setState(() => messages.add({
+            'sender': 'jarvis',
+            'text': '⏰ תזכורת: $text',
+            'time': _getCurrentTime(),
+          }));
+        }
+      }
+    } catch (_) {}
   }
 
   // ─── Orb Colors (black/white/gray) ─────────────────────────────────────────

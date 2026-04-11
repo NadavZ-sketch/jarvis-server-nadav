@@ -127,6 +127,30 @@ app.post('/ask-jarvis', async (req, res) => {
     }
 });
 
+// ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
+
+app.get('/check-reminders', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('reminders')
+            .select('id, text')
+            .eq('fired', true)
+            .eq('notified', false);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+            const ids = data.map(r => r.id);
+            await supabase.from('reminders').update({ notified: true }).in('id', ids);
+        }
+
+        res.json({ reminders: data || [] });
+    } catch (err) {
+        console.error('check-reminders error:', err.message);
+        res.json({ reminders: [] });
+    }
+});
+
 // ─── Reminder Cron (every minute) ─────────────────────────────────────────────
 
 cron.schedule('* * * * *', async () => {

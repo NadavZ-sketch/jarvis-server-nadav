@@ -12,17 +12,16 @@ const GEMINI_URL = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${GOOGLE_
 // If not set, falls back to HuggingFace API (needs HF_TOKEN)
 const OLLAMA_URL   = process.env.OLLAMA_URL;
 const OLLAMA_MODEL = 'gemma4:e4b';
-const HF_URL       = 'https://router.huggingface.co/hf-inference/v1/chat/completions';
-const HF_MODEL     = 'google/gemma-4-27b-it';
-
 async function callGemma4(messages) {
-    // messages: array of { role, content } OR a plain string (converted below)
-    const msgs = typeof messages === 'string'
-        ? [{ role: 'user', content: messages }]
-        : messages;
+    const prompt = typeof messages === 'string'
+        ? messages
+        : messages.map(m => m.content).join('\n');
 
     if (OLLAMA_URL) {
-        // ── Local Ollama ──
+        // ── Local: Ollama (Gemma 4 on your machine) ──
+        const msgs = typeof messages === 'string'
+            ? [{ role: 'user', content: messages }]
+            : messages;
         const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
             model: OLLAMA_MODEL,
             messages: msgs,
@@ -31,19 +30,11 @@ async function callGemma4(messages) {
         return response.data.choices[0].message.content.trim();
     }
 
-    // ── Cloud: HuggingFace (separate quota from Google) ──
-    const response = await axios.post(HF_URL, {
-        model: HF_MODEL,
-        messages: msgs,
-        max_tokens: 1024,
-        stream: false
-    }, {
-        headers: {
-            'Authorization': `Bearer ${process.env.HF_TOKEN}`,
-            'Content-Type': 'application/json'
-        }
+    // ── Cloud: Gemini (reminder is now pure JS so quota usage is low) ──
+    const response = await axios.post(GEMINI_URL, {
+        contents: [{ parts: [{ text: prompt }] }]
     });
-    return response.data.choices[0].message.content.trim();
+    return response.data.candidates[0].content.parts[0].text.trim();
 }
 
 module.exports = { GEMINI_URL, callGemma4 };

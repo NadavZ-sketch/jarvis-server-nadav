@@ -1,7 +1,6 @@
 require('dotenv').config();
 const axios = require('axios');
-
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`;
+const { GEMINI_25_URL } = require('./models');
 
 function buildSystemPrompt(chatHistory, longTermMemories) {
     const now = new Date();
@@ -46,7 +45,7 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
             requestBody.tools = [{ googleSearch: {} }];
         }
 
-        const response = await axios.post(GEMINI_URL, requestBody);
+        const response = await axios.post(GEMINI_25_URL, requestBody);
         const responseParts = response.data.candidates[0].content.parts;
         const textPart = responseParts.find(p => typeof p.text === 'string' && p.text.trim().length > 0);
         const answer = textPart ? textPart.text.trim() : 'לא הצלחתי לגבש תשובה.';

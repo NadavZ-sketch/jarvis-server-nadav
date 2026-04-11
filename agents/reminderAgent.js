@@ -3,7 +3,6 @@ require('dotenv').config();
 const HE_DAYS = { 'ראשון': 0, 'שני': 1, 'שלישי': 2, 'רביעי': 3, 'חמישי': 4, 'שישי': 5, 'שבת': 6 };
 
 function nowJerusalem() {
-    // Returns a Date object representing "now" in Jerusalem time
     return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
 }
 
@@ -13,7 +12,6 @@ function toISO(date) {
 }
 
 function extractReminderText(msg) {
-    // Remove the scheduling part and return what to remind about
     return msg
         .replace(/תזכיר לי\s*/i, '')
         .replace(/תזכור לי\s*/i, '')
@@ -76,15 +74,76 @@ function parseTime(msg) {
     if (hasTime) {
         const d = new Date(now);
         d.setHours(targetHour, targetMin, 0);
-        if (d <= now) d.setDate(d.getDate() + 1); // אם כבר עבר — מחר
+        if (d <= now) d.setDate(d.getDate() + 1);
         return d;
     }
 
     return null;
 }
 
+function formatReminderTime(isoOrDate) {
+    return new Date(isoOrDate).toLocaleString('he-IL', {
+        timeZone: 'Asia/Jerusalem',
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+async function listReminders(supabase) {
+    const { data, error } = await supabase
+        .from('reminders')
+        .select('id, text, scheduled_time')
+        .eq('fired', false)
+        .order('scheduled_time', { ascending: true });
+
+    if (error) throw error;
+    if (!data || data.length === 0) return { answer: 'אין לך תזכורות ממתינות.' };
+
+    const list = data.map((r, i) =>
+        `${i + 1}. "${r.text}" — ${formatReminderTime(r.scheduled_time)}`
+    ).join('\n');
+
+    return { answer: `הנה התזכורות שלך:\n${list}` };
+}
+
+async function deleteReminder(userMessage, supabase) {
+    const textToDelete = userMessage
+        .replace(/מחק תזכורת|הסר תזכורת|בטל תזכורת/g, '')
+        .replace(/\b(על|את)\b/g, '')
+        .trim();
+
+    if (!textToDelete) {
+        return { answer: 'איזו תזכורת למחוק? נסה: "מחק תזכורת על [נושא]"' };
+    }
+
+    const { data, error } = await supabase
+        .from('reminders')
+        .delete()
+        .eq('fired', false)
+        .ilike('text', `%${textToDelete}%`)
+        .select();
+
+    if (error) throw error;
+    if (!data || data.length === 0) return { answer: `לא מצאתי תזכורת על "${textToDelete}".` };
+    return { answer: `בסדר, מחקתי את התזכורת: "${data[0].text}"` };
+}
+
 async function runReminderAgent(userMessage, supabase) {
     try {
+        // List reminders
+        if (/הצג תזכורות|רשימת תזכורות|אילו תזכורות|מה התזכורות|כל התזכורות/i.test(userMessage)) {
+            return listReminders(supabase);
+        }
+
+        // Delete reminder
+        if (/מחק תזכורת|הסר תזכורת|בטל תזכורת/i.test(userMessage)) {
+            return deleteReminder(userMessage, supabase);
+        }
+
+        // Add reminder
         const fireDate = parseTime(userMessage);
         if (!fireDate) throw new Error('Could not parse time from message');
 
@@ -99,16 +158,7 @@ async function runReminderAgent(userMessage, supabase) {
 
         if (error) throw error;
 
-        const fireLocal = fireDate.toLocaleString('he-IL', {
-            timeZone: 'Asia/Jerusalem',
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-
-        return { answer: `בסדר, אזכיר לך "${reminderText}" ב${fireLocal}.` };
+        return { answer: `בסדר, אזכיר לך "${reminderText}" ב${formatReminderTime(fireDate)}.` };
 
     } catch (err) {
         console.error('ReminderAgent Error:', err.message);

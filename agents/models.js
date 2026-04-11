@@ -72,4 +72,35 @@ async function callGemma4(messages, useLocal = true) {
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
-module.exports = { GEMINI_URL, callGemma4 };
+// ─── Gemini with Google Search grounding (real-time data) ─────────────────────
+
+async function callGeminiWithSearch(prompt) {
+    const response = await axios.post(GEMINI_URL, {
+        contents: [{ parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }]
+    });
+    return response.data.candidates[0].content.parts[0].text.trim();
+}
+
+// ─── Gemini Vision (image + text) ─────────────────────────────────────────────
+
+function detectMimeType(base64) {
+    if (base64.startsWith('/9j/'))  return 'image/jpeg';
+    if (base64.startsWith('iVBOR')) return 'image/png';
+    if (base64.startsWith('UklGR')) return 'image/webp';
+    return 'image/jpeg';
+}
+
+async function callGeminiVision(prompt, imageBase64) {
+    const response = await axios.post(GEMINI_URL, {
+        contents: [{
+            parts: [
+                { text: prompt },
+                { inline_data: { mime_type: detectMimeType(imageBase64), data: imageBase64 } }
+            ]
+        }]
+    });
+    return response.data.candidates[0].content.parts[0].text.trim();
+}
+
+module.exports = { GEMINI_URL, callGemma4, callGeminiWithSearch, callGeminiVision };

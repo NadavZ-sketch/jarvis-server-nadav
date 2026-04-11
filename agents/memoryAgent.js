@@ -1,26 +1,56 @@
 require('dotenv').config();
 const { callGemma4 } = require('./models');
 
-const SAVE_PROMPT = `You are a memory manager. The user wants to save a personal fact about Nadav.
+function buildSavePrompt(userName) {
+    return `You are a memory manager. The user wants to save a personal fact about ${userName}.
 Create a concise memory statement with a context tag in brackets at the beginning.
 Return ONLY a JSON object: {"memoryContent": "[context tag] the fact to remember"}
 
 User message: `;
+}
 
-const RECALL_INTRO = `You are a memory recall assistant for Nadav. Given the user's question and stored memories, answer naturally in Hebrew.
+const RECALL_INTRO = `You are a memory recall assistant. Given the user's question and stored memories, answer naturally in Hebrew.
 If no relevant memories exist, say so politely.
 
 Stored memories:
 `;
 
-async function runMemoryAgent(userMessage, supabase, useLocal = true) {
+async function deleteMemory(userMessage, supabase) {
+    const textToDelete = userMessage
+        .replace(/מחק זיכרון|הסר זיכרון|שכח ש|שכח/g, '')
+        .replace(/\b(על|את|ה)\b/g, '')
+        .trim();
+
+    if (!textToDelete) {
+        return { answer: 'מה למחוק? נסה: "מחק זיכרון על [נושא]"' };
+    }
+
+    const { data, error } = await supabase
+        .from('memories')
+        .delete()
+        .ilike('content', `%${textToDelete}%`)
+        .select();
+
+    if (error) throw error;
+    if (!data || data.length === 0) return { answer: `לא מצאתי זיכרון על "${textToDelete}".` };
+    return { answer: `בסדר, מחקתי את הזיכרון: "${data[0].content}"` };
+}
+
+async function runMemoryAgent(userMessage, supabase, useLocal = true, settings = {}) {
+    const userName = settings.userName || 'נדב';
+
     try {
+        // Delete memory
+        if (/מחק זיכרון|הסר זיכרון|שכח ש|שכח/i.test(userMessage)) {
+            return deleteMemory(userMessage, supabase);
+        }
+
         const isRecall = /תזכיר|מה אתה יודע|מה זכרת|ספר לי עליי|מה שמרת/i.test(userMessage);
 
         if (isRecall) {
             const { data: memoriesData } = await supabase.from('memories').select('content');
             if (!memoriesData || memoriesData.length === 0) {
-                return { answer: 'אין לי עדיין זיכרונות שמורים עליך נדב.' };
+                return { answer: `אין לי עדיין זיכרונות שמורים עליך ${userName}.` };
             }
 
             const memoriesList = memoriesData.map(m => `- ${m.content}`).join('\n');
@@ -31,7 +61,7 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true) {
         }
 
         // Default: save a memory
-        const aiText = await callGemma4(SAVE_PROMPT + userMessage, useLocal);
+        const aiText = await callGemma4(buildSavePrompt(userName) + userMessage, useLocal);
 
         const lastOpen = aiText.lastIndexOf('{');
         const lastClose = aiText.lastIndexOf('}');

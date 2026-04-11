@@ -123,7 +123,7 @@ app.post('/ask-jarvis', async (req, res) => {
         } else if (agentName === 'reminder') {
             result = await runReminderAgent(userMessage, supabase);
         } else if (agentName === 'memory') {
-            result = await runMemoryAgent(userMessage, supabase, useLocal);
+            result = await runMemoryAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
         } else if (agentName === 'messaging') {

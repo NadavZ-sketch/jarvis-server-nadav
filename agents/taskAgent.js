@@ -2,8 +2,10 @@ require('dotenv').config();
 const { callGemma4 } = require('./models');
 
 const TASK_PROMPT = `You are a task management AI. Analyze the Hebrew user message and extract the intent.
-Allowed intents: 'add', 'list', 'delete'.
-Return ONLY a JSON object: {"intent": "add|list|delete", "taskDetails": "the task text to add or delete, or empty string for list"}
+Allowed intents: 'add', 'list', 'delete', 'complete'.
+- 'complete': user says they finished/completed a task (e.g. סיימתי, עשיתי, השלמתי, סמן כבוצע)
+- 'delete': user explicitly wants to remove a task without completing it
+Return ONLY a JSON object: {"intent": "add|list|delete|complete", "taskDetails": "the task text to add/delete/complete, or empty string for list"}
 
 User message: `;
 
@@ -39,6 +41,16 @@ async function runTaskAgent(userMessage, supabase, useLocal = true) {
                 .select();
             if (data && data.length > 0) return { answer: `מחקתי את המשימה: ${data[0].content}` };
             return { answer: 'לא מצאתי משימה כזו למחוק.' };
+        }
+
+        if (parsed.intent === 'complete') {
+            const { data } = await supabase
+                .from('tasks')
+                .delete()
+                .ilike('content', `%${parsed.taskDetails}%`)
+                .select();
+            if (data && data.length > 0) return { answer: `כל הכבוד! סיימת את: "${data[0].content}" ✓` };
+            return { answer: 'לא מצאתי משימה כזו. נסה לציין את שם המשימה.' };
         }
 
     } catch (err) {

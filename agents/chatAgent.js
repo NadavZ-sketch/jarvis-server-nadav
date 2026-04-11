@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { callGemma4 } = require('./models');
+const { callGemma4, callGeminiVision } = require('./models');
 
 const PERSONALITY_DESC = {
     friendly:  'ידידותי, חם ונגיש. התאם את שפתך וסגנונך לדרך הדיבור של המשתמש.',
@@ -47,16 +47,19 @@ ${historyString}
 Current message from ${userName}: `;
 }
 
-async function runChatAgent(userMessage, _imageBase64, chatHistory, longTermMemories, settings = {}) {
+async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings = {}) {
     try {
         const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings);
-
-        const messages = [
-            { role: 'user', content: systemPrompt + userMessage }
-        ];
-
+        const fullPrompt = systemPrompt + userMessage;
         const useLocal = settings.useLocalModel ?? true;
-        const answer = await callGemma4(messages, useLocal);
+
+        let answer;
+        if (imageBase64) {
+            answer = await callGeminiVision(fullPrompt, imageBase64);
+        } else {
+            answer = await callGemma4([{ role: 'user', content: fullPrompt }], useLocal);
+        }
+
         return { answer: answer || 'לא הצלחתי לגבש תשובה.' };
 
     } catch (err) {

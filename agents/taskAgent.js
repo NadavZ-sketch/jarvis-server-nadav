@@ -7,9 +7,9 @@ Return ONLY a JSON object: {"intent": "add|list|delete", "taskDetails": "the tas
 
 User message: `;
 
-async function runTaskAgent(userMessage, supabase) {
+async function runTaskAgent(userMessage, supabase, useLocal = true) {
     try {
-        const aiText = await callGemma4(TASK_PROMPT + userMessage);
+        const aiText = await callGemma4(TASK_PROMPT + userMessage, useLocal);
 
         const lastOpen = aiText.lastIndexOf('{');
         const lastClose = aiText.lastIndexOf('}');

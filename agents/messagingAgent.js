@@ -11,7 +11,7 @@ async function findContact(name, supabase) {
     ) || null;
 }
 
-async function runMessagingAgent(userMessage, supabase) {
+async function runMessagingAgent(userMessage, supabase, useLocal = true) {
     try {
         const parsePrompt = `Parse this Hebrew message and return valid JSON only (no markdown, no explanation):
 {
@@ -25,7 +25,7 @@ async function runMessagingAgent(userMessage, supabase) {
 
 Message: "${userMessage}"`;
 
-        const raw = await callGemma4(parsePrompt);
+        const raw = await callGemma4(parsePrompt, useLocal);
         let parsed;
         try {
             parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
@@ -76,7 +76,7 @@ Message: "${userMessage}"`;
 בקשה: "${parsed.message_intent || userMessage}"
 נמען: ${contact.name}`;
 
-        const draftedMessage = await callGemma4(draftPrompt);
+        const draftedMessage = await callGemma4(draftPrompt, useLocal);
         const channel = parsed.channel || (contact.phone ? 'whatsapp' : 'email');
 
         let action = null;

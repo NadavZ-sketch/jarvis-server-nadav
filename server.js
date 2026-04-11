@@ -108,6 +108,7 @@ app.post('/ask-jarvis', async (req, res) => {
         const startTime = Date.now();
 
         const settings  = req.body.settings || {};
+        const useLocal  = settings.useLocalModel === true;
         const agentName = imageBase64 ? 'chat' : await classifyIntent(userMessage);
         console.log(`🎯 Dispatching to: ${agentName}`);
 
@@ -118,15 +119,15 @@ app.post('/ask-jarvis', async (req, res) => {
 
         let result;
         if (agentName === 'task') {
-            result = await runTaskAgent(userMessage, supabase);
+            result = await runTaskAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'reminder') {
             result = await runReminderAgent(userMessage, supabase);
         } else if (agentName === 'memory') {
-            result = await runMemoryAgent(userMessage, supabase);
+            result = await runMemoryAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
         } else if (agentName === 'messaging') {
-            result = await runMessagingAgent(userMessage, supabase);
+            result = await runMessagingAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'draft') {
             result = await runDraftAgent(userMessage, chatHistory, longTermMemories, settings);
         } else {

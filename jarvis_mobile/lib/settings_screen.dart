@@ -20,11 +20,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _s = AppSettings(
-      assistantName: widget.settings.assistantName,
-      gender:        widget.settings.gender,
-      personality:   widget.settings.personality,
-      voiceEnabled:  widget.settings.voiceEnabled,
-      userName:      widget.settings.userName,
+      assistantName:  widget.settings.assistantName,
+      gender:         widget.settings.gender,
+      personality:    widget.settings.personality,
+      voiceEnabled:   widget.settings.voiceEnabled,
+      userName:       widget.settings.userName,
+      useLocalModel:  widget.settings.useLocalModel,
     );
     _assistantNameCtrl = TextEditingController(text: _s.assistantName);
     _userNameCtrl      = TextEditingController(text: _s.userName);
@@ -184,6 +185,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _sectionHeader('פרופיל'),
             _card([
               _rowField('השם שלך', _userNameCtrl, 'נדב'),
+            ]),
+
+            // ── מודל AI ────────────────────────────────────────────────────
+            _sectionHeader('מודל AI'),
+            _card([
+              SwitchListTile(
+                title: const Text('מודל מקומי', style: TextStyle(color: Colors.white, fontSize: 15)),
+                subtitle: Text(
+                  _s.useLocalModel ? 'Ollama (מקומי)' : 'Groq / DeepSeek / Gemini (ענן)',
+                  style: const TextStyle(color: Color(0xFF6E6E6E), fontSize: 12),
+                ),
+                value: _s.useLocalModel,
+                activeColor: Colors.white,
+                activeTrackColor: const Color(0xFF4A4A4A),
+                inactiveThumbColor: const Color(0xFF5A5A5A),
+                inactiveTrackColor: const Color(0xFF2A2A2A),
+                onChanged: (val) => setState(() => _s.useLocalModel = val),
+              ),
             ]),
 
             const SizedBox(height: 50),

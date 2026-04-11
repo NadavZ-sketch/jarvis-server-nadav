@@ -6,6 +6,7 @@ class AppSettings {
   String personality;  // 'friendly' | 'formal' | 'concise' | 'humorous'
   bool voiceEnabled;
   String userName;
+  bool useLocalModel;  // true = Ollama (local), false = Groq/DeepSeek/Gemini (cloud)
 
   AppSettings({
     this.assistantName = 'Jarvis',
@@ -13,16 +14,18 @@ class AppSettings {
     this.personality = 'friendly',
     this.voiceEnabled = true,
     this.userName = 'נדב',
+    this.useLocalModel = false,
   });
 
   static Future<AppSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
     return AppSettings(
-      assistantName: prefs.getString('assistantName') ?? 'Jarvis',
-      gender:        prefs.getString('gender')        ?? 'male',
-      personality:   prefs.getString('personality')   ?? 'friendly',
-      voiceEnabled:  prefs.getBool('voiceEnabled')    ?? true,
-      userName:      prefs.getString('userName')       ?? 'נדב',
+      assistantName:  prefs.getString('assistantName')  ?? 'Jarvis',
+      gender:         prefs.getString('gender')         ?? 'male',
+      personality:    prefs.getString('personality')    ?? 'friendly',
+      voiceEnabled:   prefs.getBool('voiceEnabled')     ?? true,
+      userName:       prefs.getString('userName')       ?? 'נדב',
+      useLocalModel:  prefs.getBool('useLocalModel')    ?? false,
     );
   }
 
@@ -33,12 +36,14 @@ class AppSettings {
     await prefs.setString('personality',   personality);
     await prefs.setBool('voiceEnabled',    voiceEnabled);
     await prefs.setString('userName',      userName);
+    await prefs.setBool('useLocalModel',   useLocalModel);
   }
 
   Map<String, dynamic> toJson() => {
-    'assistantName': assistantName,
-    'gender':        gender,
-    'personality':   personality,
-    'userName':      userName,
+    'assistantName':  assistantName,
+    'gender':         gender,
+    'personality':    personality,
+    'userName':       userName,
+    'useLocalModel':  useLocalModel,
   };
 }

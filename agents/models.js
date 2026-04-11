@@ -19,13 +19,13 @@ const DEEPSEEK_MODEL = 'deepseek-chat';
 const OLLAMA_URL   = process.env.OLLAMA_URL;
 const OLLAMA_MODEL = 'gemma4:e4b';
 
-async function callGemma4(messages) {
+async function callGemma4(messages, useLocal = true) {
     const msgs = typeof messages === 'string'
         ? [{ role: 'user', content: messages }]
         : messages;
 
-    // ── 1. Local Ollama (if running locally) ──
-    if (OLLAMA_URL) {
+    // ── 1. Local Ollama (only if useLocal is enabled AND OLLAMA_URL is set) ──
+    if (useLocal && OLLAMA_URL) {
         const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
             model: OLLAMA_MODEL, messages: msgs, stream: false
         });

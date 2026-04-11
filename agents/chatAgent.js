@@ -55,7 +55,8 @@ async function runChatAgent(userMessage, _imageBase64, chatHistory, longTermMemo
             { role: 'user', content: systemPrompt + userMessage }
         ];
 
-        const answer = await callGemma4(messages);
+        const useLocal = settings.useLocalModel ?? true;
+        const answer = await callGemma4(messages, useLocal);
         return { answer: answer || 'לא הצלחתי לגבש תשובה.' };
 
     } catch (err) {

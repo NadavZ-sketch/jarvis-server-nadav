@@ -13,7 +13,7 @@ If no relevant memories exist, say so politely.
 Stored memories:
 `;
 
-async function runMemoryAgent(userMessage, supabase) {
+async function runMemoryAgent(userMessage, supabase, useLocal = true) {
     try {
         const isRecall = /תזכיר|מה אתה יודע|מה זכרת|ספר לי עליי|מה שמרת/i.test(userMessage);
 
@@ -26,12 +26,12 @@ async function runMemoryAgent(userMessage, supabase) {
             const memoriesList = memoriesData.map(m => `- ${m.content}`).join('\n');
             const fullPrompt = RECALL_INTRO + memoriesList + `\n\nשאלת הגולש: ${userMessage}`;
 
-            const answer = await callGemma4(fullPrompt);
+            const answer = await callGemma4(fullPrompt, useLocal);
             return { answer };
         }
 
         // Default: save a memory
-        const aiText = await callGemma4(SAVE_PROMPT + userMessage);
+        const aiText = await callGemma4(SAVE_PROMPT + userMessage, useLocal);
 
         const lastOpen = aiText.lastIndexOf('{');
         const lastClose = aiText.lastIndexOf('}');

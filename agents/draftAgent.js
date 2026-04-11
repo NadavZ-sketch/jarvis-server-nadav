@@ -36,7 +36,8 @@ ${memoriesBlock}
 
 בקשה: ${userMessage}`;
 
-        const draft = await callGemma4(prompt);
+        const useLocal = settings.useLocalModel ?? true;
+        const draft = await callGemma4(prompt, useLocal);
 
         // Check if the request seems to be for sending (WhatsApp/email)
         const sendIntent = /לשלוח|לשליחה|ווצאפ|וואטסאפ|מייל|לשלוח ל/i.test(userMessage);

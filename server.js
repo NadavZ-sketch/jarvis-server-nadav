@@ -37,6 +37,7 @@ const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
+const { runInsightAgent }     = require('./agents/insightAgent');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -172,6 +173,8 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runMessagingAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'draft') {
             result = await runDraftAgent(userMessage, chatHistory, longTermMemories, settings);
+        } else if (agentName === 'insight') {
+            result = await runInsightAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'security') {
             result = await runSecurityAgent(userMessage, useLocal, sendEmail);
         } else if (agentName === 'factory') {

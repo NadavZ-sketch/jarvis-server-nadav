@@ -50,11 +50,34 @@ app.use('/ask-jarvis', rateLimit({ windowMs: 60_000, max: 30, standardHeaders: t
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+// ─── In-memory TTL Cache ──────────────────────────────────────────────────────
+
+const _cache = new Map(); // key → { value, expiresAt }
+
+function cacheGet(key) {
+    const entry = _cache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) { _cache.delete(key); return undefined; }
+    return entry.value;
+}
+
+function cacheSet(key, value, ttlMs) {
+    _cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
+function cacheInvalidate(key) { _cache.delete(key); }
+
+const TTL_MEMORIES     = 5  * 60 * 1000; // 5 min
+const TTL_CHAT_HISTORY = 30 * 1000;       // 30 sec
+
 // ─── Chat History ─────────────────────────────────────────────────────────────
 
 let chatMemoryFallback = [];
 
 async function loadChatHistory() {
+    const cached = cacheGet('chatHistory');
+    if (cached) return cached;
+
     try {
         const { data, error } = await supabase
             .from('chat_history')
@@ -63,7 +86,9 @@ async function loadChatHistory() {
             .limit(10);
 
         if (error) throw error;
-        return (data || []).reverse();
+        const result = (data || []).reverse();
+        cacheSet('chatHistory', result, TTL_CHAT_HISTORY);
+        return result;
     } catch (err) {
         console.error('⚠️ loadChatHistory fallback:', err.message);
         return chatMemoryFallback.slice(-10);
@@ -84,9 +109,15 @@ async function saveChatMessage(role, text) {
 // ─── Memories ─────────────────────────────────────────────────────────────────
 
 async function fetchLongTermMemories() {
+    const cached = cacheGet('memories');
+    if (cached) return cached;
+
     const { data } = await supabase.from('memories').select('content');
-    if (!data || data.length === 0) return 'אין עדיין זיכרונות שמורים.';
-    return data.map(m => `- ${m.content}`).join('\n');
+    const result = (!data || data.length === 0)
+        ? 'אין עדיין זיכרונות שמורים.'
+        : data.map(m => `- ${m.content}`).join('\n');
+    cacheSet('memories', result, TTL_MEMORIES);
+    return result;
 }
 
 // ─── TTS ──────────────────────────────────────────────────────────────────────
@@ -148,18 +179,28 @@ app.post('/ask-jarvis', async (req, res) => {
         }
 
         console.log(`\n--- Incoming: "${userMessage.slice(0, 60)}" | Image: ${!!imageBase64} ---`);
-        const startTime = Date.now();
+        const t0 = Date.now();
 
         const settings  = req.body.settings || {};
         const useLocal  = settings.useLocalModel === true;
+
+        // ── Routing ───────────────────────────────────────────────────────────
         const agentName = imageBase64 ? 'chat' : await classifyIntent(userMessage);
-        console.log(`🎯 Dispatching to: ${agentName}`);
+        console.log(`🎯 Dispatching to: ${agentName} (+${Date.now() - t0}ms)`);
+        const tRoute = Date.now();
 
-        const [chatHistory, longTermMemories] = await Promise.all([
-            loadChatHistory(),
-            fetchLongTermMemories()
-        ]);
+        // ── Lazy DB load: only chat/draft need history + memories ─────────────
+        const needsHistory = ['chat', 'draft'].includes(agentName);
+        let chatHistory = [], longTermMemories = '';
+        if (needsHistory) {
+            [chatHistory, longTermMemories] = await Promise.all([
+                loadChatHistory(),
+                fetchLongTermMemories()
+            ]);
+        }
+        const tDb = Date.now();
 
+        // ── Dispatch ──────────────────────────────────────────────────────────
         let result;
         if (agentName === 'task') {
             result = await runTaskAgent(userMessage, supabase, useLocal);
@@ -167,6 +208,7 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runReminderAgent(userMessage, supabase);
         } else if (agentName === 'memory') {
             result = await runMemoryAgent(userMessage, supabase, useLocal, settings);
+            cacheInvalidate('memories'); // memory changed — bust cache
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
         } else if (agentName === 'messaging') {
@@ -184,18 +226,30 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await tryCustomAgent(agentName, userMessage, supabase, useLocal, settings)
                   || await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
         }
+        const tAgent = Date.now();
 
         let answer = result.answer || 'לא הצלחתי לגבש תשובה.';
-        console.log(`⏱️ ${(Date.now() - startTime) / 1000}s | Agent: ${agentName}`);
-
         const action = result.action || null;
 
-        await Promise.all([
+        // ── Parallel: save history + TTS ──────────────────────────────────────
+        const ttsEnabled = settings.ttsEnabled !== false;
+        const [,, audioBase64] = await Promise.all([
             saveChatMessage('user', userMessage),
-            saveChatMessage('jarvis', answer)
+            saveChatMessage('jarvis', answer),
+            ttsEnabled ? generateSpeech(answer) : Promise.resolve(null),
         ]);
+        cacheInvalidate('chatHistory'); // history just updated
+        const tDone = Date.now();
 
-        const audioBase64 = await generateSpeech(answer);
+        console.log(
+            `⏱️ total=${tDone - t0}ms` +
+            ` | route=${tRoute - t0}ms` +
+            (needsHistory ? ` | db=${tDb - tRoute}ms` : ' | db=skipped') +
+            ` | agent=${tAgent - tDb}ms` +
+            ` | save+tts=${tDone - tAgent}ms` +
+            ` | agent=${agentName}`
+        );
+
         // For WhatsApp — pass action to Flutter to open deep link
         res.json({ answer, audio: audioBase64, action });
 
@@ -268,6 +322,21 @@ cron.schedule('* * * * *', async () => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`🚀 JARVIS ONLINE | MULTI-AGENT v3 | PORT: ${PORT}`);
 });
+
+// ─── Graceful Shutdown ────────────────────────────────────────────────────────
+
+function shutdown(signal) {
+    console.log(`\n${signal} received — shutting down gracefully...`);
+    server.close(() => {
+        console.log('✅ HTTP server closed. Goodbye.');
+        process.exit(0);
+    });
+    // Force-exit after 10s if requests are hanging
+    setTimeout(() => { console.error('⚠️ Forced exit after timeout.'); process.exit(1); }, 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));

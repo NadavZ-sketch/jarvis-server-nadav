@@ -3,6 +3,8 @@ const express    = require('express');
 const cors       = require('cors');
 const cron       = require('node-cron');
 const nodemailer = require('nodemailer');
+const fs         = require('fs');
+const path       = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const googleTTS  = require('google-tts-api');
 
@@ -25,14 +27,16 @@ async function sendEmail(to, body) {
     console.log(`📧 Email sent to ${to}`);
 }
 
-const { classifyIntent }   = require('./agents/router');
-const { runTaskAgent }     = require('./agents/taskAgent');
-const { runReminderAgent } = require('./agents/reminderAgent');
-const { runMemoryAgent }   = require('./agents/memoryAgent');
-const { runChatAgent }     = require('./agents/chatAgent');
-const { runSportsAgent }     = require('./agents/sportsAgent');
-const { runMessagingAgent }  = require('./agents/messagingAgent');
-const { runDraftAgent }      = require('./agents/draftAgent');
+const { classifyIntent }      = require('./agents/router');
+const { runTaskAgent }        = require('./agents/taskAgent');
+const { runReminderAgent }    = require('./agents/reminderAgent');
+const { runMemoryAgent }      = require('./agents/memoryAgent');
+const { runChatAgent }        = require('./agents/chatAgent');
+const { runSportsAgent }      = require('./agents/sportsAgent');
+const { runMessagingAgent }   = require('./agents/messagingAgent');
+const { runDraftAgent }       = require('./agents/draftAgent');
+const { runSecurityAgent }    = require('./agents/securityAgent');
+const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -102,6 +106,35 @@ async function generateSpeech(text) {
     }
 }
 
+// ─── Custom Agent Loader ──────────────────────────────────────────────────────
+
+const CUSTOM_REGISTRY = path.join(__dirname, 'agents', 'custom', 'registry.json');
+
+async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settings) {
+    try {
+        const registry = JSON.parse(fs.readFileSync(CUSTOM_REGISTRY, 'utf8'));
+        const entry = registry.find(r => r.name === agentName);
+        if (!entry) return null;
+
+        const agentPath = entry.filePath;
+        // Clear require cache so hot-reload works after factory creates/updates an agent
+        delete require.cache[require.resolve(agentPath)];
+        const mod = require(agentPath);
+
+        const fnName = `run${agentName.charAt(0).toUpperCase() + agentName.slice(1)}`;
+        if (typeof mod[fnName] !== 'function') {
+            console.warn(`⚠️ Custom agent "${agentName}" missing export "${fnName}"`);
+            return null;
+        }
+
+        console.log(`🤖 Custom agent: ${agentName}`);
+        return await mod[fnName](userMessage, supabase, useLocal, settings);
+    } catch (err) {
+        console.error(`Custom agent "${agentName}" error:`, err.message);
+        return null;
+    }
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 app.post('/ask-jarvis', async (req, res) => {
@@ -139,8 +172,14 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runMessagingAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'draft') {
             result = await runDraftAgent(userMessage, chatHistory, longTermMemories, settings);
+        } else if (agentName === 'security') {
+            result = await runSecurityAgent(userMessage, useLocal, sendEmail);
+        } else if (agentName === 'factory') {
+            result = await runAgentFactoryAgent(userMessage, useLocal);
         } else {
-            result = await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
+            // Try a dynamically-created custom agent, fall back to chat
+            result = await tryCustomAgent(agentName, userMessage, supabase, useLocal, settings)
+                  || await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
         }
 
         let answer = result.answer || 'לא הצלחתי לגבש תשובה.';

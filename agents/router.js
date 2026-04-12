@@ -15,6 +15,11 @@ const KEYWORDS = {
 };
 
 const REGISTRY_PATH = path.join(__dirname, 'custom', 'registry.json');
+const PENDING_PATH  = path.join(__dirname, 'custom', 'pending.json');
+
+function hasPendingAgent() {
+    try { return !!JSON.parse(fs.readFileSync(PENDING_PATH, 'utf8')); } catch { return false; }
+}
 
 function loadCustomRegistry() {
     try { return JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf8')); } catch { return []; }
@@ -22,6 +27,14 @@ function loadCustomRegistry() {
 
 function classifyIntent(userMessage) {
     const msg = userMessage.toLowerCase();
+
+    // Pending agent confirmation/cancellation takes priority
+    if (/^(כן|אשר|yes|approve|אוקי|בסדר|שלב|לא|בטל|cancel|no|ביטול|אל תשלב)$/i.test(userMessage.trim())) {
+        if (hasPendingAgent()) {
+            console.log(`🧭 Router (pending): "factory" ← "${userMessage.trim()}"`);
+            return 'factory';
+        }
+    }
 
     // Fast path: static keyword match
     for (const [intent, pattern] of Object.entries(KEYWORDS)) {

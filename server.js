@@ -175,7 +175,7 @@ app.post('/ask-jarvis', async (req, res) => {
         } else if (agentName === 'security') {
             result = await runSecurityAgent(userMessage, useLocal, sendEmail);
         } else if (agentName === 'factory') {
-            result = await runAgentFactoryAgent(userMessage, useLocal);
+            result = await runAgentFactoryAgent(userMessage, supabase, useLocal);
         } else {
             // Try a dynamically-created custom agent, fall back to chat
             result = await tryCustomAgent(agentName, userMessage, supabase, useLocal, settings)

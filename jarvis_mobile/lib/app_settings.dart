@@ -58,5 +58,6 @@ class AppSettings {
     'userName':       userName,
     'useLocalModel':  useLocalModel,
     'useLocalServer': useLocalServer,
+    'ttsEnabled':     voiceEnabled,   // server checks settings.ttsEnabled
   };
 }

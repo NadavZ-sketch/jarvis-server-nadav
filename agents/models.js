@@ -17,7 +17,9 @@ const DEEPSEEK_MODEL = 'deepseek-chat';
 
 // Local Ollama override (optional — set OLLAMA_URL in .env to use local model)
 const OLLAMA_URL   = process.env.OLLAMA_URL;
-const OLLAMA_MODEL = 'gemma4:e4b';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma3:4b'; // override via .env
+
+const OLLAMA_TIMEOUT = 120_000; // 120s — local generation can be slow
 
 async function callGemma4(messages, useLocal = true) {
     const msgs = typeof messages === 'string'
@@ -27,12 +29,20 @@ async function callGemma4(messages, useLocal = true) {
     // ── 1. Local Ollama (only if useLocal is enabled AND OLLAMA_URL is set) ──
     if (useLocal && OLLAMA_URL) {
         try {
+            console.log(`🤖 Ollama: model=${OLLAMA_MODEL}, msgs=${msgs.length}`);
+            const t0 = Date.now();
             const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
-                model: OLLAMA_MODEL, messages: msgs, stream: false
-            }, { timeout: 8000 });
-            return response.data.choices[0].message.content.trim();
+                model: OLLAMA_MODEL,
+                messages: msgs,
+                stream: false,
+                options: { num_ctx: 4096, temperature: 0.7 },
+            }, { timeout: OLLAMA_TIMEOUT });
+            const text = response.data.choices?.[0]?.message?.content?.trim();
+            if (!text) throw new Error('Empty response from Ollama');
+            console.log(`✅ Ollama responded in ${Date.now() - t0}ms`);
+            return text;
         } catch (ollamaErr) {
-            console.warn('⚠️ Ollama unreachable, falling back to Groq:', ollamaErr.message);
+            console.warn('⚠️ Ollama failed, falling back to Groq:', ollamaErr.message);
         }
     }
 

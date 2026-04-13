@@ -110,10 +110,67 @@ ${historyString}
 Current message from ${userName}: `;
 }
 
+// ─── Local-optimised message builder ─────────────────────────────────────────
+// Uses proper system role + alternating user/assistant pairs.
+// Shorter prompt — local models have limited context and degrade with long inputs.
+
+function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings = {}, followUpContext = null) {
+    const now = new Date();
+    const currentDate = now.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' });
+    const currentTime = now.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+
+    const name     = settings.assistantName || 'Jarvis';
+    const userName = settings.userName      || 'נדב';
+    const gender   = settings.gender        || 'male';
+    const personality = settings.personality || 'friendly';
+
+    const genderInstr = gender === 'female' ? 'השתמשי בלשון נקבה.' : 'השתמש בלשון זכר.';
+
+    const personalityShort = {
+        friendly: 'ידידותי וחם, כמו חבר טוב.',
+        formal:   'מקצועי ורשמי.',
+        concise:  'קצר מאוד — 1-3 משפטים.',
+        humorous: 'ידידותי עם הומור קל.',
+    };
+
+    const memoriesShort = longTermMemories && longTermMemories.trim() && longTermMemories !== 'אין זיכרונות'
+        ? `עובדות על ${userName}: ${longTermMemories.slice(0, 400)}`
+        : '';
+
+    const followUp = followUpContext ? `\nהקשר: ${followUpContext}` : '';
+
+    const system = [
+        `אתה ${name}, עוזר אישי של ${userName}. ענה תמיד בעברית בלבד.`,
+        genderInstr,
+        `אופי: ${personalityShort[personality] || personalityShort.friendly}`,
+        `תאריך ושעה: ${currentDate} ${currentTime}.`,
+        memoriesShort,
+        followUp,
+    ].filter(Boolean).join('\n');
+
+    // system message
+    const messages = [{ role: 'system', content: system }];
+
+    // history — last 10 turns only (avoid context overflow on small models)
+    const recentHistory = chatHistory.slice(-10);
+    for (const msg of recentHistory) {
+        messages.push({
+            role:    msg.role === 'user' ? 'user' : 'assistant',
+            content: msg.text,
+        });
+    }
+
+    // current user message
+    messages.push({ role: 'user', content: userMessage });
+
+    return messages;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings = {}) {
     try {
+        const useLocal = settings.useLocalModel === true;
         let followUpContext = null;
 
         if (!imageBase64 && detectFollowUp(userMessage, chatHistory)) {
@@ -127,15 +184,22 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
             }
         }
 
-        const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, followUpContext);
-        const fullPrompt = systemPrompt + userMessage;
-        const useLocal = settings.useLocalModel ?? true;
-
         let answer;
+
         if (imageBase64) {
-            answer = await callGeminiVision(fullPrompt, imageBase64);
+            // Vision always uses Gemini cloud
+            const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, followUpContext);
+            answer = await callGeminiVision(systemPrompt + userMessage, imageBase64);
+
+        } else if (useLocal) {
+            // Local: proper system+history message array → Ollama (falls back to Groq)
+            const msgs = buildLocalMessages(userMessage, chatHistory, longTermMemories, settings, followUpContext);
+            answer = await callGemma4(msgs, true);
+
         } else {
-            answer = await callGemma4([{ role: 'user', content: fullPrompt }], useLocal);
+            // Cloud: rich single-prompt format → Groq/DeepSeek/Gemini
+            const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, followUpContext);
+            answer = await callGemma4([{ role: 'user', content: systemPrompt + userMessage }], false);
         }
 
         return { answer: answer || 'לא הצלחתי לגבש תשובה.' };

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -338,8 +339,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   JarvisState _currentState = JarvisState.idle;
   String      _listeningText = '';
 
-  File?   _selectedImage;
-  String? _base64Image;
+  Uint8List? _imageBytes;
+  String?    _base64Image;
 
   AppSettings _settings = AppSettings();
 
@@ -405,10 +406,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery, imageQuality: 70);
     if (image != null) {
-      final bytes = await File(image.path).readAsBytes();
+      final bytes = await image.readAsBytes(); // XFile.readAsBytes works on web + mobile
       setState(() {
-        _selectedImage = File(image.path);
-        _base64Image   = base64Encode(bytes);
+        _imageBytes  = bytes;
+        _base64Image = base64Encode(bytes);
       });
     }
   }
@@ -457,7 +458,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     setState(() {
       String display = text;
-      if (_selectedImage != null) display += ' [תמונה מצורפת]';
+      if (_imageBytes != null) display += ' [תמונה מצורפת]';
       messages.add({'sender': 'user', 'text': display, 'time': _getCurrentTime()});
       _currentState  = JarvisState.thinking;
       _listeningText = '';
@@ -468,8 +469,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     String? imageToSend = _base64Image;
     setState(() {
-      _selectedImage = null;
-      _base64Image   = null;
+      _imageBytes  = null;
+      _base64Image = null;
     });
 
     final url = Uri.parse('${_settings.serverUrl}/ask-jarvis');
@@ -793,7 +794,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               ),
 
               // ── Image preview ─────────────────────────────────────────────────
-              if (_selectedImage != null)
+              if (_imageBytes != null)
                 Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -809,14 +810,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                             border:
                                 Border.all(color: JC.border, width: 1),
                             image: DecorationImage(
-                                image: FileImage(_selectedImage!),
+                                image: MemoryImage(_imageBytes!),
                                 fit: BoxFit.cover),
                           ),
                         ),
                         GestureDetector(
                           onTap: () => setState(() {
-                            _selectedImage = null;
-                            _base64Image   = null;
+                            _imageBytes  = null;
+                            _base64Image = null;
                           }),
                           child: Container(
                             margin: const EdgeInsets.all(3),
@@ -863,7 +864,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     // Image picker
                     _InputIconButton(
                       icon: Icons.image_outlined,
-                      active: _selectedImage != null,
+                      active: _imageBytes != null,
                       onTap: _pickImage,
                     ),
                     // Mic

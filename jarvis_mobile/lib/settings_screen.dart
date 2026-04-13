@@ -13,12 +13,27 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
+class _ServerPreset {
+  final String label;
+  final String url;
+  final IconData icon;
+  const _ServerPreset(this.label, this.url, this.icon);
+}
+
+const _kPresets = [
+  _ServerPreset('localhost',    'http://localhost:3000',       Icons.computer_outlined),
+  _ServerPreset('192.168.1.x',  'http://192.168.1.100:3000',  Icons.wifi_outlined),
+  _ServerPreset('10.0.0.x',     'http://10.0.0.2:3000',       Icons.router_outlined),
+  _ServerPreset('מותאם אישית', '',                             Icons.edit_outlined),
+];
+
 class _SettingsScreenState extends State<SettingsScreen> {
   late AppSettings _s;
   late TextEditingController _assistantNameCtrl;
   late TextEditingController _userNameCtrl;
   late TextEditingController _localServerUrlCtrl;
   String? _pingResult;
+  int _selectedPreset = -1; // index into _kPresets, -1 = custom
 
   @override
   void initState() {
@@ -36,6 +51,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _assistantNameCtrl  = TextEditingController(text: _s.assistantName);
     _userNameCtrl       = TextEditingController(text: _s.userName);
     _localServerUrlCtrl = TextEditingController(text: _s.localServerUrl);
+    _detectPreset(_s.localServerUrl);
+  }
+
+  void _detectPreset(String url) {
+    for (int i = 0; i < _kPresets.length - 1; i++) {
+      if (_kPresets[i].url == url) { _selectedPreset = i; return; }
+    }
+    // custom
+    _selectedPreset = _kPresets.length - 1;
+  }
+
+  void _selectPreset(int i) {
+    setState(() {
+      _selectedPreset = i;
+      _pingResult = null;
+      if (_kPresets[i].url.isNotEmpty) {
+        _localServerUrlCtrl.text = _kPresets[i].url;
+      }
+    });
   }
 
   @override
@@ -464,8 +498,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               if (_s.useLocalServer) ...[
                 _divider(),
+                // ── Server presets ──────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.dns_outlined, size: 16, color: JC.textMuted),
+                          const SizedBox(width: 8),
+                          const Text('בחר סוג שרת',
+                              style: TextStyle(color: JC.textPrimary, fontSize: 14, fontFamily: 'Heebo')),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: List.generate(_kPresets.length, (i) {
+                          final p       = _kPresets[i];
+                          final active  = _selectedPreset == i;
+                          return GestureDetector(
+                            onTap: () => _selectPreset(i),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? JC.blue500.withOpacity(0.2)
+                                    : JC.surface,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: active ? JC.blue400 : JC.border,
+                                  width: active ? 1.2 : 0.8,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(p.icon, size: 13,
+                                      color: active ? JC.blue400 : JC.textMuted),
+                                  const SizedBox(width: 6),
+                                  Text(p.label,
+                                      style: TextStyle(
+                                        color: active ? JC.blue400 : JC.textSecondary,
+                                        fontSize: 13,
+                                        fontFamily: 'Heebo',
+                                        fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                                      )),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+                _divider(),
                 _rowField(
-                  label: 'כתובת IP',
+                  label: 'כתובת',
                   icon: Icons.lan_outlined,
                   ctrl: _localServerUrlCtrl,
                   hint: 'http://192.168.1.x:3000',

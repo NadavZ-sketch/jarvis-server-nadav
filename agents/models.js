@@ -39,7 +39,7 @@ async function callGemma4(messages, useLocal = true) {
     // ── 2. Groq (free, fast) ──
     try {
         const response = await axios.post(GROQ_URL, {
-            model: GROQ_MODEL, messages: msgs, max_tokens: 800
+            model: GROQ_MODEL, messages: msgs, max_tokens: 1200
         }, {
             timeout: 10000,
             headers: {
@@ -56,7 +56,7 @@ async function callGemma4(messages, useLocal = true) {
     // ── 3. DeepSeek fallback ──
     try {
         const response = await axios.post(DEEPSEEK_URL, {
-            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 800
+            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 1200
         }, {
             timeout: 10000,
             headers: {

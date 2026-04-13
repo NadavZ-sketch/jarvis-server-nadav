@@ -31,7 +31,7 @@ const { classifyIntent }      = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent }      = require('./agents/memoryAgent');
-const { runChatAgent }        = require('./agents/chatAgent');
+const { runChatAgent, detectFollowUp } = require('./agents/chatAgent');
 const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
@@ -83,7 +83,7 @@ async function loadChatHistory() {
             .from('chat_history')
             .select('role, text')
             .order('created_at', { ascending: false })
-            .limit(10);
+            .limit(20);
 
         if (error) throw error;
         const result = (data || []).reverse();
@@ -91,7 +91,7 @@ async function loadChatHistory() {
         return result;
     } catch (err) {
         console.error('⚠️ loadChatHistory fallback:', err.message);
-        return chatMemoryFallback.slice(-10);
+        return chatMemoryFallback.slice(-20);
     }
 }
 
@@ -103,7 +103,7 @@ async function saveChatMessage(role, text) {
         console.error('⚠️ saveChatMessage fallback:', err.message);
     }
     chatMemoryFallback.push({ role, text });
-    if (chatMemoryFallback.length > 10) chatMemoryFallback = chatMemoryFallback.slice(-10);
+    if (chatMemoryFallback.length > 20) chatMemoryFallback = chatMemoryFallback.slice(-20);
 }
 
 // ─── Memories ─────────────────────────────────────────────────────────────────
@@ -185,7 +185,19 @@ app.post('/ask-jarvis', async (req, res) => {
         const useLocal  = settings.useLocalModel === true;
 
         // ── Routing ───────────────────────────────────────────────────────────
-        const agentName = imageBase64 ? 'chat' : await classifyIntent(userMessage);
+        let agentName = imageBase64 ? 'chat' : await classifyIntent(userMessage);
+
+        // Follow-up override: if the user is continuing a previous conversation,
+        // route to chat even if keywords matched a specialized agent
+        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'task', 'insight', 'security', 'factory'];
+        if (CONTEXT_OVERRIDE_AGENTS.includes(agentName)) {
+            const tempHistory = await loadChatHistory(); // uses TTL cache — cheap
+            if (detectFollowUp(userMessage, tempHistory)) {
+                console.log(`🔄 Follow-up override: "${agentName}" → "chat"`);
+                agentName = 'chat';
+            }
+        }
+
         console.log(`🎯 Dispatching to: ${agentName} (+${Date.now() - t0}ms)`);
         const tRoute = Date.now();
 

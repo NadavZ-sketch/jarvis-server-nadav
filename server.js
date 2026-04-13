@@ -43,8 +43,13 @@ const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
-app.use(helmet());
-app.use(cors());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+app.options('*', cors()); // explicit preflight handler for all routes
 app.use(express.json({ limit: '10mb' }));
 app.use('/ask-jarvis', rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false }));
 
@@ -166,6 +171,12 @@ async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settin
         return null;
     }
 }
+
+// ─── Health check (for local connectivity testing) ───────────────────────────
+
+app.get('/health', (req, res) => {
+    res.json({ ok: true, version: 'multi-agent-v3', ts: Date.now() });
+});
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 

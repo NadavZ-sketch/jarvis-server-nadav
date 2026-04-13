@@ -484,6 +484,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           'image':    imageToSend,
           'settings': _settings.toJson(),
         }),
+      ).timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => throw Exception('timeout'),
       );
 
       if (response.statusCode == 200) {
@@ -509,8 +512,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         });
       }
     } catch (e) {
+      final isTimeout  = e.toString().contains('timeout');
+      final isLocal    = _settings.useLocalServer;
+      final serverAddr = _settings.serverUrl;
+
+      final msg = isTimeout
+          ? 'הזמן פג (20 שניות). ${isLocal ? "בדוק שהשרת המקומי פועל ב-$serverAddr" : "השרת בענן לא ענה, נסה שוב."}'
+          : 'תקלת תקשורת. ${isLocal ? "לא הגעתי ל-$serverAddr — בדוק IP ושהשרת פועל." : "בדוק חיבור אינטרנט."}';
+
       setState(() {
-        messages.add({'sender': 'jarvis', 'text': 'תקלה בתקשורת עם השרת.', 'time': _getCurrentTime()});
+        messages.add({'sender': 'jarvis', 'text': msg, 'time': _getCurrentTime()});
         _currentState = JarvisState.idle;
       });
     }

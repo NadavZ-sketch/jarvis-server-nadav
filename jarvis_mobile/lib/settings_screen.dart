@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'app_settings.dart';
 import 'main.dart' show JC;
 
@@ -17,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _assistantNameCtrl;
   late TextEditingController _userNameCtrl;
   late TextEditingController _localServerUrlCtrl;
+  String? _pingResult;
 
   @override
   void initState() {
@@ -50,6 +52,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
     widget.onSave(_s);
     Navigator.pop(context);
+  }
+
+  Future<void> _pingServer() async {
+    final url = _localServerUrlCtrl.text.trim().isEmpty
+        ? 'http://192.168.1.100:3000'
+        : _localServerUrlCtrl.text.trim();
+    setState(() => _pingResult = '...');
+    try {
+      final res = await http
+          .get(Uri.parse('$url/health'))
+          .timeout(const Duration(seconds: 5));
+      setState(() => _pingResult = res.statusCode == 200
+          ? '✅ מחובר! שרת פעיל ב-$url'
+          : '⚠️ השרת ענה עם קוד ${res.statusCode}');
+    } catch (_) {
+      setState(() => _pingResult = '❌ לא מצאתי שרת ב-$url');
+    }
   }
 
   // ─── UI helpers ──────────────────────────────────────────────────────────────
@@ -442,6 +461,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.lan_outlined,
                   ctrl: _localServerUrlCtrl,
                   hint: 'http://192.168.1.x:3000',
+                ),
+                _divider(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      GestureDetector(
+                        onTap: _pingServer,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                          decoration: BoxDecoration(
+                            color: JC.blue500.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: JC.blue500.withOpacity(0.4), width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.wifi_find_outlined, size: 15, color: JC.blue400),
+                              const SizedBox(width: 8),
+                              const Text('בדוק חיבור לשרת',
+                                  style: TextStyle(color: JC.blue400, fontSize: 13, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (_pingResult != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_pingResult!,
+                            style: TextStyle(
+                              color: _pingResult!.startsWith('✅') ? const Color(0xFF22C55E) :
+                                     _pingResult!.startsWith('⚠️') ? const Color(0xFFF59E0B) :
+                                     _pingResult! == '...' ? JC.textMuted : const Color(0xFFEF4444),
+                              fontSize: 12, fontFamily: 'Heebo',
+                            )),
+                      ],
+                    ],
+                  ),
                 ),
               ],
             ]),

@@ -512,13 +512,25 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         });
       }
     } catch (e) {
-      final isTimeout  = e.toString().contains('timeout');
+      final errStr     = e.toString();
+      final isTimeout  = errStr.contains('timeout') || errStr.contains('TimeoutException');
+      final isRefused  = errStr.contains('refused') || errStr.contains('ECONNREFUSED') || errStr.contains('NetworkError');
       final isLocal    = _settings.useLocalServer;
       final serverAddr = _settings.serverUrl;
 
-      final msg = isTimeout
-          ? 'הזמן פג (20 שניות). ${isLocal ? "בדוק שהשרת המקומי פועל ב-$serverAddr" : "השרת בענן לא ענה, נסה שוב."}'
-          : 'תקלת תקשורת. ${isLocal ? "לא הגעתי ל-$serverAddr — בדוק IP ושהשרת פועל." : "בדוק חיבור אינטרנט."}';
+      String msg;
+      if (isTimeout) {
+        msg = '⏱ זמן פג (20 שניות)\n'
+            '${isLocal ? "השרת ב-$serverAddr לא ענה בזמן.\nוודא שהשרת רץ ושה-IP נכון." : "שרת הענן לא ענה, נסה שוב."}';
+      } else if (isRefused) {
+        msg = '🔌 Connection Refused\n'
+            'הבקשה נדחתה ב-$serverAddr\n'
+            'וודא ש-node server.js רץ ושהפורט 3000 פתוח.';
+      } else {
+        msg = '⚠️ שגיאת תקשורת\n'
+            'כתובת: $serverAddr\n'
+            'שגיאה: $errStr';
+      }
 
       setState(() {
         messages.add({'sender': 'jarvis', 'text': msg, 'time': _getCurrentTime()});

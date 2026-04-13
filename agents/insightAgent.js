@@ -136,10 +136,8 @@ async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
             supabase.from('contacts').select('name'),
         ]);
 
-        if (
-            chatsRes.error && tasksRes.error &&
-            memoriesRes.error && remindersRes.error
-        ) {
+        // Fail only if the two critical tables are unreachable
+        if (chatsRes.error || memoriesRes.error) {
             return { answer: 'לא הצלחתי לגשת לנתונים. בדוק את חיבור Supabase.' };
         }
 

@@ -58,6 +58,8 @@ async function runTaskAgent(userMessage, supabase, useLocal = true) {
             return { answer: 'לא מצאתי משימה כזו. נסה לציין את שם המשימה.' };
         }
 
+        return { answer: 'לא הכרתי את הכוונה. נסה: "הוסף משימה", "רשימת משימות", "מחק משימה" או "סיימתי".' };
+
     } catch (err) {
         console.error('TaskAgent Error:', err.message);
     }

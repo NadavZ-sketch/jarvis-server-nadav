@@ -47,7 +47,9 @@ async function callGemma4(messages, useLocal = true) {
                 'Content-Type': 'application/json'
             }
         });
-        return response.data.choices[0].message.content.trim();
+        const text = response.data.choices?.[0]?.message?.content?.trim();
+        if (!text) throw new Error('Empty or malformed response from Groq');
+        return text;
     } catch (groqErr) {
         const detail = groqErr.response?.data ? JSON.stringify(groqErr.response.data) : groqErr.message;
         console.warn('⚠️ Groq failed, falling back to DeepSeek:', detail);
@@ -64,7 +66,9 @@ async function callGemma4(messages, useLocal = true) {
                 'Content-Type': 'application/json'
             }
         });
-        return response.data.choices[0].message.content.trim();
+        const text = response.data.choices?.[0]?.message?.content?.trim();
+        if (!text) throw new Error('Empty or malformed response from DeepSeek');
+        return text;
     } catch (deepseekErr) {
         const detail = deepseekErr.response?.data ? JSON.stringify(deepseekErr.response.data) : deepseekErr.message;
         console.warn('⚠️ DeepSeek failed, falling back to Gemini:', detail);
@@ -75,7 +79,9 @@ async function callGemma4(messages, useLocal = true) {
     const response = await axios.post(GEMINI_URL, {
         contents: [{ parts: [{ text: prompt }] }]
     }, { timeout: 10000 });
-    return response.data.candidates[0].content.parts[0].text.trim();
+    const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!text) throw new Error('Empty or malformed response from Gemini');
+    return text;
 }
 
 // ─── Gemini with Google Search grounding (real-time data) ─────────────────────
@@ -85,7 +91,9 @@ async function callGeminiWithSearch(prompt) {
         contents: [{ parts: [{ text: prompt }] }],
         tools: [{ google_search: {} }]
     }, { timeout: 10000 });
-    return response.data.candidates[0].content.parts[0].text.trim();
+    const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!text) throw new Error('Empty response from Gemini Search');
+    return text;
 }
 
 // ─── Gemini Vision (image + text) ─────────────────────────────────────────────
@@ -106,7 +114,9 @@ async function callGeminiVision(prompt, imageBase64) {
             ]
         }]
     }, { timeout: 10000 });
-    return response.data.candidates[0].content.parts[0].text.trim();
+    const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!text) throw new Error('Empty response from Gemini Vision');
+    return text;
 }
 
 module.exports = { GEMINI_URL, callGemma4, callGeminiWithSearch, callGeminiVision };

@@ -31,7 +31,7 @@ function readProjectFiles() {
             result[file] = content.length > MAX_CHARS_PER_FILE
                 ? content.slice(0, MAX_CHARS_PER_FILE) + '\n// ... (truncated)'
                 : content;
-        } catch { /* skip missing files */ }
+        } catch (err) { console.warn(`⚠️ SecurityAgent: could not read ${file}: ${err.message}`); }
     }
     return result;
 }

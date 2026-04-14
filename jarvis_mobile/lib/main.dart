@@ -10,6 +10,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
+import 'main_shell.dart';
+import 'transitions/slide_fade_route.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,7 +68,7 @@ class JarvisApp extends StatelessWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
       ),
-      home: const ChatScreen(),
+      home: const MainShell(),
     );
   }
 }
@@ -322,7 +324,14 @@ class _ChatBubble extends StatelessWidget {
 
 // ─── Chat Screen ──────────────────────────────────────────────────────────────
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final AppSettings? initialSettings;
+  final ValueChanged<AppSettings>? onSettingsChanged;
+
+  const ChatScreen({
+    super.key,
+    this.initialSettings,
+    this.onSettingsChanged,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -365,9 +374,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       if (mounted) setState(() => _currentState = JarvisState.idle);
     });
 
-    AppSettings.load().then((s) {
-      if (mounted) setState(() => _settings = s);
-    });
+    if (widget.initialSettings != null) {
+      _settings = widget.initialSettings!;
+    } else {
+      AppSettings.load().then((s) {
+        if (mounted) setState(() => _settings = s);
+      });
+    }
 
     _orbBreathController = AnimationController(
       vsync: this,
@@ -376,6 +389,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _orbBreath = Tween<double>(begin: 0.94, end: 1.06).animate(
       CurvedAnimation(parent: _orbBreathController, curve: Curves.easeInOut),
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialSettings != null &&
+        widget.initialSettings != oldWidget.initialSettings) {
+      setState(() => _settings = widget.initialSettings!);
+    }
   }
 
   @override
@@ -636,12 +658,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void _openSettings() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => SettingsScreen(
+      SlideFadeRoute(
+        page: SettingsScreen(
           settings: _settings,
           onSave: (updated) async {
             await updated.save();
             setState(() => _settings = updated);
+            widget.onSettingsChanged?.call(updated);
           },
         ),
       ),

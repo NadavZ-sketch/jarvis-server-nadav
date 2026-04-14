@@ -38,6 +38,7 @@ const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent }     = require('./agents/insightAgent');
+const { runWeatherAgent }     = require('./agents/weatherAgent');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -46,7 +47,7 @@ const app = express();
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.options('*', cors()); // explicit preflight handler for all routes
@@ -200,7 +201,7 @@ app.post('/ask-jarvis', async (req, res) => {
 
         // Follow-up override: if the user is continuing a previous conversation,
         // route to chat even if keywords matched a specialized agent
-        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'task', 'insight', 'security', 'factory'];
+        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'task', 'insight', 'security', 'factory'];
         if (CONTEXT_OVERRIDE_AGENTS.includes(agentName)) {
             const tempHistory = await loadChatHistory(); // uses TTL cache — cheap
             if (detectFollowUp(userMessage, tempHistory)) {
@@ -232,6 +233,8 @@ app.post('/ask-jarvis', async (req, res) => {
         } else if (agentName === 'memory') {
             result = await runMemoryAgent(userMessage, supabase, useLocal, settings);
             cacheInvalidate('memories'); // memory changed — bust cache
+        } else if (agentName === 'weather') {
+            result = await runWeatherAgent(userMessage);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
         } else if (agentName === 'messaging') {
@@ -317,6 +320,88 @@ app.get('/check-reminders', async (_req, res) => {
     } catch (err) {
         console.error('check-reminders error:', err.message);
         res.json({ reminders: [] });
+    }
+});
+
+// ─── Tasks REST ───────────────────────────────────────────────────────────────
+
+app.get('/tasks', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json({ tasks: data || [] });
+    } catch (err) {
+        console.error('GET /tasks error:', err.message);
+        res.status(500).json({ tasks: [] });
+    }
+});
+
+app.delete('/tasks/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /tasks/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Reminders REST ───────────────────────────────────────────────────────────
+
+app.get('/reminders', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('reminders')
+            .select('id, text, scheduled_time, fired')
+            .eq('fired', false)
+            .order('scheduled_time', { ascending: true });
+        if (error) throw error;
+        res.json({ reminders: data || [] });
+    } catch (err) {
+        console.error('GET /reminders error:', err.message);
+        res.status(500).json({ reminders: [] });
+    }
+});
+
+app.delete('/reminders/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('reminders').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /reminders/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Contacts REST ────────────────────────────────────────────────────────────
+
+app.get('/contacts', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('contacts')
+            .select('*')
+            .order('name', { ascending: true });
+        if (error) throw error;
+        res.json({ contacts: data || [] });
+    } catch (err) {
+        console.error('GET /contacts error:', err.message);
+        res.status(500).json({ contacts: [] });
+    }
+});
+
+app.delete('/contacts/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('contacts').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /contacts/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
     }
 });
 

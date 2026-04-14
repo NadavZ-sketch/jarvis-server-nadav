@@ -61,7 +61,7 @@ class JarvisApp extends StatelessWidget {
           elevation: 0,
           systemOverlayStyle: SystemUiOverlayStyle.light,
         ),
-        dialogTheme: DialogTheme(
+        dialogTheme: DialogThemeData(
           backgroundColor: JC.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),

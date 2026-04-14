@@ -39,6 +39,9 @@ const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent }     = require('./agents/insightAgent');
 const { runWeatherAgent }     = require('./agents/weatherAgent');
+const { runNewsAgent }        = require('./agents/newsAgent');
+const { runShoppingAgent }    = require('./agents/shoppingAgent');
+const { runNotesAgent }       = require('./agents/notesAgent');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -201,7 +204,7 @@ app.post('/ask-jarvis', async (req, res) => {
 
         // Follow-up override: if the user is continuing a previous conversation,
         // route to chat even if keywords matched a specialized agent
-        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'task', 'insight', 'security', 'factory'];
+        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'task', 'insight', 'security', 'factory'];
         if (CONTEXT_OVERRIDE_AGENTS.includes(agentName)) {
             const tempHistory = await loadChatHistory(); // uses TTL cache — cheap
             if (detectFollowUp(userMessage, tempHistory)) {
@@ -235,6 +238,12 @@ app.post('/ask-jarvis', async (req, res) => {
             cacheInvalidate('memories'); // memory changed — bust cache
         } else if (agentName === 'weather') {
             result = await runWeatherAgent(userMessage);
+        } else if (agentName === 'news') {
+            result = await runNewsAgent(userMessage);
+        } else if (agentName === 'shopping') {
+            result = await runShoppingAgent(userMessage, supabase, useLocal);
+        } else if (agentName === 'notes') {
+            result = await runNotesAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
         } else if (agentName === 'messaging') {
@@ -401,6 +410,122 @@ app.delete('/contacts/:id', async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         console.error('DELETE /contacts/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── POST /tasks — add task from app ──────────────────────────────────────────
+app.post('/tasks', async (req, res) => {
+    try {
+        const { content } = req.body;
+        if (!content) return res.status(400).json({ error: 'content required' });
+        const { data, error } = await supabase.from('tasks').insert([{ content }]).select().single();
+        if (error) throw error;
+        res.json({ task: data });
+    } catch (err) {
+        console.error('POST /tasks error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── POST /reminders — add reminder from app ──────────────────────────────────
+app.post('/reminders', async (req, res) => {
+    try {
+        const { text, scheduled_time } = req.body;
+        if (!text || !scheduled_time) return res.status(400).json({ error: 'text and scheduled_time required' });
+        const { data, error } = await supabase
+            .from('reminders')
+            .insert([{ text, scheduled_time, fired: false }])
+            .select().single();
+        if (error) throw error;
+        res.json({ reminder: data });
+    } catch (err) {
+        console.error('POST /reminders error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Shopping ─────────────────────────────────────────────────────────────────
+app.get('/shopping', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('shopping_items')
+            .select('*')
+            .eq('done', false)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        res.json({ items: data || [] });
+    } catch (err) {
+        console.error('GET /shopping error:', err.message);
+        res.status(500).json({ items: [] });
+    }
+});
+
+app.post('/shopping', async (req, res) => {
+    try {
+        const { item } = req.body;
+        if (!item) return res.status(400).json({ error: 'item required' });
+        const { data, error } = await supabase
+            .from('shopping_items')
+            .insert([{ item }])
+            .select().single();
+        if (error) throw error;
+        res.json({ item: data });
+    } catch (err) {
+        console.error('POST /shopping error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/shopping/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('shopping_items').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /shopping:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Notes ────────────────────────────────────────────────────────────────────
+app.get('/notes', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('notes')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json({ notes: data || [] });
+    } catch (err) {
+        console.error('GET /notes error:', err.message);
+        res.status(500).json({ notes: [] });
+    }
+});
+
+app.post('/notes', async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        if (!content) return res.status(400).json({ error: 'content required' });
+        const { data, error } = await supabase
+            .from('notes')
+            .insert([{ title: title || '', content }])
+            .select().single();
+        if (error) throw error;
+        res.json({ note: data });
+    } catch (err) {
+        console.error('POST /notes error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/notes/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('notes').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /notes:id error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
     }
 });

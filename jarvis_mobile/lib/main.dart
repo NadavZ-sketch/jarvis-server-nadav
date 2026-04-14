@@ -8,10 +8,12 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 import 'main_shell.dart';
 import 'transitions/slide_fade_route.dart';
+import 'screens/onboarding_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,8 +50,23 @@ class JC {
   static const cancelRed = Color(0xFFEF4444);
 }
 
-class JarvisApp extends StatelessWidget {
+class JarvisApp extends StatefulWidget {
   const JarvisApp({super.key});
+
+  @override
+  State<JarvisApp> createState() => _JarvisAppState();
+}
+
+class _JarvisAppState extends State<JarvisApp> {
+  bool? _onboarded;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _onboarded = prefs.getBool('onboarded') ?? false);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +85,11 @@ class JarvisApp extends StatelessWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
       ),
-      home: const MainShell(),
+      home: _onboarded == null
+          ? const Scaffold(backgroundColor: JC.bg) // brief splash
+          : _onboarded!
+              ? const MainShell()
+              : const OnboardingScreen(),
     );
   }
 }
@@ -654,6 +675,25 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
+  // ─── Copy chat ────────────────────────────────────────────────────────────────
+  void _copyChat() {
+    final text = messages.map((m) {
+      final sender = m['sender'] == 'user' ? 'אתה' : 'ג׳רביס';
+      return '$sender: ${m['text']}';
+    }).join('\n\n');
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('השיחה הועתקה ללוח ✓',
+            style: TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
+        backgroundColor: JC.surfaceAlt,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   // ─── Settings ─────────────────────────────────────────────────────────────────
   void _openSettings() {
     Navigator.push(
@@ -723,6 +763,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.copy_outlined,
+                color: JC.textSecondary, size: 20),
+            tooltip: 'העתק שיחה',
+            onPressed: _copyChat,
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: IconButton(

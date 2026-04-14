@@ -5,17 +5,17 @@ import '../services/api_service.dart';
 import '../widgets/animated_list_item.dart';
 import '../widgets/empty_state.dart';
 
-class TasksScreen extends StatefulWidget {
+class ShoppingScreen extends StatefulWidget {
   final AppSettings settings;
   final ValueChanged<int>? onCountUpdate;
 
-  const TasksScreen({super.key, required this.settings, this.onCountUpdate});
+  const ShoppingScreen({super.key, required this.settings, this.onCountUpdate});
 
   @override
-  State<TasksScreen> createState() => _TasksScreenState();
+  State<ShoppingScreen> createState() => _ShoppingScreenState();
 }
 
-class _TasksScreenState extends State<TasksScreen> {
+class _ShoppingScreenState extends State<ShoppingScreen> {
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   String? _error;
@@ -39,9 +39,8 @@ class _TasksScreenState extends State<TasksScreen> {
   List<Map<String, dynamic>> get _filtered => _searchQuery.isEmpty
       ? _items
       : _items
-          .where((i) => (i['content']?.toString() ?? '')
-              .toLowerCase()
-              .contains(_searchQuery))
+          .where((i) =>
+              (i['item']?.toString() ?? '').toLowerCase().contains(_searchQuery))
           .toList();
 
   Future<void> _fetch() async {
@@ -50,7 +49,7 @@ class _TasksScreenState extends State<TasksScreen> {
       _error = null;
     });
     try {
-      final items = await ApiService(widget.settings).getTasks();
+      final items = await ApiService(widget.settings).getShopping();
       if (mounted) {
         setState(() {
           _items = items;
@@ -66,20 +65,6 @@ class _TasksScreenState extends State<TasksScreen> {
     }
   }
 
-  String _timeAgo(dynamic iso) {
-    if (iso == null) return '';
-    try {
-      final dt = DateTime.parse(iso.toString()).toLocal();
-      final diff = DateTime.now().difference(dt);
-      if (diff.inMinutes < 1) return 'עכשיו';
-      if (diff.inMinutes < 60) return 'לפני ${diff.inMinutes} דק׳';
-      if (diff.inHours < 24) return 'לפני ${diff.inHours} שע׳';
-      return 'לפני ${diff.inDays} ימים';
-    } catch (_) {
-      return '';
-    }
-  }
-
   void _onDismissed(Map<String, dynamic> item) {
     final id = item['id'].toString();
     final savedIndex = _items.indexOf(item);
@@ -90,8 +75,8 @@ class _TasksScreenState extends State<TasksScreen> {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(
-          content: const Text('המשימה הוסרה',
-              style: TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
+          content: Text('"${item['item']}" הוסר',
+              style: const TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
           backgroundColor: JC.surfaceAlt,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -101,8 +86,7 @@ class _TasksScreenState extends State<TasksScreen> {
             textColor: JC.blue400,
             onPressed: () {
               undone = true;
-              setState(() =>
-                  _items.insert(savedIndex.clamp(0, _items.length), item));
+              setState(() => _items.insert(savedIndex.clamp(0, _items.length), item));
               widget.onCountUpdate?.call(_items.length);
             },
           ),
@@ -110,7 +94,7 @@ class _TasksScreenState extends State<TasksScreen> {
         .closed
         .then((_) {
           if (!undone) {
-            ApiService(widget.settings).deleteTask(id).catchError((_) {});
+            ApiService(widget.settings).deleteShoppingItem(id).catchError((_) {});
           }
         });
   }
@@ -133,7 +117,7 @@ class _TasksScreenState extends State<TasksScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const Text('משימה חדשה',
+            const Text('הוסף לרשימת הקניות',
                 style: TextStyle(
                     color: JC.textPrimary,
                     fontSize: 16,
@@ -147,13 +131,11 @@ class _TasksScreenState extends State<TasksScreen> {
               autofocus: true,
               style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
               decoration: InputDecoration(
-                hintText: 'תיאור המשימה...',
+                hintText: 'חלב, לחם, ביצים...',
                 hintStyle:
                     const TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
                 filled: true,
                 fillColor: JC.surface,
-                contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 10),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: const BorderSide(color: JC.border)),
@@ -176,8 +158,8 @@ class _TasksScreenState extends State<TasksScreen> {
                         borderRadius: BorderRadius.circular(12))),
                 onPressed: () => _submitAdd(ctrl.text, ctx),
                 child: const Text('הוסף',
-                    style: TextStyle(
-                        fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                    style: TextStyle(fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600)),
               ),
             ),
           ],
@@ -191,13 +173,9 @@ class _TasksScreenState extends State<TasksScreen> {
     if (val.isEmpty) return;
     Navigator.pop(sheetCtx);
     try {
-      final res = await ApiService(widget.settings).addTask(val);
-      final newItem = res['task'] as Map<String, dynamic>? ??
-          {
-            'id': DateTime.now().toString(),
-            'content': val,
-            'created_at': DateTime.now().toIso8601String(),
-          };
+      final res = await ApiService(widget.settings).addShoppingItem(val);
+      final newItem = res['item'] as Map<String, dynamic>? ??
+          {'id': DateTime.now().toString(), 'item': val};
       setState(() => _items.insert(0, newItem));
       widget.onCountUpdate?.call(_items.length);
     } catch (_) {
@@ -213,17 +191,6 @@ class _TasksScreenState extends State<TasksScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: JC.bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: const Text('משימות',
-            style: TextStyle(
-                color: JC.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Heebo'),
-            textDirection: TextDirection.rtl),
-        centerTitle: true,
-      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddSheet,
         backgroundColor: JC.blue500,
@@ -241,20 +208,15 @@ class _TasksScreenState extends State<TasksScreen> {
                     if (_items.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: _ListSearchBar(
-                            controller: _searchCtrl,
-                            hint: 'חיפוש במשימות...'),
+                        child: _SearchBar(controller: _searchCtrl, hint: 'חיפוש ברשימת הקניות...'),
                       ),
                     Expanded(
                       child: _filtered.isEmpty
                           ? EmptyState(
-                              icon: Icons.check_circle_outline_rounded,
-                              title: _searchQuery.isEmpty
-                                  ? 'אין משימות'
-                                  : 'לא נמצאו תוצאות',
-                              subtitle: _searchQuery.isEmpty
-                                  ? 'לחץ + להוספת משימה'
-                                  : '')
+                              icon: Icons.shopping_cart_outlined,
+                              title: _searchQuery.isEmpty ? 'רשימת הקניות ריקה' : 'לא נמצאו פריטים',
+                              subtitle: _searchQuery.isEmpty ? 'לחץ + להוספת פריט' : '',
+                            )
                           : RefreshIndicator(
                               color: JC.blue400,
                               backgroundColor: JC.surfaceAlt,
@@ -269,17 +231,15 @@ class _TasksScreenState extends State<TasksScreen> {
                                     child: Dismissible(
                                       key: ValueKey(item['id']),
                                       direction: DismissDirection.endToStart,
-                                      background: _dismissBg(),
+                                      background: _deleteBg(),
                                       onDismissed: (_) => _onDismissed(item),
                                       child: Container(
-                                        margin:
-                                            const EdgeInsets.only(bottom: 10),
+                                        margin: const EdgeInsets.only(bottom: 10),
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 16, vertical: 14),
                                         decoration: BoxDecoration(
                                           color: JC.surfaceAlt,
-                                          borderRadius:
-                                              BorderRadius.circular(14),
+                                          borderRadius: BorderRadius.circular(14),
                                           border: Border.all(
                                               color: JC.border, width: 0.8),
                                         ),
@@ -287,31 +247,19 @@ class _TasksScreenState extends State<TasksScreen> {
                                           textDirection: TextDirection.rtl,
                                           children: [
                                             const Icon(
-                                                Icons
-                                                    .radio_button_unchecked_rounded,
+                                                Icons.shopping_cart_outlined,
                                                 color: JC.blue500,
                                                 size: 20),
                                             const SizedBox(width: 12),
                                             Expanded(
                                               child: Text(
-                                                item['content']
-                                                        ?.toString() ??
-                                                    '',
-                                                textDirection:
-                                                    TextDirection.rtl,
+                                                item['item']?.toString() ?? '',
+                                                textDirection: TextDirection.rtl,
                                                 style: const TextStyle(
                                                     color: JC.textPrimary,
                                                     fontSize: 15,
                                                     fontFamily: 'Heebo'),
                                               ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              _timeAgo(item['created_at']),
-                                              style: const TextStyle(
-                                                  color: JC.textMuted,
-                                                  fontSize: 11,
-                                                  fontFamily: 'Heebo'),
                                             ),
                                           ],
                                         ),
@@ -328,7 +276,7 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 }
 
-Widget _dismissBg() => Container(
+Widget _deleteBg() => Container(
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.only(left: 20),
       margin: const EdgeInsets.only(bottom: 10),
@@ -339,28 +287,24 @@ Widget _dismissBg() => Container(
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
 
-class _ListSearchBar extends StatelessWidget {
+class _SearchBar extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
-  const _ListSearchBar({required this.controller, required this.hint});
+  const _SearchBar({required this.controller, required this.hint});
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
       textDirection: TextDirection.rtl,
-      style: const TextStyle(
-          color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 14),
+      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 14),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle:
-            const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 14),
-        prefixIcon:
-            const Icon(Icons.search_rounded, color: JC.textMuted, size: 18),
+        hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 14),
+        prefixIcon: const Icon(Icons.search_rounded, color: JC.textMuted, size: 18),
         filled: true,
         fillColor: JC.surfaceAlt,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: JC.border, width: 0.8)),

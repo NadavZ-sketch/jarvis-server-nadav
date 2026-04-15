@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../main.dart' show JC, MainShell;
+import '../main.dart' show JC;
+import '../main_shell.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});

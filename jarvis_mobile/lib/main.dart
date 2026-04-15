@@ -8,12 +8,11 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 import 'main_shell.dart';
 import 'transitions/slide_fade_route.dart';
-import 'screens/onboarding_screen.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,23 +49,8 @@ class JC {
   static const cancelRed = Color(0xFFEF4444);
 }
 
-class JarvisApp extends StatefulWidget {
+class JarvisApp extends StatelessWidget {
   const JarvisApp({super.key});
-
-  @override
-  State<JarvisApp> createState() => _JarvisAppState();
-}
-
-class _JarvisAppState extends State<JarvisApp> {
-  bool? _onboarded;
-
-  @override
-  void initState() {
-    super.initState();
-    SharedPreferences.getInstance().then((prefs) {
-      if (mounted) setState(() => _onboarded = prefs.getBool('onboarded') ?? false);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -85,11 +69,7 @@ class _JarvisAppState extends State<JarvisApp> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
       ),
-      home: _onboarded == null
-          ? const Scaffold(backgroundColor: JC.bg) // brief splash
-          : _onboarded!
-              ? const MainShell()
-              : const OnboardingScreen(),
+      home: const SplashScreen(),
     );
   }
 }
@@ -459,6 +439,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   // ─── Voice ────────────────────────────────────────────────────────────────────
   void _listen() async {
+    HapticFeedback.selectionClick();
     if (_currentState != JarvisState.listening) {
       bool available = await _speech.initialize(
         onStatus: (val) {
@@ -497,6 +478,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   Future<void> sendCommand(String text) async {
     if (text.trim().isEmpty && _base64Image == null) return;
 
+    HapticFeedback.lightImpact();
     _speech.stop();
 
     setState(() {

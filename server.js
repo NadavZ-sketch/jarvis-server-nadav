@@ -42,6 +42,8 @@ const { runWeatherAgent }     = require('./agents/weatherAgent');
 const { runNewsAgent }        = require('./agents/newsAgent');
 const { runShoppingAgent }    = require('./agents/shoppingAgent');
 const { runNotesAgent }       = require('./agents/notesAgent');
+const { runStocksAgent }      = require('./agents/stocksAgent');
+const { runTranslationAgent } = require('./agents/translationAgent');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -244,6 +246,10 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runShoppingAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'notes') {
             result = await runNotesAgent(userMessage, supabase, useLocal);
+        } else if (agentName === 'stocks') {
+            result = await runStocksAgent(userMessage);
+        } else if (agentName === 'translate') {
+            result = await runTranslationAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
         } else if (agentName === 'messaging') {
@@ -527,6 +533,88 @@ app.delete('/notes/:id', async (req, res) => {
     } catch (err) {
         console.error('DELETE /notes:id error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Streaming endpoint (SSE) ─────────────────────────────────────────────────
+
+const { callGemma4Stream } = require('./agents/models');
+
+app.post('/stream-jarvis', async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+    try {
+        const userMessage = req.body.command || '';
+        const settings    = req.body.settings || {};
+        const useLocal    = settings.useLocalModel === true;
+
+        if (userMessage.length > 5000) {
+            send({ error: 'ההודעה ארוכה מדי.' });
+            return res.end();
+        }
+
+        const agentName = await classifyIntent(userMessage);
+
+        // Only chat/draft agents support streaming — others fall back to regular
+        if (!['chat', 'draft'].includes(agentName)) {
+            let result;
+            if (agentName === 'weather')   result = await runWeatherAgent(userMessage);
+            else if (agentName === 'news') result = await runNewsAgent(userMessage);
+            else if (agentName === 'stocks') result = await runStocksAgent(userMessage);
+            else if (agentName === 'translate') result = await runTranslationAgent(userMessage, supabase, useLocal);
+            else {
+                const [chatHistory, longTermMemories] = await Promise.all([
+                    loadChatHistory(), fetchLongTermMemories()
+                ]);
+                result = await runChatAgent(userMessage, null, chatHistory, longTermMemories, settings);
+            }
+            const answer = result.answer || '';
+            send({ chunk: answer, done: true });
+            await Promise.all([
+                saveChatMessage('user', userMessage),
+                saveChatMessage('jarvis', answer),
+            ]);
+            return res.end();
+        }
+
+        // Chat streaming via Groq
+        const [chatHistory, longTermMemories] = await Promise.all([
+            loadChatHistory(), fetchLongTermMemories()
+        ]);
+
+        const systemPrompt = `אתה ג'רביס, עוזר אישי חכם שמדבר עברית. ענה תמיד בעברית טבעית ויעילה.
+זיכרונות ארוכי טווח:
+${longTermMemories}`;
+
+        const msgs = [
+            { role: 'system', content: systemPrompt },
+            ...chatHistory.map(m => ({ role: m.role === 'jarvis' ? 'assistant' : 'user', content: m.text })),
+            { role: 'user', content: userMessage },
+        ];
+
+        let fullAnswer = '';
+        await callGemma4Stream(msgs, useLocal, (chunk) => {
+            fullAnswer += chunk;
+            send({ chunk });
+        });
+
+        send({ done: true });
+
+        await Promise.all([
+            saveChatMessage('user', userMessage),
+            saveChatMessage('jarvis', fullAnswer),
+        ]);
+        cacheInvalidate('chatHistory');
+    } catch (err) {
+        console.error('SSE error:', err.message);
+        send({ error: 'שגיאת מערכת.' });
+    } finally {
+        res.end();
     }
 });
 

@@ -129,4 +129,79 @@ async function callGeminiVision(prompt, imageBase64) {
     return text;
 }
 
-module.exports = { GEMINI_URL, callGemma4, callGeminiWithSearch, callGeminiVision };
+// ─── Groq streaming (OpenAI-compatible SSE) ────────────────────────────────────
+
+async function callGemma4Stream(messages, useLocal = true, onChunk) {
+    const msgs = typeof messages === 'string'
+        ? [{ role: 'user', content: messages }]
+        : messages;
+
+    // Local Ollama streaming (if available)
+    if (useLocal && OLLAMA_URL) {
+        try {
+            console.log(`🤖 Ollama stream: model=${OLLAMA_MODEL}`);
+            const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
+                model: OLLAMA_MODEL,
+                messages: msgs,
+                stream: true,
+                options: { num_ctx: 4096, temperature: 0.7 },
+            }, { timeout: OLLAMA_TIMEOUT, responseType: 'stream' });
+
+            await new Promise((resolve, reject) => {
+                let buf = '';
+                response.data.on('data', (raw) => {
+                    buf += raw.toString();
+                    const lines = buf.split('\n');
+                    buf = lines.pop(); // keep incomplete line
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+                        try {
+                            const delta = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content;
+                            if (delta) onChunk(delta);
+                        } catch (_) {}
+                    }
+                });
+                response.data.on('end', resolve);
+                response.data.on('error', reject);
+            });
+            return;
+        } catch (err) {
+            console.warn('⚠️ Ollama stream failed, falling back to Groq:', err.message);
+        }
+    }
+
+    // Groq streaming
+    const response = await axios.post(GROQ_URL, {
+        model: GROQ_MODEL,
+        messages: msgs,
+        max_tokens: 1200,
+        stream: true,
+    }, {
+        timeout: 30000,
+        responseType: 'stream',
+        headers: {
+            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+        }
+    });
+
+    await new Promise((resolve, reject) => {
+        let buf = '';
+        response.data.on('data', (raw) => {
+            buf += raw.toString();
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ') || line.trim() === 'data: [DONE]') continue;
+                try {
+                    const delta = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content;
+                    if (delta) onChunk(delta);
+                } catch (_) {}
+            }
+        });
+        response.data.on('end', resolve);
+        response.data.on('error', reject);
+    });
+}
+
+module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision };

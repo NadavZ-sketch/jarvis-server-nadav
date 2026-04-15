@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
+import '../services/cache_service.dart';
 import '../widgets/animated_list_item.dart';
 import '../widgets/empty_state.dart';
 
@@ -28,6 +29,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
     super.initState();
     _searchCtrl.addListener(
         () => setState(() => _searchQuery = _searchCtrl.text.toLowerCase()));
+    _loadCache();
     _fetch();
   }
 
@@ -45,25 +47,25 @@ class _RemindersScreenState extends State<RemindersScreen> {
               .contains(_searchQuery))
           .toList();
 
+  Future<void> _loadCache() async {
+    final cached = await CacheService.loadList('reminders');
+    if (cached != null && mounted && _items.isEmpty) {
+      setState(() { _items = cached; _loading = false; });
+      widget.onCountUpdate?.call(cached.length);
+    }
+  }
+
   Future<void> _fetch() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (_items.isEmpty) setState(() { _loading = true; _error = null; });
     try {
       final items = await ApiService(widget.settings).getReminders();
       if (mounted) {
-        setState(() {
-          _items = items;
-          _loading = false;
-        });
+        setState(() { _items = items; _loading = false; });
         widget.onCountUpdate?.call(items.length);
+        CacheService.saveList('reminders', items);
       }
     } catch (e) {
-      if (mounted) setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      if (mounted && _items.isEmpty) setState(() { _error = e.toString(); _loading = false; });
     }
   }
 

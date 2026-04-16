@@ -52,7 +52,7 @@ const app = express();
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.options('*', cors()); // explicit preflight handler for all routes
@@ -417,6 +417,45 @@ app.delete('/contacts/:id', async (req, res) => {
     } catch (err) {
         console.error('DELETE /contacts/:id error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── PUT /tasks/:id — update task (done, due_date, content) ──────────────────
+app.put('/tasks/:id', async (req, res) => {
+    try {
+        const { done, due_date, content } = req.body;
+        const updates = {};
+        if (done      !== undefined) updates.done     = done;
+        if (due_date  !== undefined) updates.due_date = due_date;
+        if (content   !== undefined) updates.content  = content;
+        if (Object.keys(updates).length === 0)
+            return res.status(400).json({ error: 'no fields to update' });
+        const { data, error } = await supabase
+            .from('tasks').update(updates).eq('id', req.params.id).select().single();
+        if (error) throw error;
+        res.json({ task: data });
+    } catch (err) {
+        console.error('PUT /tasks/:id error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── PUT /notes/:id — update note ─────────────────────────────────────────────
+app.put('/notes/:id', async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        const updates = {};
+        if (title   !== undefined) updates.title   = title;
+        if (content !== undefined) updates.content = content;
+        if (Object.keys(updates).length === 0)
+            return res.status(400).json({ error: 'no fields to update' });
+        const { data, error } = await supabase
+            .from('notes').update(updates).eq('id', req.params.id).select().single();
+        if (error) throw error;
+        res.json({ note: data });
+    } catch (err) {
+        console.error('PUT /notes/:id error:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 

@@ -13,6 +13,8 @@ import 'settings_screen.dart';
 import 'main_shell.dart';
 import 'transitions/slide_fade_route.dart';
 import 'screens/splash_screen.dart';
+import 'services/api_service.dart';
+import 'services/notification_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -390,6 +392,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _orbBreath = Tween<double>(begin: 0.94, end: 1.06).animate(
       CurvedAnimation(parent: _orbBreathController, curve: Curves.easeInOut),
     );
+
+    NotificationService.init().catchError((_) {});
   }
 
   @override
@@ -474,9 +478,67 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
+  // ─── Quick commands (/task, /note, /remind) ───────────────────────────────────
+  Future<bool> _tryQuickCommand(String text) async {
+    final trimmed = text.trim();
+    String? type;
+    String? content;
+
+    if (trimmed.toLowerCase().startsWith('/task ')) {
+      type    = 'task';
+      content = trimmed.substring(6).trim();
+    } else if (trimmed.toLowerCase().startsWith('/note ')) {
+      type    = 'note';
+      content = trimmed.substring(6).trim();
+    } else if (trimmed.toLowerCase().startsWith('/remind ')) {
+      type    = 'remind';
+      content = trimmed.substring(8).trim();
+    }
+
+    if (type == null || content == null || content.isEmpty) return false;
+
+    _controller.clear();
+    setState(() {
+      messages.add({'sender': 'user', 'text': trimmed, 'time': _getCurrentTime()});
+      _currentState = JarvisState.thinking;
+    });
+    _scrollToBottom();
+
+    try {
+      final api = ApiService(_settings);
+      String reply;
+      if (type == 'task') {
+        await api.addTask(content);
+        reply = '✅ משימה נוספה: $content';
+      } else if (type == 'note') {
+        await api.addNote(content);
+        reply = '📝 הערה נשמרה: $content';
+      } else {
+        final when = DateTime.now().add(const Duration(hours: 1));
+        await api.addReminder(content, when.toIso8601String());
+        reply = '🔔 תזכורת נוספה לעוד שעה: $content';
+      }
+      setState(() {
+        messages.add({'sender': 'jarvis', 'text': reply, 'time': _getCurrentTime()});
+        _currentState = JarvisState.idle;
+      });
+    } catch (e) {
+      setState(() {
+        messages.add({'sender': 'jarvis', 'text': '⚠️ לא הצלחתי לשמור. נסה שוב.',
+            'time': _getCurrentTime()});
+        _currentState = JarvisState.idle;
+      });
+    }
+    _scrollToBottom();
+    return true;
+  }
+
   // ─── Send ─────────────────────────────────────────────────────────────────────
   Future<void> sendCommand(String text) async {
     if (text.trim().isEmpty && _base64Image == null) return;
+
+    // Handle quick commands before sending to server
+    if (_base64Image == null && await _tryQuickCommand(text)) return;
 
     HapticFeedback.lightImpact();
     _speech.stop();

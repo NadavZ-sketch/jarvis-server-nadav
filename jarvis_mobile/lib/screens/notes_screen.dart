@@ -209,36 +209,122 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   void _showNoteDetail(Map<String, dynamic> item) {
+    final titleCtrl   = TextEditingController(text: item['title']?.toString() ?? '');
+    final contentCtrl = TextEditingController(text: item['content']?.toString() ?? '');
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: JC.surfaceAlt,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if ((item['title']?.toString() ?? '').isNotEmpty) ...[
-              Text(item['title']!,
-                  textDirection: TextDirection.rtl,
-                  style: const TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Heebo')),
-              const SizedBox(height: 8),
-            ],
-            Text(item['content']?.toString() ?? '',
-                textDirection: TextDirection.rtl,
-                style: const TextStyle(
-                    color: JC.textSecondary,
-                    fontSize: 15,
-                    height: 1.6,
-                    fontFamily: 'Heebo')),
-          ],
-        ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          bool editing = false;
+
+          // We need a local state — use a ValueNotifier trick
+          final editingNotifier = ValueNotifier(false);
+
+          return ValueListenableBuilder<bool>(
+            valueListenable: editingNotifier,
+            builder: (_, isEditing, __) => Padding(
+              padding: EdgeInsets.only(
+                  left: 20, right: 20, top: 20,
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // Header row
+                  Row(
+                    textDirection: TextDirection.rtl,
+                    children: [
+                      Text(
+                        isEditing ? 'עריכת הערה' : 'הערה',
+                        style: const TextStyle(
+                            color: JC.textPrimary, fontSize: 16,
+                            fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: Icon(
+                          isEditing ? Icons.close_rounded : Icons.edit_outlined,
+                          color: JC.blue400, size: 20,
+                        ),
+                        onPressed: () => editingNotifier.value = !isEditing,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  if (isEditing) ...[
+                    TextField(
+                      controller: titleCtrl,
+                      textDirection: TextDirection.rtl,
+                      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+                      decoration: _inputDeco('כותרת (אופציונלי)'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: contentCtrl,
+                      textDirection: TextDirection.rtl,
+                      maxLines: 5,
+                      autofocus: true,
+                      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+                      decoration: _inputDeco('תוכן ההערה...'),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                            backgroundColor: JC.blue500,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12))),
+                        onPressed: () async {
+                          final newTitle   = titleCtrl.text.trim();
+                          final newContent = contentCtrl.text.trim();
+                          if (newContent.isEmpty) return;
+                          Navigator.pop(ctx);
+                          try {
+                            await ApiService(widget.settings)
+                                .updateNote(item['id'].toString(),
+                                    title: newTitle, content: newContent);
+                            if (mounted) {
+                              setState(() {
+                                item['title']   = newTitle;
+                                item['content'] = newContent;
+                              });
+                              CacheService.saveList('notes', _items);
+                            }
+                          } catch (_) {}
+                        },
+                        child: const Text('שמור',
+                            style: TextStyle(
+                                fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ] else ...[
+                    if ((item['title']?.toString() ?? '').isNotEmpty) ...[
+                      Text(item['title']!,
+                          textDirection: TextDirection.rtl,
+                          style: const TextStyle(
+                              color: JC.textPrimary, fontSize: 17,
+                              fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(item['content']?.toString() ?? '',
+                        textDirection: TextDirection.rtl,
+                        style: const TextStyle(
+                            color: JC.textSecondary, fontSize: 15,
+                            height: 1.6, fontFamily: 'Heebo')),
+                    const SizedBox(height: 8),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

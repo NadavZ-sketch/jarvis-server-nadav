@@ -31,6 +31,20 @@ class ApiService {
     await http.delete(_uri('/tasks/$id')).timeout(_timeout);
   }
 
+  Future<Map<String, dynamic>> updateTask(String id,
+      {bool? done, String? dueDate, String? content}) async {
+    final body = <String, dynamic>{};
+    if (done    != null) body['done']     = done;
+    if (dueDate != null) body['due_date'] = dueDate;
+    if (content != null) body['content']  = content;
+    final res = await http.put(
+      _uri('/tasks/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   // ─── Reminders ────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getReminders() async {
@@ -106,5 +120,18 @@ class ApiService {
 
   Future<void> deleteNote(String id) async {
     await http.delete(_uri('/notes/$id')).timeout(_timeout);
+  }
+
+  Future<Map<String, dynamic>> updateNote(String id,
+      {String? title, String? content}) async {
+    final body = <String, dynamic>{};
+    if (title   != null) body['title']   = title;
+    if (content != null) body['content'] = content;
+    final res = await http.put(
+      _uri('/notes/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 }

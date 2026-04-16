@@ -3,6 +3,7 @@ import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/animated_list_item.dart';
 import '../widgets/empty_state.dart';
 
@@ -63,6 +64,8 @@ class _RemindersScreenState extends State<RemindersScreen> {
         setState(() { _items = items; _loading = false; });
         widget.onCountUpdate?.call(items.length);
         CacheService.saveList('reminders', items);
+        // Re-sync all local notifications from server state
+        NotificationService.rescheduleAll(items).catchError((_) {});
       }
     } catch (e) {
       if (mounted && _items.isEmpty) setState(() { _error = e.toString(); _loading = false; });
@@ -118,6 +121,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
         .then((_) {
           if (!undone) {
             ApiService(widget.settings).deleteReminder(id).catchError((_) {});
+            NotificationService.cancel(id).catchError((_) {});
           }
         });
   }
@@ -279,6 +283,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
           };
       setState(() => _items.insert(0, newItem));
       widget.onCountUpdate?.call(_items.length);
+      // Schedule local notification
+      final nId = newItem['id']?.toString();
+      if (nId != null) {
+        NotificationService.schedule(nId, val, dateTime).catchError((_) {});
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

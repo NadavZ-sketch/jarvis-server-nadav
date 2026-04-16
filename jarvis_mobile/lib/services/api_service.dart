@@ -4,17 +4,27 @@ import '../app_settings.dart';
 
 class ApiService {
   final AppSettings settings;
-  static const _timeout = Duration(seconds: 15);
+  static const _timeout = Duration(seconds: 30);
 
   ApiService(this.settings);
 
   Uri _uri(String path) => Uri.parse('${settings.serverUrl}$path');
 
+  // Detects Render.com cold-start HTML page and throws a clean error
+  String _safeBody(http.Response res) {
+    final body = res.body;
+    final trimmed = body.trimLeft();
+    if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+      throw Exception('השרת אינו זמין כרגע — נסה שוב בעוד רגע');
+    }
+    return body;
+  }
+
   // ─── Tasks ────────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getTasks() async {
     final res = await http.get(_uri('/tasks')).timeout(_timeout);
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['tasks'] ?? []);
   }
 
@@ -24,7 +34,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'content': content}),
     ).timeout(_timeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<void> deleteTask(String id) async {
@@ -42,14 +52,14 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
     ).timeout(_timeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   // ─── Reminders ────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getReminders() async {
     final res = await http.get(_uri('/reminders')).timeout(_timeout);
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['reminders'] ?? []);
   }
 
@@ -60,7 +70,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'text': text, 'scheduled_time': scheduledTime}),
     ).timeout(_timeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<void> deleteReminder(String id) async {
@@ -71,7 +81,7 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> getContacts() async {
     final res = await http.get(_uri('/contacts')).timeout(_timeout);
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['contacts'] ?? []);
   }
 
@@ -83,7 +93,7 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> getShopping() async {
     final res = await http.get(_uri('/shopping')).timeout(_timeout);
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['items'] ?? []);
   }
 
@@ -93,7 +103,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'item': item}),
     ).timeout(_timeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<void> deleteShoppingItem(String id) async {
@@ -104,7 +114,7 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> getNotes() async {
     final res = await http.get(_uri('/notes')).timeout(_timeout);
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['notes'] ?? []);
   }
 
@@ -115,7 +125,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'title': title, 'content': content}),
     ).timeout(_timeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<void> deleteNote(String id) async {
@@ -132,6 +142,6 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
     ).timeout(_timeout);
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 }

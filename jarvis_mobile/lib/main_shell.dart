@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'main.dart' show JC, ChatScreen;
 import 'app_settings.dart';
+import 'screens/app_drawer.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'screens/reminders_screen.dart';
@@ -15,7 +16,10 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  int _selectedIndex = 0;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  // Start on Chat tab (index 1)
+  int _selectedIndex = 1;
   AppSettings _settings = AppSettings();
 
   int _taskCount     = 0;
@@ -38,10 +42,21 @@ class _MainShellState extends State<MainShell> {
     setState(() => _selectedIndex = i);
   }
 
+  void _openDrawer() {
+    _scaffoldKey.currentState?.openEndDrawer();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: JC.bg,
+      endDrawer: AppDrawer(
+        selectedIndex: _selectedIndex,
+        onNavigate: _onTabTapped,
+        settings: _settings,
+        onSettingsChanged: _onSettingsChanged,
+      ),
       body: IndexedStack(
         index: _selectedIndex,
         children: [
@@ -50,10 +65,11 @@ class _MainShellState extends State<MainShell> {
             settings: _settings,
             onNavigate: _onTabTapped,
           ),
-          // 1 — Chat
+          // 1 — Chat (main screen)
           ChatScreen(
             initialSettings: _settings,
             onSettingsChanged: _onSettingsChanged,
+            onOpenDrawer: _openDrawer,
           ),
           // 2 — Tasks
           TasksScreen(
@@ -69,54 +85,6 @@ class _MainShellState extends State<MainShell> {
           ListsScreen(settings: _settings),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: _onTabTapped,
-        backgroundColor: JC.surfaceAlt,
-        indicatorColor: JC.blue500.withOpacity(0.25),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        animationDuration: const Duration(milliseconds: 300),
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'בית',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline_rounded),
-            selectedIcon: Icon(Icons.chat_bubble_rounded),
-            label: 'צ׳אט',
-          ),
-          NavigationDestination(
-            icon: _badgeIcon(Icons.checklist_outlined, _taskCount),
-            selectedIcon: _badgeIcon(Icons.checklist_rounded, _taskCount),
-            label: 'משימות',
-          ),
-          NavigationDestination(
-            icon: _badgeIcon(Icons.notifications_none_rounded, _reminderCount),
-            selectedIcon:
-                _badgeIcon(Icons.notifications_rounded, _reminderCount),
-            label: 'תזכורות',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.list_alt_outlined),
-            selectedIcon: Icon(Icons.list_alt_rounded),
-            label: 'רשימות',
-          ),
-        ],
-      ),
-    );
-  }
-
-  static Widget _badgeIcon(IconData icon, int count) {
-    if (count == 0) return Icon(icon);
-    return Badge(
-      label: Text(
-        count > 99 ? '99+' : '$count',
-        style: const TextStyle(fontSize: 10, fontFamily: 'Heebo'),
-      ),
-      backgroundColor: JC.blue500,
-      child: Icon(icon),
     );
   }
 }

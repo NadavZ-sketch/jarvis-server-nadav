@@ -163,9 +163,9 @@ class _JarvisOrb extends StatelessWidget {
 
   double get _size {
     switch (state) {
-      case JarvisState.thinking: return 90.0;
-      case JarvisState.speaking: return 86.0;
-      default: return 78.0;
+      case JarvisState.thinking: return 100.0;
+      case JarvisState.speaking: return 96.0;
+      default: return 114.0;
     }
   }
 
@@ -329,11 +329,13 @@ class _ChatBubble extends StatelessWidget {
 class ChatScreen extends StatefulWidget {
   final AppSettings? initialSettings;
   final ValueChanged<AppSettings>? onSettingsChanged;
+  final VoidCallback? onOpenDrawer;
 
   const ChatScreen({
     super.key,
     this.initialSettings,
     this.onSettingsChanged,
+    this.onOpenDrawer,
   });
 
   @override
@@ -765,6 +767,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
+  String get _orbHint {
+    switch (_currentState) {
+      case JarvisState.listening:
+        return _listeningText.isEmpty ? 'מקשיב...' : _listeningText;
+      case JarvisState.thinking: return 'חושב...';
+      case JarvisState.speaking: return 'מדבר...';
+      default:                   return 'לחץ לדיבור';
+    }
+  }
+
   // ─── Build ────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -790,20 +802,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ),
         leading: IconButton(
           icon: const Icon(Icons.menu_rounded, color: JC.textSecondary, size: 22),
-          onPressed: _openSettings,
+          onPressed: () => widget.onOpenDrawer?.call() ?? _openSettings(),
         ),
-        title: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: Text(
-            _stateLabel,
-            key: ValueKey(_stateLabel),
-            style: const TextStyle(
-              color: JC.textSecondary,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0.3,
-              fontFamily: 'Heebo',
-            ),
+        title: const Text(
+          'ג׳רביס',
+          style: TextStyle(
+            color: JC.textSecondary,
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.3,
+            fontFamily: 'Heebo',
           ),
         ),
         actions: [
@@ -813,14 +821,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             tooltip: 'העתק שיחה',
             onPressed: _copyChat,
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: IconButton(
-              icon: const Icon(Icons.settings_outlined,
-                  color: JC.textSecondary, size: 20),
-              onPressed: _openSettings,
-            ),
-          ),
+          const SizedBox(width: 4),
         ],
       ),
 
@@ -850,12 +851,37 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           Column(
             children: [
 
-              // ── Orb ──────────────────────────────────────────────────────────
+              // ── Orb (tappable — primary mic trigger) ─────────────────────
               Padding(
-                padding: const EdgeInsets.only(top: 100, bottom: 8),
-                child: _JarvisOrb(
-                  state: _currentState,
-                  breathAnim: _orbBreath,
+                padding: const EdgeInsets.only(top: 96, bottom: 4),
+                child: GestureDetector(
+                  onTap: _listen,
+                  child: Column(
+                    children: [
+                      _JarvisOrb(
+                        state: _currentState,
+                        breathAnim: _orbBreath,
+                      ),
+                      const SizedBox(height: 10),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 250),
+                        child: Text(
+                          _orbHint,
+                          key: ValueKey(_orbHint),
+                          style: TextStyle(
+                            color: _currentState == JarvisState.listening
+                                ? JC.blue400
+                                : JC.textMuted,
+                            fontSize: 13,
+                            fontFamily: 'Heebo',
+                            fontWeight: _currentState == JarvisState.listening
+                                ? FontWeight.w500
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -909,25 +935,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-              // ── Listening hint ────────────────────────────────────────────────
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                child: isListening && _listeningText.isNotEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                        child: Text(
-                          _listeningText,
-                          style: const TextStyle(
-                            color: JC.textSecondary,
-                            fontStyle: FontStyle.italic,
-                            fontSize: 13,
-                            fontFamily: 'Heebo',
-                          ),
-                          textDirection: TextDirection.rtl,
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
 
               // ── Image preview ─────────────────────────────────────────────────
               if (_imageBytes != null)

@@ -802,7 +802,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ),
         leading: IconButton(
           icon: const Icon(Icons.menu_rounded, color: JC.textSecondary, size: 22),
-          onPressed: () => widget.onOpenDrawer?.call() ?? _openSettings(),
+          onPressed: () {
+            if (widget.onOpenDrawer != null) {
+              widget.onOpenDrawer!();
+            } else {
+              _openSettings();
+            }
+          },
         ),
         title: const Text(
           'ג׳רביס',

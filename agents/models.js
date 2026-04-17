@@ -103,4 +103,4 @@ async function callGeminiVision(prompt, imageBase64) {
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
-module.exports = { GEMINI_URL, callGemma4, callGeminiWithSearch, callGeminiVision };
+module.exports = { GEMINI_URL, callGemma4, callGeminiWithSearch, callGeminiVision, detectMimeType };

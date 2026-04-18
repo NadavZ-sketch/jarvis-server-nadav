@@ -129,11 +129,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: const Color(0xFF1C1C1C),
         elevation: 0,
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           'הגדרות',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           TextButton(
             onPressed: _save,

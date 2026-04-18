@@ -18,6 +18,7 @@ jest.mock('../../agents/reminderAgent', () => ({ runReminderAgent: jest.fn() }))
 jest.mock('../../agents/memoryAgent', () => ({ runMemoryAgent: jest.fn() }));
 jest.mock('../../agents/chatAgent', () => ({ runChatAgent: jest.fn() }));
 jest.mock('../../agents/sportsAgent', () => ({ runSportsAgent: jest.fn() }));
+jest.mock('../../agents/musicAgent', () => ({ runMusicAgent: jest.fn() }));
 jest.mock('../../agents/messagingAgent', () => ({ runMessagingAgent: jest.fn() }));
 jest.mock('../../agents/draftAgent', () => ({ runDraftAgent: jest.fn() }));
 
@@ -27,6 +28,7 @@ const { classifyIntent } = require('../../agents/router');
 const { runTaskAgent } = require('../../agents/taskAgent');
 const { runChatAgent } = require('../../agents/chatAgent');
 const { runMessagingAgent } = require('../../agents/messagingAgent');
+const { runMusicAgent } = require('../../agents/musicAgent');
 const { app } = require('../../server');
 
 function makeChain(data = [], error = null) {
@@ -132,6 +134,23 @@ describe('POST /ask-jarvis', () => {
 
         expect(res.status).toBe(500);
         expect(res.body.answer).toBe('שגיאת מערכת פנימית.');
+    });
+
+    test('routes to music agent and returns action with youtube url', async () => {
+        classifyIntent.mockReturnValue('music');
+        runMusicAgent.mockResolvedValue({
+            answer: 'הנה מוזיקת ג\'אז מרגיעה',
+            action: { type: 'music', url: 'https://music.youtube.com/search?q=jazz' },
+        });
+
+        const res = await request(app)
+            .post('/ask-jarvis')
+            .send({ command: 'מוזיקה רגועה לעבודה' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.action.type).toBe('music');
+        expect(res.body.action.url).toContain('music.youtube.com');
+        expect(runMusicAgent).toHaveBeenCalled();
     });
 
     test('empty command is handled without crashing', async () => {

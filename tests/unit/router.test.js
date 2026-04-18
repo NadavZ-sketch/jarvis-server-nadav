@@ -26,6 +26,11 @@ describe('classifyIntent — keyword routing', () => {
         ['premier league', 'sports'],
         ['liverpool', 'sports'],
         ['טבלת הליגה', 'sports'],
+        // music keywords
+        ['מוזיקה לאימון', 'music'],
+        ['הצג פלייליסט', 'music'],
+        ['תנגן שיר', 'music'],
+        ['spotify', 'music'],
         // messaging keywords
         ['שלח ווצאפ לרון', 'messaging'],
         ['שלח מייל לאמא', 'messaging'],

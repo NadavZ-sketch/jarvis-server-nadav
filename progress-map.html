@@ -132,7 +132,7 @@
     .chart-card h3 { font-size: .9rem; font-weight: 600; color: var(--muted); margin-bottom: 16px; text-align: center; }
     .chart-wrap { position: relative; height: 220px; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="/chart.js"></script>
 </head>
 <body>
 
@@ -453,6 +453,14 @@
   loadNotes();
 
   // ── Charts ──
+  function initCharts() {
+    if (typeof Chart === 'undefined') {
+      document.querySelectorAll('.chart-wrap').forEach(el => {
+        el.innerHTML = '<div style="color:#6b7280;font-size:.8rem;text-align:center;padding-top:80px;">⚠️ גרפים לא נטענו — ודא חיבור לאינטרנט ורענן</div>';
+      });
+      return;
+    }
+
   const COLORS = {
     done:    '#22c55e',
     partial: '#f59e0b',
@@ -535,6 +543,13 @@
       plugins: { legend: { display: false } },
     }
   });
+  } // end initCharts
+
+  if (document.readyState === 'complete') {
+    initCharts();
+  } else {
+    window.addEventListener('load', initCharts);
+  }
 </script>
 </body>
 </html>

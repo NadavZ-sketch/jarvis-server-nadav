@@ -9,8 +9,13 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/tests/**/*.test.js"],
-    "collectCoverageFrom": ["server.js", "agents/**/*.js"]
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "server.js",
+      "agents/**/*.js"
+    ]
   },
   "repository": {
     "type": "git",
@@ -33,6 +38,7 @@
     "@pinecone-database/pinecone": "^7.1.0",
     "@supabase/supabase-js": "^2.102.1",
     "axios": "^1.14.0",
+    "chart.js": "^4.5.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.1",
     "express": "^5.2.1",

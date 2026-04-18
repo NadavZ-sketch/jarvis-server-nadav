@@ -5,7 +5,6 @@ const path       = require('path');
 const cron       = require('node-cron');
 const nodemailer = require('nodemailer');
 const fs         = require('fs');
-const path       = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const googleTTS  = require('google-tts-api');
 
@@ -45,12 +44,16 @@ const { runShoppingAgent }    = require('./agents/shoppingAgent');
 const { runNotesAgent }       = require('./agents/notesAgent');
 const { runStocksAgent }      = require('./agents/stocksAgent');
 const { runTranslationAgent } = require('./agents/translationAgent');
+const { runMusicAgent }       = require('./agents/musicAgent');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: false,
+}));
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -251,6 +254,8 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runStocksAgent(userMessage);
         } else if (agentName === 'translate') {
             result = await runTranslationAgent(userMessage, supabase, useLocal);
+        } else if (agentName === 'music') {
+            result = await runMusicAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
         } else if (agentName === 'messaging') {
@@ -678,6 +683,10 @@ cron.schedule('* * * * *', async () => {
     } catch (err) {
         console.error('⏰ Cron unexpected error:', err.message);
     }
+});
+
+app.get('/chart.js', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'node_modules/chart.js/dist/chart.umd.min.js'));
 });
 
 app.get('/progress-map', (_req, res) => {

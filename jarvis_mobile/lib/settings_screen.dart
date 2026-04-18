@@ -10,17 +10,6 @@ class SettingsScreen extends StatefulWidget {
 
   const SettingsScreen({super.key, required this.settings, required this.onSave});
 
-Future<void> _openProgressMap() async {
-  final uri = Uri.parse('${_s.serverUrl}/progress-map');
-  if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('לא ניתן לפתוח את מפת ההתקדמות')),
-      );
-    }
-  }
-}
-
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
@@ -98,6 +87,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
     widget.onSave(_s);
     Navigator.pop(context);
+  }
+
+  Future<void> _openProgressMap() async {
+    final uri = Uri.parse('${_s.serverUrl}/progress-map');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('לא ניתן לפתוח את מפת ההתקדמות')),
+        );
+      }
+    }
   }
 
   Future<void> _pingServer() async {
@@ -671,16 +671,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-_sectionHeader('פרויקט'),
-_card([
-  ListTile(
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-    title: const Text('מפת התקדמות', style: TextStyle(color: Colors.white, fontSize: 15)),
-    subtitle: const Text('יכולות, הערות ודיאגרמת זרימה', style: TextStyle(color: Color(0xFF6E6E6E), fontSize: 12)),
-    trailing: const Icon(Icons.open_in_new_rounded, color: Color(0xFF6E6E6E), size: 18),
-    onTap: _openProgressMap,
-  ),
-]),
+            _sectionHeader('פרויקט', Icons.map_outlined),
+            _card([
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                title: const Text('מפת התקדמות',
+                    style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+                subtitle: const Text('יכולות, הערות ודיאגרמת זרימה',
+                    style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+                trailing: Icon(Icons.open_in_new_rounded, color: JC.textMuted, size: 18),
+                onTap: _openProgressMap,
+              ),
+            ]),
             const SizedBox(height: 50),
           ],
         ),

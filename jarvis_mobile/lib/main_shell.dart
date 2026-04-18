@@ -46,44 +46,96 @@ class _MainShellState extends State<MainShell> {
     _scaffoldKey.currentState?.openEndDrawer();
   }
 
+  static const int _tabCount = 5;
+
+  void _swipeToTab(DragEndDetails details) {
+    const threshold = 300.0;
+    final v = details.primaryVelocity ?? 0;
+    if (v < -threshold && _selectedIndex < _tabCount - 1) {
+      _onTabTapped(_selectedIndex + 1);
+    } else if (v > threshold && _selectedIndex > 0) {
+      _onTabTapped(_selectedIndex - 1);
+    }
+  }
+
+  Future<bool> _onWillPop() async {
+    if (_selectedIndex != 1) {
+      _onTabTapped(1); // חזור למסך הצ'אט
+      return false;
+    }
+    final exit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: JC.surfaceAlt,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('יציאה מג׳רביס', style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
+        content: const Text('האם לצאת מהאפליקציה?', style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('ביטול', style: TextStyle(color: JC.blue400, fontFamily: 'Heebo')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('יציאה', style: TextStyle(color: Color(0xFFEF4444), fontFamily: 'Heebo')),
+          ),
+        ],
+      ),
+    );
+    return exit ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: JC.bg,
-      endDrawer: AppDrawer(
-        selectedIndex: _selectedIndex,
-        onNavigate: _onTabTapped,
-        settings: _settings,
-        onSettingsChanged: _onSettingsChanged,
-      ),
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: [
-          // 0 — Dashboard
-          DashboardScreen(
-            settings: _settings,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final shouldExit = await _onWillPop();
+        if (shouldExit && context.mounted) {
+          SystemNavigator.pop();
+        }
+      },
+      child: GestureDetector(
+        onHorizontalDragEnd: _swipeToTab,
+        child: Scaffold(
+          key: _scaffoldKey,
+          backgroundColor: JC.bg,
+          endDrawer: AppDrawer(
+            selectedIndex: _selectedIndex,
             onNavigate: _onTabTapped,
-          ),
-          // 1 — Chat (main screen)
-          ChatScreen(
-            initialSettings: _settings,
+            settings: _settings,
             onSettingsChanged: _onSettingsChanged,
-            onOpenDrawer: _openDrawer,
           ),
-          // 2 — Tasks
-          TasksScreen(
-            settings: _settings,
-            onCountUpdate: (c) => setState(() => _taskCount = c),
+          body: IndexedStack(
+            index: _selectedIndex,
+            children: [
+              // 0 — Dashboard
+              DashboardScreen(
+                settings: _settings,
+                onNavigate: _onTabTapped,
+              ),
+              // 1 — Chat (main screen)
+              ChatScreen(
+                initialSettings: _settings,
+                onSettingsChanged: _onSettingsChanged,
+                onOpenDrawer: _openDrawer,
+              ),
+              // 2 — Tasks
+              TasksScreen(
+                settings: _settings,
+                onCountUpdate: (c) => setState(() => _taskCount = c),
+              ),
+              // 3 — Reminders
+              RemindersScreen(
+                settings: _settings,
+                onCountUpdate: (c) => setState(() => _reminderCount = c),
+              ),
+              // 4 — Lists (Shopping + Notes)
+              ListsScreen(settings: _settings),
+            ],
           ),
-          // 3 — Reminders
-          RemindersScreen(
-            settings: _settings,
-            onCountUpdate: (c) => setState(() => _reminderCount = c),
-          ),
-          // 4 — Lists (Shopping + Notes)
-          ListsScreen(settings: _settings),
-        ],
+        ),
       ),
     );
   }

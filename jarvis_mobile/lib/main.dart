@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
+import 'history_screen.dart';
 import 'main_shell.dart';
 import 'transitions/slide_fade_route.dart';
 import 'screens/splash_screen.dart';
@@ -740,6 +741,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
+  // ─── History ──────────────────────────────────────────────────────────────────
+  void _openHistory() {
+    Navigator.push(
+      context,
+      SlideFadeRoute(page: const HistoryScreen()),
+    );
+  }
+
   // ─── Settings ─────────────────────────────────────────────────────────────────
   void _openSettings() {
     Navigator.push(
@@ -822,10 +831,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.copy_outlined,
-                color: JC.textSecondary, size: 20),
-            tooltip: 'העתק שיחה',
-            onPressed: _copyChat,
+            icon: const Icon(Icons.history_rounded,
+                color: JC.textSecondary, size: 22),
+            tooltip: 'היסטוריית שיחות',
+            onPressed: _openHistory,
           ),
           const SizedBox(width: 4),
         ],

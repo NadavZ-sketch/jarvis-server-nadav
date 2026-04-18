@@ -1,13 +1,16 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
+import 'history_screen.dart';
 
 void main() => runApp(const JarvisApp());
 
@@ -116,6 +119,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   String? _base64Image;
 
   AppSettings _settings = AppSettings();
+  late String _sessionId;
 
   // ── Orb breathing ──
   late AnimationController _orbBreathController;
@@ -134,6 +138,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _speech = stt.SpeechToText();
+    _sessionId = DateTime.now().toIso8601String();
 
     _audioPlayer.onPlayerComplete.listen((event) {
       if (mounted) setState(() => _currentState = JarvisState.idle);
@@ -239,6 +244,29 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
+  // ─── Session Save ──────────────────────────────────────────────────────────────
+  Future<void> _saveSession() async {
+    if (messages.length <= 1) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('chat_sessions') ?? '[]';
+      final List sessions = jsonDecode(raw);
+      final sessionData = {
+        'id': _sessionId,
+        'date': _sessionId,
+        'messages': messages,
+      };
+      final idx = sessions.indexWhere((s) => s['id'] == _sessionId);
+      if (idx >= 0) {
+        sessions[idx] = sessionData;
+      } else {
+        sessions.add(sessionData);
+      }
+      if (sessions.length > 50) sessions.removeAt(0);
+      await prefs.setString('chat_sessions', jsonEncode(sessions));
+    } catch (_) {}
+  }
+
   // ─── Send ──────────────────────────────────────────────────────────────────────
   Future<void> sendCommand(String text) async {
     if (text.trim().isEmpty && _base64Image == null) return;
@@ -283,9 +311,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
         setState(() => messages.add({'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()}));
 
-        // ── Confirm before sending ──
         if (action != null && mounted) {
-          await _confirmAndSend(action);
+          await _handleAction(action);
         }
 
         if (audio != null && audio.isNotEmpty) {
@@ -307,6 +334,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
 
     _scrollToBottom();
+    _saveSession();
   }
 
   void _scrollToBottom() {
@@ -321,9 +349,42 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     });
   }
 
-  // ─── Confirm & Send ────────────────────────────────────────────────────────────
-  Future<void> _confirmAndSend(Map<String, dynamic> action) async {
-    final type    = action['type'] as String;
+  // ─── Handle Action ─────────────────────────────────────────────────────────────
+  Future<void> _handleAction(Map<String, dynamic> action) async {
+    final type = action['type'] as String;
+
+    // ── Music → open YouTube Music ──
+    if (type == 'music') {
+      final url = Uri.parse(action['url'] as String);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1C1C1C),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'פתוח ב-YouTube Music?',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            textDirection: TextDirection.rtl,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('לא', style: TextStyle(color: Color(0xFF6E6E6E))),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('פתח', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true && await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+      return;
+    }
+
+    // ── WhatsApp / Email ──
     final message = action['message'] as String;
     final isWA    = type == 'whatsapp';
     final label   = isWA ? 'WhatsApp' : 'מייל';
@@ -359,13 +420,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     if (confirmed != true) return;
 
     if (isWA) {
-      final phone  = action['phone'] as String;
-      final waUrl  = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
+      final phone = action['phone'] as String;
+      final waUrl = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
       if (await canLaunchUrl(waUrl)) {
         await launchUrl(waUrl, mode: LaunchMode.externalApplication);
       }
     } else {
-      // Send email via server
       try {
         final res = await http.post(
           Uri.parse('${_settings.serverUrl}/send-email'),
@@ -392,7 +452,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
-  // ─── Settings ──────────────────────────────────────────────────────────────────
+  // ─── Navigation ────────────────────────────────────────────────────────────────
   void _openSettings() {
     Navigator.push(
       context,
@@ -408,246 +468,297 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
+  void _openHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const HistoryScreen()),
+    );
+  }
+
   // ─── Build ─────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final bool isListening = _currentState == JarvisState.listening;
     final int itemCount    = messages.length + (_currentState == JarvisState.thinking ? 1 : 0);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            AnimatedBuilder(
-              animation: _orbBreath,
-              builder: (_, __) => Icon(
-                Icons.bolt,
-                color: Colors.white.withOpacity(0.55 + 0.45 * (_orbBreath.value - 0.93) / 0.14),
-                size: 20,
-              ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) async {
+        if (didPop) return;
+        final shouldExit = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            backgroundColor: const Color(0xFF1C1C1C),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text(
+              'יציאה?',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              textDirection: TextDirection.rtl,
             ),
-            const SizedBox(width: 8),
-            Text(
-              _settings.assistantName.toUpperCase(),
-              style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2, fontSize: 16),
+            content: const Text(
+              'לסגור את האפליקציה?',
+              style: TextStyle(color: Color(0xFF9E9E9E)),
+              textDirection: TextDirection.rtl,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('ביטול', style: TextStyle(color: Color(0xFF6E6E6E))),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('יציאה', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+        if (shouldExit == true) SystemNavigator.pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Row(
+            children: [
+              AnimatedBuilder(
+                animation: _orbBreath,
+                builder: (_, __) => Icon(
+                  Icons.bolt,
+                  color: Colors.white.withOpacity(0.55 + 0.45 * (_orbBreath.value - 0.93) / 0.14),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _settings.assistantName.toUpperCase(),
+                style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2, fontSize: 16),
+              ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.history, color: Color(0xFF9E9E9E)),
+              onPressed: _openHistory,
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings_outlined, color: Color(0xFF9E9E9E)),
+              onPressed: _openSettings,
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Color(0xFF9E9E9E)),
-            onPressed: _openSettings,
-          ),
-        ],
-      ),
 
-      body: Column(
-        children: [
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragEnd: (DragEndDetails details) {
+            if ((details.primaryVelocity ?? 0) > 500) _openHistory();
+          },
+          child: Column(
+            children: [
 
-          // ── Orb ────────────────────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: AnimatedBuilder(
-              animation: _orbBreath,
-              builder: (context, child) => Transform.scale(
-                scale: _currentState == JarvisState.idle ? _orbBreath.value : 1.0,
-                child: child,
-              ),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 500),
-                width:  _currentState == JarvisState.thinking ? 90 : 78,
-                height: _currentState == JarvisState.thinking ? 90 : 78,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: RadialGradient(colors: _getOrbColors()),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _getOrbColors()[0].withOpacity(0.5),
-                      blurRadius:   _currentState == JarvisState.listening ? 28 : 12,
-                      spreadRadius: _currentState == JarvisState.speaking  ? 8  : 2,
+              // ── Orb ────────────────────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: AnimatedBuilder(
+                  animation: _orbBreath,
+                  builder: (context, child) => Transform.scale(
+                    scale: _currentState == JarvisState.idle ? _orbBreath.value : 1.0,
+                    child: child,
+                  ),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 500),
+                    width:  _currentState == JarvisState.thinking ? 90 : 78,
+                    height: _currentState == JarvisState.thinking ? 90 : 78,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(colors: _getOrbColors()),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _getOrbColors()[0].withOpacity(0.5),
+                          blurRadius:   _currentState == JarvisState.listening ? 28 : 12,
+                          spreadRadius: _currentState == JarvisState.speaking  ? 8  : 2,
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
 
-          // ── Messages ────────────────────────────────────────────────────────────
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              itemCount: itemCount,
-              itemBuilder: (context, index) {
+              // ── Messages ────────────────────────────────────────────────────────────
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  itemCount: itemCount,
+                  itemBuilder: (context, index) {
 
-                // Thinking bubble
-                if (index == messages.length && _currentState == JarvisState.thinking) {
-                  return TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    duration: const Duration(milliseconds: 250),
-                    builder: (_, value, child) => Opacity(
-                      opacity: value,
-                      child: Transform.translate(offset: Offset(0, 10 * (1 - value)), child: child),
-                    ),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF1C1C1C),
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(14), topRight: Radius.circular(14),
-                            bottomLeft: Radius.circular(14), bottomRight: Radius.circular(0),
+                    // Thinking bubble
+                    if (index == messages.length && _currentState == JarvisState.thinking) {
+                      return TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: const Duration(milliseconds: 250),
+                        builder: (_, value, child) => Opacity(
+                          opacity: value,
+                          child: Transform.translate(offset: Offset(0, 10 * (1 - value)), child: child),
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF1C1C1C),
+                              borderRadius: BorderRadius.only(
+                                topLeft: Radius.circular(14), topRight: Radius.circular(14),
+                                bottomLeft: Radius.circular(14), bottomRight: Radius.circular(0),
+                              ),
+                            ),
+                            child: const _TypingDots(),
                           ),
                         ),
-                        child: const _TypingDots(),
-                      ),
-                    ),
-                  );
-                }
+                      );
+                    }
 
-                // Message bubble with entrance animation
-                final msg    = messages[index];
-                final isUser = msg['sender'] == 'user';
+                    // Message bubble with entrance animation
+                    final msg    = messages[index];
+                    final isUser = msg['sender'] == 'user';
 
-                return TweenAnimationBuilder<double>(
-                  key: ValueKey(index),
-                  tween: Tween(begin: 0.0, end: 1.0),
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.easeOut,
-                  builder: (context, value, child) => Opacity(
-                    opacity: value,
-                    child: Transform.translate(
-                      offset: Offset(0, 16 * (1 - value)),
-                      child: child,
-                    ),
-                  ),
-                  child: Align(
-                    alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-                      decoration: BoxDecoration(
-                        color: isUser ? const Color(0xFF2A2A2A) : const Color(0xFF1C1C1C),
-                        borderRadius: BorderRadius.only(
-                          topLeft:     const Radius.circular(14),
-                          topRight:    const Radius.circular(14),
-                          bottomLeft:  Radius.circular(isUser ? 0 : 14),
-                          bottomRight: Radius.circular(isUser ? 14 : 0),
+                    return TweenAnimationBuilder<double>(
+                      key: ValueKey(index),
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: const Duration(milliseconds: 350),
+                      curve: Curves.easeOut,
+                      builder: (context, value, child) => Opacity(
+                        opacity: value,
+                        child: Transform.translate(
+                          offset: Offset(0, 16 * (1 - value)),
+                          child: child,
                         ),
-                        border: isUser ? null : Border.all(color: const Color(0xFF2A2A2A), width: 0.5),
                       ),
-                      child: Column(
-                        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            msg['text']!,
-                            style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.4),
-                            textDirection: TextDirection.rtl,
+                      child: Align(
+                        alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+                          decoration: BoxDecoration(
+                            color: isUser ? const Color(0xFF2A2A2A) : const Color(0xFF1C1C1C),
+                            borderRadius: BorderRadius.only(
+                              topLeft:     const Radius.circular(14),
+                              topRight:    const Radius.circular(14),
+                              bottomLeft:  Radius.circular(isUser ? 0 : 14),
+                              bottomRight: Radius.circular(isUser ? 14 : 0),
+                            ),
+                            border: isUser ? null : Border.all(color: const Color(0xFF2A2A2A), width: 0.5),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            msg['time'] ?? '',
-                            style: const TextStyle(fontSize: 10, color: Color(0xFF555555)),
+                          child: Column(
+                            crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                msg['text']!,
+                                style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.4),
+                                textDirection: TextDirection.rtl,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                msg['time'] ?? '',
+                                style: const TextStyle(fontSize: 10, color: Color(0xFF555555)),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // ── Listening text ──────────────────────────────────────────────────────
-          if (isListening)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Text(
-                _listeningText,
-                style: const TextStyle(color: Color(0xFF9E9E9E), fontStyle: FontStyle.italic, fontSize: 13),
+                    );
+                  },
+                ),
               ),
-            ),
 
-          // ── Image preview ───────────────────────────────────────────────────────
-          if (_selectedImage != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Stack(
-                  alignment: Alignment.topRight,
+              // ── Listening text ──────────────────────────────────────────────────────
+              if (isListening)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: Text(
+                    _listeningText,
+                    style: const TextStyle(color: Color(0xFF9E9E9E), fontStyle: FontStyle.italic, fontSize: 13),
+                  ),
+                ),
+
+              // ── Image preview ───────────────────────────────────────────────────────
+              if (_selectedImage != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Stack(
+                      alignment: Alignment.topRight,
+                      children: [
+                        Container(
+                          height: 75, width: 75,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            image: DecorationImage(image: FileImage(_selectedImage!), fit: BoxFit.cover),
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => setState(() { _selectedImage = null; _base64Image = null; }),
+                          child: Container(
+                            decoration: const BoxDecoration(color: Color(0xAA000000), shape: BoxShape.circle),
+                            child: const Icon(Icons.close, color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // ── Input bar ───────────────────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1C1C1C),
+                  border: Border(top: BorderSide(color: Color(0xFF2A2A2A), width: 0.5)),
+                ),
+                child: Row(
                   children: [
-                    Container(
-                      height: 75, width: 75,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        image: DecorationImage(image: FileImage(_selectedImage!), fit: BoxFit.cover),
+                    IconButton(
+                      icon: const Icon(Icons.image_outlined, size: 22),
+                      color: const Color(0xFF6E6E6E),
+                      onPressed: _pickImage,
+                    ),
+                    IconButton(
+                      icon: Icon(isListening ? Icons.mic : Icons.mic_none, size: 22),
+                      color: isListening ? Colors.white : const Color(0xFF6E6E6E),
+                      onPressed: _listen,
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        textDirection: TextDirection.rtl,
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        decoration: const InputDecoration(
+                          hintText: 'הקלד הודעה...',
+                          hintStyle: TextStyle(color: Color(0xFF444444)),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        onSubmitted: sendCommand,
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => setState(() { _selectedImage = null; _base64Image = null; }),
+                      onTap: () => sendCommand(_controller.text),
                       child: Container(
-                        decoration: const BoxDecoration(color: Color(0xAA000000), shape: BoxShape.circle),
-                        child: const Icon(Icons.close, color: Colors.white, size: 18),
+                        width: 38, height: 38,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF3A3A3A),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
                       ),
                     ),
+                    const SizedBox(width: 4),
                   ],
                 ),
               ),
-            ),
-
-          // ── Input bar ───────────────────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1C1C1C),
-              border: Border(top: BorderSide(color: Color(0xFF2A2A2A), width: 0.5)),
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.image_outlined, size: 22),
-                  color: const Color(0xFF6E6E6E),
-                  onPressed: _pickImage,
-                ),
-                IconButton(
-                  icon: Icon(isListening ? Icons.mic : Icons.mic_none, size: 22),
-                  color: isListening ? Colors.white : const Color(0xFF6E6E6E),
-                  onPressed: _listen,
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    textDirection: TextDirection.rtl,
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
-                    decoration: const InputDecoration(
-                      hintText: 'הקלד הודעה...',
-                      hintStyle: TextStyle(color: Color(0xFF444444)),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12),
-                    ),
-                    onSubmitted: sendCommand,
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => sendCommand(_controller.text),
-                  child: Container(
-                    width: 38, height: 38,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF3A3A3A),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
-                  ),
-                ),
-                const SizedBox(width: 4),
-              ],
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

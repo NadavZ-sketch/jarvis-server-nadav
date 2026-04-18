@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'app_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -119,6 +120,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
+  Future<void> _openProgressMap() async {
+    final uri = Uri.parse('${_s.serverUrl}/progress-map');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('לא ניתן לפתוח את מפת ההתקדמות')),
+        );
+      }
+    }
+  }
+
   // ─── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -129,11 +141,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: const Color(0xFF1C1C1C),
         elevation: 0,
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           'הגדרות',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           TextButton(
             onPressed: _save,
@@ -230,6 +245,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 inactiveThumbColor: const Color(0xFF5A5A5A),
                 inactiveTrackColor: const Color(0xFF2A2A2A),
                 onChanged: (val) => setState(() => _s.useLocalModel = val),
+              ),
+            ]),
+
+            // ── פרויקט ─────────────────────────────────────────────────────
+            _sectionHeader('פרויקט'),
+            _card([
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                title: const Text('מפת התקדמות', style: TextStyle(color: Colors.white, fontSize: 15)),
+                subtitle: const Text('יכולות, הערות ודיאגרמת זרימה', style: TextStyle(color: Color(0xFF6E6E6E), fontSize: 12)),
+                trailing: const Icon(Icons.open_in_new_rounded, color: Color(0xFF6E6E6E), size: 18),
+                onTap: _openProgressMap,
               ),
             ]),
 

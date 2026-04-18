@@ -37,7 +37,7 @@ function parseTime(msg) {
     }
 
     // בעוד X שעות / בעוד שעה
-    const hoursMatch = msg.match(/בעוד\s+(\d+)?\s*שעות?/);
+    const hoursMatch = msg.match(/בעוד\s+(\d+)?\s*(?:שעות?|שעה)/);
     if (hoursMatch) {
         const d = new Date(now);
         d.setHours(d.getHours() + parseInt(hoursMatch[1] || '1'));
@@ -112,7 +112,7 @@ async function listReminders(supabase) {
 async function deleteReminder(userMessage, supabase) {
     const textToDelete = userMessage
         .replace(/מחק תזכורת|הסר תזכורת|בטל תזכורת/g, '')
-        .replace(/\b(על|את)\b/g, '')
+        .replace(/(?<!\S)(על|את)(?!\S)/g, '')
         .trim();
 
     if (!textToDelete) {
@@ -166,4 +166,4 @@ async function runReminderAgent(userMessage, supabase) {
     }
 }
 
-module.exports = { runReminderAgent };
+module.exports = { runReminderAgent, parseTime, extractReminderText, toISO, nowJerusalem };

@@ -4,7 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:coverage": "jest --coverage"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/tests/**/*.test.js"],
+    "collectCoverageFrom": ["server.js", "agents/**/*.js"]
   },
   "repository": {
     "type": "git",
@@ -18,6 +24,10 @@
     "url": "https://github.com/NadavZ-sketch/myassistant-backend/issues"
   },
   "homepage": "https://github.com/NadavZ-sketch/myassistant-backend#readme",
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  },
   "dependencies": {
     "@huggingface/inference": "^4.13.15",
     "@pinecone-database/pinecone": "^7.1.0",

@@ -38,6 +38,12 @@ const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent }     = require('./agents/insightAgent');
+const { runWeatherAgent }     = require('./agents/weatherAgent');
+const { runNewsAgent }        = require('./agents/newsAgent');
+const { runShoppingAgent }    = require('./agents/shoppingAgent');
+const { runNotesAgent }       = require('./agents/notesAgent');
+const { runStocksAgent }      = require('./agents/stocksAgent');
+const { runTranslationAgent } = require('./agents/translationAgent');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -46,7 +52,7 @@ const app = express();
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
     origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
@@ -200,7 +206,7 @@ app.post('/ask-jarvis', async (req, res) => {
 
         // Follow-up override: if the user is continuing a previous conversation,
         // route to chat even if keywords matched a specialized agent
-        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'task', 'insight', 'security', 'factory'];
+        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'task', 'insight', 'security', 'factory'];
         if (CONTEXT_OVERRIDE_AGENTS.includes(agentName)) {
             const tempHistory = await loadChatHistory(); // uses TTL cache — cheap
             if (detectFollowUp(userMessage, tempHistory)) {
@@ -232,6 +238,18 @@ app.post('/ask-jarvis', async (req, res) => {
         } else if (agentName === 'memory') {
             result = await runMemoryAgent(userMessage, supabase, useLocal, settings);
             cacheInvalidate('memories'); // memory changed — bust cache
+        } else if (agentName === 'weather') {
+            result = await runWeatherAgent(userMessage);
+        } else if (agentName === 'news') {
+            result = await runNewsAgent(userMessage);
+        } else if (agentName === 'shopping') {
+            result = await runShoppingAgent(userMessage, supabase, useLocal);
+        } else if (agentName === 'notes') {
+            result = await runNotesAgent(userMessage, supabase, useLocal);
+        } else if (agentName === 'stocks') {
+            result = await runStocksAgent(userMessage);
+        } else if (agentName === 'translate') {
+            result = await runTranslationAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
         } else if (agentName === 'messaging') {
@@ -317,6 +335,325 @@ app.get('/check-reminders', async (_req, res) => {
     } catch (err) {
         console.error('check-reminders error:', err.message);
         res.json({ reminders: [] });
+    }
+});
+
+// ─── Tasks REST ───────────────────────────────────────────────────────────────
+
+app.get('/tasks', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json({ tasks: data || [] });
+    } catch (err) {
+        console.error('GET /tasks error:', err.message);
+        res.status(500).json({ tasks: [] });
+    }
+});
+
+app.delete('/tasks/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /tasks/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Reminders REST ───────────────────────────────────────────────────────────
+
+app.get('/reminders', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('reminders')
+            .select('id, text, scheduled_time, fired')
+            .eq('fired', false)
+            .order('scheduled_time', { ascending: true });
+        if (error) throw error;
+        res.json({ reminders: data || [] });
+    } catch (err) {
+        console.error('GET /reminders error:', err.message);
+        res.status(500).json({ reminders: [] });
+    }
+});
+
+app.delete('/reminders/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('reminders').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /reminders/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Contacts REST ────────────────────────────────────────────────────────────
+
+app.get('/contacts', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('contacts')
+            .select('*')
+            .order('name', { ascending: true });
+        if (error) throw error;
+        res.json({ contacts: data || [] });
+    } catch (err) {
+        console.error('GET /contacts error:', err.message);
+        res.status(500).json({ contacts: [] });
+    }
+});
+
+app.delete('/contacts/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('contacts').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /contacts/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── PUT /tasks/:id — update task (done, due_date, content) ──────────────────
+app.put('/tasks/:id', async (req, res) => {
+    try {
+        const { done, due_date, content } = req.body;
+        const updates = {};
+        if (done      !== undefined) updates.done     = done;
+        if (due_date  !== undefined) updates.due_date = due_date;
+        if (content   !== undefined) updates.content  = content;
+        if (Object.keys(updates).length === 0)
+            return res.status(400).json({ error: 'no fields to update' });
+        const { data, error } = await supabase
+            .from('tasks').update(updates).eq('id', req.params.id).select().single();
+        if (error) throw error;
+        res.json({ task: data });
+    } catch (err) {
+        console.error('PUT /tasks/:id error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── PUT /notes/:id — update note ─────────────────────────────────────────────
+app.put('/notes/:id', async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        const updates = {};
+        if (title   !== undefined) updates.title   = title;
+        if (content !== undefined) updates.content = content;
+        if (Object.keys(updates).length === 0)
+            return res.status(400).json({ error: 'no fields to update' });
+        const { data, error } = await supabase
+            .from('notes').update(updates).eq('id', req.params.id).select().single();
+        if (error) throw error;
+        res.json({ note: data });
+    } catch (err) {
+        console.error('PUT /notes/:id error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── POST /tasks — add task from app ──────────────────────────────────────────
+app.post('/tasks', async (req, res) => {
+    try {
+        const { content } = req.body;
+        if (!content) return res.status(400).json({ error: 'content required' });
+        const { data, error } = await supabase.from('tasks').insert([{ content }]).select().single();
+        if (error) throw error;
+        res.json({ task: data });
+    } catch (err) {
+        console.error('POST /tasks error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── POST /reminders — add reminder from app ──────────────────────────────────
+app.post('/reminders', async (req, res) => {
+    try {
+        const { text, scheduled_time } = req.body;
+        if (!text || !scheduled_time) return res.status(400).json({ error: 'text and scheduled_time required' });
+        const { data, error } = await supabase
+            .from('reminders')
+            .insert([{ text, scheduled_time, fired: false }])
+            .select().single();
+        if (error) throw error;
+        res.json({ reminder: data });
+    } catch (err) {
+        console.error('POST /reminders error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Shopping ─────────────────────────────────────────────────────────────────
+app.get('/shopping', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('shopping_items')
+            .select('*')
+            .eq('done', false)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        res.json({ items: data || [] });
+    } catch (err) {
+        console.error('GET /shopping error:', err.message);
+        res.status(500).json({ items: [] });
+    }
+});
+
+app.post('/shopping', async (req, res) => {
+    try {
+        const { item } = req.body;
+        if (!item) return res.status(400).json({ error: 'item required' });
+        const { data, error } = await supabase
+            .from('shopping_items')
+            .insert([{ item }])
+            .select().single();
+        if (error) throw error;
+        res.json({ item: data });
+    } catch (err) {
+        console.error('POST /shopping error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/shopping/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('shopping_items').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /shopping:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Notes ────────────────────────────────────────────────────────────────────
+app.get('/notes', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('notes')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json({ notes: data || [] });
+    } catch (err) {
+        console.error('GET /notes error:', err.message);
+        res.status(500).json({ notes: [] });
+    }
+});
+
+app.post('/notes', async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        if (!content) return res.status(400).json({ error: 'content required' });
+        const { data, error } = await supabase
+            .from('notes')
+            .insert([{ title: title || '', content }])
+            .select().single();
+        if (error) throw error;
+        res.json({ note: data });
+    } catch (err) {
+        console.error('POST /notes error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/notes/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('notes').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /notes:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Streaming endpoint (SSE) ─────────────────────────────────────────────────
+
+const { callGemma4Stream } = require('./agents/models');
+
+app.post('/stream-jarvis', async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+    try {
+        const userMessage = req.body.command || '';
+        const settings    = req.body.settings || {};
+        const useLocal    = settings.useLocalModel === true;
+
+        if (userMessage.length > 5000) {
+            send({ error: 'ההודעה ארוכה מדי.' });
+            return res.end();
+        }
+
+        const agentName = await classifyIntent(userMessage);
+
+        // Only chat/draft agents support streaming — others fall back to regular
+        if (!['chat', 'draft'].includes(agentName)) {
+            let result;
+            if (agentName === 'weather')   result = await runWeatherAgent(userMessage);
+            else if (agentName === 'news') result = await runNewsAgent(userMessage);
+            else if (agentName === 'stocks') result = await runStocksAgent(userMessage);
+            else if (agentName === 'translate') result = await runTranslationAgent(userMessage, supabase, useLocal);
+            else {
+                const [chatHistory, longTermMemories] = await Promise.all([
+                    loadChatHistory(), fetchLongTermMemories()
+                ]);
+                result = await runChatAgent(userMessage, null, chatHistory, longTermMemories, settings);
+            }
+            const answer = result.answer || '';
+            send({ chunk: answer, done: true });
+            await Promise.all([
+                saveChatMessage('user', userMessage),
+                saveChatMessage('jarvis', answer),
+            ]);
+            return res.end();
+        }
+
+        // Chat streaming via Groq
+        const [chatHistory, longTermMemories] = await Promise.all([
+            loadChatHistory(), fetchLongTermMemories()
+        ]);
+
+        const systemPrompt = `אתה ג'רביס, עוזר אישי חכם שמדבר עברית. ענה תמיד בעברית טבעית ויעילה.
+זיכרונות ארוכי טווח:
+${longTermMemories}`;
+
+        const msgs = [
+            { role: 'system', content: systemPrompt },
+            ...chatHistory.map(m => ({ role: m.role === 'jarvis' ? 'assistant' : 'user', content: m.text })),
+            { role: 'user', content: userMessage },
+        ];
+
+        let fullAnswer = '';
+        await callGemma4Stream(msgs, useLocal, (chunk) => {
+            fullAnswer += chunk;
+            send({ chunk });
+        });
+
+        send({ done: true });
+
+        await Promise.all([
+            saveChatMessage('user', userMessage),
+            saveChatMessage('jarvis', fullAnswer),
+        ]);
+        cacheInvalidate('chatHistory');
+    } catch (err) {
+        console.error('SSE error:', err.message);
+        send({ error: 'שגיאת מערכת.' });
+    } finally {
+        res.end();
     }
 });
 

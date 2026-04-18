@@ -2,9 +2,13 @@ require('dotenv').config();
 const { callGemma4 } = require('./models');
 
 async function findContact(name, supabase) {
-    const { data } = await supabase.from('contacts').select('*');
-    if (!data || data.length === 0) return null;
     const nameLower = name.trim().toLowerCase();
+    // Use .ilike() directly — safer than .or() string interpolation
+    const { data } = await supabase
+        .from('contacts')
+        .select('*')
+        .ilike('name', `%${nameLower}%`);
+    if (!data || data.length === 0) return null;
     return data.find(c =>
         c.name.toLowerCase().includes(nameLower) ||
         (c.aliases && c.aliases.some(a => a.toLowerCase().includes(nameLower)))
@@ -82,6 +86,9 @@ Message: "${userMessage}"`;
         let action = null;
         if (channel === 'whatsapp' && contact.phone) {
             const digits = contact.phone.replace(/[\s\-\(\)\+]/g, '');
+            if (digits.length < 8) {
+                return { answer: `מספר הטלפון של ${contact.name} לא תקין (${contact.phone}). עדכן: "שמור ${contact.name} — [מספר]"`, action: null };
+            }
             const intlPhone = digits.startsWith('0') ? '972' + digits.slice(1) : digits;
             action = { type: 'whatsapp', phone: intlPhone, message: draftedMessage };
         } else if (channel === 'email' && contact.email) {

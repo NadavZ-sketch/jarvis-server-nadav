@@ -4,6 +4,8 @@ const cors       = require('cors');
 const path       = require('path');
 const cron       = require('node-cron');
 const nodemailer = require('nodemailer');
+const fs         = require('fs');
+const path       = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const googleTTS  = require('google-tts-api');
 
@@ -26,39 +28,82 @@ async function sendEmail(to, body) {
     console.log(`📧 Email sent to ${to}`);
 }
 
-const { classifyIntent }   = require('./agents/router');
-const { runTaskAgent }     = require('./agents/taskAgent');
-const { runReminderAgent } = require('./agents/reminderAgent');
-const { runMemoryAgent }   = require('./agents/memoryAgent');
-const { runChatAgent }     = require('./agents/chatAgent');
-const { runSportsAgent }     = require('./agents/sportsAgent');
-const { runMusicAgent }      = require('./agents/musicAgent');
-const { runMessagingAgent }  = require('./agents/messagingAgent');
-const { runDraftAgent }      = require('./agents/draftAgent');
+const { classifyIntent }      = require('./agents/router');
+const { runTaskAgent }        = require('./agents/taskAgent');
+const { runReminderAgent }    = require('./agents/reminderAgent');
+const { runMemoryAgent }      = require('./agents/memoryAgent');
+const { runChatAgent, detectFollowUp } = require('./agents/chatAgent');
+const { runSportsAgent }      = require('./agents/sportsAgent');
+const { runMessagingAgent }   = require('./agents/messagingAgent');
+const { runDraftAgent }       = require('./agents/draftAgent');
+const { runSecurityAgent }    = require('./agents/securityAgent');
+const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
+const { runInsightAgent }     = require('./agents/insightAgent');
+const { runWeatherAgent }     = require('./agents/weatherAgent');
+const { runNewsAgent }        = require('./agents/newsAgent');
+const { runShoppingAgent }    = require('./agents/shoppingAgent');
+const { runNotesAgent }       = require('./agents/notesAgent');
+const { runStocksAgent }      = require('./agents/stocksAgent');
+const { runTranslationAgent } = require('./agents/translationAgent');
+
+const helmet    = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+app.use(express.json({ limit: '10mb' }));
+app.use('/ask-jarvis', rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false }));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
+// ─── In-memory TTL Cache ──────────────────────────────────────────────────────
+
+const _cache = new Map(); // key → { value, expiresAt }
+
+function cacheGet(key) {
+    const entry = _cache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) { _cache.delete(key); return undefined; }
+    return entry.value;
+}
+
+function cacheSet(key, value, ttlMs) {
+    _cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
+function cacheInvalidate(key) { _cache.delete(key); }
+
+const TTL_MEMORIES     = 5  * 60 * 1000; // 5 min
+const TTL_CHAT_HISTORY = 30 * 1000;       // 30 sec
 
 // ─── Chat History ─────────────────────────────────────────────────────────────
 
 let chatMemoryFallback = [];
 
 async function loadChatHistory() {
+    const cached = cacheGet('chatHistory');
+    if (cached) return cached;
+
     try {
         const { data, error } = await supabase
             .from('chat_history')
             .select('role, text')
             .order('created_at', { ascending: false })
-            .limit(10);
+            .limit(20);
 
         if (error) throw error;
-        return (data || []).reverse();
+        const result = (data || []).reverse();
+        cacheSet('chatHistory', result, TTL_CHAT_HISTORY);
+        return result;
     } catch (err) {
         console.error('⚠️ loadChatHistory fallback:', err.message);
-        return chatMemoryFallback.slice(-10);
+        return chatMemoryFallback.slice(-20);
     }
 }
 
@@ -70,15 +115,21 @@ async function saveChatMessage(role, text) {
         console.error('⚠️ saveChatMessage fallback:', err.message);
     }
     chatMemoryFallback.push({ role, text });
-    if (chatMemoryFallback.length > 10) chatMemoryFallback = chatMemoryFallback.slice(-10);
+    if (chatMemoryFallback.length > 20) chatMemoryFallback = chatMemoryFallback.slice(-20);
 }
 
 // ─── Memories ─────────────────────────────────────────────────────────────────
 
 async function fetchLongTermMemories() {
+    const cached = cacheGet('memories');
+    if (cached) return cached;
+
     const { data } = await supabase.from('memories').select('content');
-    if (!data || data.length === 0) return 'אין עדיין זיכרונות שמורים.';
-    return data.map(m => `- ${m.content}`).join('\n');
+    const result = (!data || data.length === 0)
+        ? 'אין עדיין זיכרונות שמורים.'
+        : data.map(m => `- ${m.content}`).join('\n');
+    cacheSet('memories', result, TTL_MEMORIES);
+    return result;
 }
 
 // ─── TTS ──────────────────────────────────────────────────────────────────────
@@ -99,6 +150,41 @@ async function generateSpeech(text) {
     }
 }
 
+// ─── Custom Agent Loader ──────────────────────────────────────────────────────
+
+const CUSTOM_REGISTRY = path.join(__dirname, 'agents', 'custom', 'registry.json');
+
+async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settings) {
+    try {
+        const registry = JSON.parse(fs.readFileSync(CUSTOM_REGISTRY, 'utf8'));
+        const entry = registry.find(r => r.name === agentName);
+        if (!entry) return null;
+
+        const agentPath = entry.filePath;
+        // Clear require cache so hot-reload works after factory creates/updates an agent
+        delete require.cache[require.resolve(agentPath)];
+        const mod = require(agentPath);
+
+        const fnName = `run${agentName.charAt(0).toUpperCase() + agentName.slice(1)}`;
+        if (typeof mod[fnName] !== 'function') {
+            console.warn(`⚠️ Custom agent "${agentName}" missing export "${fnName}"`);
+            return null;
+        }
+
+        console.log(`🤖 Custom agent: ${agentName}`);
+        return await mod[fnName](userMessage, supabase, useLocal, settings);
+    } catch (err) {
+        console.error(`Custom agent "${agentName}" error:`, err.message);
+        return null;
+    }
+}
+
+// ─── Health check (for local connectivity testing) ───────────────────────────
+
+app.get('/health', (req, res) => {
+    res.json({ ok: true, version: 'multi-agent-v3', ts: Date.now() });
+});
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 app.post('/ask-jarvis', async (req, res) => {
@@ -106,19 +192,45 @@ app.post('/ask-jarvis', async (req, res) => {
         const userMessage = req.body.command || '';
         const imageBase64 = req.body.image;
 
+        if (userMessage.length > 5000) {
+            return res.status(400).json({ answer: 'ההודעה ארוכה מדי. נסה בקצר יותר.' });
+        }
+
         console.log(`\n--- Incoming: "${userMessage.slice(0, 60)}" | Image: ${!!imageBase64} ---`);
-        const startTime = Date.now();
+        const t0 = Date.now();
 
         const settings  = req.body.settings || {};
         const useLocal  = settings.useLocalModel === true;
-        const agentName = imageBase64 ? 'chat' : await classifyIntent(userMessage);
-        console.log(`🎯 Dispatching to: ${agentName}`);
 
-        const [chatHistory, longTermMemories] = await Promise.all([
-            loadChatHistory(),
-            fetchLongTermMemories()
-        ]);
+        // ── Routing ───────────────────────────────────────────────────────────
+        let agentName = imageBase64 ? 'chat' : await classifyIntent(userMessage);
 
+        // Follow-up override: if the user is continuing a previous conversation,
+        // route to chat even if keywords matched a specialized agent
+        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'task', 'insight', 'security', 'factory'];
+        if (CONTEXT_OVERRIDE_AGENTS.includes(agentName)) {
+            const tempHistory = await loadChatHistory(); // uses TTL cache — cheap
+            if (detectFollowUp(userMessage, tempHistory)) {
+                console.log(`🔄 Follow-up override: "${agentName}" → "chat"`);
+                agentName = 'chat';
+            }
+        }
+
+        console.log(`🎯 Dispatching to: ${agentName} (+${Date.now() - t0}ms)`);
+        const tRoute = Date.now();
+
+        // ── Lazy DB load: only chat/draft need history + memories ─────────────
+        const needsHistory = ['chat', 'draft'].includes(agentName);
+        let chatHistory = [], longTermMemories = '';
+        if (needsHistory) {
+            [chatHistory, longTermMemories] = await Promise.all([
+                loadChatHistory(),
+                fetchLongTermMemories()
+            ]);
+        }
+        const tDb = Date.now();
+
+        // ── Dispatch ──────────────────────────────────────────────────────────
         let result;
         if (agentName === 'task') {
             result = await runTaskAgent(userMessage, supabase, useLocal);
@@ -126,29 +238,60 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runReminderAgent(userMessage, supabase);
         } else if (agentName === 'memory') {
             result = await runMemoryAgent(userMessage, supabase, useLocal, settings);
+            cacheInvalidate('memories'); // memory changed — bust cache
+        } else if (agentName === 'weather') {
+            result = await runWeatherAgent(userMessage);
+        } else if (agentName === 'news') {
+            result = await runNewsAgent(userMessage);
+        } else if (agentName === 'shopping') {
+            result = await runShoppingAgent(userMessage, supabase, useLocal);
+        } else if (agentName === 'notes') {
+            result = await runNotesAgent(userMessage, supabase, useLocal);
+        } else if (agentName === 'stocks') {
+            result = await runStocksAgent(userMessage);
+        } else if (agentName === 'translate') {
+            result = await runTranslationAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
-        } else if (agentName === 'music') {
-            result = await runMusicAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'messaging') {
             result = await runMessagingAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'draft') {
             result = await runDraftAgent(userMessage, chatHistory, longTermMemories, settings);
+        } else if (agentName === 'insight') {
+            result = await runInsightAgent(userMessage, supabase, useLocal, settings);
+        } else if (agentName === 'security') {
+            result = await runSecurityAgent(userMessage, useLocal, sendEmail);
+        } else if (agentName === 'factory') {
+            result = await runAgentFactoryAgent(userMessage, supabase, useLocal);
         } else {
-            result = await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
+            // Try a dynamically-created custom agent, fall back to chat
+            result = await tryCustomAgent(agentName, userMessage, supabase, useLocal, settings)
+                  || await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
         }
+        const tAgent = Date.now();
 
         let answer = result.answer || 'לא הצלחתי לגבש תשובה.';
-        console.log(`⏱️ ${(Date.now() - startTime) / 1000}s | Agent: ${agentName}`);
-
         const action = result.action || null;
 
-        await Promise.all([
+        // ── Parallel: save history + TTS ──────────────────────────────────────
+        const ttsEnabled = settings.ttsEnabled !== false;
+        const [,, audioBase64] = await Promise.all([
             saveChatMessage('user', userMessage),
-            saveChatMessage('jarvis', answer)
+            saveChatMessage('jarvis', answer),
+            ttsEnabled ? generateSpeech(answer) : Promise.resolve(null),
         ]);
+        cacheInvalidate('chatHistory'); // history just updated
+        const tDone = Date.now();
 
-        const audioBase64 = await generateSpeech(answer);
+        console.log(
+            `⏱️ total=${tDone - t0}ms` +
+            ` | route=${tRoute - t0}ms` +
+            (needsHistory ? ` | db=${tDb - tRoute}ms` : ' | db=skipped') +
+            ` | agent=${tAgent - tDb}ms` +
+            ` | save+tts=${tDone - tAgent}ms` +
+            ` | agent=${agentName}`
+        );
+
         // For WhatsApp — pass action to Flutter to open deep link
         res.json({ answer, audio: audioBase64, action });
 
@@ -196,6 +339,325 @@ app.get('/check-reminders', async (_req, res) => {
     }
 });
 
+// ─── Tasks REST ───────────────────────────────────────────────────────────────
+
+app.get('/tasks', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json({ tasks: data || [] });
+    } catch (err) {
+        console.error('GET /tasks error:', err.message);
+        res.status(500).json({ tasks: [] });
+    }
+});
+
+app.delete('/tasks/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /tasks/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Reminders REST ───────────────────────────────────────────────────────────
+
+app.get('/reminders', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('reminders')
+            .select('id, text, scheduled_time, fired')
+            .eq('fired', false)
+            .order('scheduled_time', { ascending: true });
+        if (error) throw error;
+        res.json({ reminders: data || [] });
+    } catch (err) {
+        console.error('GET /reminders error:', err.message);
+        res.status(500).json({ reminders: [] });
+    }
+});
+
+app.delete('/reminders/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('reminders').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /reminders/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Contacts REST ────────────────────────────────────────────────────────────
+
+app.get('/contacts', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('contacts')
+            .select('*')
+            .order('name', { ascending: true });
+        if (error) throw error;
+        res.json({ contacts: data || [] });
+    } catch (err) {
+        console.error('GET /contacts error:', err.message);
+        res.status(500).json({ contacts: [] });
+    }
+});
+
+app.delete('/contacts/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('contacts').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /contacts/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── PUT /tasks/:id — update task (done, due_date, content) ──────────────────
+app.put('/tasks/:id', async (req, res) => {
+    try {
+        const { done, due_date, content } = req.body;
+        const updates = {};
+        if (done      !== undefined) updates.done     = done;
+        if (due_date  !== undefined) updates.due_date = due_date;
+        if (content   !== undefined) updates.content  = content;
+        if (Object.keys(updates).length === 0)
+            return res.status(400).json({ error: 'no fields to update' });
+        const { data, error } = await supabase
+            .from('tasks').update(updates).eq('id', req.params.id).select().single();
+        if (error) throw error;
+        res.json({ task: data });
+    } catch (err) {
+        console.error('PUT /tasks/:id error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── PUT /notes/:id — update note ─────────────────────────────────────────────
+app.put('/notes/:id', async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        const updates = {};
+        if (title   !== undefined) updates.title   = title;
+        if (content !== undefined) updates.content = content;
+        if (Object.keys(updates).length === 0)
+            return res.status(400).json({ error: 'no fields to update' });
+        const { data, error } = await supabase
+            .from('notes').update(updates).eq('id', req.params.id).select().single();
+        if (error) throw error;
+        res.json({ note: data });
+    } catch (err) {
+        console.error('PUT /notes/:id error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── POST /tasks — add task from app ──────────────────────────────────────────
+app.post('/tasks', async (req, res) => {
+    try {
+        const { content } = req.body;
+        if (!content) return res.status(400).json({ error: 'content required' });
+        const { data, error } = await supabase.from('tasks').insert([{ content }]).select().single();
+        if (error) throw error;
+        res.json({ task: data });
+    } catch (err) {
+        console.error('POST /tasks error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── POST /reminders — add reminder from app ──────────────────────────────────
+app.post('/reminders', async (req, res) => {
+    try {
+        const { text, scheduled_time } = req.body;
+        if (!text || !scheduled_time) return res.status(400).json({ error: 'text and scheduled_time required' });
+        const { data, error } = await supabase
+            .from('reminders')
+            .insert([{ text, scheduled_time, fired: false }])
+            .select().single();
+        if (error) throw error;
+        res.json({ reminder: data });
+    } catch (err) {
+        console.error('POST /reminders error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Shopping ─────────────────────────────────────────────────────────────────
+app.get('/shopping', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('shopping_items')
+            .select('*')
+            .eq('done', false)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        res.json({ items: data || [] });
+    } catch (err) {
+        console.error('GET /shopping error:', err.message);
+        res.status(500).json({ items: [] });
+    }
+});
+
+app.post('/shopping', async (req, res) => {
+    try {
+        const { item } = req.body;
+        if (!item) return res.status(400).json({ error: 'item required' });
+        const { data, error } = await supabase
+            .from('shopping_items')
+            .insert([{ item }])
+            .select().single();
+        if (error) throw error;
+        res.json({ item: data });
+    } catch (err) {
+        console.error('POST /shopping error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/shopping/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('shopping_items').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /shopping:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Notes ────────────────────────────────────────────────────────────────────
+app.get('/notes', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('notes')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json({ notes: data || [] });
+    } catch (err) {
+        console.error('GET /notes error:', err.message);
+        res.status(500).json({ notes: [] });
+    }
+});
+
+app.post('/notes', async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        if (!content) return res.status(400).json({ error: 'content required' });
+        const { data, error } = await supabase
+            .from('notes')
+            .insert([{ title: title || '', content }])
+            .select().single();
+        if (error) throw error;
+        res.json({ note: data });
+    } catch (err) {
+        console.error('POST /notes error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/notes/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('notes').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /notes:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── Streaming endpoint (SSE) ─────────────────────────────────────────────────
+
+const { callGemma4Stream } = require('./agents/models');
+
+app.post('/stream-jarvis', async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+    try {
+        const userMessage = req.body.command || '';
+        const settings    = req.body.settings || {};
+        const useLocal    = settings.useLocalModel === true;
+
+        if (userMessage.length > 5000) {
+            send({ error: 'ההודעה ארוכה מדי.' });
+            return res.end();
+        }
+
+        const agentName = await classifyIntent(userMessage);
+
+        // Only chat/draft agents support streaming — others fall back to regular
+        if (!['chat', 'draft'].includes(agentName)) {
+            let result;
+            if (agentName === 'weather')   result = await runWeatherAgent(userMessage);
+            else if (agentName === 'news') result = await runNewsAgent(userMessage);
+            else if (agentName === 'stocks') result = await runStocksAgent(userMessage);
+            else if (agentName === 'translate') result = await runTranslationAgent(userMessage, supabase, useLocal);
+            else {
+                const [chatHistory, longTermMemories] = await Promise.all([
+                    loadChatHistory(), fetchLongTermMemories()
+                ]);
+                result = await runChatAgent(userMessage, null, chatHistory, longTermMemories, settings);
+            }
+            const answer = result.answer || '';
+            send({ chunk: answer, done: true });
+            await Promise.all([
+                saveChatMessage('user', userMessage),
+                saveChatMessage('jarvis', answer),
+            ]);
+            return res.end();
+        }
+
+        // Chat streaming via Groq
+        const [chatHistory, longTermMemories] = await Promise.all([
+            loadChatHistory(), fetchLongTermMemories()
+        ]);
+
+        const systemPrompt = `אתה ג'רביס, עוזר אישי חכם שמדבר עברית. ענה תמיד בעברית טבעית ויעילה.
+זיכרונות ארוכי טווח:
+${longTermMemories}`;
+
+        const msgs = [
+            { role: 'system', content: systemPrompt },
+            ...chatHistory.map(m => ({ role: m.role === 'jarvis' ? 'assistant' : 'user', content: m.text })),
+            { role: 'user', content: userMessage },
+        ];
+
+        let fullAnswer = '';
+        await callGemma4Stream(msgs, useLocal, (chunk) => {
+            fullAnswer += chunk;
+            send({ chunk });
+        });
+
+        send({ done: true });
+
+        await Promise.all([
+            saveChatMessage('user', userMessage),
+            saveChatMessage('jarvis', fullAnswer),
+        ]);
+        cacheInvalidate('chatHistory');
+    } catch (err) {
+        console.error('SSE error:', err.message);
+        send({ error: 'שגיאת מערכת.' });
+    } finally {
+        res.end();
+    }
+});
+
 // ─── Reminder Cron (every minute) ─────────────────────────────────────────────
 
 cron.schedule('* * * * *', async () => {
@@ -210,16 +672,13 @@ cron.schedule('* * * * *', async () => {
         if (error) { console.error('⏰ Cron error:', error.message); return; }
         if (!due || due.length === 0) return;
 
-        for (const reminder of due) {
-            console.log(`🔔 REMINDER: ${reminder.text} [${reminder.scheduled_time}]`);
-            await supabase.from('reminders').update({ fired: true }).eq('id', reminder.id);
-        }
+        const ids = due.map(r => r.id);
+        due.forEach(r => console.log(`🔔 REMINDER: ${r.text} [${r.scheduled_time}]`));
+        await supabase.from('reminders').update({ fired: true }).in('id', ids);
     } catch (err) {
         console.error('⏰ Cron unexpected error:', err.message);
     }
 });
-
-// ─── Progress Map ─────────────────────────────────────────────────────────────
 
 app.get('/progress-map', (_req, res) => {
     res.sendFile(path.join(__dirname, 'progress-map.html'));
@@ -232,10 +691,21 @@ app.get('/notes.json', (_req, res) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
-if (require.main === module) {
-    app.listen(PORT, () => {
-        console.log(`🚀 JARVIS ONLINE | MULTI-AGENT v3 | PORT: ${PORT}`);
+const server = app.listen(PORT, () => {
+    console.log(`🚀 JARVIS ONLINE | MULTI-AGENT v3 | PORT: ${PORT}`);
+});
+
+// ─── Graceful Shutdown ────────────────────────────────────────────────────────
+
+function shutdown(signal) {
+    console.log(`\n${signal} received — shutting down gracefully...`);
+    server.close(() => {
+        console.log('✅ HTTP server closed. Goodbye.');
+        process.exit(0);
     });
+    // Force-exit after 10s if requests are hanging
+    setTimeout(() => { console.error('⚠️ Forced exit after timeout.'); process.exit(1); }, 10_000).unref();
 }
 
-module.exports = { app };
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));

@@ -342,6 +342,14 @@ cron.schedule('* * * * *', async () => {
     }
 });
 
+app.get('/progress-map', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'progress-map.html'));
+});
+
+app.get('/notes.json', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'notes.json'));
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;

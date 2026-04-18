@@ -31,6 +31,7 @@ const { runReminderAgent } = require('./agents/reminderAgent');
 const { runMemoryAgent }   = require('./agents/memoryAgent');
 const { runChatAgent }     = require('./agents/chatAgent');
 const { runSportsAgent }     = require('./agents/sportsAgent');
+const { runMusicAgent }      = require('./agents/musicAgent');
 const { runMessagingAgent }  = require('./agents/messagingAgent');
 const { runDraftAgent }      = require('./agents/draftAgent');
 
@@ -126,6 +127,8 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runMemoryAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'sports') {
             result = await runSportsAgent(userMessage);
+        } else if (agentName === 'music') {
+            result = await runMusicAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'messaging') {
             result = await runMessagingAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'draft') {

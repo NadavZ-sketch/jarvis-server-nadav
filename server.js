@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express    = require('express');
 const cors       = require('cors');
+const path       = require('path');
 const cron       = require('node-cron');
 const nodemailer = require('nodemailer');
 const { createClient } = require('@supabase/supabase-js');
@@ -216,6 +217,16 @@ cron.schedule('* * * * *', async () => {
     } catch (err) {
         console.error('⏰ Cron unexpected error:', err.message);
     }
+});
+
+// ─── Progress Map ─────────────────────────────────────────────────────────────
+
+app.get('/progress-map', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'progress-map.html'));
+});
+
+app.get('/notes.json', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'notes.json'));
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────

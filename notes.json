@@ -1,0 +1,30 @@
+{
+  "lastUpdated": "2026-04-18",
+  "notes": [
+    {
+      "id": 1,
+      "date": "2026-04-18",
+      "tag": "רעיון",
+      "text": "לבדוק האם Pinecone יכול לשפר את חיפוש הזיכרון — כרגע הזיכרון הוא keyword-based בלבד.",
+      "done": false
+    },
+    {
+      "id": 2,
+      "date": "2026-04-18",
+      "tag": "באג",
+      "text": "ניתוב מילות מפתח לא מזהה שאלות מורכבות שמשתרעות על כמה סוכנים — לשקול LLM-based routing.",
+      "done": false
+    },
+    {
+      "id": 3,
+      "date": "2026-04-18",
+      "tag": "שיפור",
+      "text": "להוסיף תזכורות חוזרות (יומי / שבועי) — כרגע כל תזכורת חד-פעמית.",
+      "done": false
+    }
+  ],
+  "featureOverrides": {
+    "Vector Search (Pinecone)": "partial",
+    "Flutter Widget Tests": "partial"
+  }
+}

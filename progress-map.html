@@ -125,7 +125,14 @@
 
     footer { text-align: center; margin-top: 52px; color: var(--muted); font-size: .78rem; }
     .refresh-hint { text-align: center; margin-top: 10px; font-size: .75rem; color: var(--muted); }
+
+    /* ── CHARTS ── */
+    .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .chart-card h3 { font-size: .9rem; font-weight: 600; color: var(--muted); margin-bottom: 16px; text-align: center; }
+    .chart-wrap { position: relative; height: 220px; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -147,6 +154,27 @@
   <div class="stat-card amber"><div class="num">5</div><div class="lbl">בפיתוח / חלקי</div></div>
   <div class="stat-card gray"><div class="num">9</div><div class="lbl">יכולות עתידיות</div></div>
   <div class="stat-card blue"><div class="num">121+</div><div class="lbl">בדיקות Jest</div></div>
+</div>
+
+<!-- ═══ CHARTS ═══ -->
+<div class="section-title">📊 גרפים</div>
+<div class="charts-grid">
+
+  <div class="chart-card">
+    <h3>התקדמות כללית</h3>
+    <div class="chart-wrap"><canvas id="chartDonut"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>השלמה לפי Tier</h3>
+    <div class="chart-wrap"><canvas id="chartTiers"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>בדיקות לפי סוכן</h3>
+    <div class="chart-wrap"><canvas id="chartTests"></canvas></div>
+  </div>
+
 </div>
 
 <!-- ═══ NOTES ═══ -->
@@ -423,6 +451,90 @@
   }
 
   loadNotes();
+
+  // ── Charts ──
+  const COLORS = {
+    done:    '#22c55e',
+    partial: '#f59e0b',
+    future:  '#6b7280',
+    accent:  '#6366f1',
+    pink:    '#f472b6',
+    blue:    '#60a5fa',
+  };
+
+  const chartDefaults = {
+    plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+  };
+
+  // 1. Donut — overall progress
+  new Chart(document.getElementById('chartDonut'), {
+    type: 'doughnut',
+    data: {
+      labels: ['הושלם (30)', 'חלקי (5)', 'עתידי (9)'],
+      datasets: [{
+        data: [30, 5, 9],
+        backgroundColor: [COLORS.done, COLORS.partial, COLORS.future],
+        borderWidth: 0,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      ...chartDefaults,
+      cutout: '68%',
+      plugins: {
+        ...chartDefaults.plugins,
+        legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 }, padding: 14 } },
+      }
+    }
+  });
+
+  // 2. Bar — completion % per tier
+  new Chart(document.getElementById('chartTiers'), {
+    type: 'bar',
+    data: {
+      labels: ['Tier 1\nתשתית', 'Tier 2\nסוכנים', 'Tier 3\nמתקדם', 'Tier 4\nFlutter', 'Tier 5\nבדיקות', 'Tier 6\nעתידי'],
+      datasets: [{
+        label: '% השלמה',
+        data: [100, 100, 100, 100, 90, 8],
+        backgroundColor: [COLORS.done, COLORS.done, COLORS.done, COLORS.done, COLORS.partial, COLORS.future],
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      ...chartDefaults,
+      indexAxis: 'y',
+      scales: {
+        x: { max: 100, grid: { color: '#334155' }, ticks: { color: '#94a3b8', callback: v => v + '%' } },
+        y: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+      },
+      plugins: { legend: { display: false } },
+    }
+  });
+
+  // 3. Bar — tests per agent
+  new Chart(document.getElementById('chartTests'), {
+    type: 'bar',
+    data: {
+      labels: ['Router', 'Chat', 'Task', 'Reminder', 'Memory', 'Music', 'Messaging', 'Draft', 'Sports', 'Models'],
+      datasets: [{
+        label: 'מספר בדיקות',
+        data: [40, 15, 12, 14, 10, 10, 10, 5, 5, 5],
+        backgroundColor: COLORS.accent + 'cc',
+        borderColor: COLORS.accent,
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      ...chartDefaults,
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 9 } } },
+        y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+      },
+      plugins: { legend: { display: false } },
+    }
+  });
 </script>
 </body>
 </html>

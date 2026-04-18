@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { callGemma4 } = require('./models');
+const obsidianSync   = require('../services/obsidianSync');
 
 function buildSavePrompt(userName) {
     return `You are a memory manager. The user wants to save a personal fact about ${userName}.
@@ -76,7 +77,8 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
         }
         console.log('🧠 MemoryAgent saving:', parsed.memoryContent);
 
-        await supabase.from('memories').insert([{ content: parsed.memoryContent }]);
+        const { data: inserted } = await supabase.from('memories').insert([{ content: parsed.memoryContent }]).select().single();
+        if (inserted) obsidianSync.dbToVault('memories', inserted);
         return { answer: `שמרתי לפניי: ${parsed.memoryContent}` };
 
     } catch (err) {

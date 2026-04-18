@@ -35,19 +35,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _localServerUrlCtrl;
   String? _pingResult;
   int _selectedPreset = -1; // index into _kPresets, -1 = custom
+  String? _obsidianSyncStatus;
 
   @override
   void initState() {
     super.initState();
     _s = AppSettings(
-      assistantName:  widget.settings.assistantName,
-      gender:         widget.settings.gender,
-      personality:    widget.settings.personality,
-      voiceEnabled:   widget.settings.voiceEnabled,
-      userName:       widget.settings.userName,
-      useLocalModel:  widget.settings.useLocalModel,
-      useLocalServer: widget.settings.useLocalServer,
-      localServerUrl: widget.settings.localServerUrl,
+      assistantName:    widget.settings.assistantName,
+      gender:           widget.settings.gender,
+      personality:      widget.settings.personality,
+      voiceEnabled:     widget.settings.voiceEnabled,
+      userName:         widget.settings.userName,
+      useLocalModel:    widget.settings.useLocalModel,
+      useLocalServer:   widget.settings.useLocalServer,
+      localServerUrl:   widget.settings.localServerUrl,
+      obsidianAutoSync: widget.settings.obsidianAutoSync,
     );
     _assistantNameCtrl  = TextEditingController(text: _s.assistantName);
     _userNameCtrl       = TextEditingController(text: _s.userName);
@@ -87,6 +89,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
     widget.onSave(_s);
     Navigator.pop(context);
+  }
+
+  Future<void> _syncObsidian() async {
+    setState(() => _obsidianSyncStatus = '⏳ מסנכרן...');
+    try {
+      final res = await http
+          .post(Uri.parse('${_s.serverUrl}/sync/obsidian'))
+          .timeout(const Duration(seconds: 30));
+      if (res.statusCode == 200) {
+        setState(() => _obsidianSyncStatus = '✅ הסנכרון הושלם');
+      } else {
+        setState(() => _obsidianSyncStatus = '⚠️ שגיאה ${res.statusCode}');
+      }
+    } on Exception catch (e) {
+      setState(() => _obsidianSyncStatus = '❌ ${e.toString().split(':').last.trim()}');
+    }
+  }
+
+  Future<void> _setObsidianAutoSync(bool enabled) async {
+    setState(() => _s.obsidianAutoSync = enabled);
+    try {
+      await http
+          .post(
+            Uri.parse('${_s.serverUrl}/sync/obsidian/auto'),
+            headers: {'Content-Type': 'application/json'},
+            body: '{"enabled":$enabled}',
+          )
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // fire-and-forget; server will pick it up on next sync
+    }
   }
 
   Future<void> _openProgressMap() async {
@@ -681,6 +714,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
                 trailing: Icon(Icons.open_in_new_rounded, color: JC.textMuted, size: 18),
                 onTap: _openProgressMap,
+              ),
+              _divider(),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                leading: const Icon(Icons.sync_rounded, color: JC.textMuted, size: 20),
+                title: const Text('סנכרן עם Obsidian',
+                    style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+                subtitle: Text(
+                  _obsidianSyncStatus ?? 'סנכרון הערות, זיכרונות ומשימות',
+                  style: TextStyle(
+                    color: _obsidianSyncStatus != null
+                        ? (_obsidianSyncStatus!.startsWith('✅')
+                            ? const Color(0xFF22C55E)
+                            : _obsidianSyncStatus!.startsWith('⚠️')
+                                ? const Color(0xFFF59E0B)
+                                : _obsidianSyncStatus!.startsWith('❌')
+                                    ? const Color(0xFFEF4444)
+                                    : JC.textMuted)
+                        : JC.textMuted,
+                    fontSize: 12,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
+                trailing: Icon(Icons.chevron_right_rounded, color: JC.textMuted, size: 18),
+                onTap: _syncObsidian,
+              ),
+              _divider(),
+              _rowSwitch(
+                label: 'סנכרון אוטומטי',
+                subtitle: 'מסנכרן כל 5 דקות עם ה-vault',
+                icon: Icons.sync_lock_outlined,
+                value: _s.obsidianAutoSync,
+                onChanged: _setObsidianAutoSync,
               ),
             ]),
             const SizedBox(height: 50),

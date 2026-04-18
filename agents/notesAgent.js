@@ -1,5 +1,6 @@
 require('dotenv').config();
-const { callGemma4 } = require('./models');
+const { callGemma4 }  = require('./models');
+const obsidianSync    = require('../services/obsidianSync');
 
 // ── Supabase table required ────────────────────────────────────────────────────
 // CREATE TABLE notes (
@@ -32,10 +33,11 @@ async function runNotesAgent(userMessage, supabase, useLocal = true) {
         console.log('📝 NotesAgent:', parsed);
 
         if (parsed.intent === 'add') {
-            await supabase.from('notes').insert([{
+            const { data: inserted } = await supabase.from('notes').insert([{
                 title:   parsed.title   || '',
                 content: parsed.content || userMessage,
-            }]);
+            }]).select().single();
+            if (inserted) obsidianSync.dbToVault('notes', inserted);
             const label = parsed.title ? ` "${parsed.title}"` : '';
             return { answer: `שמרתי את ההערה${label} 📝` };
         }

@@ -45,6 +45,7 @@ const { runNotesAgent }       = require('./agents/notesAgent');
 const { runStocksAgent }      = require('./agents/stocksAgent');
 const { runTranslationAgent } = require('./agents/translationAgent');
 const { runMusicAgent }       = require('./agents/musicAgent');
+const obsidianSync            = require('./services/obsidianSync');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -64,6 +65,13 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/ask-jarvis', rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false }));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+
+// ─── Obsidian Sync ────────────────────────────────────────────────────────────
+obsidianSync.initSync({
+    vaultPath: process.env.OBSIDIAN_VAULT_PATH,
+    supabase,
+}).then(() => obsidianSync.fullSyncFromDb())
+  .catch(err => console.error('[ObsidianSync] init error:', err.message));
 
 // ─── In-memory TTL Cache ──────────────────────────────────────────────────────
 
@@ -119,6 +127,7 @@ async function saveChatMessage(role, text) {
     }
     chatMemoryFallback.push({ role, text });
     if (chatMemoryFallback.length > 20) chatMemoryFallback = chatMemoryFallback.slice(-20);
+    obsidianSync.appendChatMessage(role, text).catch(() => {});
 }
 
 // ─── Memories ─────────────────────────────────────────────────────────────────
@@ -683,6 +692,34 @@ cron.schedule('* * * * *', async () => {
     } catch (err) {
         console.error('⏰ Cron unexpected error:', err.message);
     }
+});
+
+// ─── Obsidian sync endpoints ──────────────────────────────────────────────────
+let obsidianAutoSync = true;
+
+app.post('/sync/obsidian', async (_req, res) => {
+    try {
+        const result = await obsidianSync.syncAll();
+        res.json({ ok: true, ...result });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+app.post('/sync/obsidian/auto', (req, res) => {
+    obsidianAutoSync = req.body?.enabled !== false;
+    console.log(`[ObsidianSync] auto-sync ${obsidianAutoSync ? 'enabled' : 'disabled'}`);
+    res.json({ ok: true, autoSync: obsidianAutoSync });
+});
+
+app.get('/sync/obsidian/status', (_req, res) => {
+    res.json({ autoSync: obsidianAutoSync, vaultReady: !!process.env.OBSIDIAN_VAULT_PATH });
+});
+
+// ─── Obsidian auto-sync cron (every 5 min) ────────────────────────────────────
+cron.schedule('*/5 * * * *', () => {
+    if (!obsidianAutoSync) return;
+    obsidianSync.syncAll().catch(err => console.error('[ObsidianSync] cron:', err.message));
 });
 
 app.get('/chart.js', (_req, res) => {

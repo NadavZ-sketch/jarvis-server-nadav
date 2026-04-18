@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { callGemma4 } = require('./models');
+const obsidianSync   = require('../services/obsidianSync');
 
 const TASK_PROMPT = `You are a task management AI. Analyze the Hebrew user message and extract the intent.
 Allowed intents: 'add', 'list', 'delete', 'complete'.
@@ -27,7 +28,8 @@ async function runTaskAgent(userMessage, supabase, useLocal = true) {
         console.log('📋 TaskAgent:', parsed);
 
         if (parsed.intent === 'add') {
-            await supabase.from('tasks').insert([{ content: parsed.taskDetails }]);
+            const { data: inserted } = await supabase.from('tasks').insert([{ content: parsed.taskDetails }]).select().single();
+            if (inserted) obsidianSync.dbToVault('tasks', inserted);
             return { answer: `מעולה, הוספתי את המשימה: ${parsed.taskDetails}` };
         }
 

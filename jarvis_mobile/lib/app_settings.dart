@@ -9,6 +9,7 @@ class AppSettings {
   bool useLocalModel;   // true = Ollama, false = Groq/DeepSeek/Gemini
   bool useLocalServer;  // true = local server, false = Render cloud
   String localServerUrl;
+  bool obsidianAutoSync;
 
   static const String cloudServerUrl = 'https://jarvis-server-nadav.onrender.com';
 
@@ -23,19 +24,21 @@ class AppSettings {
     this.useLocalModel = false,
     this.useLocalServer = false,
     this.localServerUrl = 'http://192.168.1.100:3000',
+    this.obsidianAutoSync = true,
   });
 
   static Future<AppSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
     return AppSettings(
-      assistantName:  prefs.getString('assistantName')  ?? 'Jarvis',
-      gender:         prefs.getString('gender')         ?? 'male',
-      personality:    prefs.getString('personality')    ?? 'friendly',
-      voiceEnabled:   prefs.getBool('voiceEnabled')     ?? true,
-      userName:       prefs.getString('userName')       ?? 'נדב',
-      useLocalModel:  prefs.getBool('useLocalModel')    ?? false,
-      useLocalServer: prefs.getBool('useLocalServer')   ?? false,
-      localServerUrl: prefs.getString('localServerUrl') ?? 'http://192.168.1.100:3000',
+      assistantName:    prefs.getString('assistantName')    ?? 'Jarvis',
+      gender:           prefs.getString('gender')           ?? 'male',
+      personality:      prefs.getString('personality')      ?? 'friendly',
+      voiceEnabled:     prefs.getBool('voiceEnabled')       ?? true,
+      userName:         prefs.getString('userName')         ?? 'נדב',
+      useLocalModel:    prefs.getBool('useLocalModel')      ?? false,
+      useLocalServer:   prefs.getBool('useLocalServer')     ?? false,
+      localServerUrl:   prefs.getString('localServerUrl')   ?? 'http://192.168.1.100:3000',
+      obsidianAutoSync: prefs.getBool('obsidianAutoSync')   ?? true,
     );
   }
 
@@ -49,6 +52,7 @@ class AppSettings {
     await prefs.setBool('useLocalModel',    useLocalModel);
     await prefs.setBool('useLocalServer',   useLocalServer);
     await prefs.setString('localServerUrl', localServerUrl);
+    await prefs.setBool('obsidianAutoSync', obsidianAutoSync);
   }
 
   Map<String, dynamic> toJson() => {

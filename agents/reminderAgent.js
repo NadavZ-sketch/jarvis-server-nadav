@@ -1,4 +1,5 @@
 require('dotenv').config();
+const obsidianSync = require('../services/obsidianSync');
 
 const HE_DAYS = { 'ראשון': 0, 'שני': 1, 'שלישי': 2, 'רביעי': 3, 'חמישי': 4, 'שישי': 5, 'שבת': 6 };
 
@@ -152,11 +153,13 @@ async function runReminderAgent(userMessage, supabase) {
 
         console.log(`⏰ ReminderAgent: "${reminderText}" at ${scheduledTime}`);
 
-        const { error } = await supabase
+        const { data: inserted, error } = await supabase
             .from('reminders')
-            .insert([{ text: reminderText, scheduled_time: scheduledTime }]);
+            .insert([{ text: reminderText, scheduled_time: scheduledTime }])
+            .select().single();
 
         if (error) throw error;
+        if (inserted) obsidianSync.dbToVault('reminders', { ...inserted, title: reminderText, remind_at: scheduledTime });
 
         return { answer: `בסדר, אזכיר לך "${reminderText}" ב${formatReminderTime(fireDate)}.` };
 

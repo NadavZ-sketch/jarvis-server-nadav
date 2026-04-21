@@ -353,6 +353,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   JarvisState _currentState = JarvisState.idle;
   String      _listeningText = '';
+  bool        _voiceConversationMode = false;
 
   Uint8List? _imageBytes;
   String?    _base64Image;
@@ -377,7 +378,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _speech = stt.SpeechToText();
 
     _audioPlayer.onPlayerComplete.listen((event) {
-      if (mounted) setState(() => _currentState = JarvisState.idle);
+      if (mounted) {
+        setState(() => _currentState = JarvisState.idle);
+        if (_voiceConversationMode) _listen();
+      }
     });
 
     if (widget.initialSettings != null) {
@@ -445,39 +449,68 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   // ─── Voice ────────────────────────────────────────────────────────────────────
+  void _stopVoiceConversation() {
+    setState(() {
+      _voiceConversationMode = false;
+      _currentState          = JarvisState.idle;
+      _listeningText         = '';
+    });
+    _speech.stop();
+  }
+
   void _listen() async {
     HapticFeedback.selectionClick();
-    if (_currentState != JarvisState.listening) {
-      bool available = await _speech.initialize(
-        onStatus: (val) {
-          if (val == 'notListening' || val == 'done') {
-            setState(() => _currentState = JarvisState.idle);
-          }
-        },
-      );
-      if (available) {
-        setState(() {
-          _currentState  = JarvisState.listening;
-          _listeningText = 'מקשיב...';
-        });
-        _speech.listen(
-          onResult: (val) {
-            if (_currentState == JarvisState.listening) {
-              setState(() {
-                _controller.text = val.recognizedWords;
-                _listeningText   = val.recognizedWords;
-              });
-            }
-          },
-          localeId: 'he_IL',
-        );
-      }
-    } else {
+
+    if (_voiceConversationMode) {
+      _stopVoiceConversation();
+      return;
+    }
+
+    if (_currentState == JarvisState.listening) {
       setState(() {
         _currentState  = JarvisState.idle;
         _listeningText = '';
       });
       _speech.stop();
+      return;
+    }
+
+    if (_currentState != JarvisState.idle) return;
+
+    bool available = await _speech.initialize(
+      onStatus: (val) {
+        if (val == 'notListening' || val == 'done') {
+          if (!_voiceConversationMode || _controller.text.trim().isEmpty) {
+            setState(() => _currentState = JarvisState.idle);
+          }
+        }
+      },
+    );
+
+    if (available) {
+      setState(() {
+        _voiceConversationMode = true;
+        _currentState          = JarvisState.listening;
+        _listeningText         = 'מקשיב...';
+      });
+      _speech.listen(
+        onResult: (val) {
+          if (_currentState == JarvisState.listening) {
+            setState(() {
+              _controller.text = val.recognizedWords;
+              _listeningText   = val.recognizedWords;
+            });
+            if (val.finalResult &&
+                _voiceConversationMode &&
+                val.recognizedWords.trim().isNotEmpty) {
+              sendCommand(val.recognizedWords);
+            }
+          }
+        },
+        localeId:  'he_IL',
+        listenFor: const Duration(seconds: 30),
+        pauseFor:  const Duration(seconds: 2),
+      );
     }
   }
 
@@ -594,6 +627,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           _playAudio(audio);
         } else {
           setState(() => _currentState = JarvisState.idle);
+          if (_voiceConversationMode) _listen();
         }
       } else {
         setState(() {
@@ -624,7 +658,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
       setState(() {
         messages.add({'sender': 'jarvis', 'text': msg, 'time': _getCurrentTime()});
-        _currentState = JarvisState.idle;
+        _currentState          = JarvisState.idle;
+        _voiceConversationMode = false;
       });
     }
 
@@ -782,7 +817,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         return _listeningText.isEmpty ? 'מקשיב...' : _listeningText;
       case JarvisState.thinking: return 'חושב...';
       case JarvisState.speaking: return 'מדבר...';
-      default:                   return 'לחץ לדיבור';
+      default:
+        return _voiceConversationMode ? 'לחץ לעצירה' : 'לחץ לדיבור';
     }
   }
 

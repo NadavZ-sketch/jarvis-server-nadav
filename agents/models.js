@@ -80,23 +80,45 @@ async function callGemma4(messages, useLocal = true) {
 function parseSSEStream(stream, onChunk) {
     return new Promise((resolve, reject) => {
         const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+        let settled = false;
+
+        // If no data arrives for 8s, close the stream ourselves
+        let idleTimer = setTimeout(() => {
+            console.warn('⚠️ Stream idle timeout (8s) — closing readline');
+            rl.close();
+        }, 8000);
+
+        const done = (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(idleTimer);
+            if (err) reject(err); else resolve();
+        };
+
         rl.on('line', (line) => {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                console.warn('⚠️ Stream idle timeout (8s) — closing readline');
+                rl.close();
+            }, 8000);
+
             if (!line.startsWith('data: ')) return;
             const json = line.slice(6).trim();
-            if (json === '[DONE]') return;
+            if (json === '[DONE]') { rl.close(); return; }
             try {
                 const parsed = JSON.parse(json);
                 if (parsed.error) {
                     console.warn('⚠️ Stream error event:', parsed.error.message || JSON.stringify(parsed.error));
+                    rl.close(); // don't wait — Groq may leave the connection open
                     return;
                 }
                 const content = parsed.choices?.[0]?.delta?.content;
                 if (content) onChunk(content);
             } catch {}
         });
-        rl.on('close', resolve);
-        rl.on('error', reject);
-        stream.on('error', reject);
+        rl.on('close', () => done());
+        rl.on('error', (e) => done(e));
+        stream.on('error', (e) => done(e));
     });
 }
 

@@ -768,7 +768,15 @@ if (require.main === module) {
         console.log(`🚀 JARVIS ONLINE | MULTI-AGENT v3 | PORT: ${PORT}`);
     });
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT',  () => shutdown('SIGINT'));
+    function shutdown(signal) {
+        console.log(`\n${signal} received — shutting down gracefully...`);
+        server.close(() => {
+            console.log('✅ HTTP server closed. Goodbye.');
+            process.exit(0);
+        });
+        setTimeout(() => { console.error('⚠️ Forced exit after timeout.'); process.exit(1); }, 10_000).unref();
+    }
 
-module.exports = { app };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
+}

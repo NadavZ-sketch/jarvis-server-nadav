@@ -53,16 +53,34 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc:  ["'self'", "'unsafe-inline'", 'unpkg.com', 'cdn.jsdelivr.net'],
+            styleSrc:   ["'self'", "'unsafe-inline'"],
+            connectSrc: ["'self'"],
+            imgSrc:     ["'self'", 'data:'],
+        },
+    },
 }));
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
 }));
 
 app.use(express.json({ limit: '10mb' }));
-app.use('/ask-jarvis', rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false }));
+
+const _rl = (max, windowMs = 60_000) => rateLimit({ windowMs, max, standardHeaders: true, legacyHeaders: false });
+app.use('/ask-jarvis',    _rl(30));
+app.use('/send-email',    _rl(5));
+app.use('/stream-jarvis', _rl(20));
+app.use('/tasks',         _rl(60));
+app.use('/notes',         _rl(60));
+app.use('/reminders',     _rl(60));
+app.use('/memories',      _rl(60));
+app.use('/contacts',      _rl(60));
+app.use('/shopping',      _rl(60));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
@@ -600,7 +618,10 @@ app.post('/stream-jarvis', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+    const send = (data) => { if (!res.destroyed) res.write(`data: ${JSON.stringify(data)}\n\n`); };
+
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
 
     try {
         const userMessage = req.body.command || '';
@@ -655,7 +676,7 @@ ${longTermMemories}`;
         await callGemma4Stream(msgs, useLocal, (chunk) => {
             fullAnswer += chunk;
             send({ chunk });
-        });
+        }, controller.signal);
 
         send({ done: true });
 
@@ -723,35 +744,39 @@ cron.schedule('*/5 * * * *', () => {
 });
 
 app.get('/chart.js', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'node_modules/chart.js/dist/chart.umd.min.js'));
+    res.sendFile(path.join(__dirname, 'node_modules/chart.js/dist/chart.umd.min.js'),
+        err => { if (err && !res.headersSent) res.status(404).send('Not found'); });
 });
 
 app.get('/progress-map', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'progress-map.html'));
+    res.sendFile(path.join(__dirname, 'progress-map.html'),
+        err => { if (err && !res.headersSent) res.status(404).send('Not found'); });
 });
 
 app.get('/notes.json', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'notes.json'));
+    res.sendFile(path.join(__dirname, 'notes.json'),
+        err => { if (err && !res.headersSent) res.status(404).json({ notes: [], lastUpdated: null }); });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-    console.log(`🚀 JARVIS ONLINE | MULTI-AGENT v3 | PORT: ${PORT}`);
-});
+module.exports = { app };
 
-// ─── Graceful Shutdown ────────────────────────────────────────────────────────
-
-function shutdown(signal) {
-    console.log(`\n${signal} received — shutting down gracefully...`);
-    server.close(() => {
-        console.log('✅ HTTP server closed. Goodbye.');
-        process.exit(0);
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    const server = app.listen(PORT, () => {
+        console.log(`🚀 JARVIS ONLINE | MULTI-AGENT v3 | PORT: ${PORT}`);
     });
-    // Force-exit after 10s if requests are hanging
-    setTimeout(() => { console.error('⚠️ Forced exit after timeout.'); process.exit(1); }, 10_000).unref();
-}
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT',  () => shutdown('SIGINT'));
+    function shutdown(signal) {
+        console.log(`\n${signal} received — shutting down gracefully...`);
+        server.close(() => {
+            console.log('✅ HTTP server closed. Goodbye.');
+            process.exit(0);
+        });
+        setTimeout(() => { console.error('⚠️ Forced exit after timeout.'); process.exit(1); }, 10_000).unref();
+    }
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
+}

@@ -1,5 +1,6 @@
 require('dotenv').config();
-const axios = require('axios');
+const axios    = require('axios');
+const readline = require('readline');
 
 // ─── Gemini (Google) — for live search agents (chat, sports) ───────────────
 const GEMINI_MODEL = 'gemini-2.5-flash-lite';
@@ -24,52 +25,180 @@ async function callGemma4(messages, useLocal = true) {
         ? [{ role: 'user', content: messages }]
         : messages;
 
-    // ── 1. Local Ollama (only if useLocal is enabled AND OLLAMA_URL is set) ──
+    // Shared abort controller — total budget for the ENTIRE fallback chain is 17s
+    // (safely under Flutter's 20s client timeout regardless of how many providers are tried)
+    const controller = new AbortController();
+    const budgetTimer = setTimeout(() => {
+        console.warn('⚠️ LLM total budget (17s) exceeded — aborting');
+        controller.abort();
+    }, 17000);
+
+    try {
+        // ── 1. Local Ollama (only if useLocal is enabled AND OLLAMA_URL is set) ──
+        if (useLocal && OLLAMA_URL) {
+            const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
+                model: OLLAMA_MODEL, messages: msgs, stream: false
+            }, { timeout: 15000, signal: controller.signal });
+            return response.data.choices[0].message.content.trim();
+        }
+
+        // ── 2. Groq (free, fast) ──
+        try {
+            const response = await axios.post(GROQ_URL, {
+                model: GROQ_MODEL, messages: msgs, max_tokens: 800
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 9000,
+                signal: controller.signal
+            });
+            return response.data.choices[0].message.content.trim();
+        } catch (groqErr) {
+            if (groqErr.name === 'CanceledError' || groqErr.name === 'AbortError') throw groqErr;
+            const detail = groqErr.response?.data ? JSON.stringify(groqErr.response.data) : groqErr.message;
+            console.warn('⚠️ Groq failed, falling back to DeepSeek:', detail);
+        }
+
+        // ── 3. DeepSeek fallback ──
+        try {
+            const response = await axios.post(DEEPSEEK_URL, {
+                model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 800
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 9000,
+                signal: controller.signal
+            });
+            return response.data.choices[0].message.content.trim();
+        } catch (deepseekErr) {
+            if (deepseekErr.name === 'CanceledError' || deepseekErr.name === 'AbortError') throw deepseekErr;
+            const detail = deepseekErr.response?.data ? JSON.stringify(deepseekErr.response.data) : deepseekErr.message;
+            console.warn('⚠️ DeepSeek failed, falling back to Gemini:', deepseekErr.message);
+        }
+
+        // ── 4. Gemini final fallback ──
+        const prompt = msgs.map(m => m.content).join('\n');
+        const response = await axios.post(GEMINI_URL, {
+            contents: [{ parts: [{ text: prompt }] }]
+        }, { timeout: 15000, signal: controller.signal });
+        return response.data.candidates[0].content.parts[0].text.trim();
+
+    } finally {
+        clearTimeout(budgetTimer);
+    }
+}
+
+// ─── SSE stream parser (Groq / DeepSeek / Ollama) ─────────────────────────────
+
+function parseSSEStream(stream, onChunk) {
+    return new Promise((resolve, reject) => {
+        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+        let settled = false;
+
+        // If no data arrives for 8s, close the stream ourselves
+        let idleTimer = setTimeout(() => {
+            console.warn('⚠️ Stream idle timeout (8s) — closing readline');
+            rl.close();
+        }, 8000);
+
+        const done = (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(idleTimer);
+            if (err) reject(err); else resolve();
+        };
+
+        rl.on('line', (line) => {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                console.warn('⚠️ Stream idle timeout (8s) — closing readline');
+                rl.close();
+            }, 8000);
+
+            if (!line.startsWith('data: ')) return;
+            const json = line.slice(6).trim();
+            if (json === '[DONE]') { rl.close(); return; }
+            try {
+                const parsed = JSON.parse(json);
+                if (parsed.error) {
+                    console.warn('⚠️ Stream error event:', parsed.error.message || JSON.stringify(parsed.error));
+                    rl.close(); // don't wait — Groq may leave the connection open
+                    return;
+                }
+                const content = parsed.choices?.[0]?.delta?.content;
+                if (content) onChunk(content);
+            } catch {}
+        });
+        rl.on('close', () => done());
+        rl.on('error', (e) => done(e));
+        stream.on('error', (e) => done(e));
+    });
+}
+
+// ─── Streaming variant: Groq → DeepSeek → Gemini (non-stream fallback) ────────
+
+async function callGemma4Stream(messages, useLocal = true, onChunk, signal = null) {
+    const msgs = typeof messages === 'string'
+        ? [{ role: 'user', content: messages }]
+        : messages;
+
+    const streamOpts = (headers) => ({
+        headers,
+        responseType: 'stream',
+        timeout: 15000,
+        ...(signal ? { signal } : {})
+    });
+
+    // ── 1. Local Ollama ──
     if (useLocal && OLLAMA_URL) {
         const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
-            model: OLLAMA_MODEL, messages: msgs, stream: false
-        });
-        return response.data.choices[0].message.content.trim();
+            model: OLLAMA_MODEL, messages: msgs, stream: true
+        }, streamOpts({ 'Content-Type': 'application/json' }));
+        await parseSSEStream(response.data, onChunk);
+        return;
     }
 
-    // ── 2. Groq (free, fast) ──
+    // ── 2. Groq streaming ──
     try {
         const response = await axios.post(GROQ_URL, {
-            model: GROQ_MODEL, messages: msgs, max_tokens: 800
-        }, {
-            headers: {
-                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        return response.data.choices[0].message.content.trim();
-    } catch (groqErr) {
-        const detail = groqErr.response?.data ? JSON.stringify(groqErr.response.data) : groqErr.message;
-        console.warn('⚠️ Groq failed, falling back to DeepSeek:', detail);
+            model: GROQ_MODEL, messages: msgs, max_tokens: 800, stream: true
+        }, streamOpts({
+            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+            'Content-Type': 'application/json'
+        }));
+        await parseSSEStream(response.data, onChunk);
+        return;
+    } catch (err) {
+        if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
+        console.warn('⚠️ Groq stream failed, falling back to DeepSeek:', err.message);
     }
 
-    // ── 3. DeepSeek fallback ──
+    // ── 3. DeepSeek streaming fallback ──
     try {
         const response = await axios.post(DEEPSEEK_URL, {
-            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 800
-        }, {
-            headers: {
-                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        return response.data.choices[0].message.content.trim();
-    } catch (deepseekErr) {
-        const detail = deepseekErr.response?.data ? JSON.stringify(deepseekErr.response.data) : deepseekErr.message;
-        console.warn('⚠️ DeepSeek failed, falling back to Gemini:', detail);
+            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 800, stream: true
+        }, streamOpts({
+            'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+            'Content-Type': 'application/json'
+        }));
+        await parseSSEStream(response.data, onChunk);
+        return;
+    } catch (err) {
+        if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
+        console.warn('⚠️ DeepSeek stream failed, falling back to Gemini (non-streaming):', err.message);
     }
 
-    // ── 4. Gemini final fallback ──
+    // ── 4. Gemini final fallback (non-streaming) ──
     const prompt = msgs.map(m => m.content).join('\n');
     const response = await axios.post(GEMINI_URL, {
         contents: [{ parts: [{ text: prompt }] }]
-    });
-    return response.data.candidates[0].content.parts[0].text.trim();
+    }, { timeout: 15000, ...(signal ? { signal } : {}) });
+    const text = response.data.candidates[0].content.parts[0].text.trim();
+    onChunk(text);
 }
 
 // ─── Gemini with Google Search grounding (real-time data) ─────────────────────
@@ -103,4 +232,4 @@ async function callGeminiVision(prompt, imageBase64) {
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
-module.exports = { GEMINI_URL, callGemma4, callGeminiWithSearch, callGeminiVision, detectMimeType };
+module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision, detectMimeType };

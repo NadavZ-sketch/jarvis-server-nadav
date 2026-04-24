@@ -856,7 +856,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         return _listeningText.isEmpty ? 'מקשיב...' : _listeningText;
       case JarvisState.thinking: return 'חושב...';
       case JarvisState.speaking: return 'מדבר...';
-      default:                   return 'לחץ לדיבור';
+      default:                   return 'לחץ לשיחה';
     }
   }
 
@@ -944,8 +944,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               Padding(
                 padding: const EdgeInsets.only(top: 96, bottom: 4),
                 child: GestureDetector(
-                  onTap: _voiceConversationActive ? null : _listen,
-                  onLongPress: _voiceConversationActive ? null : _startVoiceConversation,
+                  onTap: _voiceConversationActive ? null : _startVoiceConversation,
+                  onLongPress: null,
                   child: Column(
                     children: [
                       _JarvisOrb(

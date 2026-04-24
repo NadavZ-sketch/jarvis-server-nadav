@@ -35,7 +35,9 @@ describe('runSportsAgent', () => {
     });
 
     test('callGeminiWithSearch throws → graceful error response', async () => {
+        const { callGemma4 } = require('../../agents/models');
         callGeminiWithSearch.mockRejectedValue(new Error('API error'));
+        callGemma4.mockRejectedValue(new Error('fallback error'));
         const result = await runSportsAgent('מה התוצאה?');
         expect(result.answer).toContain('לא הצלחתי להביא נתוני כדורגל');
     });

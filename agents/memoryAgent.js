@@ -1,3 +1,4 @@
+const { sanitizeLike } = require('./utils');
 require('dotenv').config();
 const { callGemma4 } = require('./models');
 const obsidianSync   = require('../services/obsidianSync');

@@ -377,8 +377,9 @@ app.get('/tasks', async (_req, res) => {
     try {
         const { data, error } = await supabase
             .from('tasks')
-            .select('*')
-            .order('created_at', { ascending: false });
+            .select('id, content, created_at')
+            .order('created_at', { ascending: false })
+            .limit(200);
         if (error) throw error;
         res.json({ tasks: data || [] });
     } catch (err) {
@@ -432,8 +433,9 @@ app.get('/contacts', async (_req, res) => {
     try {
         const { data, error } = await supabase
             .from('contacts')
-            .select('*')
-            .order('name', { ascending: true });
+            .select('id, name, phone, email')
+            .order('name', { ascending: true })
+            .limit(500);
         if (error) throw error;
         res.json({ contacts: data || [] });
     } catch (err) {
@@ -528,9 +530,10 @@ app.get('/shopping', async (_req, res) => {
     try {
         const { data, error } = await supabase
             .from('shopping_items')
-            .select('*')
+            .select('id, item, done, created_at')
             .eq('done', false)
-            .order('created_at', { ascending: true });
+            .order('created_at', { ascending: true })
+            .limit(200);
         if (error) throw error;
         res.json({ items: data || [] });
     } catch (err) {
@@ -571,8 +574,9 @@ app.get('/notes', async (_req, res) => {
     try {
         const { data, error } = await supabase
             .from('notes')
-            .select('*')
-            .order('created_at', { ascending: false });
+            .select('id, title, content, created_at')
+            .order('created_at', { ascending: false })
+            .limit(200);
         if (error) throw error;
         res.json({ notes: data || [] });
     } catch (err) {

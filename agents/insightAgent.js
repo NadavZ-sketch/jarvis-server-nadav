@@ -129,11 +129,11 @@ async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
 
         // 1. Fetch all tables in parallel
         const [chatsRes, tasksRes, memoriesRes, remindersRes, contactsRes] = await Promise.all([
-            supabase.from('chat_history').select('role,text,created_at').order('created_at', { ascending: false }).limit(200),
-            supabase.from('tasks').select('content,created_at'),
-            supabase.from('memories').select('content'),
+            supabase.from('chat_history').select('role,text,created_at').order('created_at', { ascending: false }).limit(100),
+            supabase.from('tasks').select('content,created_at').order('created_at', { ascending: false }).limit(100),
+            supabase.from('memories').select('content').limit(200),
             supabase.from('reminders').select('text,scheduled_time,fired').limit(50),
-            supabase.from('contacts').select('name'),
+            supabase.from('contacts').select('name').limit(200),
         ]);
 
         // Fail only if the two critical tables are unreachable

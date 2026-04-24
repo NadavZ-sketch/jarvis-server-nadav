@@ -35,7 +35,11 @@ async function runTaskAgent(userMessage, supabase, useLocal = true) {
         }
 
         if (parsed.intent === 'list') {
-            const { data } = await supabase.from('tasks').select('*');
+            const { data } = await supabase
+                .from('tasks')
+                .select('id, content')
+                .order('created_at', { ascending: false })
+                .limit(50);
             if (!data || data.length === 0) return { answer: 'אין לך משימות כרגע, אתה חופשי.' };
             const list = data.map((t, i) => `${i + 1}. ${t.content}`).join('. ');
             return { answer: `הנה המשימות שלך: ${list}` };

@@ -29,8 +29,8 @@ async function runTaskAgent(userMessage, supabase, useLocal = true) {
         console.log('📋 TaskAgent:', parsed);
 
         if (parsed.intent === 'add') {
-            const { data: inserted } = await supabase.from('tasks').insert([{ content: parsed.taskDetails }]).select().single();
-            if (inserted) obsidianSync.dbToVault('tasks', inserted);
+            await supabase.from('tasks').insert([{ content: parsed.taskDetails }]);
+            obsidianSync.dbToVault('tasks', { content: parsed.taskDetails });
             return { answer: `מעולה, הוספתי את המשימה: ${parsed.taskDetails}` };
         }
 

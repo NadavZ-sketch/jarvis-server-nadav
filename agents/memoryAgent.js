@@ -78,8 +78,8 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
         }
         console.log('🧠 MemoryAgent saving:', parsed.memoryContent);
 
-        const { data: inserted } = await supabase.from('memories').insert([{ content: parsed.memoryContent }]).select().single();
-        if (inserted) obsidianSync.dbToVault('memories', inserted);
+        await supabase.from('memories').insert([{ content: parsed.memoryContent }]);
+        obsidianSync.dbToVault('memories', { content: parsed.memoryContent });
         return { answer: `שמרתי לפניי: ${parsed.memoryContent}` };
 
     } catch (err) {

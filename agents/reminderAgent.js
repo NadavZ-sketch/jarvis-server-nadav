@@ -154,13 +154,12 @@ async function runReminderAgent(userMessage, supabase) {
 
         console.log(`⏰ ReminderAgent: "${reminderText}" at ${scheduledTime}`);
 
-        const { data: inserted, error } = await supabase
+        const { error } = await supabase
             .from('reminders')
-            .insert([{ text: reminderText, scheduled_time: scheduledTime }])
-            .select().single();
+            .insert([{ text: reminderText, scheduled_time: scheduledTime }]);
 
         if (error) throw error;
-        if (inserted) obsidianSync.dbToVault('reminders', { ...inserted, title: reminderText, remind_at: scheduledTime });
+        obsidianSync.dbToVault('reminders', { text: reminderText, scheduled_time: scheduledTime, title: reminderText, remind_at: scheduledTime });
 
         return { answer: `בסדר, אזכיר לך "${reminderText}" ב${formatReminderTime(fireDate)}.` };
 

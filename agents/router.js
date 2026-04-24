@@ -25,13 +25,25 @@ const KEYWORDS = {
 const REGISTRY_PATH = path.join(__dirname, 'custom', 'registry.json');
 const PENDING_PATH  = path.join(__dirname, 'custom', 'pending.json');
 
+let _pendingCache = false, _pendingAt = 0;
 function hasPendingAgent() {
-    try { return !!JSON.parse(fs.readFileSync(PENDING_PATH, 'utf8')); } catch { return false; }
+    if (Date.now() - _pendingAt < 5000) return _pendingCache;
+    try { _pendingCache = !!JSON.parse(fs.readFileSync(PENDING_PATH, 'utf8')); }
+    catch { _pendingCache = false; }
+    _pendingAt = Date.now();
+    return _pendingCache;
 }
 
+let _registryCache = [], _registryAt = 0;
 function loadCustomRegistry() {
-    try { return JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf8')); } catch { return []; }
+    if (Date.now() - _registryAt < 30000) return _registryCache;
+    try { _registryCache = JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf8')); }
+    catch { _registryCache = []; }
+    _registryAt = Date.now();
+    return _registryCache;
 }
+
+function invalidateRouterCache() { _pendingAt = 0; _registryAt = 0; }
 
 function classifyIntent(userMessage) {
     const msg = userMessage.toLowerCase();
@@ -66,4 +78,4 @@ function classifyIntent(userMessage) {
     return 'chat';
 }
 
-module.exports = { classifyIntent };
+module.exports = { classifyIntent, invalidateRouterCache };

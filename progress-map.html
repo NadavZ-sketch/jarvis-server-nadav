@@ -126,6 +126,36 @@
     footer { text-align: center; margin-top: 52px; color: var(--muted); font-size: .78rem; }
     .refresh-hint { text-align: center; margin-top: 10px; font-size: .75rem; color: var(--muted); }
 
+    /* ── TABS ── */
+    .tab-bar { display: flex; gap: 0; background: var(--surface); border-radius: 12px; padding: 4px; margin-bottom: 24px; border: 1px solid var(--border); }
+    .tab-btn { flex: 1; padding: 10px; border: none; background: transparent; color: var(--muted); cursor: pointer; border-radius: 10px; font-family: inherit; font-size: .9rem; font-weight: 600; transition: all .2s; }
+    .tab-btn.active { background: var(--accent); color: #fff; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── ACCORDION ── */
+    .accordion { border: 1px solid var(--border); border-radius: 14px; margin-bottom: 14px; overflow: hidden; }
+    .accordion-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; cursor: pointer; user-select: none; background: var(--surface); transition: background .15s; }
+    .accordion-header:hover { background: var(--card); }
+    .accordion-header .acc-title { font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .accordion-header .acc-chevron { transition: transform .25s; color: var(--muted); font-size: 1.1rem; }
+    .accordion.open .acc-chevron { transform: rotate(180deg); }
+    .accordion-body { max-height: 0; overflow: hidden; transition: max-height .4s ease; }
+    .accordion.open .accordion-body { max-height: 9999px; }
+    .accordion-body-inner { padding: 0 20px 20px; }
+
+    /* ── 3D GRAPH ── */
+    #graph3d-container { width: 100%; height: 500px; border-radius: 14px; overflow: hidden; background: #060d1f; border: 1px solid var(--border); position: relative; }
+    .graph-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .graph-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: .82rem; font-family: inherit; transition: all .15s; }
+    .graph-btn:hover { background: var(--surface); }
+    .graph-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .graph-tooltip { position: absolute; top: 12px; right: 12px; background: rgba(15,23,42,.92); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: .8rem; pointer-events: none; z-index: 10; max-width: 200px; min-height: 36px; }
+    .graph-legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+    .graph-legend-item { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--muted); }
+    .graph-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    @media (max-width: 600px) { #graph3d-container { height: 320px; } .tab-btn { font-size: .8rem; padding: 8px 4px; } }
+
     /* ── CHARTS ── */
     .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
     .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
@@ -156,8 +186,20 @@
   <div class="stat-card blue"><div class="num">121+</div><div class="lbl">בדיקות Jest</div></div>
 </div>
 
-<!-- ═══ CHARTS ═══ -->
-<div class="section-title">📊 גרפים</div>
+<!-- ═══ TABS ═══ -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="progress">📊 התקדמות</button>
+  <button class="tab-btn" data-tab="decision">🧭 מפת החלטות</button>
+</div>
+
+<!-- ══════════════════════ TAB: progress ══════════════════════ -->
+<div class="tab-panel active" id="tab-progress">
+
+<!-- ═══ CHARTS accordion ═══ -->
+<div class="accordion" id="acc-charts">
+<div class="accordion-header"><span class="acc-title">📊 גרפים</span><span class="acc-chevron">▼</span></div>
+<div class="accordion-body"><div class="accordion-body-inner">
+<div class="section-title" style="margin-top:12px">📊 גרפים</div>
 <div class="charts-grid">
 
   <div class="chart-card">
@@ -176,16 +218,21 @@
   </div>
 
 </div>
+</div></div></div><!-- end acc-charts -->
 
-<!-- ═══ NOTES ═══ -->
-<div class="section-title">📝 הערות ו-TODOs</div>
+<!-- ═══ NOTES accordion (open by default) ═══ -->
+<div class="accordion open" id="acc-notes">
+<div class="accordion-header"><span class="acc-title">📝 הערות ו-TODOs</span><span class="acc-chevron">▼</span></div>
+<div class="accordion-body"><div class="accordion-body-inner">
 <div class="notes-list" id="notesList">
   <div style="color:var(--muted);font-size:.85rem;">טוען הערות מ-notes.json...</div>
 </div>
+</div></div></div><!-- end acc-notes -->
 
-<!-- ═══ FLOW DIAGRAM ═══ -->
-<div class="section-title">🔄 זרימת פקודה — מהמשתמש לתגובה</div>
-
+<!-- ═══ FLOW accordion ═══ -->
+<div class="accordion" id="acc-flow">
+<div class="accordion-header"><span class="acc-title">🔄 זרימת פקודה</span><span class="acc-chevron">▼</span></div>
+<div class="accordion-body"><div class="accordion-body-inner">
 <div class="flow">
 
   <!-- INPUT -->
@@ -246,9 +293,12 @@
   <div class="flow-box flutter">📱 Flutter — הצגת תשובה + השמעת אודיו + פעולה (WhatsApp / Email / Music)</div>
 
 </div>
+</div></div></div><!-- end acc-flow -->
 
-<!-- ═══ TIERS ═══ -->
-<div class="section-title">🏗️ עץ יכולות</div>
+<!-- ═══ TIERS accordion ═══ -->
+<div class="accordion" id="acc-tiers">
+<div class="accordion-header"><span class="acc-title">🏗️ עץ יכולות (6 Tiers)</span><span class="acc-chevron">▼</span></div>
+<div class="accordion-body"><div class="accordion-body-inner">
 <div class="tiers">
 
   <div class="tier">
@@ -332,9 +382,12 @@
   </div>
 
 </div>
+</div></div></div><!-- end acc-tiers -->
 
-<!-- ═══ TECH STACK ═══ -->
-<div class="section-title">🛠️ ערימת הטכנולוגיות</div>
+<!-- ═══ TECH accordion ═══ -->
+<div class="accordion" id="acc-tech">
+<div class="accordion-header"><span class="acc-title">🛠️ ערימת הטכנולוגיות</span><span class="acc-chevron">▼</span></div>
+<div class="accordion-body"><div class="accordion-body-inner">
 <div class="tech-grid">
   <div class="tech-chip"><span class="ticon">🟢</span><div><div class="tlabel">Node.js / Express</div><div class="trole">שרת API ראשי</div></div></div>
   <div class="tech-chip"><span class="ticon">🐦</span><div><div class="tlabel">Flutter</div><div class="trole">אפליקציית מובייל</div></div></div>
@@ -350,8 +403,12 @@
   <div class="tech-chip"><span class="ticon">🧪</span><div><div class="tlabel">Jest + Supertest</div><div class="trole">בדיקות אוטומטיות</div></div></div>
 </div>
 
-<!-- ═══ DB SCHEMA ═══ -->
-<div class="section-title">🗄️ סכמת מסד הנתונים (Supabase)</div>
+</div></div></div><!-- end acc-tech -->
+
+<!-- ═══ DB accordion ═══ -->
+<div class="accordion" id="acc-db">
+<div class="accordion-header"><span class="acc-title">🗄️ סכמת DB (Supabase)</span><span class="acc-chevron">▼</span></div>
+<div class="accordion-body"><div class="accordion-body-inner">
 <div class="db-grid">
   <div class="db-table">
     <div class="db-table-header">✅ tasks</div>
@@ -410,6 +467,30 @@
   </div>
 </div>
 
+</div></div></div><!-- end acc-db -->
+
+</div><!-- end tab-progress -->
+
+<!-- ══════════════════════ TAB: decision ══════════════════════ -->
+<div class="tab-panel" id="tab-decision">
+  <div class="graph-controls">
+    <button class="graph-btn active" id="btn-progress">🏗️ התקדמות פרויקט</button>
+    <button class="graph-btn" id="btn-decision">🧭 זרימת החלטות</button>
+    <button class="graph-btn" id="btn-reset">📷 אפס מצלמה</button>
+  </div>
+  <div id="graph3d-container">
+    <div class="graph-tooltip" id="graphTooltip">רחף מעל node לפרטים</div>
+  </div>
+  <div class="graph-legend">
+    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#22c55e"></div>הושלם</div>
+    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#f59e0b"></div>חלקי</div>
+    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#6b7280"></div>עתידי</div>
+    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#6366f1"></div>Tier Hub</div>
+    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#f472b6"></div>LLM</div>
+    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#34d399"></div>Agent</div>
+  </div>
+</div><!-- end tab-decision -->
+
 <footer>Jarvis Server · nadavz-sketch/jarvis-server-nadav</footer>
 <div class="refresh-hint">💡 רענן את הדף לטעינת הערות מעודכנות מ-notes.json</div>
 
@@ -451,6 +532,30 @@
   }
 
   loadNotes();
+
+  // ── Accordion ──
+  let chartsInited = false;
+  document.querySelectorAll('.accordion-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const acc = header.parentElement;
+      acc.classList.toggle('open');
+      if (acc.id === 'acc-charts' && acc.classList.contains('open') && !chartsInited) {
+        initCharts(); chartsInited = true;
+      }
+    });
+  });
+
+  // ── Tabs ──
+  let graphInited = false;
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      if (btn.dataset.tab === 'decision' && !graphInited) { initGraph(); graphInited = true; }
+    });
+  });
 
   // ── Charts ──
   function initCharts() {
@@ -545,11 +650,148 @@
   });
   } // end initCharts
 
-  if (document.readyState === 'complete') {
-    initCharts();
-  } else {
-    window.addEventListener('load', initCharts);
+  // ── 3D Graph ──
+  function initGraph() {
+    const container = document.getElementById('graph3d-container');
+    const tooltip   = document.getElementById('graphTooltip');
+
+    const progressData = {
+      nodes: [
+        {id:'tier1',label:'תשתית ליבה',group:'tier',completion:100},
+        {id:'tier2',label:'סוכני AI מרכזיים',group:'tier',completion:100},
+        {id:'tier3',label:'סוכני AI מתקדמים',group:'tier',completion:100},
+        {id:'tier4',label:'Flutter App',group:'tier',completion:100},
+        {id:'tier5',label:'איכות ובדיקות',group:'tier',completion:90},
+        {id:'tier6',label:'יכולות עתידיות',group:'tier',completion:8},
+        {id:'f_express',label:'Express Server',group:'feature',status:'done'},
+        {id:'f_supabase',label:'Supabase',group:'feature',status:'done'},
+        {id:'f_router',label:'Multi-Agent Router',group:'feature',status:'done'},
+        {id:'f_llm',label:'LLM Fallback Chain',group:'feature',status:'done'},
+        {id:'f_chat',label:'Chat Agent',group:'feature',status:'done'},
+        {id:'f_task',label:'Task Agent',group:'feature',status:'done'},
+        {id:'f_reminder',label:'Reminder Agent',group:'feature',status:'done'},
+        {id:'f_memory',label:'Memory Agent',group:'feature',status:'done'},
+        {id:'f_draft',label:'Draft Agent',group:'feature',status:'done'},
+        {id:'f_sports',label:'Sports Agent',group:'feature',status:'done'},
+        {id:'f_music',label:'Music Agent',group:'feature',status:'done'},
+        {id:'f_messaging',label:'Messaging Agent',group:'feature',status:'done'},
+        {id:'f_vision',label:'Vision (Gemini)',group:'feature',status:'done'},
+        {id:'f_orb',label:'Animated Orb UI',group:'feature',status:'done'},
+        {id:'f_stt',label:'Speech-to-Text',group:'feature',status:'done'},
+        {id:'f_tts',label:'Text-to-Speech',group:'feature',status:'done'},
+        {id:'f_tests',label:'Jest Tests (121+)',group:'feature',status:'done'},
+        {id:'f_widget',label:'Flutter Widget Tests',group:'feature',status:'partial'},
+        {id:'f_vector',label:'Vector Search',group:'feature',status:'partial'},
+        {id:'f_stream',label:'Streaming Responses',group:'feature',status:'future'},
+        {id:'f_auth',label:'Authentication',group:'feature',status:'future'},
+        {id:'f_offline',label:'Offline Mode',group:'feature',status:'future'},
+      ],
+      links: [
+        {source:'tier1',target:'tier2'},{source:'tier1',target:'tier4'},
+        {source:'tier2',target:'tier3'},{source:'tier1',target:'tier5'},
+        {source:'tier1',target:'f_express'},{source:'tier1',target:'f_supabase'},
+        {source:'tier1',target:'f_router'},{source:'tier1',target:'f_llm'},
+        {source:'tier2',target:'f_chat'},{source:'tier2',target:'f_task'},
+        {source:'tier2',target:'f_reminder'},{source:'tier2',target:'f_memory'},
+        {source:'tier2',target:'f_draft'},{source:'tier3',target:'f_sports'},
+        {source:'tier3',target:'f_music'},{source:'tier3',target:'f_messaging'},
+        {source:'tier3',target:'f_vision'},{source:'tier4',target:'f_orb'},
+        {source:'tier4',target:'f_stt'},{source:'tier4',target:'f_tts'},
+        {source:'tier5',target:'f_tests'},{source:'tier5',target:'f_widget'},
+        {source:'tier6',target:'f_vector'},{source:'tier6',target:'f_stream'},
+        {source:'tier6',target:'f_auth'},{source:'tier6',target:'f_offline'},
+        {source:'f_router',target:'f_chat'},{source:'f_llm',target:'f_chat'},
+        {source:'f_supabase',target:'f_task'},{source:'f_supabase',target:'f_memory'},
+        {source:'f_stt',target:'f_router'},{source:'f_tts',target:'f_orb'},
+      ]
+    };
+
+    const decisionData = {
+      nodes: [
+        {id:'user',label:'👤 משתמש',group:'input'},
+        {id:'flutter',label:'📱 Flutter App',group:'client'},
+        {id:'server',label:'🚀 Express Server',group:'server'},
+        {id:'classifier',label:'🧭 Intent Classifier',group:'router'},
+        {id:'ag_chat',label:'💬 Chat',group:'agent'},
+        {id:'ag_task',label:'✅ Task',group:'agent'},
+        {id:'ag_remind',label:'⏰ Reminder',group:'agent'},
+        {id:'ag_memory',label:'🧠 Memory',group:'agent'},
+        {id:'ag_sports',label:'⚽ Sports',group:'agent'},
+        {id:'ag_music',label:'🎵 Music',group:'agent'},
+        {id:'groq',label:'⚡ Groq',group:'llm'},
+        {id:'deepseek',label:'🌊 DeepSeek',group:'llm'},
+        {id:'gemini',label:'💎 Gemini',group:'llm'},
+        {id:'ollama',label:'🦙 Ollama',group:'llm'},
+        {id:'db',label:'🗄️ Supabase DB',group:'db'},
+        {id:'tts',label:'🔊 Google TTS',group:'output'},
+        {id:'response',label:'📤 תגובה',group:'output'},
+      ],
+      links: [
+        {source:'user',target:'flutter'},{source:'flutter',target:'server'},
+        {source:'server',target:'classifier'},
+        {source:'classifier',target:'ag_chat'},{source:'classifier',target:'ag_task'},
+        {source:'classifier',target:'ag_remind'},{source:'classifier',target:'ag_memory'},
+        {source:'classifier',target:'ag_sports'},{source:'classifier',target:'ag_music'},
+        {source:'ag_chat',target:'groq'},{source:'groq',target:'deepseek'},
+        {source:'deepseek',target:'gemini'},{source:'gemini',target:'ollama'},
+        {source:'ag_task',target:'db'},{source:'ag_memory',target:'db'},
+        {source:'ag_remind',target:'db'},{source:'groq',target:'tts'},
+        {source:'db',target:'tts'},{source:'tts',target:'response'},
+        {source:'response',target:'flutter'},
+      ]
+    };
+
+    const groupColors = {
+      tier:'#6366f1', feature:null, input:'#60a5fa', client:'#38bdf8',
+      server:'#818cf8', router:'#f59e0b', agent:'#34d399',
+      llm:'#f472b6', db:'#60a5fa', output:'#22c55e'
+    };
+    const statusColors = {done:'#22c55e', partial:'#f59e0b', future:'#6b7280'};
+
+    function nodeColor(n) {
+      if (n.group === 'tier') return n.completion === 100 ? '#6366f1' : n.completion >= 50 ? '#f59e0b' : '#6b7280';
+      if (n.group === 'feature') return statusColors[n.status] || '#6b7280';
+      return groupColors[n.group] || '#94a3b8';
+    }
+    function nodeSize(n) {
+      return n.group === 'tier' ? 18 : n.group === 'server' || n.group === 'router' ? 14 : 8;
+    }
+
+    const graph = ForceGraph3D()(container)
+      .backgroundColor('#060d1f')
+      .linkColor(() => 'rgba(148,163,184,0.2)')
+      .linkWidth(1.2)
+      .nodeLabel('label')
+      .nodeColor(nodeColor)
+      .nodeVal(nodeSize)
+      .onNodeHover(node => {
+        if (node) {
+          let html = `<strong>${node.label}</strong>`;
+          if (node.completion !== undefined) html += `<br><span style="color:#94a3b8">${node.completion}% הושלם</span>`;
+          if (node.status) html += `<br><span style="color:#94a3b8">${{done:'✅ הושלם',partial:'🔄 חלקי',future:'🔮 עתידי'}[node.status]||''}</span>`;
+          if (node.group && groupColors[node.group]) html += `<br><span style="color:${groupColors[node.group]};font-size:.75rem">${node.group}</span>`;
+          tooltip.innerHTML = html;
+        } else {
+          tooltip.innerHTML = 'רחף מעל node לפרטים';
+        }
+      })
+      .graphData(progressData);
+
+    document.getElementById('btn-progress').addEventListener('click', () => {
+      graph.graphData(progressData);
+      document.getElementById('btn-progress').classList.add('active');
+      document.getElementById('btn-decision').classList.remove('active');
+    });
+    document.getElementById('btn-decision').addEventListener('click', () => {
+      graph.graphData(decisionData);
+      document.getElementById('btn-decision').classList.add('active');
+      document.getElementById('btn-progress').classList.remove('active');
+    });
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      graph.cameraPosition({x:0,y:0,z:300},{x:0,y:0,z:0},800);
+    });
   }
 </script>
+<script src="https://unpkg.com/3d-force-graph@1/dist/3d-force-graph.min.js"></script>
 </body>
 </html>

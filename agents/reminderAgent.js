@@ -1,3 +1,4 @@
+const { sanitizeLike } = require('./utils');
 require('dotenv').config();
 const obsidianSync = require('../services/obsidianSync');
 

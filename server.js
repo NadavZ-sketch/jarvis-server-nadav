@@ -600,7 +600,10 @@ app.post('/stream-jarvis', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+    const send = (data) => { if (!res.destroyed) res.write(`data: ${JSON.stringify(data)}\n\n`); };
+
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
 
     try {
         const userMessage = req.body.command || '';
@@ -655,7 +658,7 @@ ${longTermMemories}`;
         await callGemma4Stream(msgs, useLocal, (chunk) => {
             fullAnswer += chunk;
             send({ chunk });
-        });
+        }, controller.signal);
 
         send({ done: true });
 

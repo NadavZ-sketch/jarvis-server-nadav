@@ -353,6 +353,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   JarvisState _currentState = JarvisState.idle;
   String      _listeningText = '';
+  bool        _voiceConversationActive = false;
 
   Uint8List? _imageBytes;
   String?    _base64Image;
@@ -377,7 +378,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _speech = stt.SpeechToText();
 
     _audioPlayer.onPlayerComplete.listen((event) {
-      if (mounted) setState(() => _currentState = JarvisState.idle);
+      if (!mounted) return;
+      if (_voiceConversationActive) {
+        _listenContinuous();
+      } else {
+        setState(() => _currentState = JarvisState.idle);
+      }
     });
 
     if (widget.initialSettings != null) {
@@ -410,6 +416,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _voiceConversationActive = false;
     _orbBreathController.dispose();
     _controller.dispose();
     _scrollController.dispose();
@@ -481,6 +488,59 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
+  // ─── Voice Conversation Mode ──────────────────────────────────────────────────
+  void _startVoiceConversation() {
+    if (_voiceConversationActive) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _voiceConversationActive = true);
+    _listenContinuous();
+  }
+
+  void _stopVoiceConversation() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _voiceConversationActive = false;
+      _currentState  = JarvisState.idle;
+      _listeningText = '';
+    });
+    _speech.stop();
+    _audioPlayer.stop();
+  }
+
+  void _listenContinuous() async {
+    if (!_voiceConversationActive || !mounted) return;
+    bool available = await _speech.initialize(
+      onStatus: (val) {
+        if (!mounted) return;
+        if (val == 'done' && _voiceConversationActive) {
+          final captured = _controller.text.trim();
+          if (captured.isNotEmpty) {
+            sendCommand(captured);
+          } else {
+            _listenContinuous();
+          }
+        }
+      },
+    );
+    if (!available || !mounted || !_voiceConversationActive) return;
+    setState(() {
+      _currentState  = JarvisState.listening;
+      _listeningText = 'מקשיב...';
+    });
+    _speech.listen(
+      onResult: (val) {
+        if (!mounted || !_voiceConversationActive) return;
+        setState(() {
+          _controller.text = val.recognizedWords;
+          _listeningText   = val.recognizedWords;
+        });
+      },
+      localeId:  'he_IL',
+      pauseFor:  const Duration(seconds: 2),
+      listenFor: const Duration(seconds: 30),
+    );
+  }
+
   // ─── Quick commands (/task, /note, /remind) ───────────────────────────────────
   Future<bool> _tryQuickCommand(String text) async {
     final trimmed = text.trim();
@@ -525,12 +585,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         messages.add({'sender': 'jarvis', 'text': reply, 'time': _getCurrentTime()});
         _currentState = JarvisState.idle;
       });
+      if (_voiceConversationActive) _listenContinuous();
     } catch (e) {
       setState(() {
         messages.add({'sender': 'jarvis', 'text': '⚠️ לא הצלחתי לשמור. נסה שוב.',
             'time': _getCurrentTime()});
         _currentState = JarvisState.idle;
       });
+      if (_voiceConversationActive) _listenContinuous();
     }
     _scrollToBottom();
     return true;
@@ -600,6 +662,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           messages.add({'sender': 'jarvis', 'text': 'שגיאה מהשרת: קוד ${response.statusCode}', 'time': _getCurrentTime()});
           _currentState = JarvisState.idle;
         });
+        if (_voiceConversationActive) _listenContinuous();
       }
     } catch (e) {
       final errStr     = e.toString();
@@ -626,6 +689,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         messages.add({'sender': 'jarvis', 'text': msg, 'time': _getCurrentTime()});
         _currentState = JarvisState.idle;
       });
+      if (_voiceConversationActive) _listenContinuous();
     }
 
     _scrollToBottom();
@@ -768,6 +832,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   // ─── State label ──────────────────────────────────────────────────────────────
   String get _stateLabel {
+    if (_voiceConversationActive) return 'שיחה חיה';
     switch (_currentState) {
       case JarvisState.listening: return 'מקשיב...';
       case JarvisState.thinking:  return 'חושב...';
@@ -777,6 +842,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   String get _orbHint {
+    if (_voiceConversationActive) {
+      switch (_currentState) {
+        case JarvisState.listening:
+          return _listeningText.isEmpty ? 'מקשיב...' : _listeningText;
+        case JarvisState.thinking: return 'חושב...';
+        case JarvisState.speaking: return 'מדבר...';
+        default:                   return 'שיחה פעילה...';
+      }
+    }
     switch (_currentState) {
       case JarvisState.listening:
         return _listeningText.isEmpty ? 'מקשיב...' : _listeningText;
@@ -870,7 +944,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               Padding(
                 padding: const EdgeInsets.only(top: 96, bottom: 4),
                 child: GestureDetector(
-                  onTap: _listen,
+                  onTap: _voiceConversationActive ? null : _listen,
+                  onLongPress: _voiceConversationActive ? null : _startVoiceConversation,
                   child: Column(
                     children: [
                       _JarvisOrb(
@@ -950,6 +1025,32 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 ),
               ),
 
+
+              // ── Voice Conversation Stop Button ────────────────────────────
+              if (_voiceConversationActive)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.redAccent.withOpacity(0.4), width: 1),
+                    ),
+                    child: TextButton.icon(
+                      icon: const Icon(Icons.stop_rounded, color: Colors.redAccent, size: 18),
+                      label: const Text(
+                        'עצור שיחה',
+                        style: TextStyle(color: Colors.redAccent, fontFamily: 'Heebo', fontWeight: FontWeight.w600),
+                      ),
+                      onPressed: _stopVoiceConversation,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                    ),
+                  ),
+                ),
 
               // ── Image preview ─────────────────────────────────────────────────
               if (_imageBytes != null)

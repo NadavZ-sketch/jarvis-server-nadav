@@ -5,6 +5,7 @@ jest.mock('../../agents/models', () => ({
     callGeminiVision: jest.fn(),
     GEMINI_URL: 'https://mock.gemini.url',
 }));
+jest.mock('../../services/obsidianSync', () => ({ dbToVault: jest.fn() }));
 
 const { callGemma4 } = require('../../agents/models');
 const { runMemoryAgent } = require('../../agents/memoryAgent');
@@ -14,6 +15,7 @@ function makeChain(data = [], error = null) {
         then(res) { return Promise.resolve({ data, error }).then(res); },
         catch(rej) { return Promise.resolve({ data, error }).catch(rej); },
         select:  jest.fn().mockReturnThis(),
+        single:  jest.fn().mockReturnThis(),
         insert:  jest.fn().mockReturnThis(),
         update:  jest.fn().mockReturnThis(),
         delete:  jest.fn().mockReturnThis(),

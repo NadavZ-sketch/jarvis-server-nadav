@@ -1,4 +1,5 @@
 'use strict';
+jest.mock('../../services/obsidianSync', () => ({ dbToVault: jest.fn() }));
 const {
     parseTime,
     extractReminderText,
@@ -13,6 +14,7 @@ function makeChain(data = [], error = null) {
         then(res) { return Promise.resolve({ data, error }).then(res); },
         catch(rej) { return Promise.resolve({ data, error }).catch(rej); },
         select:  jest.fn().mockReturnThis(),
+        single:  jest.fn().mockReturnThis(),
         insert:  jest.fn().mockReturnThis(),
         update:  jest.fn().mockReturnThis(),
         delete:  jest.fn().mockReturnThis(),

@@ -1,3 +1,4 @@
+const { sanitizeLike } = require('./utils');
 require('dotenv').config();
 const { callGemma4 }  = require('./models');
 const obsidianSync    = require('../services/obsidianSync');
@@ -61,7 +62,7 @@ async function runNotesAgent(userMessage, supabase, useLocal = true) {
             const { data } = await supabase
                 .from('notes')
                 .select('*')
-                .or(`title.ilike.%${q}%,content.ilike.%${q}%`)
+                .or(`title.ilike.%${sanitizeLike(q)}%,content.ilike.%${sanitizeLike(q)}%`)
                 .limit(5);
             if (!data || data.length === 0) return { answer: `לא מצאתי הערות עם "${q}".` };
             const found = data.map((n, i) =>
@@ -76,7 +77,7 @@ async function runNotesAgent(userMessage, supabase, useLocal = true) {
             const { data } = await supabase
                 .from('notes')
                 .delete()
-                .or(`title.ilike.%${q}%,content.ilike.%${q}%`)
+                .or(`title.ilike.%${sanitizeLike(q)}%,content.ilike.%${sanitizeLike(q)}%`)
                 .select();
             if (data && data.length > 0) return { answer: 'ההערה נמחקה ✓' };
             return { answer: 'לא מצאתי הערה למחוק.' };

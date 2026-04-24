@@ -7,6 +7,12 @@ const nodemailer = require('nodemailer');
 const fs         = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const googleTTS  = require('google-tts-api');
+const { OpenAI, toFile } = require('openai');
+
+const groqWhisper = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: 'https://api.groq.com/openai/v1',
+});
 
 // ─── Email transporter ────────────────────────────────────────────────────────
 const mailTransporter = nodemailer.createTransport({
@@ -164,9 +170,23 @@ async function fetchLongTermMemories() {
 
 // ─── TTS ──────────────────────────────────────────────────────────────────────
 
+function stripMarkdownForTTS(text) {
+    return text
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/#{1,6}\s+/g, '')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/^[-•*]\s+/gm, '')
+        .replace(/\n{2,}/g, '. ')
+        .replace(/\n/g, ' ')
+        .trim();
+}
+
 async function generateSpeech(text) {
     try {
-        const results = await googleTTS.getAllAudioBase64(text, {
+        const cleaned = stripMarkdownForTTS(text);
+        const results = await googleTTS.getAllAudioBase64(cleaned, {
             lang: 'iw',
             slow: false,
             host: 'https://translate.google.com',
@@ -179,6 +199,32 @@ async function generateSpeech(text) {
         return null;
     }
 }
+
+// ─── Whisper STT ──────────────────────────────────────────────────────────────
+
+app.post('/transcribe', _rl(60), async (req, res) => {
+    try {
+        const { audio } = req.body;
+        if (!audio) return res.status(400).json({ text: '', error: 'No audio provided' });
+
+        const buffer = Buffer.from(audio, 'base64');
+        const file = await toFile(buffer, 'audio.m4a', { type: 'audio/m4a' });
+
+        const transcription = await groqWhisper.audio.transcriptions.create({
+            file,
+            model: 'whisper-large-v3-turbo',
+            language: 'he',
+            response_format: 'json',
+        });
+
+        const text = (transcription.text || '').trim();
+        console.log(`🎙️ Whisper: "${text.slice(0, 80)}"`);
+        res.json({ text });
+    } catch (err) {
+        console.error('❌ Transcribe error:', err.message);
+        res.status(500).json({ text: '', error: 'Transcription failed' });
+    }
+});
 
 // ─── Custom Agent Loader ──────────────────────────────────────────────────────
 

@@ -360,7 +360,7 @@ app.post('/ask-jarvis', async (req, res) => {
         console.log(`🎯 Dispatching to: ${agentName} (+${Date.now() - t0}ms)`);
         const tRoute = Date.now();
 
-        // ── Lazy DB load: only chat/draft need history + memories ─────────────
+        // ── Lazy DB load: history only for chat/draft; memories always (cached) ─
         const needsHistory = ['chat', 'draft'].includes(agentName);
         let chatHistory = [], longTermMemories = '';
         if (needsHistory) {
@@ -370,7 +370,15 @@ app.post('/ask-jarvis', async (req, res) => {
             ]);
             // Filter memories to only relevant ones (no-op if ≤8 memories)
             longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
+        } else {
+            // All other agents get raw memories (TTL-cached — cheap)
+            longTermMemories = await fetchLongTermMemories();
         }
+
+        // Inject user context so every agent can personalize its response
+        settings.userMemories = longTermMemories
+            ? longTermMemories.slice(0, 500)
+            : '';
         const tDb = Date.now();
 
         // ── Past-conv: inject relevant history snippets beyond last 20 msgs ──
@@ -385,16 +393,16 @@ app.post('/ask-jarvis', async (req, res) => {
         // ── Dispatch ──────────────────────────────────────────────────────────
         let result;
         if (agentName === 'task') {
-            result = await runTaskAgent(userMessage, supabase, useLocal);
+            result = await runTaskAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'reminder') {
             result = await runReminderAgent(userMessage, supabase);
         } else if (agentName === 'memory') {
             result = await runMemoryAgent(userMessage, supabase, useLocal, settings);
             cacheInvalidate('memories'); // memory changed — bust cache
         } else if (agentName === 'weather') {
-            result = await runWeatherAgent(userMessage);
+            result = await runWeatherAgent(userMessage, settings);
         } else if (agentName === 'news') {
-            result = await runNewsAgent(userMessage);
+            result = await runNewsAgent(userMessage, settings);
         } else if (agentName === 'shopping') {
             result = await runShoppingAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'notes') {

@@ -1,21 +1,25 @@
 require('dotenv').config();
 const { callGeminiWithSearch, callGemma4 } = require('./models');
 
-const WEATHER_PROMPT = `אתה עוזר מזג אוויר ידידותי. ענה תמיד בעברית בלבד.
+const WEATHER_PROMPT_BASE = `אתה עוזר מזג אוויר ידידותי. ענה תמיד בעברית בלבד.
 ספק מידע עדכני: טמפרטורה, תחושה בחוץ, מצב שמיים, סיכוי לגשם, המלצת לבוש.
 אם לא צוין מיקום — הנח ישראל / תל אביב.
-היה תמציתי ופרקטי. תאריך היום: ${new Date().toLocaleDateString('he-IL')}.
+היה תמציתי ופרקטי. תאריך היום: ${new Date().toLocaleDateString('he-IL')}.`;
 
-שאלת המשתמש: `;
-
-async function runWeatherAgent(userMessage) {
+async function runWeatherAgent(userMessage, settings = {}) {
     try {
+        const memBlock = settings.userMemories
+            ? `\nמידע רלוונטי על המשתמש (השתמש בו לגבי מיקום אם לא צוין): ${settings.userMemories}`
+            : '';
+
+        const prompt = WEATHER_PROMPT_BASE + memBlock + '\n\nשאלת המשתמש: ' + userMessage;
+
         let answer;
         try {
-            answer = await callGeminiWithSearch(WEATHER_PROMPT + userMessage);
+            answer = await callGeminiWithSearch(prompt);
         } catch (geminiErr) {
             console.warn('⚠️ Gemini Search failed (weather), falling back to Groq:', geminiErr.message);
-            answer = await callGemma4(WEATHER_PROMPT + userMessage, false);
+            answer = await callGemma4(prompt, false);
         }
         console.log('🌤️ WeatherAgent answered');
         return { answer: answer || 'לא הצלחתי להביא תחזית מזג אוויר כרגע.' };

@@ -33,7 +33,7 @@ async function sendEmail(to, body) {
     console.log(`📧 Email sent to ${to}`);
 }
 
-const { classifyIntent }      = require('./agents/router');
+const { classifyIntent, classifyIntentWithLLM } = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory } = require('./agents/memoryAgent');
@@ -335,7 +335,10 @@ app.post('/ask-jarvis', async (req, res) => {
         const useLocal  = settings.useLocalModel === true;
 
         // ── Routing ───────────────────────────────────────────────────────────
-        let agentName = imageBase64 ? 'chat' : await classifyIntent(userMessage);
+        let agentName = imageBase64 ? 'chat' : classifyIntent(userMessage);
+        if (agentName === 'chat' && !imageBase64 && userMessage.trim().length > 12) {
+            agentName = await classifyIntentWithLLM(userMessage);
+        }
 
         // Follow-up override: if the user is continuing a previous conversation,
         // route to chat even if keywords matched a specialized agent
@@ -357,7 +360,7 @@ app.post('/ask-jarvis', async (req, res) => {
         console.log(`🎯 Dispatching to: ${agentName} (+${Date.now() - t0}ms)`);
         const tRoute = Date.now();
 
-        // ── Lazy DB load: only chat/draft need history + memories ─────────────
+        // ── Lazy DB load: history only for chat/draft; memories always (cached) ─
         const needsHistory = ['chat', 'draft'].includes(agentName);
         let chatHistory = [], longTermMemories = '';
         if (needsHistory) {
@@ -367,7 +370,15 @@ app.post('/ask-jarvis', async (req, res) => {
             ]);
             // Filter memories to only relevant ones (no-op if ≤8 memories)
             longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
+        } else {
+            // All other agents get raw memories (TTL-cached — cheap)
+            longTermMemories = await fetchLongTermMemories();
         }
+
+        // Inject user context so every agent can personalize its response
+        settings.userMemories = longTermMemories
+            ? longTermMemories.slice(0, 500)
+            : '';
         const tDb = Date.now();
 
         // ── Past-conv: inject relevant history snippets beyond last 20 msgs ──
@@ -382,16 +393,16 @@ app.post('/ask-jarvis', async (req, res) => {
         // ── Dispatch ──────────────────────────────────────────────────────────
         let result;
         if (agentName === 'task') {
-            result = await runTaskAgent(userMessage, supabase, useLocal);
+            result = await runTaskAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'reminder') {
             result = await runReminderAgent(userMessage, supabase);
         } else if (agentName === 'memory') {
             result = await runMemoryAgent(userMessage, supabase, useLocal, settings);
             cacheInvalidate('memories'); // memory changed — bust cache
         } else if (agentName === 'weather') {
-            result = await runWeatherAgent(userMessage);
+            result = await runWeatherAgent(userMessage, settings);
         } else if (agentName === 'news') {
-            result = await runNewsAgent(userMessage);
+            result = await runNewsAgent(userMessage, settings);
         } else if (agentName === 'shopping') {
             result = await runShoppingAgent(userMessage, supabase, useLocal);
         } else if (agentName === 'notes') {
@@ -840,6 +851,54 @@ cron.schedule('* * * * *', async () => {
         console.error('⏰ Cron unexpected error:', err.message);
     }
 });
+
+// ─── Proactive Notification Helpers ──────────────────────────────────────────
+
+async function enqueueNotification(text) {
+    await supabase.from('reminders').insert([{
+        text,
+        scheduled_time: new Date().toISOString(),
+        fired: true,
+    }]);
+}
+
+// Morning briefing — 7:00 AM Jerusalem
+cron.schedule('0 7 * * *', async () => {
+    try {
+        const [{ data: tasks }, { data: todayReminders }] = await Promise.all([
+            supabase.from('tasks').select('id'),
+            supabase
+                .from('reminders')
+                .select('id')
+                .eq('fired', false)
+                .gte('scheduled_time', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+                .lt('scheduled_time',  new Date(new Date().setHours(23, 59, 59, 999)).toISOString()),
+        ]);
+
+        const dayName = new Date().toLocaleDateString('he-IL', { weekday: 'long', timeZone: 'Asia/Jerusalem' });
+        let text = `בוקר טוב! ${dayName} 🌅`;
+        if (tasks?.length)          text += ` יש לך ${tasks.length} משימות פתוחות.`;
+        if (todayReminders?.length) text += ` ${todayReminders.length} תזכורות להיום.`;
+
+        await enqueueNotification(text);
+        console.log('🌅 Morning briefing queued');
+    } catch (err) {
+        console.error('Morning briefing error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
+
+// Evening nudge — 21:00 Jerusalem (only when tasks remain open)
+cron.schedule('0 21 * * *', async () => {
+    try {
+        const { data: tasks } = await supabase.from('tasks').select('id');
+        if (!tasks || tasks.length === 0) return;
+
+        await enqueueNotification(`יש לך ${tasks.length} משימות פתוחות. לילה טוב ✨`);
+        console.log('🌙 Evening nudge queued');
+    } catch (err) {
+        console.error('Evening nudge error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
 
 // ─── Obsidian sync endpoints ──────────────────────────────────────────────────
 let obsidianAutoSync = true;

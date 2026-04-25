@@ -49,6 +49,23 @@ class NotificationService {
     );
   }
 
+  static Future<void> showNow(int id, String body) async {
+    await _plugin.show(
+      id,
+      'ג׳רביס 🔔',
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+      ),
+    );
+  }
+
   static Future<void> cancel(String id) async {
     await _plugin.cancel(id.hashCode);
   }

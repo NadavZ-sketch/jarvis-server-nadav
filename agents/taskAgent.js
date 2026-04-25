@@ -11,7 +11,9 @@ Return ONLY a JSON object: {"intent": "add|list|delete|complete", "taskDetails":
 
 User message: `;
 
-async function runTaskAgent(userMessage, supabase, useLocal = true) {
+async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {}) {
+    const userName = settings.userName || 'נדב';
+
     try {
         const aiText = await callGemma4(TASK_PROMPT + userMessage, useLocal);
 
@@ -31,21 +33,21 @@ async function runTaskAgent(userMessage, supabase, useLocal = true) {
         if (parsed.intent === 'add') {
             await supabase.from('tasks').insert([{ content: parsed.taskDetails }]);
             obsidianSync.dbToVault('tasks', { content: parsed.taskDetails });
-            return { answer: `מעולה, הוספתי את המשימה: ${parsed.taskDetails}` };
+            return { answer: `מעולה ${userName}, הוספתי את המשימה: ${parsed.taskDetails}` };
         }
 
         if (parsed.intent === 'list') {
             const { data } = await supabase.from('tasks').select('*');
-            if (!data || data.length === 0) return { answer: 'אין לך משימות כרגע, אתה חופשי.' };
+            if (!data || data.length === 0) return { answer: `אין לך משימות כרגע ${userName}, אתה חופשי.` };
             const list = data.map((t, i) => `${i + 1}. ${t.content}`).join('. ');
-            return { answer: `הנה המשימות שלך: ${list}` };
+            return { answer: `הנה המשימות שלך ${userName}: ${list}` };
         }
 
         if (parsed.intent === 'delete') {
             const { data } = await supabase
                 .from('tasks')
                 .delete()
-                .ilike('content', `%${parsed.taskDetails}%`)
+                .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`)
                 .select();
             if (data && data.length > 0) return { answer: `מחקתי את המשימה: ${data[0].content}` };
             return { answer: 'לא מצאתי משימה כזו למחוק.' };
@@ -55,9 +57,9 @@ async function runTaskAgent(userMessage, supabase, useLocal = true) {
             const { data } = await supabase
                 .from('tasks')
                 .delete()
-                .ilike('content', `%${parsed.taskDetails}%`)
+                .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`)
                 .select();
-            if (data && data.length > 0) return { answer: `כל הכבוד! סיימת את: "${data[0].content}" ✓` };
+            if (data && data.length > 0) return { answer: `כל הכבוד ${userName}! סיימת את: "${data[0].content}" ✓` };
             return { answer: 'לא מצאתי משימה כזו. נסה לציין את שם המשימה.' };
         }
 

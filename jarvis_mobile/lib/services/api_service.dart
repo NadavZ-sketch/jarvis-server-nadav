@@ -77,6 +77,13 @@ class ApiService {
     await http.delete(_uri('/reminders/$id')).timeout(_timeout);
   }
 
+  /// Returns fired (due) reminders and removes them from the server queue.
+  Future<List<Map<String, dynamic>>> checkFiredReminders() async {
+    final res = await http.get(_uri('/check-reminders')).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['reminders'] ?? []);
+  }
+
   // ─── Contacts ─────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getContacts() async {

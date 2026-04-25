@@ -194,7 +194,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               icon: Icons.notifications_rounded,
               title: 'תזכורות קרובות',
               count: _upcomingReminders.length,
-              onTap: () => widget.onNavigate?.call(3),
+              onTap: () => widget.onNavigate?.call(2),
             ),
             if (_upcomingReminders.isEmpty)
               _EmptyCard(label: 'אין תזכורות קרובות')
@@ -208,7 +208,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             if (_reminders.length > 3)
               _ShowAllButton(
                   label: 'כל התזכורות',
-                  onTap: () => widget.onNavigate?.call(3)),
+                  onTap: () => widget.onNavigate?.call(2)),
 
             const SizedBox(height: 20),
 
@@ -217,7 +217,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               icon: Icons.notes_rounded,
               title: 'הערות אחרונות',
               count: _notes.length,
-              onTap: () => widget.onNavigate?.call(4),
+              onTap: () => widget.onNavigate?.call(3),
             ),
             if (_notes.isEmpty)
               _EmptyCard(label: 'אין הערות עדיין')
@@ -239,7 +239,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             if (_notes.length > 2)
               _ShowAllButton(
                   label: 'כל ההערות',
-                  onTap: () => widget.onNavigate?.call(4)),
+                  onTap: () => widget.onNavigate?.call(3)),
           ],
         ),
       ),

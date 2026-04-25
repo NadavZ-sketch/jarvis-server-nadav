@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'main.dart' show JC;
+import 'widgets/empty_state.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -79,37 +81,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: JC.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: JC.surface,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: JC.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'היסטוריית שיחות',
           style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
+            color: JC.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'Heebo',
+            letterSpacing: 0.3,
           ),
         ),
       ),
       body: _sessions.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.history, color: Color(0xFF3A3A3A), size: 56),
-                  SizedBox(height: 16),
-                  Text(
-                    'אין היסטוריית שיחות עדיין',
-                    style: TextStyle(color: Color(0xFF6E6E6E), fontSize: 15),
-                  ),
-                ],
-              ),
+          ? const EmptyState(
+              icon: Icons.history_rounded,
+              title: 'אין היסטוריית שיחות עדיין',
+              subtitle: 'השיחות שלך עם ג׳רביס יופיעו כאן',
             )
           : ListView.builder(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -124,27 +121,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   key: Key(session['date'] as String? ?? '$index'),
                   direction: DismissDirection.endToStart,
                   background: Container(
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 24),
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.only(left: 24),
+                    margin: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF2A0A0A),
+                      color: JC.cancelRed.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 26),
+                    child: const Icon(Icons.delete_outline,
+                        color: JC.cancelRed, size: 26),
                   ),
                   onDismissed: (_) => _deleteSession(index),
                   child: InkWell(
                     onTap: () => _viewSession(session),
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1C1C1C),
+                        color: JC.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF2A2A2A), width: 0.5),
+                        border: Border.all(color: JC.border, width: 0.5),
                       ),
                       child: Row(
+                        textDirection: TextDirection.rtl,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
@@ -153,7 +156,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               children: [
                                 Text(
                                   preview,
-                                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                                  style: const TextStyle(
+                                    color: JC.textPrimary,
+                                    fontSize: 14,
+                                    fontFamily: 'Heebo',
+                                  ),
                                   textDirection: TextDirection.rtl,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -162,8 +169,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 Text(
                                   '${msgs.length} הודעות',
                                   style: const TextStyle(
-                                    color: Color(0xFF6E6E6E),
+                                    color: JC.textMuted,
                                     fontSize: 12,
+                                    fontFamily: 'Heebo',
                                   ),
                                 ),
                               ],
@@ -172,7 +180,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           const SizedBox(width: 12),
                           Text(
                             date,
-                            style: const TextStyle(color: Color(0xFF555555), fontSize: 12),
+                            style: const TextStyle(
+                              color: JC.textMuted,
+                              fontSize: 12,
+                              fontFamily: 'Heebo',
+                            ),
                           ),
                         ],
                       ),
@@ -194,18 +206,24 @@ class _SessionDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0D),
+      backgroundColor: JC.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF1C1C1C),
+        backgroundColor: JC.surface,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: JC.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           date,
-          style: const TextStyle(color: Colors.white, fontSize: 15),
+          style: const TextStyle(
+            color: JC.textPrimary,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'Heebo',
+          ),
         ),
       ),
       body: ListView.builder(
@@ -215,24 +233,25 @@ class _SessionDetailScreen extends StatelessWidget {
           final msg = messages[index];
           final isUser = msg['sender'] == 'user';
           return Align(
-            alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
+            alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
             child: Container(
               margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.78,
               ),
               decoration: BoxDecoration(
-                color: isUser ? const Color(0xFF2A2A2A) : const Color(0xFF1C1C1C),
+                color: isUser ? JC.userBubble : JC.jarvisBubble,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(14),
                   topRight: const Radius.circular(14),
-                  bottomLeft: Radius.circular(isUser ? 0 : 14),
-                  bottomRight: Radius.circular(isUser ? 14 : 0),
+                  bottomLeft: Radius.circular(isUser ? 14 : 0),
+                  bottomRight: Radius.circular(isUser ? 0 : 14),
                 ),
                 border: isUser
                     ? null
-                    : Border.all(color: const Color(0xFF2A2A2A), width: 0.5),
+                    : Border.all(color: JC.border, width: 0.5),
               ),
               child: Column(
                 crossAxisAlignment:
@@ -242,8 +261,9 @@ class _SessionDetailScreen extends StatelessWidget {
                     msg['text'] as String? ?? '',
                     style: const TextStyle(
                       fontSize: 15,
-                      color: Colors.white,
+                      color: JC.textPrimary,
                       height: 1.4,
+                      fontFamily: 'Heebo',
                     ),
                     textDirection: TextDirection.rtl,
                   ),
@@ -253,7 +273,8 @@ class _SessionDetailScreen extends StatelessWidget {
                       msg['time'] as String,
                       style: const TextStyle(
                         fontSize: 10,
-                        color: Color(0xFF555555),
+                        color: JC.textMuted,
+                        fontFamily: 'Heebo',
                       ),
                     ),
                   ],

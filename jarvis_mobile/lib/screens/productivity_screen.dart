@@ -1,36 +1,33 @@
 import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
-import 'shopping_screen.dart';
-import 'notes_screen.dart';
-import 'contacts_screen.dart';
+import 'tasks_screen.dart';
+import 'reminders_screen.dart';
 
-class ListsScreen extends StatefulWidget {
+class ProductivityScreen extends StatefulWidget {
   final AppSettings settings;
-  final ValueChanged<int>? onShoppingCountUpdate;
-  final ValueChanged<int>? onNotesCountUpdate;
-  final ValueChanged<int>? onContactsCountUpdate;
+  final ValueChanged<int>? onTasksCountUpdate;
+  final ValueChanged<int>? onRemindersCountUpdate;
 
-  const ListsScreen({
+  const ProductivityScreen({
     super.key,
     required this.settings,
-    this.onShoppingCountUpdate,
-    this.onNotesCountUpdate,
-    this.onContactsCountUpdate,
+    this.onTasksCountUpdate,
+    this.onRemindersCountUpdate,
   });
 
   @override
-  State<ListsScreen> createState() => _ListsScreenState();
+  State<ProductivityScreen> createState() => _ProductivityScreenState();
 }
 
-class _ListsScreenState extends State<ListsScreen>
+class _ProductivityScreenState extends State<ProductivityScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -46,7 +43,7 @@ class _ListsScreenState extends State<ListsScreen>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: const Text(
-          'רשימות',
+          'פרודקטיביות',
           style: TextStyle(
             color: JC.textPrimary,
             fontSize: 18,
@@ -68,26 +65,21 @@ class _ListsScreenState extends State<ListsScreen>
           unselectedLabelStyle:
               const TextStyle(fontFamily: 'Heebo', fontSize: 14),
           tabs: const [
-            Tab(text: 'קניות 🛒'),
-            Tab(text: 'הערות 📝'),
-            Tab(text: 'אנשי קשר 👤'),
+            Tab(text: 'משימות ✅'),
+            Tab(text: 'תזכורות 🔔'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          ShoppingScreen(
+          TasksScreen(
             settings: widget.settings,
-            onCountUpdate: widget.onShoppingCountUpdate,
+            onCountUpdate: widget.onTasksCountUpdate,
           ),
-          NotesScreen(
+          RemindersScreen(
             settings: widget.settings,
-            onCountUpdate: widget.onNotesCountUpdate,
-          ),
-          ContactsScreen(
-            settings: widget.settings,
-            onCountUpdate: widget.onContactsCountUpdate,
+            onCountUpdate: widget.onRemindersCountUpdate,
           ),
         ],
       ),

@@ -48,6 +48,37 @@ function detectFollowUp(userMessage, chatHistory) {
     return false;
 }
 
+// ─── Relevance-based memory filtering ────────────────────────────────────────
+
+const HE_STOP = new Set([
+    'של','את','עם','אני','הוא','היא','אנחנו','הם','הן','זה','זו','אבל',
+    'כי','גם','רק','כל','מה','מי','איך','למה','אם','כן','לא','על','אל',
+    'בין','לפי','יש','אין','היה','הייתה','הייתי','יהיה','ל','ב','מ','ו',
+]);
+
+function filterRelevantMemories(memoriesText, userMessage) {
+    if (!memoriesText || memoriesText === 'אין עדיין זיכרונות שמורים.') return memoriesText;
+    const lines = memoriesText.split('\n').filter(l => l.trim());
+    if (lines.length <= 8) return memoriesText;
+
+    const msgTokens = new Set(
+        userMessage.toLowerCase().split(/[\s,.\-!?:;״׳]+/)
+            .filter(t => t.length > 1 && !HE_STOP.has(t))
+    );
+    if (msgTokens.size === 0) return memoriesText;
+
+    const scored = lines.map(line => {
+        const tokens = line.toLowerCase()
+            .replace(/^\s*-\s*\[[^\]]+\]\s*/, '')
+            .split(/[\s,.\-!?:;״׳]+/)
+            .filter(t => t.length > 1 && !HE_STOP.has(t));
+        return { line, score: tokens.filter(t => msgTokens.has(t)).length };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 10).map(s => s.line).join('\n');
+}
+
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
 function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followUpContext = null) {
@@ -211,4 +242,4 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
     return { answer: 'סליחה, נתקלתי בבעיה. נסה שוב.' };
 }
 
-module.exports = { runChatAgent, detectFollowUp };
+module.exports = { runChatAgent, detectFollowUp, filterRelevantMemories };

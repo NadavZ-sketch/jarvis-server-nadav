@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:audioplayers/audioplayers.dart';
+import 'package:record/record.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'app_settings.dart';
@@ -353,7 +355,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   JarvisState _currentState = JarvisState.idle;
   String      _listeningText = '';
-  bool        _voiceConversationMode = false;
+  bool        _voiceConversationMode   = false;
+  bool        _voiceConversationActive = false;
+
+  final AudioRecorder _audioRecorder      = AudioRecorder();
+  bool  _recordingSoundDetected           = false;
+  Timer? _silenceTimer;
 
   Uint8List? _imageBytes;
   String?    _base64Image;
@@ -380,7 +387,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _audioPlayer.onPlayerComplete.listen((event) {
       if (mounted) {
         setState(() => _currentState = JarvisState.idle);
-        if (_voiceConversationMode) _listen();
+        if (_voiceConversationActive) {
+          _listenContinuous();   // orb mode → Whisper recording
+        } else if (_voiceConversationMode) {
+          _listen();             // mic button mode → native STT
+        }
       }
     });
 
@@ -415,6 +426,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _voiceConversationActive = false;
+    _silenceTimer?.cancel();
+    _audioRecorder.dispose();
     _orbBreathController.dispose();
     _controller.dispose();
     _scrollController.dispose();
@@ -450,19 +463,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   // ─── Voice ────────────────────────────────────────────────────────────────────
-  void _stopVoiceConversation() {
-    setState(() {
-      _voiceConversationMode = false;
-      _currentState          = JarvisState.idle;
-      _listeningText         = '';
-    });
-    _speech.stop();
-  }
 
   void _listen() async {
     HapticFeedback.selectionClick();
 
-    if (_voiceConversationMode) {
+    if (_voiceConversationMode || _voiceConversationActive) {
       _stopVoiceConversation();
       return;
     }
@@ -524,48 +529,129 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   void _stopVoiceConversation() {
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
     HapticFeedback.mediumImpact();
     setState(() {
-      _voiceConversationActive = false;
-      _currentState  = JarvisState.idle;
-      _listeningText = '';
+      _voiceConversationActive  = false;
+      _voiceConversationMode    = false;
+      _currentState             = JarvisState.idle;
+      _listeningText            = '';
     });
+    _audioRecorder.stop().catchError((_) {});
     _speech.stop();
     _audioPlayer.stop();
   }
 
+  // ─── Whisper-based continuous listening ───────────────────────────────────────
   void _listenContinuous() async {
     if (!_voiceConversationActive || !mounted) return;
-    bool available = await _speech.initialize(
-      onStatus: (val) {
-        if (!mounted) return;
-        if (val == 'done' && _voiceConversationActive) {
-          final captured = _controller.text.trim();
-          if (captured.isNotEmpty) {
-            sendCommand(captured);
-          } else {
-            _listenContinuous();
-          }
-        }
-      },
-    );
-    if (!available || !mounted || !_voiceConversationActive) return;
+
+    final hasPermission = await _audioRecorder.hasPermission();
+    if (!hasPermission || !mounted || !_voiceConversationActive) return;
+
     setState(() {
       _currentState  = JarvisState.listening;
       _listeningText = 'מקשיב...';
     });
-    _speech.listen(
-      onResult: (val) {
-        if (!mounted || !_voiceConversationActive) return;
-        setState(() {
-          _controller.text = val.recognizedWords;
-          _listeningText   = val.recognizedWords;
+
+    final tmpPath =
+        '${Directory.systemTemp.path}/jarvis_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+    try {
+      await _audioRecorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 96000,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+        path: tmpPath,
+      );
+    } catch (_) {
+      if (mounted && _voiceConversationActive) {
+        setState(() => _currentState = JarvisState.idle);
+      }
+      return;
+    }
+
+    _recordingSoundDetected = false;
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+
+    // Amplitude-based silence detection
+    _audioRecorder
+        .onAmplitudeChanged(const Duration(milliseconds: 250))
+        .listen((amp) {
+      if (!mounted || !_voiceConversationActive) return;
+      if (amp.current > -45) {
+        // Sound detected — reset silence countdown
+        _recordingSoundDetected = true;
+        _silenceTimer?.cancel();
+        _silenceTimer = null;
+        if (_listeningText != 'שומע...') setState(() => _listeningText = 'שומע...');
+      } else if (_recordingSoundDetected && _silenceTimer == null) {
+        // Silence after speech — start 2.5 s countdown
+        _silenceTimer = Timer(const Duration(milliseconds: 2500), () {
+          _stopRecordingAndTranscribe(tmpPath);
         });
-      },
-      localeId:  'he_IL',
-      pauseFor:  const Duration(seconds: 2),
-      listenFor: const Duration(seconds: 30),
-    );
+      }
+    });
+
+    // Hard cap at 30 s
+    Timer(const Duration(seconds: 30), () async {
+      if (_voiceConversationActive && await _audioRecorder.isRecording()) {
+        _stopRecordingAndTranscribe(tmpPath);
+      }
+    });
+  }
+
+  Future<void> _stopRecordingAndTranscribe(String path) async {
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+
+    final bool recording = await _audioRecorder.isRecording();
+    if (!recording) return;
+
+    await _audioRecorder.stop();
+    if (!mounted) return;
+
+    setState(() {
+      _currentState  = JarvisState.thinking;
+      _listeningText = 'מעבד...';
+    });
+
+    final file = File(path);
+    if (!await file.exists() || await file.length() < 1000) {
+      await file.delete().catchError((_) {});
+      if (mounted && _voiceConversationActive) _listenContinuous();
+      return;
+    }
+
+    try {
+      final bytes       = await file.readAsBytes();
+      final base64Audio = base64Encode(bytes);
+
+      final response = await http.post(
+        Uri.parse('${_settings.serverUrl}/transcribe'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'audio': base64Audio}),
+      ).timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(response.body);
+      final text = ((data['text'] as String?) ?? '').trim();
+
+      if (text.isNotEmpty && mounted) {
+        setState(() => _controller.text = text);
+        sendCommand(text);
+      } else if (mounted && _voiceConversationActive) {
+        _listenContinuous();
+      }
+    } catch (_) {
+      if (mounted && _voiceConversationActive) _listenContinuous();
+    } finally {
+      await file.delete().catchError((_) {});
+    }
   }
 
   // ─── Quick commands (/task, /note, /remind) ───────────────────────────────────
@@ -634,6 +720,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     HapticFeedback.lightImpact();
     _speech.stop();
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+    _audioRecorder.stop().catchError((_) {});
 
     setState(() {
       String display = text;
@@ -683,7 +772,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           _playAudio(audio);
         } else {
           setState(() => _currentState = JarvisState.idle);
-          if (_voiceConversationMode) _listen();
+          if (_voiceConversationActive) {
+            _listenContinuous();
+          } else if (_voiceConversationMode) {
+            _listen();
+          }
         }
       } else {
         setState(() {

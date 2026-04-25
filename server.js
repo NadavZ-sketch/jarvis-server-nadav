@@ -7,6 +7,12 @@ const nodemailer = require('nodemailer');
 const fs         = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const googleTTS  = require('google-tts-api');
+const { OpenAI, toFile } = require('openai');
+
+const groqWhisper = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: 'https://api.groq.com/openai/v1',
+});
 
 // ─── Email transporter ────────────────────────────────────────────────────────
 const mailTransporter = nodemailer.createTransport({
@@ -30,8 +36,8 @@ async function sendEmail(to, body) {
 const { classifyIntent }      = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
-const { runMemoryAgent }      = require('./agents/memoryAgent');
-const { runChatAgent, detectFollowUp } = require('./agents/chatAgent');
+const { runMemoryAgent, autoExtractMemory } = require('./agents/memoryAgent');
+const { runChatAgent, detectFollowUp, filterRelevantMemories } = require('./agents/chatAgent');
 const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
@@ -111,6 +117,17 @@ function cacheInvalidate(key) { _cache.delete(key); }
 const TTL_MEMORIES     = 5  * 60 * 1000; // 5 min
 const TTL_CHAT_HISTORY = 30 * 1000;       // 30 sec
 
+// ─── Past-conversation detection ──────────────────────────────────────────────
+
+const PAST_CONV_PATTERN = /מה דיברנו|בפעם הקודמת|מה אמרת לי|תזכיר לי מה|שוחחנו על|מה שאמרת/i;
+
+const HE_STOP_SEARCH = new Set([
+    'של','את','עם','אני','הוא','היא','אנחנו','הם','הן','זה','זו','אבל',
+    'כי','גם','רק','כל','מה','מי','איך','למה','אם','כן','לא','על','אל',
+    'בין','לפי','יש','אין','היה','הייתה','הייתי','יהיה','ל','ב','מ','ו',
+    'דיברנו','הקודמת','בפעם','אמרת','שוחחנו',
+]);
+
 // ─── Chat History ─────────────────────────────────────────────────────────────
 
 let chatMemoryFallback = [];
@@ -162,11 +179,70 @@ async function fetchLongTermMemories() {
     return result;
 }
 
+// ─── Full history search ──────────────────────────────────────────────────────
+
+async function searchFullHistory(userMessage, supabaseClient) {
+    try {
+        const { data, error } = await supabaseClient
+            .from('chat_history')
+            .select('role, text, created_at')
+            .order('created_at', { ascending: false })
+            .limit(200);
+
+        if (error || !data || data.length === 0) return null;
+
+        const topicTokens = new Set(
+            userMessage.toLowerCase().split(/[\s,.\-!?:;״׳]+/)
+                .filter(t => t.length > 2 && !HE_STOP_SEARCH.has(t))
+        );
+        if (topicTokens.size === 0) return null;
+
+        const relevant = data
+            .map(row => {
+                const tokens = (row.text || '').toLowerCase().split(/[\s,.\-!?:;״׳]+/)
+                    .filter(t => t.length > 2 && !HE_STOP_SEARCH.has(t));
+                return { ...row, score: tokens.filter(t => topicTokens.has(t)).length };
+            })
+            .filter(r => r.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 5);
+
+        if (relevant.length === 0) return null;
+
+        const snippets = relevant.map(r => {
+            const speaker = r.role === 'user' ? 'אתה' : 'Jarvis';
+            const date = r.created_at
+                ? new Date(r.created_at).toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' })
+                : '';
+            return `[${date}] ${speaker}: ${(r.text || '').slice(0, 150)}`;
+        }).join('\n');
+
+        return `--- שיחות קודמות רלוונטיות ---\n${snippets}\n-----------------------------------`;
+    } catch (err) {
+        console.error('searchFullHistory error:', err.message);
+        return null;
+    }
+}
+
 // ─── TTS ──────────────────────────────────────────────────────────────────────
+
+function stripMarkdownForTTS(text) {
+    return text
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/#{1,6}\s+/g, '')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/^[-•*]\s+/gm, '')
+        .replace(/\n{2,}/g, '. ')
+        .replace(/\n/g, ' ')
+        .trim();
+}
 
 async function generateSpeech(text) {
     try {
-        const results = await googleTTS.getAllAudioBase64(text, {
+        const cleaned = stripMarkdownForTTS(text);
+        const results = await googleTTS.getAllAudioBase64(cleaned, {
             lang: 'iw',
             slow: false,
             host: 'https://translate.google.com',
@@ -179,6 +255,32 @@ async function generateSpeech(text) {
         return null;
     }
 }
+
+// ─── Whisper STT ──────────────────────────────────────────────────────────────
+
+app.post('/transcribe', _rl(60), async (req, res) => {
+    try {
+        const { audio } = req.body;
+        if (!audio) return res.status(400).json({ text: '', error: 'No audio provided' });
+
+        const buffer = Buffer.from(audio, 'base64');
+        const file = await toFile(buffer, 'audio.m4a', { type: 'audio/m4a' });
+
+        const transcription = await groqWhisper.audio.transcriptions.create({
+            file,
+            model: 'whisper-large-v3-turbo',
+            language: 'he',
+            response_format: 'json',
+        });
+
+        const text = (transcription.text || '').trim();
+        console.log(`🎙️ Whisper: "${text.slice(0, 80)}"`);
+        res.json({ text });
+    } catch (err) {
+        console.error('❌ Transcribe error:', err.message);
+        res.status(500).json({ text: '', error: 'Transcription failed' });
+    }
+});
 
 // ─── Custom Agent Loader ──────────────────────────────────────────────────────
 
@@ -246,6 +348,12 @@ app.post('/ask-jarvis', async (req, res) => {
             }
         }
 
+        // ── past_conv → remap to chat (history injection handled below) ─────
+        if (agentName === 'past_conv') {
+            agentName = 'chat';
+            console.log('🔍 Past-conv: remapped to chat');
+        }
+
         console.log(`🎯 Dispatching to: ${agentName} (+${Date.now() - t0}ms)`);
         const tRoute = Date.now();
 
@@ -257,8 +365,19 @@ app.post('/ask-jarvis', async (req, res) => {
                 loadChatHistory(),
                 fetchLongTermMemories()
             ]);
+            // Filter memories to only relevant ones (no-op if ≤8 memories)
+            longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
         }
         const tDb = Date.now();
+
+        // ── Past-conv: inject relevant history snippets beyond last 20 msgs ──
+        if (agentName === 'chat' && PAST_CONV_PATTERN.test(userMessage)) {
+            const historySnippet = await searchFullHistory(userMessage, supabase);
+            if (historySnippet) {
+                longTermMemories = longTermMemories + '\n\n' + historySnippet;
+                console.log('🔍 Past-conv context injected');
+            }
+        }
 
         // ── Dispatch ──────────────────────────────────────────────────────────
         let result;
@@ -326,6 +445,13 @@ app.post('/ask-jarvis', async (req, res) => {
 
         // For WhatsApp — pass action to Flutter to open deep link
         res.json({ answer, audio: audioBase64, action });
+
+        // ── Fire-and-forget: passive memory extraction (zero latency impact) ─
+        if (agentName === 'chat' && !imageBase64) {
+            setImmediate(() => {
+                autoExtractMemory(userMessage, answer, supabase, settings).catch(() => {});
+            });
+        }
 
     } catch (err) {
         console.error('Route Error:', err.message);

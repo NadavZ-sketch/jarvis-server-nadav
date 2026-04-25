@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'main.dart' show JC, ChatScreen;
@@ -7,6 +8,8 @@ import 'screens/dashboard_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'screens/reminders_screen.dart';
 import 'screens/lists_screen.dart';
+import 'services/api_service.dart';
+import 'services/notification_service.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -25,12 +28,45 @@ class _MainShellState extends State<MainShell> {
   int _taskCount     = 0;
   int _reminderCount = 0;
 
+  Timer? _notifPollTimer;
+  int    _notifId = 10000;
+
   @override
   void initState() {
     super.initState();
     AppSettings.load().then((s) {
-      if (mounted) setState(() => _settings = s);
+      if (mounted) {
+        setState(() => _settings = s);
+        _startNotificationPolling();
+      }
     });
+  }
+
+  void _startNotificationPolling() {
+    _checkFiredReminders(); // immediate check on app start
+    _notifPollTimer = Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => _checkFiredReminders(),
+    );
+  }
+
+  Future<void> _checkFiredReminders() async {
+    if (_settings.serverUrl.isEmpty) return;
+    try {
+      final api = ApiService(_settings);
+      final fired = await api.checkFiredReminders();
+      for (final r in fired) {
+        final text = r['text']?.toString() ?? '';
+        if (text.isEmpty) continue;
+        await NotificationService.showNow(_notifId++, text);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _notifPollTimer?.cancel();
+    super.dispose();
   }
 
   void _onSettingsChanged(AppSettings updated) {

@@ -852,6 +852,54 @@ cron.schedule('* * * * *', async () => {
     }
 });
 
+// ─── Proactive Notification Helpers ──────────────────────────────────────────
+
+async function enqueueNotification(text) {
+    await supabase.from('reminders').insert([{
+        text,
+        scheduled_time: new Date().toISOString(),
+        fired: true,
+    }]);
+}
+
+// Morning briefing — 7:00 AM Jerusalem
+cron.schedule('0 7 * * *', async () => {
+    try {
+        const [{ data: tasks }, { data: todayReminders }] = await Promise.all([
+            supabase.from('tasks').select('id'),
+            supabase
+                .from('reminders')
+                .select('id')
+                .eq('fired', false)
+                .gte('scheduled_time', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+                .lt('scheduled_time',  new Date(new Date().setHours(23, 59, 59, 999)).toISOString()),
+        ]);
+
+        const dayName = new Date().toLocaleDateString('he-IL', { weekday: 'long', timeZone: 'Asia/Jerusalem' });
+        let text = `בוקר טוב! ${dayName} 🌅`;
+        if (tasks?.length)          text += ` יש לך ${tasks.length} משימות פתוחות.`;
+        if (todayReminders?.length) text += ` ${todayReminders.length} תזכורות להיום.`;
+
+        await enqueueNotification(text);
+        console.log('🌅 Morning briefing queued');
+    } catch (err) {
+        console.error('Morning briefing error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
+
+// Evening nudge — 21:00 Jerusalem (only when tasks remain open)
+cron.schedule('0 21 * * *', async () => {
+    try {
+        const { data: tasks } = await supabase.from('tasks').select('id');
+        if (!tasks || tasks.length === 0) return;
+
+        await enqueueNotification(`יש לך ${tasks.length} משימות פתוחות. לילה טוב ✨`);
+        console.log('🌙 Evening nudge queued');
+    } catch (err) {
+        console.error('Evening nudge error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
+
 // ─── Obsidian sync endpoints ──────────────────────────────────────────────────
 let obsidianAutoSync = true;
 

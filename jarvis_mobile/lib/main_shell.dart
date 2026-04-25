@@ -5,8 +5,7 @@ import 'main.dart' show JC, ChatScreen;
 import 'app_settings.dart';
 import 'screens/app_drawer.dart';
 import 'screens/dashboard_screen.dart';
-import 'screens/tasks_screen.dart';
-import 'screens/reminders_screen.dart';
+import 'screens/productivity_screen.dart';
 import 'screens/lists_screen.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
@@ -25,9 +24,6 @@ class _MainShellState extends State<MainShell> {
   int _selectedIndex = 1;
   AppSettings _settings = AppSettings();
 
-  int _taskCount     = 0;
-  int _reminderCount = 0;
-
   Timer? _notifPollTimer;
   int    _notifId = 10000;
 
@@ -43,7 +39,7 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _startNotificationPolling() {
-    _checkFiredReminders(); // immediate check on app start
+    _checkFiredReminders();
     _notifPollTimer = Timer.periodic(
       const Duration(minutes: 5),
       (_) => _checkFiredReminders(),
@@ -74,6 +70,7 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _onTabTapped(int i) {
+    if (i == _selectedIndex) return;
     HapticFeedback.selectionClick();
     setState(() => _selectedIndex = i);
   }
@@ -82,7 +79,7 @@ class _MainShellState extends State<MainShell> {
     _scaffoldKey.currentState?.openEndDrawer();
   }
 
-  static const int _tabCount = 5;
+  static const int _tabCount = 4;
 
   void _swipeToTab(DragEndDetails details) {
     const threshold = 300.0;
@@ -96,7 +93,7 @@ class _MainShellState extends State<MainShell> {
 
   Future<bool> _onWillPop() async {
     if (_selectedIndex != 1) {
-      _onTabTapped(1); // חזור למסך הצ'אט
+      _onTabTapped(1);
       return false;
     }
     final exit = await showDialog<bool>(
@@ -104,16 +101,21 @@ class _MainShellState extends State<MainShell> {
       builder: (ctx) => AlertDialog(
         backgroundColor: JC.surfaceAlt,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('יציאה מג׳רביס', style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
-        content: const Text('האם לצאת מהאפליקציה?', style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
+        title: const Text('יציאה מג׳רביס',
+            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
+        content: const Text('האם לצאת מהאפליקציה?',
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('ביטול', style: TextStyle(color: JC.blue400, fontFamily: 'Heebo')),
+            child: Text('ביטול',
+                style: TextStyle(color: JC.blue400, fontFamily: 'Heebo')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('יציאה', style: TextStyle(color: Color(0xFFEF4444), fontFamily: 'Heebo')),
+            child: const Text('יציאה',
+                style: TextStyle(
+                    color: Color(0xFFEF4444), fontFamily: 'Heebo')),
           ),
         ],
       ),
@@ -138,8 +140,6 @@ class _MainShellState extends State<MainShell> {
           key: _scaffoldKey,
           backgroundColor: JC.bg,
           endDrawer: AppDrawer(
-            selectedIndex: _selectedIndex,
-            onNavigate: _onTabTapped,
             settings: _settings,
             onSettingsChanged: _onSettingsChanged,
           ),
@@ -157,19 +157,80 @@ class _MainShellState extends State<MainShell> {
                 onSettingsChanged: _onSettingsChanged,
                 onOpenDrawer: _openDrawer,
               ),
-              // 2 — Tasks
-              TasksScreen(
-                settings: _settings,
-                onCountUpdate: (c) => setState(() => _taskCount = c),
-              ),
-              // 3 — Reminders
-              RemindersScreen(
-                settings: _settings,
-                onCountUpdate: (c) => setState(() => _reminderCount = c),
-              ),
-              // 4 — Lists (Shopping + Notes)
+              // 2 — Productivity (Tasks + Reminders)
+              ProductivityScreen(settings: _settings),
+              // 3 — Lists (Shopping + Notes + Contacts)
               ListsScreen(settings: _settings),
             ],
+          ),
+          bottomNavigationBar: _buildBottomNav(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: JC.surface,
+          border: Border(top: BorderSide(color: JC.border, width: 0.6)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: NavigationBarTheme(
+            data: NavigationBarThemeData(
+              backgroundColor: JC.surface,
+              indicatorColor: JC.blue500.withOpacity(0.18),
+              labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                final selected = states.contains(WidgetState.selected);
+                return TextStyle(
+                  fontFamily: 'Heebo',
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected ? JC.blue400 : JC.textMuted,
+                );
+              }),
+              iconTheme: WidgetStateProperty.resolveWith((states) {
+                final selected = states.contains(WidgetState.selected);
+                return IconThemeData(
+                  color: selected ? JC.blue400 : JC.textMuted,
+                  size: 24,
+                );
+              }),
+            ),
+            child: NavigationBar(
+              height: 64,
+              elevation: 0,
+              backgroundColor: JC.surface,
+              labelBehavior:
+                  NavigationDestinationLabelBehavior.alwaysShow,
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: _onTabTapped,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home_rounded),
+                  label: 'בית',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.mic_none_rounded),
+                  selectedIcon: Icon(Icons.mic_rounded),
+                  label: 'שיחה',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.task_alt_outlined),
+                  selectedIcon: Icon(Icons.task_alt_rounded),
+                  label: 'משימות',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.list_alt_outlined),
+                  selectedIcon: Icon(Icons.list_alt_rounded),
+                  label: 'רשימות',
+                ),
+              ],
+            ),
           ),
         ),
       ),

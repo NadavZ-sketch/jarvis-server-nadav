@@ -2,6 +2,7 @@
 // ORDER MATTERS: reminder must be before memory to avoid תזכיר לי conflict
 const fs   = require('fs');
 const path = require('path');
+const axios = require('axios');
 
 const KEYWORDS = {
     past_conv: /מה דיברנו|בפעם הקודמת|מה אמרת לי|תזכיר לי מה.*אמרת|שוחחנו על|מה שאמרת/i,
@@ -79,4 +80,78 @@ function classifyIntent(userMessage) {
     return 'chat';
 }
 
-module.exports = { classifyIntent, invalidateRouterCache };
+// ─── LLM fallback classifier ──────────────────────────────────────────────────
+// Called only when keyword routing returns 'chat' and the message is long enough.
+// Uses a fast Groq model with a 3s timeout and strict JSON output.
+
+const VALID_INTENTS = new Set([
+    'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
+    'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
+    'insight', 'security', 'factory', 'past_conv', 'chat',
+]);
+
+const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
+Given a user message, classify it into exactly one of these intents:
+task, reminder, memory, weather, news, shopping, notes, music, stocks, translate,
+sports, messaging, draft, insight, security, factory, past_conv, chat
+
+Rules:
+- task: add/delete/list/complete personal tasks or to-dos
+- reminder: set/delete/list time-based reminders
+- memory: save/recall/delete a personal fact about the user
+- weather: current weather or forecast
+- news: news headlines or current events
+- shopping: shopping list management
+- notes: save/retrieve free-form notes or memos
+- music: play music or manage playlists
+- stocks: stock prices, crypto, currency, financial markets
+- translate: translate text between languages
+- sports: sports results, leagues, teams, players
+- messaging: send WhatsApp/email messages or manage contacts
+- draft: compose a message/email/text for the user
+- insight: analyze the user's habits or provide usage tips
+- security: code security scan or bug report
+- factory: create/manage/delete custom agents
+- past_conv: asking about previous conversations with Jarvis
+- chat: general conversation, question, or anything that does not fit above
+
+Respond ONLY with valid JSON: {"intent": "NAME"}
+Do NOT explain. Do NOT add text outside JSON.
+
+User message: `;
+
+async function classifyIntentWithLLM(userMessage) {
+    try {
+        const response = await axios.post(
+            'https://api.groq.com/openai/v1/chat/completions',
+            {
+                model: 'llama-3.3-70b-versatile',
+                messages: [{ role: 'user', content: LLM_CLASSIFY_PROMPT + userMessage }],
+                max_tokens: 20,
+                temperature: 0,
+            },
+            {
+                headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+                timeout: 3000,
+            }
+        );
+
+        const raw = response.data?.choices?.[0]?.message?.content || '';
+        const open = raw.lastIndexOf('{'), close = raw.lastIndexOf('}');
+        if (open === -1 || close === -1) return 'chat';
+
+        let parsed;
+        try { parsed = JSON.parse(raw.substring(open, close + 1)); } catch { return 'chat'; }
+
+        const intent = (parsed.intent || '').trim().toLowerCase();
+        if (!VALID_INTENTS.has(intent)) return 'chat';
+
+        console.log(`🧭 Router (LLM): "${intent}" ← "${userMessage.slice(0, 50)}"`);
+        return intent;
+    } catch (err) {
+        console.warn(`🧭 Router (LLM fallback failed): ${err.message}`);
+        return 'chat';
+    }
+}
+
+module.exports = { classifyIntent, classifyIntentWithLLM, invalidateRouterCache };

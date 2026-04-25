@@ -33,7 +33,7 @@ async function sendEmail(to, body) {
     console.log(`📧 Email sent to ${to}`);
 }
 
-const { classifyIntent }      = require('./agents/router');
+const { classifyIntent, classifyIntentWithLLM } = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory } = require('./agents/memoryAgent');
@@ -335,7 +335,10 @@ app.post('/ask-jarvis', async (req, res) => {
         const useLocal  = settings.useLocalModel === true;
 
         // ── Routing ───────────────────────────────────────────────────────────
-        let agentName = imageBase64 ? 'chat' : await classifyIntent(userMessage);
+        let agentName = imageBase64 ? 'chat' : classifyIntent(userMessage);
+        if (agentName === 'chat' && !imageBase64 && userMessage.trim().length > 12) {
+            agentName = await classifyIntentWithLLM(userMessage);
+        }
 
         // Follow-up override: if the user is continuing a previous conversation,
         // route to chat even if keywords matched a specialized agent

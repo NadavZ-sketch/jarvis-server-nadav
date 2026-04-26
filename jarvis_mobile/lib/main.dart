@@ -797,13 +797,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         msg = '⏱ זמן פג (20 שניות)\n'
             '${isLocal ? "השרת ב-$serverAddr לא ענה בזמן.\nוודא שהשרת רץ ושה-IP נכון." : "שרת הענן לא ענה, נסה שוב."}';
       } else if (isRefused) {
-        msg = '🔌 Connection Refused\n'
+        msg = '🔌 לא ניתן להתחבר\n'
             'הבקשה נדחתה ב-$serverAddr\n'
-            'וודא ש-node server.js רץ ושהפורט 3000 פתוח.';
+            'וודא שהשרת רץ ושהפורט 3000 פתוח.';
       } else {
-        msg = '⚠️ שגיאת תקשורת\n'
-            'כתובת: $serverAddr\n'
-            'שגיאה: $errStr';
+        msg = '⚠️ ${ApiService.friendlyError(e)}';
       }
 
       setState(() {

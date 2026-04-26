@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
@@ -23,6 +24,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   String? _error;
+  bool _showDone = false;
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -41,18 +43,32 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get _filtered => _searchQuery.isEmpty
-      ? _items
-      : _items
-          .where((i) =>
-              (i['item']?.toString() ?? '').toLowerCase().contains(_searchQuery))
-          .toList();
+  void _updateCount() {
+    final active = _items.where((i) => i['done'] != true).length;
+    widget.onCountUpdate?.call(active);
+  }
+
+  /// Active items first (by created_at), then done items.
+  List<Map<String, dynamic>> get _sorted {
+    final active = _items.where((i) => i['done'] != true).toList();
+    final done   = _items.where((i) => i['done'] == true).toList();
+    return _showDone ? [...active, ...done] : active;
+  }
+
+  List<Map<String, dynamic>> get _filtered {
+    final src = _sorted;
+    if (_searchQuery.isEmpty) return src;
+    return src
+        .where((i) =>
+            (i['item']?.toString() ?? '').toLowerCase().contains(_searchQuery))
+        .toList();
+  }
 
   Future<void> _loadCache() async {
     final cached = await CacheService.loadList('shopping');
     if (cached != null && mounted && _items.isEmpty) {
       setState(() { _items = cached; _loading = false; });
-      widget.onCountUpdate?.call(cached.length);
+      _updateCount();
     }
   }
 
@@ -62,7 +78,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       final items = await ApiService(widget.settings).getShopping();
       if (mounted) {
         setState(() { _items = items; _loading = false; });
-        widget.onCountUpdate?.call(items.length);
+        _updateCount();
         CacheService.saveList('shopping', items);
       }
     } catch (e) {
@@ -75,11 +91,28 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     }
   }
 
+  Future<void> _toggleDone(Map<String, dynamic> item) async {
+    HapticFeedback.selectionClick();
+    final id      = item['id'].toString();
+    final newDone = item['done'] != true;
+    setState(() => item['done'] = newDone);
+    _updateCount();
+    try {
+      await ApiService(widget.settings)
+          .updateShoppingItem(id, done: newDone);
+      CacheService.saveList('shopping', _items);
+    } catch (_) {
+      // revert on error
+      setState(() => item['done'] = !newDone);
+      _updateCount();
+    }
+  }
+
   void _onDismissed(Map<String, dynamic> item) {
     final id = item['id'].toString();
     final savedIndex = _items.indexOf(item);
     setState(() => _items.remove(item));
-    widget.onCountUpdate?.call(_items.length);
+    _updateCount();
 
     showDeleteSnackbar(
       context,
@@ -87,7 +120,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
       onUndo: () {
         setState(() =>
             _items.insert(savedIndex.clamp(0, _items.length), item));
-        widget.onCountUpdate?.call(_items.length);
+        _updateCount();
       },
       onClosed: (wasUndone) {
         if (!wasUndone) {
@@ -175,9 +208,9 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
     try {
       final res = await ApiService(widget.settings).addShoppingItem(val);
       final newItem = res['item'] as Map<String, dynamic>? ??
-          {'id': DateTime.now().toString(), 'item': val};
+          {'id': DateTime.now().toString(), 'item': val, 'done': false};
       setState(() => _items.insert(0, newItem));
-      widget.onCountUpdate?.call(_items.length);
+      _updateCount();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -189,6 +222,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final doneCount = _items.where((i) => i['done'] == true).length;
+
     return Scaffold(
       backgroundColor: JC.bg,
       floatingActionButton: FloatingActionButton(
@@ -212,22 +247,48 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                             controller: _searchCtrl,
                             hint: 'חיפוש ברשימת הקניות...'),
                       ),
+                    if (doneCount > 0)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: () =>
+                                setState(() => _showDone = !_showDone),
+                            child: Text(
+                              _showDone
+                                  ? 'הסתר נקנו'
+                                  : 'הצג נקנו ($doneCount)',
+                              style: const TextStyle(
+                                  color: JC.blue400,
+                                  fontFamily: 'Heebo',
+                                  fontSize: 13),
+                            ),
+                          ),
+                        ),
+                      ),
                     Expanded(
                       child: _filtered.isEmpty
                           ? EmptyState(
                               icon: Icons.shopping_cart_outlined,
-                              title: _searchQuery.isEmpty ? 'רשימת הקניות ריקה' : 'לא נמצאו פריטים',
-                              subtitle: _searchQuery.isEmpty ? 'לחץ + להוספת פריט' : '',
+                              title: _searchQuery.isEmpty
+                                  ? 'רשימת הקניות ריקה'
+                                  : 'לא נמצאו פריטים',
+                              subtitle: _searchQuery.isEmpty
+                                  ? 'לחץ + להוספת פריט'
+                                  : '',
                             )
                           : RefreshIndicator(
                               color: JC.blue400,
                               backgroundColor: JC.surfaceAlt,
                               onRefresh: _fetch,
                               child: ListView.builder(
-                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 8, 16, 96),
                                 itemCount: _filtered.length,
                                 itemBuilder: (ctx, i) {
                                   final item = _filtered[i];
+                                  final isDone = item['done'] == true;
                                   return AnimatedListItem(
                                     index: i,
                                     child: Dismissible(
@@ -236,31 +297,59 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                                       background: _deleteBg(),
                                       onDismissed: (_) => _onDismissed(item),
                                       child: Container(
-                                        margin: const EdgeInsets.only(bottom: 10),
+                                        margin:
+                                            const EdgeInsets.only(bottom: 10),
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 16, vertical: 14),
                                         decoration: BoxDecoration(
-                                          color: JC.surfaceAlt,
-                                          borderRadius: BorderRadius.circular(14),
+                                          color: isDone
+                                              ? JC.surface.withOpacity(0.6)
+                                              : JC.surfaceAlt,
+                                          borderRadius:
+                                              BorderRadius.circular(14),
                                           border: Border.all(
                                               color: JC.border, width: 0.8),
                                         ),
                                         child: Row(
                                           textDirection: TextDirection.rtl,
                                           children: [
-                                            const Icon(
-                                                Icons.shopping_cart_outlined,
-                                                color: JC.blue500,
-                                                size: 20),
+                                            GestureDetector(
+                                              onTap: () => _toggleDone(item),
+                                              child: AnimatedSwitcher(
+                                                duration: const Duration(
+                                                    milliseconds: 200),
+                                                child: Icon(
+                                                  isDone
+                                                      ? Icons
+                                                          .check_circle_rounded
+                                                      : Icons
+                                                          .radio_button_unchecked_rounded,
+                                                  key: ValueKey(isDone),
+                                                  color: isDone
+                                                      ? JC.blue400
+                                                          .withOpacity(0.6)
+                                                      : JC.blue500,
+                                                  size: 22,
+                                                ),
+                                              ),
+                                            ),
                                             const SizedBox(width: 12),
                                             Expanded(
                                               child: Text(
                                                 item['item']?.toString() ?? '',
-                                                textDirection: TextDirection.rtl,
-                                                style: const TextStyle(
-                                                    color: JC.textPrimary,
-                                                    fontSize: 15,
-                                                    fontFamily: 'Heebo'),
+                                                textDirection:
+                                                    TextDirection.rtl,
+                                                style: TextStyle(
+                                                  color: isDone
+                                                      ? JC.textMuted
+                                                      : JC.textPrimary,
+                                                  fontSize: 15,
+                                                  fontFamily: 'Heebo',
+                                                  decoration: isDone
+                                                      ? TextDecoration
+                                                          .lineThrough
+                                                      : null,
+                                                ),
                                               ),
                                             ),
                                           ],
@@ -288,4 +377,3 @@ Widget _deleteBg() => Container(
       ),
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
-

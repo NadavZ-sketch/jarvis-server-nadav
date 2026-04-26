@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../app_settings.dart';
 
@@ -9,6 +12,34 @@ class ApiService {
   ApiService(this.settings);
 
   Uri _uri(String path) => Uri.parse('${settings.serverUrl}$path');
+
+  /// Maps low-level exceptions to short Hebrew messages safe to show in UI.
+  /// The original error is logged via [debugPrint] so devs still see it.
+  static String friendlyError(Object error) {
+    debugPrint('[ApiService] $error');
+    final msg = error.toString();
+    if (error is TimeoutException ||
+        msg.contains('timeout') ||
+        msg.contains('TimeoutException')) {
+      return 'תם הזמן. בדוק את החיבור לאינטרנט';
+    }
+    if (error is SocketException ||
+        msg.contains('SocketException') ||
+        msg.contains('refused') ||
+        msg.contains('ECONNREFUSED') ||
+        msg.contains('NetworkError') ||
+        msg.contains('Failed host lookup')) {
+      return 'השרת לא זמין. ודא שהשרת המקומי פועל';
+    }
+    if (error is FormatException || msg.contains('FormatException')) {
+      return 'תשובה לא תקינה מהשרת';
+    }
+    if (msg.contains('השרת אינו זמין כרגע')) {
+      // _safeBody already returned a Hebrew message; pass through.
+      return msg.replaceFirst('Exception: ', '');
+    }
+    return 'אירעה שגיאה. נסה שוב';
+  }
 
   // Detects Render.com cold-start HTML page and throws a clean error
   String _safeBody(http.Response res) {

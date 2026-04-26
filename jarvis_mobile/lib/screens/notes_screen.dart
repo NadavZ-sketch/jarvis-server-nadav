@@ -4,7 +4,10 @@ import '../app_settings.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
 import '../widgets/animated_list_item.dart';
+import '../widgets/delete_snackbar.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/jarvis_search_bar.dart';
+import '../widgets/loading_skeleton.dart';
 
 class NotesScreen extends StatefulWidget {
   final AppSettings settings;
@@ -64,7 +67,12 @@ class _NotesScreenState extends State<NotesScreen> {
         CacheService.saveList('notes', items);
       }
     } catch (e) {
-      if (mounted && _items.isEmpty) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted && _items.isEmpty) {
+        setState(() {
+          _error = ApiService.friendlyError(e);
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -74,32 +82,20 @@ class _NotesScreenState extends State<NotesScreen> {
     setState(() => _items.remove(item));
     widget.onCountUpdate?.call(_items.length);
 
-    bool undone = false;
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(
-          content: const Text('ההערה נמחקה',
-              style: TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
-          backgroundColor: JC.surfaceAlt,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'בטל',
-            textColor: JC.blue400,
-            onPressed: () {
-              undone = true;
-              setState(() => _items.insert(savedIndex.clamp(0, _items.length), item));
-              widget.onCountUpdate?.call(_items.length);
-            },
-          ),
-        ))
-        .closed
-        .then((_) {
-          if (!undone) {
-            ApiService(widget.settings).deleteNote(id).catchError((_) {});
-          }
-        });
+    showDeleteSnackbar(
+      context,
+      message: 'ההערה נמחקה',
+      onUndo: () {
+        setState(() =>
+            _items.insert(savedIndex.clamp(0, _items.length), item));
+        widget.onCountUpdate?.call(_items.length);
+      },
+      onClosed: (wasUndone) {
+        if (!wasUndone) {
+          ApiService(widget.settings).deleteNote(id).catchError((_) {});
+        }
+      },
+    );
   }
 
   Future<void> _showAddSheet() async {
@@ -344,7 +340,7 @@ class _NotesScreenState extends State<NotesScreen> {
         child: const Icon(Icons.add_rounded, color: Colors.white),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: JC.blue400))
+          ? const LoadingSkeleton(itemCount: 5, itemHeight: 76)
           : _error != null
               ? EmptyState(
                   icon: Icons.error_outline_rounded,
@@ -355,7 +351,9 @@ class _NotesScreenState extends State<NotesScreen> {
                     if (_items.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: _NoteSearchBar(controller: _searchCtrl),
+                        child: JarvisSearchBar(
+                            controller: _searchCtrl,
+                            hint: 'חיפוש בהערות...'),
                       ),
                     Expanded(
                       child: _filtered.isEmpty
@@ -458,33 +456,3 @@ Widget _noteDismissBg() => Container(
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
 
-class _NoteSearchBar extends StatelessWidget {
-  final TextEditingController controller;
-  const _NoteSearchBar({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      textDirection: TextDirection.rtl,
-      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 14),
-      decoration: InputDecoration(
-        hintText: 'חיפוש בהערות...',
-        hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 14),
-        prefixIcon: const Icon(Icons.search_rounded, color: JC.textMuted, size: 18),
-        filled: true,
-        fillColor: JC.surfaceAlt,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.border, width: 0.8)),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.border, width: 0.8)),
-        focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.blue500, width: 1)),
-      ),
-    );
-  }
-}

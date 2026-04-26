@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'app_settings.dart';
 import 'main.dart' show JC;
+import 'services/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AppSettings settings;
@@ -103,7 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _obsidianSyncStatus = '⚠️ שגיאה ${res.statusCode}');
       }
     } on Exception catch (e) {
-      setState(() => _obsidianSyncStatus = '❌ ${e.toString().split(':').last.trim()}');
+      setState(() => _obsidianSyncStatus = '❌ ${ApiService.friendlyError(e)}');
     }
   }
 
@@ -153,7 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? 'הבקשה פגה — השרת לא מגיב.\nוודא ש-node server.js רץ.'
           : err.contains('refused') || err.contains('Failed host lookup') || err.contains('NetworkError')
               ? 'חיבור נדחה — בדוק:\n1. node server.js רץ?\n2. ה-IP נכון?\n3. פורט 3000 פתוח?'
-              : 'שגיאה: $err';
+              : ApiService.friendlyError(e);
       setState(() => _pingResult = '❌ $hint');
     }
   }

@@ -5,7 +5,10 @@ import '../app_settings.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
 import '../widgets/animated_list_item.dart';
+import '../widgets/delete_snackbar.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/jarvis_search_bar.dart';
+import '../widgets/loading_skeleton.dart';
 
 class TasksScreen extends StatefulWidget {
   final AppSettings settings;
@@ -88,7 +91,12 @@ class _TasksScreenState extends State<TasksScreen> {
         CacheService.saveList('tasks', items);
       }
     } catch (e) {
-      if (mounted && _items.isEmpty) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted && _items.isEmpty) {
+        setState(() {
+          _error = ApiService.friendlyError(e);
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -114,32 +122,20 @@ class _TasksScreenState extends State<TasksScreen> {
     setState(() => _items.remove(item));
     _updateCount();
 
-    bool undone = false;
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(
-          content: const Text('המשימה הוסרה',
-              style: TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
-          backgroundColor: JC.surfaceAlt,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'בטל',
-            textColor: JC.blue400,
-            onPressed: () {
-              undone = true;
-              setState(() => _items.insert(savedIndex.clamp(0, _items.length), item));
-              _updateCount();
-            },
-          ),
-        ))
-        .closed
-        .then((_) {
-          if (!undone) {
-            ApiService(widget.settings).deleteTask(id).catchError((_) {});
-          }
-        });
+    showDeleteSnackbar(
+      context,
+      message: 'המשימה הוסרה',
+      onUndo: () {
+        setState(() =>
+            _items.insert(savedIndex.clamp(0, _items.length), item));
+        _updateCount();
+      },
+      onClosed: (wasUndone) {
+        if (!wasUndone) {
+          ApiService(widget.settings).deleteTask(id).catchError((_) {});
+        }
+      },
+    );
   }
 
   Future<void> _showAddSheet() async {
@@ -331,7 +327,7 @@ class _TasksScreenState extends State<TasksScreen> {
         child: const Icon(Icons.add_rounded, color: Colors.white),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: JC.blue400))
+          ? const LoadingSkeleton(itemCount: 6)
           : _error != null
               ? EmptyState(icon: Icons.error_outline_rounded,
                   title: 'שגיאת טעינה', subtitle: _error!)
@@ -340,7 +336,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     if (_items.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: _ListSearchBar(
+                        child: JarvisSearchBar(
                             controller: _searchCtrl, hint: 'חיפוש במשימות...'),
                       ),
                     Expanded(
@@ -487,38 +483,3 @@ Widget _dismissBg() => Container(
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
 
-class _ListSearchBar extends StatelessWidget {
-  final TextEditingController controller;
-  final String hint;
-  const _ListSearchBar({required this.controller, required this.hint});
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      textDirection: TextDirection.rtl,
-      style: const TextStyle(
-          color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 14),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(
-            color: JC.textMuted, fontFamily: 'Heebo', fontSize: 14),
-        prefixIcon:
-            const Icon(Icons.search_rounded, color: JC.textMuted, size: 18),
-        filled: true,
-        fillColor: JC.surfaceAlt,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.border, width: 0.8)),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.border, width: 0.8)),
-        focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.blue500, width: 1)),
-      ),
-    );
-  }
-}

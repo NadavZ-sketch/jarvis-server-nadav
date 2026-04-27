@@ -1,4 +1,10 @@
 'use strict';
+jest.mock('openai', () => ({
+    OpenAI: jest.fn().mockImplementation(() => ({
+        audio: { transcriptions: { create: jest.fn().mockResolvedValue({ text: '' }) } },
+    })),
+    toFile: jest.fn().mockResolvedValue({}),
+}));
 jest.mock('node-cron', () => ({ schedule: jest.fn() }));
 jest.mock('nodemailer', () => ({
     createTransport: jest.fn().mockReturnValue({
@@ -11,15 +17,30 @@ jest.mock('google-tts-api', () => ({
 jest.mock('@supabase/supabase-js', () => ({
     createClient: jest.fn().mockReturnValue({ from: jest.fn() }),
 }));
+jest.mock('../../services/obsidianSync', () => ({
+    initSync: jest.fn().mockResolvedValue(undefined),
+    fullSyncFromDb: jest.fn().mockResolvedValue(undefined),
+    appendChatMessage: jest.fn().mockResolvedValue(undefined),
+    syncAll: jest.fn().mockResolvedValue(undefined),
+}));
 
-jest.mock('../../agents/router', () => ({ classifyIntent: jest.fn() }));
+jest.mock('../../agents/router', () => ({ classifyIntent: jest.fn(), classifyIntentWithLLM: jest.fn(), invalidateRouterCache: jest.fn() }));
 jest.mock('../../agents/taskAgent', () => ({ runTaskAgent: jest.fn() }));
 jest.mock('../../agents/reminderAgent', () => ({ runReminderAgent: jest.fn() }));
-jest.mock('../../agents/memoryAgent', () => ({ runMemoryAgent: jest.fn() }));
-jest.mock('../../agents/chatAgent', () => ({ runChatAgent: jest.fn() }));
+jest.mock('../../agents/memoryAgent', () => ({ runMemoryAgent: jest.fn(), autoExtractMemory: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../../agents/chatAgent', () => ({ runChatAgent: jest.fn(), detectFollowUp: jest.fn().mockReturnValue(false), filterRelevantMemories: jest.fn(m => m) }));
 jest.mock('../../agents/sportsAgent', () => ({ runSportsAgent: jest.fn() }));
 jest.mock('../../agents/messagingAgent', () => ({ runMessagingAgent: jest.fn() }));
 jest.mock('../../agents/draftAgent', () => ({ runDraftAgent: jest.fn() }));
+jest.mock('../../agents/securityAgent', () => ({ runSecurityAgent: jest.fn() }));
+jest.mock('../../agents/agentFactoryAgent', () => ({ runAgentFactoryAgent: jest.fn() }));
+jest.mock('../../agents/insightAgent', () => ({ runInsightAgent: jest.fn() }));
+jest.mock('../../agents/weatherAgent', () => ({ runWeatherAgent: jest.fn() }));
+jest.mock('../../agents/newsAgent', () => ({ runNewsAgent: jest.fn() }));
+jest.mock('../../agents/shoppingAgent', () => ({ runShoppingAgent: jest.fn() }));
+jest.mock('../../agents/notesAgent', () => ({ runNotesAgent: jest.fn() }));
+jest.mock('../../agents/stocksAgent', () => ({ runStocksAgent: jest.fn() }));
+jest.mock('../../agents/translationAgent', () => ({ runTranslationAgent: jest.fn() }));
 
 const request = require('supertest');
 const { createClient } = require('@supabase/supabase-js');

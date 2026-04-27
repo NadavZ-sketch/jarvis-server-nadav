@@ -31,7 +31,7 @@
   "homepage": "https://github.com/NadavZ-sketch/myassistant-backend#readme",
   "devDependencies": {
     "jest": "^29.7.0",
-    "supertest": "^7.0.0"
+    "supertest": "^7.2.2"
   },
   "dependencies": {
     "@huggingface/inference": "^4.13.15",

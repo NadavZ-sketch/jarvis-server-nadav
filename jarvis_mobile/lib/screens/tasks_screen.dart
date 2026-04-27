@@ -302,25 +302,6 @@ class _TasksScreenState extends State<TasksScreen> {
 
     return Scaffold(
       backgroundColor: JC.bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: const Text('משימות',
-            style: TextStyle(color: JC.textPrimary, fontSize: 18,
-                fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
-            textDirection: TextDirection.rtl),
-        centerTitle: true,
-        actions: [
-          if (doneCount > 0)
-            TextButton(
-              onPressed: () => setState(() => _showDone = !_showDone),
-              child: Text(
-                _showDone ? 'הסתר בוצעו' : 'הצג בוצעו ($doneCount)',
-                style: const TextStyle(
-                    color: JC.blue400, fontFamily: 'Heebo', fontSize: 13),
-              ),
-            ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddSheet,
         backgroundColor: JC.blue500,
@@ -338,6 +319,26 @@ class _TasksScreenState extends State<TasksScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                         child: JarvisSearchBar(
                             controller: _searchCtrl, hint: 'חיפוש במשימות...'),
+                      ),
+                    if (doneCount > 0)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: () =>
+                                setState(() => _showDone = !_showDone),
+                            child: Text(
+                              _showDone
+                                  ? 'הסתר בוצעו'
+                                  : 'הצג בוצעו ($doneCount)',
+                              style: const TextStyle(
+                                  color: JC.blue400,
+                                  fontFamily: 'Heebo',
+                                  fontSize: 13),
+                            ),
+                          ),
+                        ),
                       ),
                     Expanded(
                       child: _filtered.isEmpty

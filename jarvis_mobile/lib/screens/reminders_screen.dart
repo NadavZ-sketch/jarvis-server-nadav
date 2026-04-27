@@ -121,9 +121,21 @@ class _RemindersScreenState extends State<RemindersScreen> {
     );
   }
 
-  Future<void> _showAddSheet() async {
-    final textCtrl = TextEditingController();
-    DateTime selectedDate = DateTime.now().add(const Duration(hours: 1));
+  Future<void> _showReminderSheet({Map<String, dynamic>? existing}) async {
+    final isEdit = existing != null;
+    final textCtrl = TextEditingController(
+        text: isEdit ? (existing['text']?.toString() ?? '') : '');
+    DateTime selectedDate;
+    if (isEdit && existing['scheduled_time'] != null) {
+      try {
+        selectedDate =
+            DateTime.parse(existing['scheduled_time'].toString()).toLocal();
+      } catch (_) {
+        selectedDate = DateTime.now().add(const Duration(hours: 1));
+      }
+    } else {
+      selectedDate = DateTime.now().add(const Duration(hours: 1));
+    }
 
     await showModalBottomSheet(
       context: context,
@@ -142,8 +154,8 @@ class _RemindersScreenState extends State<RemindersScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text('תזכורת חדשה',
-                  style: TextStyle(
+              Text(isEdit ? 'עריכת תזכורת' : 'תזכורת חדשה',
+                  style: const TextStyle(
                       color: JC.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -247,10 +259,10 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       backgroundColor: JC.blue500,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12))),
-                  onPressed: () =>
-                      _submitAdd(textCtrl.text, selectedDate, ctx),
-                  child: const Text('הוסף',
-                      style: TextStyle(
+                  onPressed: () => _submitReminder(
+                      textCtrl.text, selectedDate, ctx, existing: existing),
+                  child: Text(isEdit ? 'שמור' : 'הוסף',
+                      style: const TextStyle(
                           fontFamily: 'Heebo',
                           fontWeight: FontWeight.w600)),
                 ),
@@ -262,23 +274,56 @@ class _RemindersScreenState extends State<RemindersScreen> {
     );
   }
 
-  Future<void> _submitAdd(
-      String text, DateTime dateTime, BuildContext sheetCtx) async {
+  Future<void> _submitReminder(
+      String text, DateTime dateTime, BuildContext sheetCtx,
+      {Map<String, dynamic>? existing}) async {
     final val = text.trim();
     if (val.isEmpty) return;
     Navigator.pop(sheetCtx);
+    final iso = dateTime.toIso8601String();
+
+    if (existing != null) {
+      // Edit existing reminder
+      final id = existing['id'].toString();
+      final prevText = existing['text'];
+      final prevTime = existing['scheduled_time'];
+      setState(() {
+        existing['text']           = val;
+        existing['scheduled_time'] = iso;
+      });
+      try {
+        await ApiService(widget.settings)
+            .updateReminder(id, text: val, scheduledTime: iso);
+        // Reschedule local notification (cancel + create)
+        await NotificationService.cancel(id).catchError((_) {});
+        await NotificationService.schedule(id, val, dateTime)
+            .catchError((_) {});
+      } catch (_) {
+        // revert on error
+        if (mounted) {
+          setState(() {
+            existing['text']           = prevText;
+            existing['scheduled_time'] = prevTime;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('שגיאה בעדכון',
+                  style: TextStyle(fontFamily: 'Heebo'))));
+        }
+      }
+      return;
+    }
+
+    // Add new reminder
     try {
-      final res = await ApiService(widget.settings)
-          .addReminder(val, dateTime.toIso8601String());
+      final res = await ApiService(widget.settings).addReminder(val, iso);
       final newItem = res['reminder'] as Map<String, dynamic>? ??
           {
             'id': DateTime.now().toString(),
             'text': val,
-            'scheduled_time': dateTime.toIso8601String(),
+            'scheduled_time': iso,
           };
       setState(() => _items.insert(0, newItem));
       widget.onCountUpdate?.call(_items.length);
-      // Schedule local notification
       final nId = newItem['id']?.toString();
       if (nId != null) {
         NotificationService.schedule(nId, val, dateTime).catchError((_) {});
@@ -296,19 +341,8 @@ class _RemindersScreenState extends State<RemindersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: JC.bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: const Text('תזכורות',
-            style: TextStyle(
-                color: JC.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Heebo'),
-            textDirection: TextDirection.rtl),
-        centerTitle: true,
-      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddSheet,
+        onPressed: () => _showReminderSheet(),
         backgroundColor: JC.blue500,
         child: const Icon(Icons.add_rounded, color: Colors.white),
       ),
@@ -354,7 +388,10 @@ class _RemindersScreenState extends State<RemindersScreen> {
                                       direction: DismissDirection.endToStart,
                                       background: _remDismissBg(),
                                       onDismissed: (_) => _onDismissed(item),
-                                      child: Container(
+                                      child: GestureDetector(
+                                        onTap: () =>
+                                            _showReminderSheet(existing: item),
+                                        child: Container(
                                         margin:
                                             const EdgeInsets.only(bottom: 10),
                                         padding: const EdgeInsets.symmetric(
@@ -414,6 +451,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                                             ),
                                           ],
                                         ),
+                                      ),
                                       ),
                                     ),
                                   );

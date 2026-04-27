@@ -3,6 +3,7 @@ import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
+import '../transitions/slide_fade_route.dart';
 import '../widgets/animated_list_item.dart';
 import '../widgets/delete_snackbar.dart';
 import '../widgets/empty_state.dart';
@@ -98,231 +99,30 @@ class _NotesScreenState extends State<NotesScreen> {
     );
   }
 
-  Future<void> _showAddSheet() async {
-    final titleCtrl = TextEditingController();
-    final contentCtrl = TextEditingController();
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: JC.surfaceAlt,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            const Text('הערה חדשה',
-                style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'Heebo'),
-                textDirection: TextDirection.rtl),
-            const SizedBox(height: 12),
-            TextField(
-              controller: titleCtrl,
-              textDirection: TextDirection.rtl,
-              autofocus: true,
-              style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
-              decoration: _inputDeco('כותרת (אופציונלי)'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: contentCtrl,
-              textDirection: TextDirection.rtl,
-              maxLines: 3,
-              style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
-              decoration: _inputDeco('תוכן ההערה...'),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                    backgroundColor: JC.blue500,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12))),
-                onPressed: () =>
-                    _submitAdd(titleCtrl.text, contentCtrl.text, ctx),
-                child: const Text('שמור',
-                    style: TextStyle(
-                        fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
-              ),
-            ),
-          ],
+  Future<void> _openEditor({Map<String, dynamic>? existing}) async {
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      SlideFadeRoute<Map<String, dynamic>>(
+        page: NoteEditScreen(
+          settings: widget.settings,
+          existing: existing,
         ),
       ),
     );
-  }
-
-  InputDecoration _inputDeco(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
-        filled: true,
-        fillColor: JC.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.border)),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.border)),
-        focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.blue500)),
-      );
-
-  Future<void> _submitAdd(
-      String title, String content, BuildContext sheetCtx) async {
-    final val = content.trim();
-    if (val.isEmpty) return;
-    Navigator.pop(sheetCtx);
-    try {
-      final res = await ApiService(widget.settings)
-          .addNote(val, title: title.trim());
-      final newItem = res['note'] as Map<String, dynamic>? ??
-          {
-            'id': DateTime.now().toString(),
-            'title': title.trim(),
-            'content': val,
-            'created_at': DateTime.now().toIso8601String(),
-          };
-      setState(() => _items.insert(0, newItem));
-      widget.onCountUpdate?.call(_items.length);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('שגיאה בשמירה',
-                style: TextStyle(fontFamily: 'Heebo'))));
+    if (!mounted || result == null) return;
+    setState(() {
+      if (existing == null) {
+        _items.insert(0, result);
+      } else {
+        existing['title']   = result['title'];
+        existing['content'] = result['content'];
+        if (result['updated_at'] != null) {
+          existing['updated_at'] = result['updated_at'];
+        }
       }
-    }
-  }
-
-  void _showNoteDetail(Map<String, dynamic> item) {
-    final titleCtrl   = TextEditingController(text: item['title']?.toString() ?? '');
-    final contentCtrl = TextEditingController(text: item['content']?.toString() ?? '');
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: JC.surfaceAlt,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) {
-          bool editing = false;
-
-          // We need a local state — use a ValueNotifier trick
-          final editingNotifier = ValueNotifier(false);
-
-          return ValueListenableBuilder<bool>(
-            valueListenable: editingNotifier,
-            builder: (_, isEditing, __) => Padding(
-              padding: EdgeInsets.only(
-                  left: 20, right: 20, top: 20,
-                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  // Header row
-                  Row(
-                    textDirection: TextDirection.rtl,
-                    children: [
-                      Text(
-                        isEditing ? 'עריכת הערה' : 'הערה',
-                        style: const TextStyle(
-                            color: JC.textPrimary, fontSize: 16,
-                            fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: Icon(
-                          isEditing ? Icons.close_rounded : Icons.edit_outlined,
-                          color: JC.blue400, size: 20,
-                        ),
-                        onPressed: () => editingNotifier.value = !isEditing,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  if (isEditing) ...[
-                    TextField(
-                      controller: titleCtrl,
-                      textDirection: TextDirection.rtl,
-                      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
-                      decoration: _inputDeco('כותרת (אופציונלי)'),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: contentCtrl,
-                      textDirection: TextDirection.rtl,
-                      maxLines: 5,
-                      autofocus: true,
-                      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
-                      decoration: _inputDeco('תוכן ההערה...'),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                            backgroundColor: JC.blue500,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12))),
-                        onPressed: () async {
-                          final newTitle   = titleCtrl.text.trim();
-                          final newContent = contentCtrl.text.trim();
-                          if (newContent.isEmpty) return;
-                          Navigator.pop(ctx);
-                          try {
-                            await ApiService(widget.settings)
-                                .updateNote(item['id'].toString(),
-                                    title: newTitle, content: newContent);
-                            if (mounted) {
-                              setState(() {
-                                item['title']   = newTitle;
-                                item['content'] = newContent;
-                              });
-                              CacheService.saveList('notes', _items);
-                            }
-                          } catch (_) {}
-                        },
-                        child: const Text('שמור',
-                            style: TextStyle(
-                                fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                  ] else ...[
-                    if ((item['title']?.toString() ?? '').isNotEmpty) ...[
-                      Text(item['title']!,
-                          textDirection: TextDirection.rtl,
-                          style: const TextStyle(
-                              color: JC.textPrimary, fontSize: 17,
-                              fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
-                      const SizedBox(height: 8),
-                    ],
-                    Text(item['content']?.toString() ?? '',
-                        textDirection: TextDirection.rtl,
-                        style: const TextStyle(
-                            color: JC.textSecondary, fontSize: 15,
-                            height: 1.6, fontFamily: 'Heebo')),
-                    const SizedBox(height: 8),
-                  ],
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
+    });
+    widget.onCountUpdate?.call(_items.length);
+    CacheService.saveList('notes', _items);
   }
 
   String _preview(Map<String, dynamic> item) {
@@ -335,7 +135,7 @@ class _NotesScreenState extends State<NotesScreen> {
     return Scaffold(
       backgroundColor: JC.bg,
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddSheet,
+        onPressed: () => _openEditor(),
         backgroundColor: JC.blue500,
         child: const Icon(Icons.add_rounded, color: Colors.white),
       ),
@@ -385,7 +185,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                       background: _noteDismissBg(),
                                       onDismissed: (_) => _onDismissed(item),
                                       child: GestureDetector(
-                                        onTap: () => _showNoteDetail(item),
+                                        onTap: () => _openEditor(existing: item),
                                         child: Container(
                                           margin: const EdgeInsets.only(
                                               bottom: 10),
@@ -456,3 +256,242 @@ Widget _noteDismissBg() => Container(
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
 
+/// Full-screen note editor. Pops with the saved/updated note Map, or `null`
+/// if nothing was changed (existing) or content is empty (new).
+class NoteEditScreen extends StatefulWidget {
+  final AppSettings settings;
+  final Map<String, dynamic>? existing;
+
+  const NoteEditScreen({super.key, required this.settings, this.existing});
+
+  @override
+  State<NoteEditScreen> createState() => _NoteEditScreenState();
+}
+
+class _NoteEditScreenState extends State<NoteEditScreen> {
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _contentCtrl;
+  late final String _initialTitle;
+  late final String _initialContent;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialTitle   = widget.existing?['title']?.toString() ?? '';
+    _initialContent = widget.existing?['content']?.toString() ?? '';
+    _titleCtrl   = TextEditingController(text: _initialTitle);
+    _contentCtrl = TextEditingController(text: _initialContent);
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _contentCtrl.dispose();
+    super.dispose();
+  }
+
+  bool get _isDirty {
+    return _titleCtrl.text   != _initialTitle ||
+           _contentCtrl.text != _initialContent;
+  }
+
+  /// Save current values. Pops the screen with the result, or with `null`
+  /// if there's nothing to save.
+  Future<void> _saveAndPop() async {
+    if (_saving) return;
+    final title   = _titleCtrl.text.trim();
+    final content = _contentCtrl.text.trim();
+
+    // Empty new note → just pop without saving.
+    if (widget.existing == null && content.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+    // Unchanged existing → pop without round-tripping the API.
+    if (widget.existing != null && !_isDirty) {
+      Navigator.pop(context);
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final api = ApiService(widget.settings);
+      final res = widget.existing == null
+          ? await api.addNote(content, title: title)
+          : await api.updateNote(widget.existing!['id'].toString(),
+              title: title, content: content);
+      final saved = (res['note'] as Map<String, dynamic>?) ??
+          {
+            'id': widget.existing?['id'] ?? DateTime.now().toString(),
+            'title': title,
+            'content': content,
+            'created_at': widget.existing?['created_at'] ??
+                DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          };
+      if (mounted) Navigator.pop(context, saved);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('שגיאה בשמירה',
+              style: TextStyle(fontFamily: 'Heebo'))));
+    }
+  }
+
+  Future<bool> _confirmDiscard() async {
+    if (!_isDirty) return true;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: JC.surfaceAlt,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        title: const Text('יציאה ללא שמירה?',
+            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+            textDirection: TextDirection.rtl),
+        content: const Text('יש שינויים שלא נשמרו. לצאת בכל זאת?',
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo'),
+            textDirection: TextDirection.rtl),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('המשך עריכה',
+                style: TextStyle(color: JC.blue400, fontFamily: 'Heebo')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('צא',
+                style: TextStyle(color: JC.cancelRed, fontFamily: 'Heebo')),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        // Try to autosave first; if there are no changes, that just pops.
+        // If saving fails, give the user a chance to discard.
+        final title   = _titleCtrl.text.trim();
+        final content = _contentCtrl.text.trim();
+        final isNewEmpty = widget.existing == null && content.isEmpty;
+        if (isNewEmpty || !_isDirty) {
+          if (context.mounted) Navigator.pop(context);
+          return;
+        }
+        // Auto-save on back.
+        await _saveAndPop();
+        // _saveAndPop already pops on success. If it failed, _saving was
+        // reset and we stay; user can retry or use the discard dialog.
+        if (mounted && !_saving) {
+          // Reached only when _saveAndPop failed and didn't pop.
+          final shouldLeave = await _confirmDiscard();
+          if (shouldLeave && context.mounted) Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: JC.bg,
+        appBar: AppBar(
+          backgroundColor: JC.surface,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: JC.textPrimary),
+            onPressed: () => Navigator.maybePop(context),
+          ),
+          title: Text(
+            widget.existing == null ? 'הערה חדשה' : 'עריכת הערה',
+            style: const TextStyle(
+              color: JC.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Heebo',
+            ),
+          ),
+          centerTitle: true,
+          actions: [
+            if (_saving)
+              const Padding(
+                padding: EdgeInsets.only(right: 16),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: JC.blue400),
+                  ),
+                ),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.check_rounded, color: JC.blue400),
+                tooltip: 'שמור',
+                onPressed: _saveAndPop,
+              ),
+          ],
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _titleCtrl,
+                  textDirection: TextDirection.rtl,
+                  style: const TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Heebo',
+                  ),
+                  decoration: const InputDecoration(
+                    hintText: 'כותרת (אופציונלי)',
+                    hintStyle: TextStyle(
+                        color: JC.textMuted,
+                        fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w500),
+                    border: InputBorder.none,
+                  ),
+                ),
+                const Divider(color: JC.border, height: 1),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _contentCtrl,
+                    textDirection: TextDirection.rtl,
+                    autofocus: widget.existing == null,
+                    maxLines: null,
+                    expands: true,
+                    keyboardType: TextInputType.multiline,
+                    textAlignVertical: TextAlignVertical.top,
+                    style: const TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 15,
+                      height: 1.6,
+                      fontFamily: 'Heebo',
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: 'כתוב כאן את ההערה...',
+                      hintStyle: TextStyle(
+                          color: JC.textMuted, fontFamily: 'Heebo'),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

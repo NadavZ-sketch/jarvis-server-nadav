@@ -104,6 +104,19 @@ class ApiService {
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> updateReminder(String id,
+      {String? text, String? scheduledTime}) async {
+    final body = <String, dynamic>{};
+    if (text          != null) body['text']           = text;
+    if (scheduledTime != null) body['scheduled_time'] = scheduledTime;
+    final res = await http.put(
+      _uri('/reminders/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
   Future<void> deleteReminder(String id) async {
     await http.delete(_uri('/reminders/$id')).timeout(_timeout);
   }
@@ -121,6 +134,33 @@ class ApiService {
     final res = await http.get(_uri('/contacts')).timeout(_timeout);
     final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['contacts'] ?? []);
+  }
+
+  Future<Map<String, dynamic>> addContact(
+      {required String name, String? phone, String? email}) async {
+    final body = <String, dynamic>{'name': name};
+    if (phone != null && phone.isNotEmpty) body['phone'] = phone;
+    if (email != null && email.isNotEmpty) body['email'] = email;
+    final res = await http.post(
+      _uri('/contacts'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateContact(String id,
+      {String? name, String? phone, String? email}) async {
+    final body = <String, dynamic>{};
+    if (name  != null) body['name']  = name;
+    if (phone != null) body['phone'] = phone;
+    if (email != null) body['email'] = email;
+    final res = await http.put(
+      _uri('/contacts/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<void> deleteContact(String id) async {
@@ -146,6 +186,19 @@ class ApiService {
 
   Future<void> deleteShoppingItem(String id) async {
     await http.delete(_uri('/shopping/$id')).timeout(_timeout);
+  }
+
+  Future<Map<String, dynamic>> updateShoppingItem(String id,
+      {bool? done, String? item}) async {
+    final body = <String, dynamic>{};
+    if (done != null) body['done'] = done;
+    if (item != null) body['item'] = item;
+    final res = await http.patch(
+      _uri('/shopping/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   // ─── Notes ────────────────────────────────────────────────────────────────

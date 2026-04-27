@@ -168,12 +168,167 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     launchUrl(Uri.parse('mailto:$email'));
                   },
                 ),
+              const Divider(color: JC.border, height: 1),
+              _ActionTile(
+                icon: Icons.edit_outlined,
+                label: 'ערוך',
+                color: JC.blue400,
+                onTap: () {
+                  Navigator.pop(context);
+                  _showContactSheet(existing: item);
+                },
+              ),
+              _ActionTile(
+                icon: Icons.delete_outline_rounded,
+                label: 'מחק',
+                color: JC.cancelRed,
+                onTap: () {
+                  Navigator.pop(context);
+                  _onDismissed(item);
+                },
+              ),
               const SizedBox(height: 8),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _showContactSheet({Map<String, dynamic>? existing}) async {
+    final isEdit = existing != null;
+    final nameCtrl = TextEditingController(
+        text: isEdit ? (existing['name']?.toString() ?? '') : '');
+    final phoneCtrl = TextEditingController(
+        text: isEdit
+            ? (existing['phone']?.toString() ??
+                existing['phone_number']?.toString() ??
+                '')
+            : '');
+    final emailCtrl = TextEditingController(
+        text: isEdit ? (existing['email']?.toString() ?? '') : '');
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: JC.surfaceAlt,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(isEdit ? 'עריכת איש קשר' : 'איש קשר חדש',
+                style: const TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Heebo'),
+                textDirection: TextDirection.rtl),
+            const SizedBox(height: 12),
+            _ContactField(
+                controller: nameCtrl, hint: 'שם', autofocus: !isEdit),
+            const SizedBox(height: 8),
+            _ContactField(
+                controller: phoneCtrl,
+                hint: 'טלפון',
+                keyboardType: TextInputType.phone,
+                textDirection: TextDirection.ltr),
+            const SizedBox(height: 8),
+            _ContactField(
+                controller: emailCtrl,
+                hint: 'מייל',
+                keyboardType: TextInputType.emailAddress,
+                textDirection: TextDirection.ltr),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                    backgroundColor: JC.blue500,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12))),
+                onPressed: () => _submitContact(
+                    nameCtrl.text, phoneCtrl.text, emailCtrl.text, ctx,
+                    existing: existing),
+                child: Text(isEdit ? 'שמור' : 'הוסף',
+                    style: const TextStyle(
+                        fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitContact(
+      String name, String phone, String email, BuildContext sheetCtx,
+      {Map<String, dynamic>? existing}) async {
+    final cleanName  = name.trim();
+    final cleanPhone = phone.trim();
+    final cleanEmail = email.trim();
+    if (cleanName.isEmpty) return;
+    Navigator.pop(sheetCtx);
+
+    if (existing != null) {
+      // Edit existing
+      final id = existing['id'].toString();
+      final prev = Map<String, dynamic>.from(existing);
+      setState(() {
+        existing['name']  = cleanName;
+        existing['phone'] = cleanPhone;
+        existing['email'] = cleanEmail;
+      });
+      try {
+        await ApiService(widget.settings).updateContact(
+          id,
+          name: cleanName,
+          phone: cleanPhone,
+          email: cleanEmail,
+        );
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            existing['name']  = prev['name'];
+            existing['phone'] = prev['phone'];
+            existing['email'] = prev['email'];
+          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('שגיאה בעדכון',
+                  style: TextStyle(fontFamily: 'Heebo'))));
+        }
+      }
+      return;
+    }
+
+    // Add new
+    try {
+      final res = await ApiService(widget.settings).addContact(
+          name: cleanName, phone: cleanPhone, email: cleanEmail);
+      final newItem = res['contact'] as Map<String, dynamic>? ??
+          {
+            'id': DateTime.now().toString(),
+            'name': cleanName,
+            'phone': cleanPhone,
+            'email': cleanEmail,
+          };
+      setState(() => _items.insert(0, newItem));
+      widget.onCountUpdate?.call(_items.length);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('שגיאה בהוספה',
+                style: TextStyle(fontFamily: 'Heebo'))));
+      }
+    }
   }
 
   String _initials(String name) {
@@ -187,16 +342,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: JC.bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: const Text('אנשי קשר',
-            style: TextStyle(
-                color: JC.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Heebo'),
-            textDirection: TextDirection.rtl),
-        centerTitle: true,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showContactSheet(),
+        backgroundColor: JC.blue500,
+        child: const Icon(Icons.add_rounded, color: Colors.white),
       ),
       body: _loading
           ? const LoadingSkeleton(itemCount: 6)
@@ -381,6 +530,51 @@ class _ActionTile extends StatelessWidget {
             color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 14),
       ),
       onTap: onTap,
+    );
+  }
+}
+
+class _ContactField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+  final bool autofocus;
+  final TextInputType? keyboardType;
+  final TextDirection textDirection;
+
+  const _ContactField({
+    required this.controller,
+    required this.hint,
+    this.autofocus = false,
+    this.keyboardType,
+    this.textDirection = TextDirection.rtl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      autofocus: autofocus,
+      keyboardType: keyboardType,
+      textDirection: textDirection,
+      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(
+            color: JC.textMuted, fontFamily: 'Heebo'),
+        filled: true,
+        fillColor: JC.surface,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: JC.border)),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: JC.border)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: JC.blue500)),
+      ),
     );
   }
 }

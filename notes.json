@@ -1,30 +1,47 @@
 {
-  "lastUpdated": "2026-04-18",
+  "lastUpdated": "2026-04-28",
   "notes": [
     {
       "id": 1,
-      "date": "2026-04-18",
-      "tag": "רעיון",
-      "text": "לבדוק האם Pinecone יכול לשפר את חיפוש הזיכרון — כרגע הזיכרון הוא keyword-based בלבד.",
-      "done": false
+      "date": "2026-04-28",
+      "tag": "שיפור",
+      "text": "תוקן: שגיאת 'Stream idle timeout - partial response received' בצ'אט — Groq החזיר שגיאת infrastructure כ-content. עכשיו מזוהה ונופל ל-DeepSeek.",
+      "done": true
     },
     {
       "id": 2,
-      "date": "2026-04-18",
-      "tag": "באג",
-      "text": "ניתוב מילות מפתח לא מזהה שאלות מורכבות שמשתרעות על כמה סוכנים — לשקול LLM-based routing.",
-      "done": false
+      "date": "2026-04-28",
+      "tag": "שיפור",
+      "text": "תוקן: 3 חבילות integration tests לא הצליחו לרוץ (חסרה mock ל-openai, obsidianSync, exports חסרים). עכשיו 179/179 בדיקות עוברות.",
+      "done": true
     },
     {
       "id": 3,
-      "date": "2026-04-18",
+      "date": "2026-04-28",
       "tag": "שיפור",
-      "text": "להוסיף תזכורות חוזרות (יומי / שבועי) — כרגע כל תזכורת חד-פעמית.",
+      "text": "parseSSEStream שודרג: idle timeout הועלה ל-12 שניות, שגיאות stream גורמות עכשיו ל-reject במקום resolve שקט.",
+      "done": true
+    },
+    {
+      "id": 4,
+      "date": "2026-04-28",
+      "tag": "רעיון",
+      "text": "לחבר Pinecone לשיפור חיפוש הזיכרון — מותקן אך לא פעיל. כרגע חיפוש keyword-based בלבד.",
+      "done": false
+    },
+    {
+      "id": 5,
+      "date": "2026-04-28",
+      "tag": "todo",
+      "text": "להוסיף תזכורות חוזרות (יומי / שבועי) — כרגע כל תזכורת חד-פעמית בלבד.",
+      "done": false
+    },
+    {
+      "id": 6,
+      "date": "2026-04-28",
+      "tag": "רעיון",
+      "text": "Authentication מרובת משתמשים — כרגע שרת מיועד למשתמש יחיד. להוסיף JWT + row-level security בסופאבייס.",
       "done": false
     }
-  ],
-  "featureOverrides": {
-    "Vector Search (Pinecone)": "partial",
-    "Flutter Widget Tests": "partial"
-  }
+  ]
 }

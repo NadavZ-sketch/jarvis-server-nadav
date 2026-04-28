@@ -54,7 +54,14 @@ async function callGemma4(messages, useLocal = true) {
                 timeout: 9000,
                 signal: controller.signal
             });
-            return response.data.choices[0].message.content.trim();
+            const content = response.data.choices[0].message.content.trim();
+            // Groq occasionally returns infrastructure errors as completion text instead of HTTP errors.
+            // Detect and fall through to the next provider rather than showing raw error to the user.
+            if (/^(API Error:|Stream idle timeout|internal server error)/i.test(content)) {
+                console.warn('⚠️ Groq returned error as content, falling back to DeepSeek:', content.slice(0, 80));
+                throw new Error(content);
+            }
+            return content;
         } catch (groqErr) {
             if (groqErr.name === 'CanceledError' || groqErr.name === 'AbortError') throw groqErr;
             const detail = groqErr.response?.data ? JSON.stringify(groqErr.response.data) : groqErr.message;
@@ -93,44 +100,60 @@ async function callGemma4(messages, useLocal = true) {
 }
 
 // ─── SSE stream parser (Groq / DeepSeek / Ollama) ─────────────────────────────
+// Returns { complete: true } when [DONE] is received, rejects on error/timeout.
 
 function parseSSEStream(stream, onChunk) {
     return new Promise((resolve, reject) => {
         const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
         let settled = false;
+        let doneSeen = false;
+        let chunksSent = 0;
 
-        // If no data arrives for 8s, close the stream ourselves
+        const IDLE_MS = 12000;
+
         let idleTimer = setTimeout(() => {
-            console.warn('⚠️ Stream idle timeout (8s) — closing readline');
+            console.warn('⚠️ Stream idle timeout (12s) — closing');
             rl.close();
-        }, 8000);
+        }, IDLE_MS);
 
         const done = (err) => {
             if (settled) return;
             settled = true;
             clearTimeout(idleTimer);
-            if (err) reject(err); else resolve();
+            if (err) return reject(err);
+            // Idle timeout fired without [DONE] and without any chunks → treat as error
+            if (!doneSeen && chunksSent === 0) {
+                return reject(new Error('Stream idle timeout — no data received'));
+            }
+            resolve({ complete: doneSeen });
         };
 
         rl.on('line', (line) => {
             clearTimeout(idleTimer);
             idleTimer = setTimeout(() => {
-                console.warn('⚠️ Stream idle timeout (8s) — closing readline');
+                console.warn('⚠️ Stream idle timeout (12s) — closing');
                 rl.close();
-            }, 8000);
+            }, IDLE_MS);
 
             if (!line.startsWith('data: ')) return;
             const json = line.slice(6).trim();
-            if (json === '[DONE]') { rl.close(); return; }
+            if (json === '[DONE]') { doneSeen = true; rl.close(); return; }
             try {
                 const parsed = JSON.parse(json);
                 if (parsed.error) {
-                    console.warn('⚠️ Stream error event:', parsed.error.message || JSON.stringify(parsed.error));
-                    rl.close(); // don't wait — Groq may leave the connection open
+                    const msg = parsed.error.message || JSON.stringify(parsed.error);
+                    console.warn('⚠️ Stream error event:', msg);
+                    // Reject so the caller can fall back to the next provider
+                    // (unless we already sent chunks — in that case just close gracefully)
+                    if (chunksSent === 0) {
+                        rl.close();
+                        return done(new Error(msg));
+                    }
+                    rl.close();
                     return;
                 }
                 const content = parsed.choices?.[0]?.delta?.content;
-                if (content) onChunk(content);
+                if (content) { chunksSent++; onChunk(content); }
             } catch {}
         });
         rl.on('close', () => done());
@@ -170,6 +193,8 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
             'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
             'Content-Type': 'application/json'
         }));
+        // parseSSEStream resolves (complete or partial chunks) or rejects (no data + error/timeout).
+        // On resolve we're done — even a partial response is better than a fallback that appends.
         await parseSSEStream(response.data, onChunk);
         return;
     } catch (err) {

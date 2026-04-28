@@ -84,6 +84,29 @@ describe('callGemma4', () => {
             .mockRejectedValueOnce(new Error('Gemini error'));
         await expect(callGemma4('test', false)).rejects.toThrow('Gemini error');
     });
+
+    test('Groq returns error-as-content → falls back to DeepSeek', async () => {
+        const groqErrorContent = {
+            data: { choices: [{ message: { content: 'API Error: Stream idle timeout - partial response received' } }] }
+        };
+        axios.post
+            .mockResolvedValueOnce(groqErrorContent)
+            .mockResolvedValueOnce(DEEPSEEK_RESPONSE);
+        const result = await callGemma4('test', false);
+        expect(result).toBe('deepseek answer');
+        expect(axios.post).toHaveBeenCalledTimes(2);
+    });
+
+    test('Groq returns "Stream idle timeout" content → falls back to DeepSeek', async () => {
+        const groqIdleContent = {
+            data: { choices: [{ message: { content: 'Stream idle timeout — partial response received' } }] }
+        };
+        axios.post
+            .mockResolvedValueOnce(groqIdleContent)
+            .mockResolvedValueOnce(DEEPSEEK_RESPONSE);
+        const result = await callGemma4('test', false);
+        expect(result).toBe('deepseek answer');
+    });
 });
 
 describe('callGeminiWithSearch', () => {

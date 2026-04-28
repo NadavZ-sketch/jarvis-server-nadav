@@ -484,6 +484,24 @@ app.post('/send-email', async (req, res) => {
     }
 });
 
+// ─── Chat History (read-only for Flutter UI) ──────────────────────────────────
+
+app.get('/chat-history', async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 60, 200);
+        const { data, error } = await supabase
+            .from('chat_history')
+            .select('role, text, created_at')
+            .order('created_at', { ascending: false })
+            .limit(limit);
+        if (error) throw error;
+        res.json({ messages: (data || []).reverse() });
+    } catch (err) {
+        console.error('⚠️ /chat-history error:', err.message);
+        res.status(500).json({ messages: [] });
+    }
+});
+
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
 
 app.get('/check-reminders', async (_req, res) => {

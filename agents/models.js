@@ -25,78 +25,60 @@ async function callGemma4(messages, useLocal = true) {
         ? [{ role: 'user', content: messages }]
         : messages;
 
-    // Shared abort controller — total budget for the ENTIRE fallback chain is 17s
-    // (safely under Flutter's 20s client timeout regardless of how many providers are tried)
-    const controller = new AbortController();
-    const budgetTimer = setTimeout(() => {
-        console.warn('⚠️ LLM total budget (17s) exceeded — aborting');
-        controller.abort();
-    }, 17000);
-
-    try {
-        // ── 1. Local Ollama (only if useLocal is enabled AND OLLAMA_URL is set) ──
-        if (useLocal && OLLAMA_URL) {
-            const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
-                model: OLLAMA_MODEL, messages: msgs, stream: false
-            }, { timeout: 15000, signal: controller.signal });
-            return response.data.choices[0].message.content.trim();
-        }
-
-        // ── 2. Groq (free, fast) ──
-        try {
-            const response = await axios.post(GROQ_URL, {
-                model: GROQ_MODEL, messages: msgs, max_tokens: 800
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 9000,
-                signal: controller.signal
-            });
-            const content = response.data.choices[0].message.content.trim();
-            // Groq occasionally returns infrastructure errors as completion text instead of HTTP errors.
-            // Detect and fall through to the next provider rather than showing raw error to the user.
-            if (/^(API Error:|Stream idle timeout|internal server error)/i.test(content)) {
-                console.warn('⚠️ Groq returned error as content, falling back to DeepSeek:', content.slice(0, 80));
-                throw new Error(content);
-            }
-            return content;
-        } catch (groqErr) {
-            if (groqErr.name === 'CanceledError' || groqErr.name === 'AbortError') throw groqErr;
-            const detail = groqErr.response?.data ? JSON.stringify(groqErr.response.data) : groqErr.message;
-            console.warn('⚠️ Groq failed, falling back to DeepSeek:', detail);
-        }
-
-        // ── 3. DeepSeek fallback ──
-        try {
-            const response = await axios.post(DEEPSEEK_URL, {
-                model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 800
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 9000,
-                signal: controller.signal
-            });
-            return response.data.choices[0].message.content.trim();
-        } catch (deepseekErr) {
-            if (deepseekErr.name === 'CanceledError' || deepseekErr.name === 'AbortError') throw deepseekErr;
-            const detail = deepseekErr.response?.data ? JSON.stringify(deepseekErr.response.data) : deepseekErr.message;
-            console.warn('⚠️ DeepSeek failed, falling back to Gemini:', deepseekErr.message);
-        }
-
-        // ── 4. Gemini final fallback ──
-        const prompt = msgs.map(m => m.content).join('\n');
-        const response = await axios.post(GEMINI_URL, {
-            contents: [{ parts: [{ text: prompt }] }]
-        }, { timeout: 15000, signal: controller.signal });
-        return response.data.candidates[0].content.parts[0].text.trim();
-
-    } finally {
-        clearTimeout(budgetTimer);
+    // ── 1. Local Ollama (only if useLocal is enabled AND OLLAMA_URL is set) ──
+    if (useLocal && OLLAMA_URL) {
+        const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
+            model: OLLAMA_MODEL, messages: msgs, stream: false
+        }, { timeout: 15000 });
+        return response.data.choices[0].message.content.trim();
     }
+
+    // ── 2. Groq (free, fast) ──
+    try {
+        const response = await axios.post(GROQ_URL, {
+            model: GROQ_MODEL, messages: msgs, max_tokens: 800
+        }, {
+            headers: {
+                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 7000,
+        });
+        const content = response.data.choices[0].message.content.trim();
+        // Groq occasionally returns infrastructure errors as completion text instead of HTTP errors.
+        // Detect and fall through to the next provider rather than showing raw error to the user.
+        if (/^(API Error:|Stream idle timeout|internal server error)/i.test(content)) {
+            console.warn('⚠️ Groq returned error as content, falling back to DeepSeek:', content.slice(0, 80));
+            throw new Error(content);
+        }
+        return content;
+    } catch (groqErr) {
+        const detail = groqErr.response?.data ? JSON.stringify(groqErr.response.data) : groqErr.message;
+        console.warn('⚠️ Groq failed, falling back to DeepSeek:', detail);
+    }
+
+    // ── 3. DeepSeek fallback ──
+    try {
+        const response = await axios.post(DEEPSEEK_URL, {
+            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 800
+        }, {
+            headers: {
+                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 9000,
+        });
+        return response.data.choices[0].message.content.trim();
+    } catch (deepseekErr) {
+        console.warn('⚠️ DeepSeek failed, falling back to Gemini:', deepseekErr.message);
+    }
+
+    // ── 4. Gemini final fallback ──
+    const prompt = msgs.map(m => m.content).join('\n');
+    const response = await axios.post(GEMINI_URL, {
+        contents: [{ parts: [{ text: prompt }] }]
+    }, { timeout: 15000 });
+    return response.data.candidates[0].content.parts[0].text.trim();
 }
 
 // ─── SSE stream parser (Groq / DeepSeek / Ollama) ─────────────────────────────

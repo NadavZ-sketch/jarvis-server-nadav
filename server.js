@@ -52,6 +52,7 @@ const { runStocksAgent }      = require('./agents/stocksAgent');
 const { runTranslationAgent } = require('./agents/translationAgent');
 const { runMusicAgent }       = require('./agents/musicAgent');
 const obsidianSync            = require('./services/obsidianSync');
+const pinecone                = require('./services/pineconeMemory');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -167,7 +168,20 @@ async function saveChatMessage(role, text) {
 
 // ─── Memories ─────────────────────────────────────────────────────────────────
 
-async function fetchLongTermMemories() {
+async function fetchLongTermMemories(query = null) {
+    // Semantic search via Pinecone when a query is provided and Pinecone is ready
+    if (query && pinecone.isReady()) {
+        try {
+            const hits = await pinecone.searchMemories(query, 12);
+            if (hits !== null) {
+                return hits.length === 0
+                    ? 'אין עדיין זיכרונות שמורים.'
+                    : hits.map(c => `- ${c}`).join('\n');
+            }
+        } catch { /* fall through to keyword search */ }
+    }
+
+    // Keyword fallback — use TTL cache
     const cached = cacheGet('memories');
     if (cached) return cached;
 
@@ -314,7 +328,7 @@ async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settin
 // ─── Health check (for local connectivity testing) ───────────────────────────
 
 app.get('/health', (req, res) => {
-    res.json({ ok: true, version: 'multi-agent-v3', ts: Date.now() });
+    res.json({ ok: true, version: 'multi-agent-v3', ts: Date.now(), pinecone: pinecone.isReady() });
 });
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -366,10 +380,13 @@ app.post('/ask-jarvis', async (req, res) => {
         if (needsHistory) {
             [chatHistory, longTermMemories] = await Promise.all([
                 loadChatHistory(),
-                fetchLongTermMemories()
+                // Pass userMessage for Pinecone semantic search; falls back to keyword filter
+                fetchLongTermMemories(userMessage)
             ]);
-            // Filter memories to only relevant ones (no-op if ≤8 memories)
-            longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
+            // Keyword fallback filter (no-op when Pinecone already filtered)
+            if (!pinecone.isReady()) {
+                longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
+            }
         } else {
             // All other agents get raw memories (TTL-cached — cheap)
             longTermMemories = await fetchLongTermMemories();
@@ -1086,6 +1103,8 @@ if (require.main === module) {
     const PORT = process.env.PORT || 3000;
     const server = app.listen(PORT, () => {
         console.log(`🚀 JARVIS ONLINE | MULTI-AGENT v3 | PORT: ${PORT}`);
+        // Init Pinecone and sync existing memories in background (non-blocking)
+        pinecone.ensureInit().then(() => pinecone.syncFromSupabase(supabase)).catch(() => {});
     });
 
     function shutdown(signal) {

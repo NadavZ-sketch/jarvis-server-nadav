@@ -26,8 +26,8 @@
       "id": 4,
       "date": "2026-04-28",
       "tag": "רעיון",
-      "text": "לחבר Pinecone לשיפור חיפוש הזיכרון — מותקן אך לא פעיל. כרגע חיפוש keyword-based בלבד.",
-      "done": false
+      "text": "Pinecone חובר! חיפוש סמנטי בזיכרונות — Google text-embedding-004 (768d) + Pinecone cosine search. Fallback ל-keyword search אם לא מוגדר.",
+      "done": true
     },
     {
       "id": 5,

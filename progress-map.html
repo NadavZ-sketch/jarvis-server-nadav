@@ -233,6 +233,11 @@
   <div class="status-divider"></div>
   <div class="status-meta" id="statusVersion">—</div>
   <div class="status-divider"></div>
+  <div class="status-indicator">
+    <div class="status-dot loading" id="pineconeDot"></div>
+    <span id="pineconeText" style="font-size:.82rem;">Pinecone: —</span>
+  </div>
+  <div class="status-divider"></div>
   <div class="status-meta" id="statusLatency">—</div>
   <div class="status-divider"></div>
   <div class="status-meta" id="statusTime">—</div>
@@ -409,7 +414,7 @@
     <div class="tier-header"><span class="tier-badge" style="background:var(--future)">TIER 6</span><span class="tier-title">יכולות עתידיות</span></div>
     <div class="tier-progress-bar"><div class="tier-progress-fill" style="width:6%;background:linear-gradient(90deg,var(--future),var(--partial))"></div></div>
     <div class="features">
-      <div class="feature"><div class="feature-icon">🔮</div><div><div class="feature-name">Vector Search</div><div class="feature-desc">Pinecone — מותקן, לא מחובר</div><span class="feature-status status-partial">חלקי</span></div></div>
+      <div class="feature"><div class="feature-icon">🔮</div><div><div class="feature-name">Vector Search (Pinecone)</div><div class="feature-desc">חיפוש סמנטי בזיכרונות — Google embeddings + Pinecone cosine search</div><span class="feature-status status-done">הושלם</span></div></div>
       <div class="feature"><div class="feature-icon">🔁</div><div><div class="feature-name">Recurring Reminders</div><div class="feature-desc">תזכורות חוזרות יומי / שבועי</div><span class="feature-status status-future">עתידי</span></div></div>
       <div class="feature"><div class="feature-icon">📡</div><div><div class="feature-name">Streaming Responses</div><div class="feature-desc">SSE לתגובות ארוכות</div><span class="feature-status status-future">עתידי</span></div></div>
       <div class="feature"><div class="feature-icon">🔑</div><div><div class="feature-name">Authentication</div><div class="feature-desc">תמיכה מרובת משתמשים</div><span class="feature-status status-future">עתידי</span></div></div>
@@ -439,7 +444,7 @@
   <div class="tech-chip"><span class="ticon">🔊</span><div><div class="tlabel">Google TTS</div><div class="trole">הקראה בעברית</div></div></div>
   <div class="tech-chip"><span class="ticon">📧</span><div><div class="tlabel">Nodemailer</div><div class="trole">שליחת מיילים</div></div></div>
   <div class="tech-chip"><span class="ticon">⏱️</span><div><div class="tlabel">node-cron</div><div class="trole">תזמון תזכורות</div></div></div>
-  <div class="tech-chip"><span class="ticon">🌲</span><div><div class="tlabel">Pinecone</div><div class="trole">Vector DB (עתידי)</div></div></div>
+  <div class="tech-chip"><span class="ticon">🌲</span><div><div class="tlabel">Pinecone</div><div class="trole">Vector DB — חיפוש סמנטי</div></div></div>
   <div class="tech-chip"><span class="ticon">📂</span><div><div class="tlabel">Chokidar</div><div class="trole">File watching — Obsidian</div></div></div>
   <div class="tech-chip"><span class="ticon">🧪</span><div><div class="tlabel">Jest + Supertest</div><div class="trole">179 בדיקות, 23 חבילות</div></div></div>
 </div>
@@ -571,6 +576,12 @@ async function checkServerHealth() {
     ver.textContent  = `גרסה: ${d.version || '—'}`;
     lat.textContent  = `זמן תגובה: ${ms}ms`;
     tim.textContent  = `בדיקה: ${new Date().toLocaleTimeString('he-IL')}`;
+    const pdot = document.getElementById('pineconeDot');
+    const ptxt = document.getElementById('pineconeText');
+    if (pdot && ptxt) {
+      pdot.className   = d.pinecone ? 'status-dot online' : 'status-dot offline';
+      ptxt.textContent = d.pinecone ? 'Pinecone: ✅ מחובר' : 'Pinecone: ⚠️ לא פעיל';
+    }
   } catch {
     dot.className  = 'status-dot offline';
     text.textContent = '❌ שרת לא זמין';

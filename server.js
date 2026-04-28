@@ -502,6 +502,48 @@ app.get('/chat-history', async (req, res) => {
     }
 });
 
+// ─── Live DB Stats ────────────────────────────────────────────────────────────
+
+app.get('/stats', async (_req, res) => {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayISO = todayStart.toISOString();
+
+    const [
+        chatTotal, chatToday,
+        tasksTotal, tasksDone,
+        remindersTotal, remindersActive,
+        memoriesTotal,
+        notesTotal,
+        shoppingTotal, shoppingChecked,
+    ] = await Promise.allSettled([
+        supabase.from('chat_history').select('id', { count: 'exact', head: true }),
+        supabase.from('chat_history').select('id', { count: 'exact', head: true }).gte('created_at', todayISO),
+        supabase.from('tasks').select('id', { count: 'exact', head: true }),
+        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', true),
+        supabase.from('reminders').select('id', { count: 'exact', head: true }),
+        supabase.from('reminders').select('id', { count: 'exact', head: true }).eq('fired', false),
+        supabase.from('long_term_memory').select('id', { count: 'exact', head: true }),
+        supabase.from('notes').select('id', { count: 'exact', head: true }),
+        supabase.from('shopping').select('id', { count: 'exact', head: true }),
+        supabase.from('shopping').select('id', { count: 'exact', head: true }).eq('checked', true),
+    ]);
+
+    const getCount = (result) => {
+        if (result.status === 'fulfilled' && !result.value.error) return result.value.count ?? 0;
+        return 0;
+    };
+
+    res.json({
+        chat:      { total: getCount(chatTotal),      today:   getCount(chatToday) },
+        tasks:     { total: getCount(tasksTotal),     done:    getCount(tasksDone),    pending: getCount(tasksTotal) - getCount(tasksDone) },
+        reminders: { total: getCount(remindersTotal), active:  getCount(remindersActive) },
+        memories:  { total: getCount(memoriesTotal) },
+        notes:     { total: getCount(notesTotal) },
+        shopping:  { total: getCount(shoppingTotal),  checked: getCount(shoppingChecked) },
+    });
+});
+
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
 
 app.get('/check-reminders', async (_req, res) => {

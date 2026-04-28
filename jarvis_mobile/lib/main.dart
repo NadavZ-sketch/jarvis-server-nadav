@@ -361,6 +361,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final AudioRecorder _audioRecorder      = AudioRecorder();
   bool  _recordingSoundDetected           = false;
   Timer? _silenceTimer;
+  int   _transcribeFailures               = 0;
 
   Uint8List? _imageBytes;
   String?    _base64Image;
@@ -517,6 +518,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         listenFor: const Duration(seconds: 30),
         pauseFor:  const Duration(seconds: 2),
       );
+    } else {
+      setState(() {
+        _voiceConversationMode = false;
+        _currentState          = JarvisState.idle;
+        messages.add({'sender': 'jarvis', 'text': '🎤 זיהוי הקול אינו זמין. אנא הקלד את הבקשה.', 'time': _getCurrentTime()});
+      });
     }
   }
 
@@ -642,13 +649,35 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       final text = ((data['text'] as String?) ?? '').trim();
 
       if (text.isNotEmpty && mounted) {
+        _transcribeFailures = 0;
         setState(() => _controller.text = text);
         sendCommand(text);
+      } else {
+        _transcribeFailures++;
+        if (_transcribeFailures >= 2 && mounted) {
+          _transcribeFailures = 0;
+          final errDetail = (data['error'] as String?) ?? 'שגיאה בזיהוי הקול';
+          setState(() {
+            messages.add({'sender': 'jarvis', 'text': '🎙️ $errDetail. בדוק שהשרת פעיל ו-GROQ_API_KEY תקין.', 'time': _getCurrentTime()});
+            _currentState = JarvisState.idle;
+            _voiceConversationActive = false;
+          });
+        } else if (mounted && _voiceConversationActive) {
+          _listenContinuous();
+        }
+      }
+    } catch (e) {
+      _transcribeFailures++;
+      if (_transcribeFailures >= 2 && mounted) {
+        _transcribeFailures = 0;
+        setState(() {
+          messages.add({'sender': 'jarvis', 'text': '🎙️ לא הצלחתי לתקשר עם שרת הזיהוי. בדוק חיבור ל-${_settings.serverUrl}.', 'time': _getCurrentTime()});
+          _currentState = JarvisState.idle;
+          _voiceConversationActive = false;
+        });
       } else if (mounted && _voiceConversationActive) {
         _listenContinuous();
       }
-    } catch (_) {
-      if (mounted && _voiceConversationActive) _listenContinuous();
     } finally {
       await file.delete().catchError((_) {});
     }

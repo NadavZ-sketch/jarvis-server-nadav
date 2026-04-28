@@ -1,6 +1,7 @@
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
 import 'app_settings.dart';
 import 'main.dart' show JC;
 import 'services/api_service.dart';
@@ -38,6 +39,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _selectedPreset = -1; // index into _kPresets, -1 = custom
   String? _obsidianSyncStatus;
 
+  // Permissions
+  PermissionStatus _micStatus        = PermissionStatus.denied;
+  PermissionStatus _cameraStatus     = PermissionStatus.denied;
+  PermissionStatus _photosStatus     = PermissionStatus.denied;
+  PermissionStatus _notifStatus      = PermissionStatus.denied;
+
   @override
   void initState() {
     super.initState();
@@ -56,6 +63,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _userNameCtrl       = TextEditingController(text: _s.userName);
     _localServerUrlCtrl = TextEditingController(text: _s.localServerUrl);
     _detectPreset(_s.localServerUrl);
+    _loadPermissions();
+  }
+
+  Future<void> _loadPermissions() async {
+    final mic    = await Permission.microphone.status;
+    final camera = await Permission.camera.status;
+    final photos = await Permission.photos.status;
+    final notif  = await Permission.notification.status;
+    if (!mounted) return;
+    setState(() {
+      _micStatus    = mic;
+      _cameraStatus = camera;
+      _photosStatus = photos;
+      _notifStatus  = notif;
+    });
+  }
+
+  Future<void> _requestPermission(Permission permission) async {
+    final status = await permission.request();
+    if (!mounted) return;
+    // If permanently denied, open system settings
+    if (status.isPermanentlyDenied) {
+      await openAppSettings();
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    await _loadPermissions();
   }
 
   void _detectPreset(String url) {
@@ -157,6 +190,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
               : ApiService.friendlyError(e);
       setState(() => _pingResult = '❌ $hint');
     }
+  }
+
+  // ─── Permission helpers ───────────────────────────────────────────────────────
+
+  Color _permColor(PermissionStatus s) {
+    if (s.isGranted || s.isLimited)        return const Color(0xFF22C55E);
+    if (s.isDenied)                        return const Color(0xFFF59E0B);
+    if (s.isPermanentlyDenied)             return const Color(0xFFEF4444);
+    return JC.textMuted;
+  }
+
+  String _permLabel(PermissionStatus s) {
+    if (s.isGranted)           return 'מאושר';
+    if (s.isLimited)           return 'מוגבל';
+    if (s.isPermanentlyDenied) return 'חסום — פתח הגדרות';
+    if (s.isDenied)            return 'לא אושר';
+    return 'לא ידוע';
+  }
+
+  IconData _permIcon(PermissionStatus s) {
+    if (s.isGranted || s.isLimited)  return Icons.check_circle_rounded;
+    if (s.isPermanentlyDenied)       return Icons.block_rounded;
+    return Icons.radio_button_unchecked_rounded;
+  }
+
+  Widget _permRow({
+    required String label,
+    required String description,
+    required IconData rowIcon,
+    required PermissionStatus status,
+    required Permission permission,
+  }) {
+    final color = _permColor(status);
+    return InkWell(
+      onTap: () => _requestPermission(permission),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Row(
+          children: [
+            Icon(rowIcon, size: 18, color: JC.textMuted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+                  const SizedBox(height: 2),
+                  Text(description,
+                      style: const TextStyle(
+                          color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_permLabel(status),
+                    style: TextStyle(
+                        color: color, fontSize: 12,
+                        fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                const SizedBox(width: 6),
+                Icon(_permIcon(status), color: color, size: 17),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ─── UI helpers ──────────────────────────────────────────────────────────────
@@ -662,6 +767,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.precision_manufacturing_outlined,
                 value: _s.useLocalModel,
                 onChanged: (val) => setState(() => _s.useLocalModel = val),
+              ),
+            ]),
+
+            // ── הרשאות ───────────────────────────────────────────────────────
+            _sectionHeader('הרשאות', Icons.security_outlined),
+            _card([
+              _permRow(
+                label: 'מיקרופון',
+                description: 'נדרש לשיחות קוליות ו-Whisper STT',
+                rowIcon: Icons.mic_outlined,
+                status: _micStatus,
+                permission: Permission.microphone,
+              ),
+              _divider(),
+              _permRow(
+                label: 'התראות',
+                description: 'נדרש לתזכורות ועדכונים',
+                rowIcon: Icons.notifications_outlined,
+                status: _notifStatus,
+                permission: Permission.notification,
+              ),
+              _divider(),
+              _permRow(
+                label: 'מצלמה',
+                description: 'נדרש לצילום תמונות לשליחה לג\'רביס',
+                rowIcon: Icons.camera_alt_outlined,
+                status: _cameraStatus,
+                permission: Permission.camera,
+              ),
+              _divider(),
+              _permRow(
+                label: 'גלריה / תמונות',
+                description: 'נדרש לבחירת תמונות קיימות',
+                rowIcon: Icons.photo_library_outlined,
+                status: _photosStatus,
+                permission: Permission.photos,
+              ),
+              _divider(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: GestureDetector(
+                  onTap: _loadPermissions,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.refresh_rounded, size: 14, color: JC.textMuted),
+                      SizedBox(width: 6),
+                      Text('רענן סטטוס הרשאות',
+                          style: TextStyle(
+                              color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+                    ],
+                  ),
+                ),
               ),
             ]),
 

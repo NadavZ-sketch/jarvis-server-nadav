@@ -124,21 +124,45 @@ async function deleteMemory(id) {
 }
 
 /**
- * One-time sync: push all existing Supabase memories to Pinecone.
- * Safe to call on startup — skips memories already in Pinecone.
+ * One-time sync: push all Supabase memories to Pinecone and remove orphaned vectors.
+ * Safe to call on startup.
  */
 async function syncFromSupabase(supabase) {
     await ensureInit();
     if (!_ready) return;
     try {
         const { data } = await supabase.from('memories').select('id, content');
-        if (!data || data.length === 0) return;
-        console.log(`🔵 Pinecone: syncing ${data.length} existing memories...`);
-        // Batch into groups of 10 to avoid rate limits
-        for (let i = 0; i < data.length; i += 10) {
-            const batch = data.slice(i, i + 10);
+        const memories = data || [];
+        const supabaseIds = new Set(memories.map(m => String(m.id)));
+
+        console.log(`🔵 Pinecone: syncing ${memories.length} memories...`);
+        for (let i = 0; i < memories.length; i += 10) {
+            const batch = memories.slice(i, i + 10);
             await Promise.allSettled(batch.map(m => upsertMemory(m.id, m.content)));
         }
+
+        // Remove vectors whose Supabase rows were deleted
+        try {
+            const orphanIds = [];
+            let paginationToken;
+            do {
+                const res = await _index.listPaginated({ limit: 100, paginationToken });
+                for (const v of (res.vectors || [])) {
+                    if (!supabaseIds.has(v.id)) orphanIds.push(v.id);
+                }
+                paginationToken = res.pagination?.next;
+            } while (paginationToken);
+
+            if (orphanIds.length > 0) {
+                console.log(`🔵 Pinecone: removing ${orphanIds.length} orphaned vector(s)...`);
+                for (let i = 0; i < orphanIds.length; i += 100) {
+                    await _index.deleteMany(orphanIds.slice(i, i + 100));
+                }
+            }
+        } catch (orphanErr) {
+            console.warn('🔵 Pinecone: orphan cleanup skipped —', orphanErr.message);
+        }
+
         console.log('🔵 Pinecone: sync complete');
     } catch (err) {
         console.error('🔵 Pinecone sync error:', err.message);

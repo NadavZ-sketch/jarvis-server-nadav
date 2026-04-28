@@ -361,6 +361,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final AudioRecorder _audioRecorder      = AudioRecorder();
   bool  _recordingSoundDetected           = false;
   Timer? _silenceTimer;
+  Timer? _hardCapTimer;
+  StreamSubscription? _amplitudeSubscription;
   int   _transcribeFailures               = 0;
 
   Uint8List? _imageBytes;
@@ -428,6 +430,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void dispose() {
     _voiceConversationActive = false;
     _silenceTimer?.cancel();
+    _hardCapTimer?.cancel();
+    _amplitudeSubscription?.cancel();
     _audioRecorder.dispose();
     _orbBreathController.dispose();
     _controller.dispose();
@@ -538,6 +542,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void _stopVoiceConversation() {
     _silenceTimer?.cancel();
     _silenceTimer = null;
+    _hardCapTimer?.cancel();
+    _hardCapTimer = null;
+    _amplitudeSubscription?.cancel();
+    _amplitudeSubscription = null;
     HapticFeedback.mediumImpact();
     setState(() {
       _voiceConversationActive  = false;
@@ -585,9 +593,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _recordingSoundDetected = false;
     _silenceTimer?.cancel();
     _silenceTimer = null;
+    _hardCapTimer?.cancel();
+    // Cancel any previous amplitude subscription before creating a new one
+    // so that stale listeners from previous recording cycles don't interfere.
+    await _amplitudeSubscription?.cancel();
+    _amplitudeSubscription = null;
 
     // Amplitude-based silence detection
-    _audioRecorder
+    _amplitudeSubscription = _audioRecorder
         .onAmplitudeChanged(const Duration(milliseconds: 250))
         .listen((amp) {
       if (!mounted || !_voiceConversationActive) return;
@@ -605,8 +618,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       }
     });
 
-    // Hard cap at 30 s
-    Timer(const Duration(seconds: 30), () async {
+    // Hard cap at 30 s — stored so it can be cancelled on the next cycle
+    _hardCapTimer = Timer(const Duration(seconds: 30), () async {
       if (_voiceConversationActive && await _audioRecorder.isRecording()) {
         _stopRecordingAndTranscribe(tmpPath);
       }

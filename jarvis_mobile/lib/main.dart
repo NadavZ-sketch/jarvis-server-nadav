@@ -11,6 +11,7 @@ import 'package:record/record.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
@@ -635,8 +636,26 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void _listenContinuous() async {
     if (!_voiceConversationActive || !mounted) return;
 
-    final hasPermission = await _audioRecorder.hasPermission();
-    if (!hasPermission || !mounted || !_voiceConversationActive) return;
+    // Request microphone permission if not already granted
+    bool hasPermission = await _audioRecorder.hasPermission();
+    if (!hasPermission) {
+      final status = await Permission.microphone.request();
+      hasPermission = status.isGranted;
+    }
+    if (!hasPermission) {
+      if (!mounted) return;
+      setState(() {
+        _voiceConversationActive = false;
+        _currentState            = JarvisState.idle;
+        messages.add({
+          'sender': 'jarvis',
+          'text': '🎤 אין הרשאת מיקרופון. פתח הגדרות → הרשאות → מיקרופון.',
+          'time': _getCurrentTime(),
+        });
+      });
+      return;
+    }
+    if (!mounted || !_voiceConversationActive) return;
 
     setState(() {
       _currentState  = JarvisState.listening;
@@ -680,9 +699,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       if (amp.current > -45) {
         // Sound detected — reset silence countdown
         _recordingSoundDetected = true;
+        _hardCapTimer?.cancel(); // reset hard cap once real speech begins
         _silenceTimer?.cancel();
         _silenceTimer = null;
         if (_listeningText != 'שומע...') setState(() => _listeningText = 'שומע...');
+        // Hard cap of 25 s from first speech (prevents runaway recordings)
+        _hardCapTimer = Timer(const Duration(seconds: 25), () async {
+          if (_voiceConversationActive && await _audioRecorder.isRecording()) {
+            _stopRecordingAndTranscribe(tmpPath);
+          }
+        });
       } else if (_recordingSoundDetected && _silenceTimer == null) {
         // Silence after speech — start 2.5 s countdown
         _silenceTimer = Timer(const Duration(milliseconds: 2500), () {
@@ -691,10 +717,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       }
     });
 
-    // Hard cap at 30 s — stored so it can be cancelled on the next cycle
-    _hardCapTimer = Timer(const Duration(seconds: 30), () async {
-      if (_voiceConversationActive && await _audioRecorder.isRecording()) {
-        _stopRecordingAndTranscribe(tmpPath);
+    // No-speech timeout: if nothing detected after 10 s, restart the cycle
+    _hardCapTimer = Timer(const Duration(seconds: 10), () async {
+      if (!_recordingSoundDetected && _voiceConversationActive &&
+          await _audioRecorder.isRecording()) {
+        await _audioRecorder.stop();
+        if (mounted && _voiceConversationActive) _listenContinuous();
       }
     });
   }
@@ -715,7 +743,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     });
 
     final file = File(path);
-    if (!await file.exists() || await file.length() < 1000) {
+    if (!await file.exists() || await file.length() < 500) {
       await file.delete().catchError((_) {});
       if (mounted && _voiceConversationActive) _listenContinuous();
       return;

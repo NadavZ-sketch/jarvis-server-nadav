@@ -483,18 +483,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      JC.blue500.withOpacity(0.15),
-                      JC.surfaceAlt,
-                    ],
+                    colors: [JC.blue500.withOpacity(0.15), JC.surfaceAlt],
                   ),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: JC.blue500.withOpacity(0.3), width: 0.8),
+                  border: Border.all(color: JC.blue500.withOpacity(0.3), width: 0.8),
                 ),
                 child: Row(
                   children: [
-                    // Avatar
                     Container(
                       width: 56,
                       height: 56,
@@ -550,8 +545,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   color: const Color(0xFF22C55E),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFF22C55E)
-                                          .withOpacity(0.5),
+                                      color: const Color(0xFF22C55E).withOpacity(0.5),
                                       blurRadius: 4,
                                     )
                                   ],
@@ -576,12 +570,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
 
-            // ── עוזר אישי ────────────────────────────────────────────────────
-            _sectionHeader('עוזר אישי', Icons.smart_toy_outlined),
+            // ── זהות ─────────────────────────────────────────────────────────
+            _sectionHeader('זהות', Icons.person_outline_rounded),
             _card([
               _rowField(
+                label: 'השם שלך',
+                icon: Icons.account_circle_outlined,
+                ctrl: _userNameCtrl,
+                hint: 'נדב',
+                textDir: TextDirection.rtl,
+              ),
+              _divider(),
+              _rowField(
                 label: 'שם העוזר',
-                icon: Icons.badge_outlined,
+                icon: Icons.smart_toy_outlined,
                 ctrl: _assistantNameCtrl,
                 hint: 'Jarvis',
               ),
@@ -611,18 +613,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ]),
 
-            // ── פרופיל ───────────────────────────────────────────────────────
-            _sectionHeader('פרופיל', Icons.person_outline_rounded),
-            _card([
-              _rowField(
-                label: 'השם שלך',
-                icon: Icons.account_circle_outlined,
-                ctrl: _userNameCtrl,
-                hint: 'נדב',
-                textDir: TextDirection.rtl,
-              ),
-            ]),
-
             // ── קול ──────────────────────────────────────────────────────────
             _sectionHeader('קול', Icons.volume_up_outlined),
             _card([
@@ -649,7 +639,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               if (_s.useLocalServer) ...[
                 _divider(),
-                // ── Server presets ──────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                   child: Column(
@@ -668,17 +657,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         spacing: 8,
                         runSpacing: 8,
                         children: List.generate(_kPresets.length, (i) {
-                          final p       = _kPresets[i];
-                          final active  = _selectedPreset == i;
+                          final p      = _kPresets[i];
+                          final active = _selectedPreset == i;
                           return GestureDetector(
                             onTap: () => _selectPreset(i),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                               decoration: BoxDecoration(
-                                color: active
-                                    ? JC.blue500.withOpacity(0.2)
-                                    : JC.surface,
+                                color: active ? JC.blue500.withOpacity(0.2) : JC.surface,
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
                                   color: active ? JC.blue400 : JC.border,
@@ -735,7 +722,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Icon(Icons.wifi_find_outlined, size: 15, color: JC.blue400),
                               const SizedBox(width: 8),
                               const Text('בדוק חיבור לשרת',
-                                  style: TextStyle(color: JC.blue400, fontSize: 13, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                                  style: TextStyle(
+                                      color: JC.blue400,
+                                      fontSize: 13,
+                                      fontFamily: 'Heebo',
+                                      fontWeight: FontWeight.w600)),
                             ],
                           ),
                         ),
@@ -746,8 +737,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: TextStyle(
                               color: _pingResult!.startsWith('✅') ? const Color(0xFF22C55E) :
                                      _pingResult!.startsWith('⚠️') ? const Color(0xFFF59E0B) :
-                                     _pingResult! == '...' ? JC.textMuted : const Color(0xFFEF4444),
-                              fontSize: 12, fontFamily: 'Heebo',
+                                     _pingResult! == '...'          ? JC.textMuted
+                                                                     : const Color(0xFFEF4444),
+                              fontSize: 12,
+                              fontFamily: 'Heebo',
                             )),
                       ],
                     ],
@@ -815,17 +808,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Icon(Icons.refresh_rounded, size: 14, color: JC.textMuted),
                       SizedBox(width: 6),
                       Text('רענן סטטוס הרשאות',
-                          style: TextStyle(
-                              color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+                          style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
                     ],
                   ),
                 ),
               ),
             ]),
 
-            const SizedBox(height: 32),
+            // ── פרויקט ───────────────────────────────────────────────────────
+            _sectionHeader('פרויקט', Icons.map_outlined),
+            _card([
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                leading: const Icon(Icons.map_outlined, color: JC.textMuted, size: 20),
+                title: const Text('מפת התקדמות',
+                    style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+                subtitle: const Text('יכולות, הערות ודיאגרמת זרימה',
+                    style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+                trailing: const Icon(Icons.open_in_new_rounded, color: JC.textMuted, size: 18),
+                onTap: _openProgressMap,
+              ),
+              _divider(),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                leading: const Icon(Icons.sync_rounded, color: JC.textMuted, size: 20),
+                title: const Text('סנכרן עם Obsidian',
+                    style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+                subtitle: Text(
+                  _obsidianSyncStatus ?? 'סנכרון הערות, זיכרונות ומשימות',
+                  style: TextStyle(
+                    color: _obsidianSyncStatus == null
+                        ? JC.textMuted
+                        : _obsidianSyncStatus!.startsWith('✅') ? const Color(0xFF22C55E)
+                        : _obsidianSyncStatus!.startsWith('⚠️') ? const Color(0xFFF59E0B)
+                        : _obsidianSyncStatus!.startsWith('❌') ? const Color(0xFFEF4444)
+                        : JC.textMuted,
+                    fontSize: 12,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded, color: JC.textMuted, size: 18),
+                onTap: _syncObsidian,
+              ),
+              _divider(),
+              _rowSwitch(
+                label: 'סנכרון אוטומטי',
+                subtitle: 'מסנכרן כל 5 דקות עם ה-vault',
+                icon: Icons.sync_lock_outlined,
+                value: _s.obsidianAutoSync,
+                onChanged: _setObsidianAutoSync,
+              ),
+            ]),
 
             // ── Save button ───────────────────────────────────────────────────
+            const SizedBox(height: 32),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: GestureDetector(
@@ -863,51 +899,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-            _sectionHeader('פרויקט', Icons.map_outlined),
-            _card([
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                title: const Text('מפת התקדמות',
-                    style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
-                subtitle: const Text('יכולות, הערות ודיאגרמת זרימה',
-                    style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
-                trailing: Icon(Icons.open_in_new_rounded, color: JC.textMuted, size: 18),
-                onTap: _openProgressMap,
-              ),
-              _divider(),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                leading: const Icon(Icons.sync_rounded, color: JC.textMuted, size: 20),
-                title: const Text('סנכרן עם Obsidian',
-                    style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
-                subtitle: Text(
-                  _obsidianSyncStatus ?? 'סנכרון הערות, זיכרונות ומשימות',
-                  style: TextStyle(
-                    color: _obsidianSyncStatus != null
-                        ? (_obsidianSyncStatus!.startsWith('✅')
-                            ? const Color(0xFF22C55E)
-                            : _obsidianSyncStatus!.startsWith('⚠️')
-                                ? const Color(0xFFF59E0B)
-                                : _obsidianSyncStatus!.startsWith('❌')
-                                    ? const Color(0xFFEF4444)
-                                    : JC.textMuted)
-                        : JC.textMuted,
-                    fontSize: 12,
-                    fontFamily: 'Heebo',
-                  ),
-                ),
-                trailing: Icon(Icons.chevron_right_rounded, color: JC.textMuted, size: 18),
-                onTap: _syncObsidian,
-              ),
-              _divider(),
-              _rowSwitch(
-                label: 'סנכרון אוטומטי',
-                subtitle: 'מסנכרן כל 5 דקות עם ה-vault',
-                icon: Icons.sync_lock_outlined,
-                value: _s.obsidianAutoSync,
-                onChanged: _setObsidianAutoSync,
-              ),
-            ]),
             const SizedBox(height: 50),
           ],
         ),

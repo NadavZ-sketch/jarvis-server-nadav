@@ -10,6 +10,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:record/record.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
@@ -361,6 +362,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final AudioRecorder _audioRecorder      = AudioRecorder();
   bool  _recordingSoundDetected           = false;
   Timer? _silenceTimer;
+  Timer? _hardCapTimer;
+  StreamSubscription? _amplitudeSubscription;
   int   _transcribeFailures               = 0;
 
   Uint8List? _imageBytes;
@@ -398,9 +401,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     if (widget.initialSettings != null) {
       _settings = widget.initialSettings!;
+      _loadChatHistory();
     } else {
       AppSettings.load().then((s) {
-        if (mounted) setState(() => _settings = s);
+        if (!mounted) return;
+        setState(() => _settings = s);
+        _loadChatHistory();
       });
     }
 
@@ -415,6 +421,74 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     NotificationService.init().catchError((_) {});
   }
 
+  // ─── Chat history persistence ─────────────────────────────────────────────────
+
+  Future<void> _loadChatHistory() async {
+    // 1. Load cached messages from SharedPreferences immediately (instant)
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('current_messages');
+    if (cached != null && mounted) {
+      try {
+        final List decoded = jsonDecode(cached);
+        final loaded = decoded.cast<Map<String, dynamic>>()
+            .map((m) => m.map((k, v) => MapEntry(k, v.toString())))
+            .toList();
+        if (loaded.isNotEmpty) {
+          setState(() => messages = loaded);
+        }
+      } catch (_) {}
+    }
+
+    // 2. Fetch fresh history from server in the background
+    try {
+      final url = Uri.parse('${_settings.serverUrl}/chat-history?limit=60');
+      final response = await http.get(url).timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200 && mounted) {
+        final data = jsonDecode(response.body);
+        final List raw = data['messages'] ?? [];
+        if (raw.isEmpty) return;
+        final serverMessages = raw.map((m) {
+          final role = m['role'] as String? ?? 'jarvis';
+          final text = m['text'] as String? ?? '';
+          final createdAt = m['created_at'] as String?;
+          String time = '';
+          if (createdAt != null) {
+            try {
+              final dt = DateTime.parse(createdAt).toLocal();
+              time = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+            } catch (_) {}
+          }
+          return {'sender': role == 'user' ? 'user' : 'jarvis', 'text': text, 'time': time};
+        }).toList();
+        setState(() => messages = serverMessages);
+        await prefs.setString('current_messages', jsonEncode(serverMessages));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('current_messages', jsonEncode(messages));
+    } catch (_) {}
+  }
+
+  Future<void> _archiveSessionToHistory() async {
+    if (messages.length <= 1) return; // Only the greeting — nothing to archive
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('chat_sessions') ?? '[]';
+      final List sessions = jsonDecode(raw);
+      sessions.add({
+        'date': DateTime.now().toIso8601String(),
+        'messages': messages,
+      });
+      // Keep last 50 sessions
+      final trimmed = sessions.length > 50 ? sessions.sublist(sessions.length - 50) : sessions;
+      await prefs.setString('chat_sessions', jsonEncode(trimmed));
+    } catch (_) {}
+  }
+
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -426,8 +500,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _archiveSessionToHistory();
     _voiceConversationActive = false;
     _silenceTimer?.cancel();
+    _hardCapTimer?.cancel();
+    _amplitudeSubscription?.cancel();
     _audioRecorder.dispose();
     _orbBreathController.dispose();
     _controller.dispose();
@@ -538,6 +615,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void _stopVoiceConversation() {
     _silenceTimer?.cancel();
     _silenceTimer = null;
+    _hardCapTimer?.cancel();
+    _hardCapTimer = null;
+    _amplitudeSubscription?.cancel();
+    _amplitudeSubscription = null;
     HapticFeedback.mediumImpact();
     setState(() {
       _voiceConversationActive  = false;
@@ -585,9 +666,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _recordingSoundDetected = false;
     _silenceTimer?.cancel();
     _silenceTimer = null;
+    _hardCapTimer?.cancel();
+    // Cancel any previous amplitude subscription before creating a new one
+    // so that stale listeners from previous recording cycles don't interfere.
+    await _amplitudeSubscription?.cancel();
+    _amplitudeSubscription = null;
 
     // Amplitude-based silence detection
-    _audioRecorder
+    _amplitudeSubscription = _audioRecorder
         .onAmplitudeChanged(const Duration(milliseconds: 250))
         .listen((amp) {
       if (!mounted || !_voiceConversationActive) return;
@@ -605,8 +691,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       }
     });
 
-    // Hard cap at 30 s
-    Timer(const Duration(seconds: 30), () async {
+    // Hard cap at 30 s — stored so it can be cancelled on the next cycle
+    _hardCapTimer = Timer(const Duration(seconds: 30), () async {
       if (_voiceConversationActive && await _audioRecorder.isRecording()) {
         _stopRecordingAndTranscribe(tmpPath);
       }
@@ -760,6 +846,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       _currentState  = JarvisState.thinking;
       _listeningText = '';
     });
+    _persistMessages();
 
     _scrollToBottom();
     _controller.clear();
@@ -794,6 +881,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
         setState(() => messages.add(
             {'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()}));
+        _persistMessages();
 
         if (action != null && mounted) await _confirmAndSend(action);
 

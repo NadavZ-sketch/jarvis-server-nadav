@@ -40,6 +40,15 @@
     .stat-card.blue  .num  { color: #60a5fa; }
     .stat-card.purple .num { color: var(--accent); }
 
+    /* ── LIVE DATA BAR ── */
+    .live-bar { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-bottom:20px; }
+    .live-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 18px; text-align:center; min-width:110px; position:relative; }
+    .live-card .live-num { font-size:1.7rem; font-weight:700; color:#60a5fa; transition:color .3s; }
+    .live-card .live-sub { color:var(--muted); font-size:.75rem; margin-top:2px; }
+    .live-card .live-label { color:var(--text); font-size:.82rem; font-weight:600; margin-bottom:4px; }
+    .live-badge { position:absolute; top:8px; left:8px; width:7px; height:7px; border-radius:50%; background:var(--done); animation:pulse 2s infinite; }
+    .refresh-row { text-align:center; color:var(--muted); font-size:.75rem; margin-bottom:28px; }
+
     /* ── SERVER STATUS ── */
     .server-status-bar {
       display: flex; align-items: center; justify-content: center; gap: 20px;
@@ -194,6 +203,18 @@
   <div class="legend-item"><div class="dot" style="background:var(--future)"></div> עתידי</div>
 </div>
 
+<!-- LIVE DB STATS -->
+<div class="section-title">📡 נתונים חיים מה-DB</div>
+<div class="live-bar" id="liveBar">
+  <div class="live-card"><div class="live-badge"></div><div class="live-label">שיחות</div><div class="live-num" id="lv-chat">—</div><div class="live-sub" id="lv-chat-today">טוען...</div></div>
+  <div class="live-card"><div class="live-badge"></div><div class="live-label">משימות</div><div class="live-num" id="lv-tasks">—</div><div class="live-sub" id="lv-tasks-done">— הושלמו</div></div>
+  <div class="live-card"><div class="live-badge"></div><div class="live-label">תזכורות</div><div class="live-num" id="lv-reminders">—</div><div class="live-sub" id="lv-reminders-active">— פעילות</div></div>
+  <div class="live-card"><div class="live-badge"></div><div class="live-label">זיכרונות</div><div class="live-num" id="lv-memories">—</div><div class="live-sub">long-term memory</div></div>
+  <div class="live-card"><div class="live-badge"></div><div class="live-label">פתקים</div><div class="live-num" id="lv-notes">—</div><div class="live-sub">notes</div></div>
+  <div class="live-card"><div class="live-badge"></div><div class="live-label">קניות</div><div class="live-num" id="lv-shopping">—</div><div class="live-sub" id="lv-shopping-checked">— סומנו</div></div>
+</div>
+<div class="refresh-row">🔄 מתעדכן כל 30 שניות · עדכון הבא: <span id="nextRefresh">30</span>ש׳ <span id="lastRefreshTime"></span></div>
+
 <!-- STATS -->
 <div class="stats">
   <div class="stat-card green"> <div class="num">38</div> <div class="lbl">יכולות הושלמו</div></div>
@@ -211,6 +232,11 @@
   </div>
   <div class="status-divider"></div>
   <div class="status-meta" id="statusVersion">—</div>
+  <div class="status-divider"></div>
+  <div class="status-indicator">
+    <div class="status-dot loading" id="pineconeDot"></div>
+    <span id="pineconeText" style="font-size:.82rem;">Pinecone: —</span>
+  </div>
   <div class="status-divider"></div>
   <div class="status-meta" id="statusLatency">—</div>
   <div class="status-divider"></div>
@@ -388,7 +414,7 @@
     <div class="tier-header"><span class="tier-badge" style="background:var(--future)">TIER 6</span><span class="tier-title">יכולות עתידיות</span></div>
     <div class="tier-progress-bar"><div class="tier-progress-fill" style="width:6%;background:linear-gradient(90deg,var(--future),var(--partial))"></div></div>
     <div class="features">
-      <div class="feature"><div class="feature-icon">🔮</div><div><div class="feature-name">Vector Search</div><div class="feature-desc">Pinecone — מותקן, לא מחובר</div><span class="feature-status status-partial">חלקי</span></div></div>
+      <div class="feature"><div class="feature-icon">🔮</div><div><div class="feature-name">Vector Search (Pinecone)</div><div class="feature-desc">חיפוש סמנטי בזיכרונות — Google embeddings + Pinecone cosine search</div><span class="feature-status status-done">הושלם</span></div></div>
       <div class="feature"><div class="feature-icon">🔁</div><div><div class="feature-name">Recurring Reminders</div><div class="feature-desc">תזכורות חוזרות יומי / שבועי</div><span class="feature-status status-future">עתידי</span></div></div>
       <div class="feature"><div class="feature-icon">📡</div><div><div class="feature-name">Streaming Responses</div><div class="feature-desc">SSE לתגובות ארוכות</div><span class="feature-status status-future">עתידי</span></div></div>
       <div class="feature"><div class="feature-icon">🔑</div><div><div class="feature-name">Authentication</div><div class="feature-desc">תמיכה מרובת משתמשים</div><span class="feature-status status-future">עתידי</span></div></div>
@@ -418,7 +444,7 @@
   <div class="tech-chip"><span class="ticon">🔊</span><div><div class="tlabel">Google TTS</div><div class="trole">הקראה בעברית</div></div></div>
   <div class="tech-chip"><span class="ticon">📧</span><div><div class="tlabel">Nodemailer</div><div class="trole">שליחת מיילים</div></div></div>
   <div class="tech-chip"><span class="ticon">⏱️</span><div><div class="tlabel">node-cron</div><div class="trole">תזמון תזכורות</div></div></div>
-  <div class="tech-chip"><span class="ticon">🌲</span><div><div class="tlabel">Pinecone</div><div class="trole">Vector DB (עתידי)</div></div></div>
+  <div class="tech-chip"><span class="ticon">🌲</span><div><div class="tlabel">Pinecone</div><div class="trole">Vector DB — חיפוש סמנטי</div></div></div>
   <div class="tech-chip"><span class="ticon">📂</span><div><div class="tlabel">Chokidar</div><div class="trole">File watching — Obsidian</div></div></div>
   <div class="tech-chip"><span class="ticon">🧪</span><div><div class="tlabel">Jest + Supertest</div><div class="trole">179 בדיקות, 23 חבילות</div></div></div>
 </div>
@@ -550,6 +576,12 @@ async function checkServerHealth() {
     ver.textContent  = `גרסה: ${d.version || '—'}`;
     lat.textContent  = `זמן תגובה: ${ms}ms`;
     tim.textContent  = `בדיקה: ${new Date().toLocaleTimeString('he-IL')}`;
+    const pdot = document.getElementById('pineconeDot');
+    const ptxt = document.getElementById('pineconeText');
+    if (pdot && ptxt) {
+      pdot.className   = d.pinecone ? 'status-dot online' : 'status-dot offline';
+      ptxt.textContent = d.pinecone ? 'Pinecone: ✅ מחובר' : 'Pinecone: ⚠️ לא פעיל';
+    }
   } catch {
     dot.className  = 'status-dot offline';
     text.textContent = '❌ שרת לא זמין';
@@ -560,6 +592,52 @@ async function checkServerHealth() {
 }
 checkServerHealth();
 setInterval(checkServerHealth, 30000);
+
+// ── Live DB Stats ──────────────────────────────────────────────────────────────
+let refreshCountdown = 30;
+
+async function loadLiveStats() {
+  try {
+    const res  = await fetch('/stats', { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error('stats failed');
+    const d    = await res.json();
+
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '—'; };
+
+    set('lv-chat',              d.chat?.total ?? '—');
+    set('lv-chat-today',        `${d.chat?.today ?? 0} היום`);
+    set('lv-tasks',             d.tasks?.total ?? '—');
+    set('lv-tasks-done',        `${d.tasks?.done ?? 0} הושלמו`);
+    set('lv-reminders',         d.reminders?.total ?? '—');
+    set('lv-reminders-active',  `${d.reminders?.active ?? 0} פעילות`);
+    set('lv-memories',          d.memories?.total ?? '—');
+    set('lv-notes',             d.notes?.total ?? '—');
+    set('lv-shopping',          d.shopping?.total ?? '—');
+    set('lv-shopping-checked',  `${d.shopping?.checked ?? 0} סומנו`);
+
+    const t = document.getElementById('lastRefreshTime');
+    if (t) t.textContent = `(עודכן ${new Date().toLocaleTimeString('he-IL')})`;
+  } catch {
+    const t = document.getElementById('lastRefreshTime');
+    if (t) t.textContent = '(שגיאה בטעינה)';
+  }
+  refreshCountdown = 30;
+}
+
+function startRefreshTicker() {
+  setInterval(() => {
+    refreshCountdown--;
+    const el = document.getElementById('nextRefresh');
+    if (el) el.textContent = refreshCountdown;
+    if (refreshCountdown <= 0) {
+      loadLiveStats();
+      checkServerHealth();
+    }
+  }, 1000);
+}
+
+loadLiveStats();
+startRefreshTicker();
 
 // ── Load notes.json ────────────────────────────────────────────────────────────
 async function loadNotes() {

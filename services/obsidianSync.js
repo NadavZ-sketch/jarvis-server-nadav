@@ -7,6 +7,8 @@ const crypto     = require('crypto');
 const chokidar   = require('chokidar');
 const matter     = require('gray-matter');
 const simpleGit  = require('simple-git');
+// Lazy-require to avoid circular dependency issues at module load time
+const getPinecone = () => require('./pineconeMemory');
 
 let vaultPath    = null;
 let supabase     = null;
@@ -238,16 +240,20 @@ async function upsertNote(parsed) {
 }
 
 async function upsertMemoriesFile(parsed) {
-    const lines = parsed.content.split('\n').filter(l => l.trim().startsWith('- '));
-    const cat   = parsed.data.category || 'General';
+    const lines    = parsed.content.split('\n').filter(l => l.trim().startsWith('- '));
+    const cat      = parsed.data.category || 'General';
+    const pinecone = getPinecone();
     for (const line of lines) {
         const idMatch = line.match(/\[([0-9a-f-]{8,})\]/);
         const text    = line.replace(/^- (\[[^\]]+\]\s*)?/, '').trim();
-        const payload = { content: `[${cat}] ${text}` };
+        const content = `[${cat}] ${text}`;
+        const payload = { content };
         if (idMatch) {
             await supabase.from('memories').update(payload).eq('id', idMatch[1]);
+            pinecone.upsertMemory(idMatch[1], content).catch(() => {});
         } else {
-            await supabase.from('memories').insert([payload]);
+            const { data } = await supabase.from('memories').insert([payload]).select('id').limit(1);
+            if (data?.[0]?.id) pinecone.upsertMemory(data[0].id, content).catch(() => {});
         }
     }
 }

@@ -1,7 +1,8 @@
 const { sanitizeLike } = require('./utils');
 require('dotenv').config();
-const { callGemma4 } = require('./models');
-const obsidianSync   = require('../services/obsidianSync');
+const { callGemma4 }   = require('./models');
+const obsidianSync     = require('../services/obsidianSync');
+const pinecone         = require('../services/pineconeMemory');
 
 function buildSavePrompt(userName) {
     return `You are a memory manager. The user wants to save a personal fact about ${userName}.
@@ -65,8 +66,10 @@ async function autoExtractMemory(userMessage, assistantAnswer, supabase, setting
             return;
         }
 
-        await supabase.from('memories').insert([{ content }]);
+        const { data: inserted } = await supabase
+            .from('memories').insert([{ content }]).select('id').limit(1);
         obsidianSync.dbToVault('memories', { content });
+        if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
         console.log('🧠 AutoExtract saved:', content);
     } catch (err) {
         console.error('AutoExtract error (suppressed):', err.message);
@@ -93,10 +96,12 @@ async function deleteMemory(userMessage, supabase) {
         .from('memories')
         .delete()
         .ilike('content', `%${textToDelete}%`)
-        .select();
+        .select('id, content');
 
     if (error) throw error;
     if (!data || data.length === 0) return { answer: `לא מצאתי זיכרון על "${textToDelete}".` };
+    // Remove from Pinecone as well
+    await Promise.allSettled(data.map(m => pinecone.deleteMemory(m.id)));
     return { answer: `בסדר, מחקתי את הזיכרון: "${data[0].content}"` };
 }
 
@@ -112,12 +117,17 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
         const isRecall = /תזכיר|מה אתה יודע|מה זכרת|ספר לי עליי|מה שמרת/i.test(userMessage);
 
         if (isRecall) {
-            const { data: memoriesData } = await supabase.from('memories').select('content');
-            if (!memoriesData || memoriesData.length === 0) {
+            // Try Pinecone semantic search first; fall back to fetching all
+            let memContents = await pinecone.searchMemories(userMessage, 15);
+            if (!memContents) {
+                const { data: memoriesData } = await supabase.from('memories').select('content');
+                memContents = (memoriesData || []).map(m => m.content);
+            }
+            if (memContents.length === 0) {
                 return { answer: `אין לי עדיין זיכרונות שמורים עליך ${userName}.` };
             }
 
-            const memoriesList = memoriesData.map(m => `- ${m.content}`).join('\n');
+            const memoriesList = memContents.map(c => `- ${c}`).join('\n');
             const fullPrompt = RECALL_INTRO + memoriesList + `\n\nשאלת הגולש: ${userMessage}`;
 
             const answer = await callGemma4(fullPrompt, useLocal);
@@ -145,8 +155,10 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
         }
 
         console.log('🧠 MemoryAgent saving:', parsed.memoryContent);
-        await supabase.from('memories').insert([{ content: parsed.memoryContent }]);
+        const { data: saved } = await supabase
+            .from('memories').insert([{ content: parsed.memoryContent }]).select('id').limit(1);
         obsidianSync.dbToVault('memories', { content: parsed.memoryContent });
+        if (saved?.[0]?.id) pinecone.upsertMemory(saved[0].id, parsed.memoryContent).catch(() => {});
         return { answer: `שמרתי לפניי: ${parsed.memoryContent}` };
 
     } catch (err) {

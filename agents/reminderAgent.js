@@ -4,6 +4,8 @@ const obsidianSync = require('../services/obsidianSync');
 
 const HE_DAYS = { 'ראשון': 0, 'שני': 1, 'שלישי': 2, 'רביעי': 3, 'חמישי': 4, 'שישי': 5, 'שבת': 6 };
 
+const RECURRENCE_LABELS = { daily: 'יומי', weekly: 'שבועי', monthly: 'חודשי' };
+
 function nowJerusalem() {
     return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
 }
@@ -11,6 +13,20 @@ function nowJerusalem() {
 function toISO(date) {
     const pad = n => String(n).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00+03:00`;
+}
+
+// ─── Recurrence detection ─────────────────────────────────────────────────────
+
+/**
+ * Returns 'daily' | 'weekly' | 'monthly' | null
+ */
+function parseRecurrence(msg) {
+    if (/כל\s+יום|יומי/i.test(msg))   return 'daily';
+    if (/כל\s+שבוע|שבועי/i.test(msg)) return 'weekly';
+    if (/כל\s+חודש|חודשי/i.test(msg)) return 'monthly';
+    // "כל ראשון / כל שישי" etc → weekly on that weekday
+    if (/כל\s+(ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/i.test(msg)) return 'weekly';
+    return null;
 }
 
 function extractReminderText(msg) {
@@ -23,6 +39,8 @@ function extractReminderText(msg) {
         .replace(/ב-?\d{1,2}:\d{2}/g, '')
         .replace(/בשעה \d{1,2}:\d{2}/g, '')
         .replace(/ביום (ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/g, '')
+        .replace(/כל\s+(יום|שבוע|חודש|ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/gi, '')
+        .replace(/יומי|שבועי|חודשי/gi, '')
         .replace(/\s+/g, ' ')
         .trim() || msg.trim();
 }
@@ -97,16 +115,17 @@ function formatReminderTime(isoOrDate) {
 async function listReminders(supabase) {
     const { data, error } = await supabase
         .from('reminders')
-        .select('id, text, scheduled_time')
+        .select('id, text, scheduled_time, recurrence')
         .eq('fired', false)
         .order('scheduled_time', { ascending: true });
 
     if (error) throw error;
     if (!data || data.length === 0) return { answer: 'אין לך תזכורות ממתינות.' };
 
-    const list = data.map((r, i) =>
-        `${i + 1}. "${r.text}" — ${formatReminderTime(r.scheduled_time)}`
-    ).join('\n');
+    const list = data.map((r, i) => {
+        const recLabel = r.recurrence ? ` 🔁 ${RECURRENCE_LABELS[r.recurrence] || r.recurrence}` : '';
+        return `${i + 1}. "${r.text}" — ${formatReminderTime(r.scheduled_time)}${recLabel}`;
+    }).join('\n');
 
     return { answer: `הנה התזכורות שלך:\n${list}` };
 }
@@ -151,17 +170,20 @@ async function runReminderAgent(userMessage, supabase) {
 
         const reminderText = extractReminderText(userMessage);
         const scheduledTime = toISO(fireDate);
+        const recurrence    = parseRecurrence(userMessage);
 
-        console.log(`⏰ ReminderAgent: "${reminderText}" at ${scheduledTime}`);
+        console.log(`⏰ ReminderAgent: "${reminderText}" at ${scheduledTime}${recurrence ? ` [${recurrence}]` : ''}`);
 
-        const { error } = await supabase
-            .from('reminders')
-            .insert([{ text: reminderText, scheduled_time: scheduledTime }]);
+        const row = { text: reminderText, scheduled_time: scheduledTime };
+        if (recurrence) row.recurrence = recurrence;
+
+        const { error } = await supabase.from('reminders').insert([row]);
 
         if (error) throw error;
         obsidianSync.dbToVault('reminders', { text: reminderText, scheduled_time: scheduledTime, title: reminderText, remind_at: scheduledTime });
 
-        return { answer: `בסדר, אזכיר לך "${reminderText}" ב${formatReminderTime(fireDate)}.` };
+        const recSuffix = recurrence ? ` (${RECURRENCE_LABELS[recurrence]})` : '';
+        return { answer: `בסדר, אזכיר לך "${reminderText}" ב${formatReminderTime(fireDate)}${recSuffix}.` };
 
     } catch (err) {
         console.error('ReminderAgent Error:', err.message);
@@ -169,4 +191,4 @@ async function runReminderAgent(userMessage, supabase) {
     }
 }
 
-module.exports = { runReminderAgent, parseTime, extractReminderText, toISO, nowJerusalem };
+module.exports = { runReminderAgent, parseTime, parseRecurrence, extractReminderText, toISO, nowJerusalem };

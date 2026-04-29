@@ -2,6 +2,7 @@
 jest.mock('../../services/obsidianSync', () => ({ dbToVault: jest.fn() }));
 const {
     parseTime,
+    parseRecurrence,
     extractReminderText,
     toISO,
     runReminderAgent,
@@ -142,6 +143,20 @@ describe('extractReminderText', () => {
     });
 });
 
+// ─── parseRecurrence ─────────────────────────────────────────────────────────
+
+describe('parseRecurrence', () => {
+    test('"כל יום" → daily', () => expect(parseRecurrence('תזכיר לי כל יום ב-8:00 לשתות מים')).toBe('daily'));
+    test('"יומי" → daily',   () => expect(parseRecurrence('תזכורת יומי לאימון')).toBe('daily'));
+    test('"כל שבוע" → weekly', () => expect(parseRecurrence('כל שבוע ב-10:00 פגישה')).toBe('weekly'));
+    test('"שבועי" → weekly',  () => expect(parseRecurrence('תזכורת שבועי')).toBe('weekly'));
+    test('"כל ראשון" → weekly', () => expect(parseRecurrence('כל ראשון ב-9:00')).toBe('weekly'));
+    test('"כל חמישי" → weekly', () => expect(parseRecurrence('כל חמישי ב-19:00 כושר')).toBe('weekly'));
+    test('"כל חודש" → monthly', () => expect(parseRecurrence('כל חודש לשלם ארנונה')).toBe('monthly'));
+    test('"חודשי" → monthly',   () => expect(parseRecurrence('תשלום חודשי')).toBe('monthly'));
+    test('one-time → null', () => expect(parseRecurrence('תזכיר לי בעוד שעה לאכול')).toBeNull());
+});
+
 // ─── toISO ────────────────────────────────────────────────────────────────────
 
 describe('toISO', () => {
@@ -204,7 +219,31 @@ describe('runReminderAgent', () => {
         const insertArg = supabase._chain.insert.mock.calls[0][0][0];
         expect(insertArg.text).toBe('לשתות מים');
         expect(insertArg.scheduled_time).toMatch(/10:30:00/);
+        expect(insertArg.recurrence).toBeUndefined();
         expect(result.answer).toContain('אזכיר לך');
+    });
+
+    test('recurring daily reminder → inserts with recurrence=daily', async () => {
+        const supabase = makeSupabase([], null);
+        const result = await runReminderAgent('תזכיר לי כל יום ב-8:00 לשתות מים', supabase);
+        expect(supabase._chain.insert).toHaveBeenCalled();
+        const insertArg = supabase._chain.insert.mock.calls[0][0][0];
+        expect(insertArg.recurrence).toBe('daily');
+        expect(insertArg.text).toContain('לשתות מים');
+        expect(result.answer).toContain('יומי');
+    });
+
+    test('recurring weekly reminder → inserts with recurrence=weekly', async () => {
+        const supabase = makeSupabase([], null);
+        await runReminderAgent('כל שבוע ב-10:00 פגישה', supabase);
+        const insertArg = supabase._chain.insert.mock.calls[0][0][0];
+        expect(insertArg.recurrence).toBe('weekly');
+    });
+
+    test('recurring monthly reminder → answer contains חודשי', async () => {
+        const supabase = makeSupabase([], null);
+        const result = await runReminderAgent('כל חודש ב-9:00 לשלם ארנונה', supabase);
+        expect(result.answer).toContain('חודשי');
     });
 
     test('add reminder with unparseable time → returns error message', async () => {

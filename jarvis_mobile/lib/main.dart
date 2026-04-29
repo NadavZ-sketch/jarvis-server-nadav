@@ -361,11 +361,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool        _voiceConversationActive = false;
 
   final AudioRecorder _audioRecorder      = AudioRecorder();
-  bool  _recordingSoundDetected           = false;
+  bool        _recordingSoundDetected           = false;
   Timer? _silenceTimer;
   Timer? _hardCapTimer;
   StreamSubscription? _amplitudeSubscription;
   int   _transcribeFailures               = 0;
+  String? _lastTtsPath;
 
   Uint8List? _imageBytes;
   String?    _base64Image;
@@ -390,6 +391,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _speech = stt.SpeechToText();
 
     _audioPlayer.onPlayerComplete.listen((event) {
+      // Clean up temp TTS file
+      if (_lastTtsPath != null) {
+        File(_lastTtsPath!).delete().catchError((_) {});
+        _lastTtsPath = null;
+      }
       if (mounted) {
         setState(() => _currentState = JarvisState.idle);
         if (_voiceConversationActive) {
@@ -506,6 +512,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _silenceTimer?.cancel();
     _hardCapTimer?.cancel();
     _amplitudeSubscription?.cancel();
+    if (_lastTtsPath != null) {
+      File(_lastTtsPath!).delete().catchError((_) {});
+      _lastTtsPath = null;
+    }
     _audioRecorder.dispose();
     _orbBreathController.dispose();
     _controller.dispose();
@@ -518,13 +528,27 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   Future<void> _playAudio(String base64String) async {
     if (!_settings.voiceEnabled) {
       setState(() => _currentState = JarvisState.idle);
+      // Continue conversation cycle even without TTS
+      if (_voiceConversationActive) _listenContinuous();
       return;
     }
     try {
       setState(() => _currentState = JarvisState.speaking);
-      await _audioPlayer.play(BytesSource(base64Decode(base64String)));
+      // BytesSource is unreliable on Android in audioplayers v6 — write to temp file
+      final bytes = base64Decode(base64String);
+      final tmpPath =
+          '${Directory.systemTemp.path}/jarvis_tts_${DateTime.now().millisecondsSinceEpoch}.mp3';
+      await File(tmpPath).writeAsBytes(bytes);
+      _lastTtsPath = tmpPath;
+      await _audioPlayer.play(DeviceFileSource(tmpPath));
     } catch (e) {
+      if (_lastTtsPath != null) {
+        File(_lastTtsPath!).delete().catchError((_) {});
+        _lastTtsPath = null;
+      }
       setState(() => _currentState = JarvisState.idle);
+      // Resume conversation cycle even if audio fails
+      if (_voiceConversationActive) _listenContinuous();
     }
   }
 

@@ -63,15 +63,15 @@ void main() {
     test('DOCTYPE response → throws', () async {
       final client = MockClient((_) async => http.Response(
           '<!DOCTYPE html><html><body>Starting…</body></html>', 200));
-      final svc = _makeService(client);
-      expect(svc.getTasks(), throwsException);
+      await expectLater(
+          _makeService(client).getTasks(), throwsA(isA<Exception>()));
     });
 
     test('<html> response → throws', () async {
       final client = MockClient((_) async => http.Response(
           '<html><body>cold start</body></html>', 200));
-      final svc = _makeService(client);
-      expect(svc.getReminders(), throwsException);
+      await expectLater(
+          _makeService(client).getReminders(), throwsA(isA<Exception>()));
     });
   });
 

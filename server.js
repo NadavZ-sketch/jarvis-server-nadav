@@ -723,11 +723,13 @@ app.post('/tasks', async (req, res) => {
 // ─── POST /reminders — add reminder from app ──────────────────────────────────
 app.post('/reminders', async (req, res) => {
     try {
-        const { text, scheduled_time } = req.body;
+        const { text, scheduled_time, recurrence } = req.body;
         if (!text || !scheduled_time) return res.status(400).json({ error: 'text and scheduled_time required' });
+        const row = { text, scheduled_time, fired: false };
+        if (recurrence && ['daily', 'weekly', 'monthly'].includes(recurrence)) row.recurrence = recurrence;
         const { data, error } = await supabase
             .from('reminders')
-            .insert([{ text, scheduled_time, fired: false }])
+            .insert([row])
             .select().single();
         if (error) throw error;
         res.json({ reminder: data });
@@ -984,21 +986,42 @@ ${longTermMemories}`;
 
 // ─── Reminder Cron (every minute) ─────────────────────────────────────────────
 
+function computeNextOccurrence(scheduledTimeISO, recurrence) {
+    const d = new Date(scheduledTimeISO);
+    if (recurrence === 'daily')   d.setDate(d.getDate() + 1);
+    else if (recurrence === 'weekly')  d.setDate(d.getDate() + 7);
+    else if (recurrence === 'monthly') d.setMonth(d.getMonth() + 1);
+    else return null;
+    return d;
+}
+
 cron.schedule('* * * * *', async () => {
     try {
         const now = new Date().toISOString();
         const { data: due, error } = await supabase
             .from('reminders')
-            .select('id, text, scheduled_time')
+            .select('id, text, scheduled_time, recurrence')
             .eq('fired', false)
             .lte('scheduled_time', now);
 
         if (error) { console.error('⏰ Cron error:', error.message); return; }
         if (!due || due.length === 0) return;
 
-        const ids = due.map(r => r.id);
-        due.forEach(r => console.log(`🔔 REMINDER: ${r.text} [${r.scheduled_time}]`));
-        await supabase.from('reminders').update({ fired: true }).in('id', ids);
+        due.forEach(r => console.log(`🔔 REMINDER: ${r.text} [${r.scheduled_time}]${r.recurrence ? ` 🔁 ${r.recurrence}` : ''}`));
+
+        for (const r of due) {
+            const next = r.recurrence ? computeNextOccurrence(r.scheduled_time, r.recurrence) : null;
+            if (next) {
+                // Recurring: reschedule to next occurrence
+                await supabase.from('reminders')
+                    .update({ scheduled_time: next.toISOString(), fired: false })
+                    .eq('id', r.id);
+                console.log(`🔁 Rescheduled "${r.text}" → ${next.toISOString()}`);
+            } else {
+                // One-time: mark as fired
+                await supabase.from('reminders').update({ fired: true }).eq('id', r.id);
+            }
+        }
     } catch (err) {
         console.error('⏰ Cron unexpected error:', err.message);
     }

@@ -7,10 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  node-tests:
     name: Node.js Tests
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -27,4 +26,23 @@ jobs:
         run: npm test -- --forceExit
         env:
           NODE_ENV: test
-          # Secrets are mocked inside tests — no real API keys needed
+
+  flutter-tests:
+    name: Flutter Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        working-directory: jarvis_mobile
+        run: flutter pub get
+
+      - name: Run tests
+        working-directory: jarvis_mobile
+        run: flutter test --reporter expanded

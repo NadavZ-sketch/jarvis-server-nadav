@@ -1,30 +1,37 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:jarvis_mobile/main.dart';
+import 'package:jarvis_mobile/main.dart' show JC;
 
+// JarvisApp involves SplashScreen (repeating animations, Future.delayed
+// navigation, platform channels) which makes reliable pumpWidget tests
+// impractical in headless CI. Design-token unit tests provide stable
+// coverage of the shared colour constants used throughout every screen.
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('JC design tokens', () {
+    test('background palette', () {
+      expect(JC.bg,         const Color(0xFF05090E));
+      expect(JC.surface,    const Color(0xFF0B1422));
+      expect(JC.surfaceAlt, const Color(0xFF0F1929));
+      expect(JC.border,     const Color(0xFF1A2E4A));
+    });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    test('blue palette', () {
+      expect(JC.blue500, const Color(0xFF3B82F6));
+      expect(JC.blue400, const Color(0xFF60A5FA));
+      expect(JC.blue300, const Color(0xFF93C5FD));
+    });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    test('text palette', () {
+      expect(JC.textPrimary,   const Color(0xFFF1F5F9));
+      expect(JC.textSecondary, const Color(0xFF94A3B8));
+      expect(JC.textMuted,     const Color(0xFF475569));
+    });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    test('bubble and action colors', () {
+      expect(JC.userBubble,   const Color(0xFF11284A));
+      expect(JC.jarvisBubble, const Color(0xFF0B1929));
+      expect(JC.cancelRed,    const Color(0xFFEF4444));
+    });
   });
 }

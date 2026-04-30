@@ -512,10 +512,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _silenceTimer?.cancel();
     _hardCapTimer?.cancel();
     _amplitudeSubscription?.cancel();
-    if (_lastTtsPath != null) {
-      File(_lastTtsPath!).delete().catchError((_) {});
-      _lastTtsPath = null;
-    }
     _audioRecorder.dispose();
     _orbBreathController.dispose();
     _controller.dispose();

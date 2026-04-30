@@ -62,7 +62,7 @@ void main() {
   group('HTML cold-start detection', () {
     test('DOCTYPE response → throws', () async {
       final client = MockClient((_) async => http.Response(
-          '<!DOCTYPE html><html><body>Starting…</body></html>', 200));
+          '<!DOCTYPE html><html><body>cold start</body></html>', 200));
       await expectLater(
           _makeService(client).getTasks(), throwsA(isA<Exception>()));
     });

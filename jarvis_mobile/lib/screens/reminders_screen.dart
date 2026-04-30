@@ -80,6 +80,19 @@ class _RemindersScreenState extends State<RemindersScreen> {
     }
   }
 
+  static const _recurrenceOptions = [
+    (value: null,       label: 'חד-פעמי', icon: Icons.looks_one_rounded),
+    (value: 'daily',    label: 'יומי',    icon: Icons.today_rounded),
+    (value: 'weekly',   label: 'שבועי',   icon: Icons.date_range_rounded),
+    (value: 'monthly',  label: 'חודשי',   icon: Icons.calendar_month_rounded),
+  ];
+
+  static const _recurrenceLabel = {
+    'daily':   'יומי',
+    'weekly':  'שבועי',
+    'monthly': 'חודשי',
+  };
+
   String _formatTime(dynamic iso) {
     if (iso == null) return '';
     try {
@@ -126,6 +139,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
     final textCtrl = TextEditingController(
         text: isEdit ? (existing['text']?.toString() ?? '') : '');
     DateTime selectedDate;
+    String? selectedRecurrence =
+        isEdit ? (existing['recurrence'] as String?) : null;
+
     if (isEdit && existing['scheduled_time'] != null) {
       try {
         selectedDate =
@@ -166,12 +182,12 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 controller: textCtrl,
                 textDirection: TextDirection.rtl,
                 autofocus: true,
-                style:
-                    const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+                style: const TextStyle(
+                    color: JC.textPrimary, fontFamily: 'Heebo'),
                 decoration: InputDecoration(
                   hintText: 'מה להזכיר לך?',
-                  hintStyle: const TextStyle(
-                      color: JC.textMuted, fontFamily: 'Heebo'),
+                  hintStyle:
+                      const TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
                   filled: true,
                   fillColor: JC.surface,
                   contentPadding: const EdgeInsets.symmetric(
@@ -188,20 +204,19 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              // Date/Time picker row
+
+              // ── Date/Time picker ─────────────────────────────────────────
               GestureDetector(
                 onTap: () async {
                   final date = await showDatePicker(
                     context: ctx,
                     initialDate: selectedDate,
                     firstDate: DateTime.now(),
-                    lastDate:
-                        DateTime.now().add(const Duration(days: 365)),
+                    lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
                     builder: (_, child) => Theme(
                       data: ThemeData.dark().copyWith(
                         colorScheme: const ColorScheme.dark(
-                            primary: JC.blue500,
-                            surface: JC.surfaceAlt),
+                            primary: JC.blue500, surface: JC.surfaceAlt),
                       ),
                       child: child!,
                     ),
@@ -213,16 +228,15 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     builder: (_, child) => Theme(
                       data: ThemeData.dark().copyWith(
                         colorScheme: const ColorScheme.dark(
-                            primary: JC.blue500,
-                            surface: JC.surfaceAlt),
+                            primary: JC.blue500, surface: JC.surfaceAlt),
                       ),
                       child: child!,
                     ),
                   );
                   if (time == null) return;
                   setSheet(() {
-                    selectedDate = DateTime(
-                        date.year, date.month, date.day, time.hour, time.minute);
+                    selectedDate = DateTime(date.year, date.month, date.day,
+                        time.hour, time.minute);
                   });
                 },
                 child: Container(
@@ -251,7 +265,68 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
+
+              // ── Recurrence selector ──────────────────────────────────────
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text('חזרתיות',
+                    style: const TextStyle(
+                        color: JC.textMuted,
+                        fontSize: 12,
+                        fontFamily: 'Heebo')),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: _recurrenceOptions.map((opt) {
+                  final active = selectedRecurrence == opt.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: GestureDetector(
+                      onTap: () =>
+                          setSheet(() => selectedRecurrence = opt.value),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: active
+                              ? JC.blue500.withOpacity(0.2)
+                              : JC.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: active ? JC.blue400 : JC.border,
+                            width: active ? 1.2 : 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(opt.icon,
+                                size: 13,
+                                color: active ? JC.blue400 : JC.textMuted),
+                            const SizedBox(width: 5),
+                            Text(opt.label,
+                                style: TextStyle(
+                                  color: active
+                                      ? JC.blue400
+                                      : JC.textSecondary,
+                                  fontSize: 12,
+                                  fontFamily: 'Heebo',
+                                  fontWeight: active
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                )),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+
+              const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -260,7 +335,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12))),
                   onPressed: () => _submitReminder(
-                      textCtrl.text, selectedDate, ctx, existing: existing),
+                      textCtrl.text, selectedDate, ctx,
+                      existing: existing,
+                      recurrence: selectedRecurrence),
                   child: Text(isEdit ? 'שמור' : 'הוסף',
                       style: const TextStyle(
                           fontFamily: 'Heebo',
@@ -276,34 +353,39 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
   Future<void> _submitReminder(
       String text, DateTime dateTime, BuildContext sheetCtx,
-      {Map<String, dynamic>? existing}) async {
+      {Map<String, dynamic>? existing, String? recurrence}) async {
     final val = text.trim();
     if (val.isEmpty) return;
     Navigator.pop(sheetCtx);
     final iso = dateTime.toIso8601String();
 
     if (existing != null) {
-      // Edit existing reminder
       final id = existing['id'].toString();
-      final prevText = existing['text'];
-      final prevTime = existing['scheduled_time'];
+      final prevText       = existing['text'];
+      final prevTime       = existing['scheduled_time'];
+      final prevRecurrence = existing['recurrence'];
       setState(() {
         existing['text']           = val;
         existing['scheduled_time'] = iso;
+        existing['recurrence']     = recurrence;
       });
       try {
-        await ApiService(widget.settings)
-            .updateReminder(id, text: val, scheduledTime: iso);
-        // Reschedule local notification (cancel + create)
+        await ApiService(widget.settings).updateReminder(id,
+            text: val,
+            scheduledTime: iso,
+            recurrence: recurrence ?? 'none');
         await NotificationService.cancel(id).catchError((_) {});
-        await NotificationService.schedule(id, val, dateTime)
-            .catchError((_) {});
+        // Only schedule local notification for non-recurring (OS handles once)
+        if (recurrence == null) {
+          await NotificationService.schedule(id, val, dateTime)
+              .catchError((_) {});
+        }
       } catch (_) {
-        // revert on error
         if (mounted) {
           setState(() {
             existing['text']           = prevText;
             existing['scheduled_time'] = prevTime;
+            existing['recurrence']     = prevRecurrence;
           });
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('שגיאה בעדכון',
@@ -315,17 +397,19 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
     // Add new reminder
     try {
-      final res = await ApiService(widget.settings).addReminder(val, iso);
+      final res = await ApiService(widget.settings)
+          .addReminder(val, iso, recurrence: recurrence);
       final newItem = res['reminder'] as Map<String, dynamic>? ??
           {
             'id': DateTime.now().toString(),
             'text': val,
             'scheduled_time': iso,
+            if (recurrence != null) 'recurrence': recurrence,
           };
       setState(() => _items.insert(0, newItem));
       widget.onCountUpdate?.call(_items.length);
       final nId = newItem['id']?.toString();
-      if (nId != null) {
+      if (nId != null && recurrence == null) {
         NotificationService.schedule(nId, val, dateTime).catchError((_) {});
       }
     } catch (_) {
@@ -436,15 +520,32 @@ class _RemindersScreenState extends State<RemindersScreen> {
                                                         fontFamily: 'Heebo'),
                                                   ),
                                                   const SizedBox(height: 3),
-                                                  Text(
-                                                    _formatTime(
-                                                        item['scheduled_time']),
-                                                    textDirection:
-                                                        TextDirection.rtl,
-                                                    style: const TextStyle(
-                                                        color: JC.textMuted,
-                                                        fontSize: 12,
-                                                        fontFamily: 'Heebo'),
+                                                  Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      if (item['recurrence'] != null) ...[
+                                                        const Icon(Icons.repeat_rounded,
+                                                            size: 11, color: JC.blue400),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          _recurrenceLabel[item['recurrence']] ?? '',
+                                                          style: const TextStyle(
+                                                              color: JC.blue400,
+                                                              fontSize: 11,
+                                                              fontFamily: 'Heebo',
+                                                              fontWeight: FontWeight.w600),
+                                                        ),
+                                                        const SizedBox(width: 6),
+                                                      ],
+                                                      Text(
+                                                        _formatTime(item['scheduled_time']),
+                                                        textDirection: TextDirection.rtl,
+                                                        style: const TextStyle(
+                                                            color: JC.textMuted,
+                                                            fontSize: 12,
+                                                            fontFamily: 'Heebo'),
+                                                      ),
+                                                    ],
                                                   ),
                                                 ],
                                               ),

@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
@@ -532,8 +533,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       setState(() => _currentState = JarvisState.speaking);
       // BytesSource is unreliable on Android in audioplayers v6 — write to temp file
       final bytes = base64Decode(base64String);
+      final tmpDir = await getTemporaryDirectory();
       final tmpPath =
-          '${Directory.systemTemp.path}/jarvis_tts_${DateTime.now().millisecondsSinceEpoch}.mp3';
+          '${tmpDir.path}/jarvis_tts_${DateTime.now().millisecondsSinceEpoch}.mp3';
       await File(tmpPath).writeAsBytes(bytes);
       _lastTtsPath = tmpPath;
       await _audioPlayer.play(DeviceFileSource(tmpPath));
@@ -682,8 +684,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       _listeningText = 'מקשיב...';
     });
 
-    final tmpPath =
-        '${Directory.systemTemp.path}/jarvis_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final tmpDir  = await getTemporaryDirectory();
+    final tmpPath = '${tmpDir.path}/jarvis_${DateTime.now().millisecondsSinceEpoch}.m4a';
 
     try {
       await _audioRecorder.start(
@@ -698,6 +700,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     } catch (_) {
       if (mounted && _voiceConversationActive) {
         setState(() => _currentState = JarvisState.idle);
+        // Retry after a short delay rather than leaving conversation stuck
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted && _voiceConversationActive) _listenContinuous();
+        });
       }
       return;
     }

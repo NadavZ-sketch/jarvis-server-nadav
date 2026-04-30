@@ -95,20 +95,26 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> addReminder(
-      String text, String scheduledTime) async {
+      String text, String scheduledTime, {String? recurrence}) async {
+    final body = <String, dynamic>{
+      'text': text,
+      'scheduled_time': scheduledTime,
+    };
+    if (recurrence != null) body['recurrence'] = recurrence;
     final res = await http.post(
       _uri('/reminders'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'text': text, 'scheduled_time': scheduledTime}),
+      body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> updateReminder(String id,
-      {String? text, String? scheduledTime}) async {
+      {String? text, String? scheduledTime, String? recurrence}) async {
     final body = <String, dynamic>{};
     if (text          != null) body['text']           = text;
     if (scheduledTime != null) body['scheduled_time'] = scheduledTime;
+    if (recurrence    != null) body['recurrence']     = recurrence;
     final res = await http.put(
       _uri('/reminders/$id'),
       headers: {'Content-Type': 'application/json'},

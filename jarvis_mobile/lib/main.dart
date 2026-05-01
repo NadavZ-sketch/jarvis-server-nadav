@@ -506,7 +506,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     // Prefer Hebrew; fall back to English if not installed on the device
     final heAvailable = await _flutterTts.isLanguageAvailable('he-IL');
     await _flutterTts.setLanguage(heAvailable == true ? 'he-IL' : 'en-US');
-    await _flutterTts.setSpeechRate(0.9);
+    await _flutterTts.setSpeechRate(0.5);
     await _flutterTts.setVolume(1.0);
     await _flutterTts.setPitch(1.0);
     _flutterTts.setCompletionHandler(_onTtsDone);
@@ -518,8 +518,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _ttsTimeoutTimer = null;
     if (!mounted) return;
     setState(() => _currentState = JarvisState.idle);
-    if (_voiceConversationActive) _listenContinuous();
-    else if (_voiceConversationMode) _listen();
+    if (_voiceConversationActive) {
+      // Brief delay so Android can release TTS audio focus before mic opens
+      Future.delayed(const Duration(milliseconds: 700), () {
+        if (mounted && _voiceConversationActive) _listenContinuous();
+      });
+    } else if (_voiceConversationMode) {
+      _listen();
+    }
   }
 
   Future<void> _speakText(String text) async {
@@ -736,6 +742,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         final text = val.recognizedWords.trim();
         if (text.isNotEmpty) {
           sendCommand(text);
+        } else {
+          // Empty final result = silence timeout; restart the listening cycle
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted && _voiceConversationActive &&
+                _currentState != JarvisState.thinking &&
+                _currentState != JarvisState.speaking) {
+              _listenContinuous();
+            }
+          });
         }
       },
       localeId:  'he_IL',

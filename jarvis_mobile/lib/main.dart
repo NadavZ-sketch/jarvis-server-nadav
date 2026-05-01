@@ -7,11 +7,9 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:audioplayers/audioplayers.dart';
-import 'package:record/record.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'app_settings.dart';
@@ -363,14 +361,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool        _voiceConversationMode   = false;
   bool        _voiceConversationActive = false;
 
-  final AudioRecorder _audioRecorder      = AudioRecorder();
-  bool        _recordingSoundDetected           = false;
-  bool        _processingAudio                  = false;
-  Timer? _silenceTimer;
   Timer? _hardCapTimer;
   Timer? _ttsTimeoutTimer;
-  StreamSubscription? _amplitudeSubscription;
-  int   _transcribeFailures               = 0;
   String? _lastTtsPath;
 
   Uint8List? _imageBytes;
@@ -499,11 +491,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void dispose() {
     _archiveSessionToHistory();
     _voiceConversationActive = false;
-    _silenceTimer?.cancel();
     _hardCapTimer?.cancel();
     _ttsTimeoutTimer?.cancel();
-    _amplitudeSubscription?.cancel();
-    _audioRecorder.dispose();
     _orbBreathController.dispose();
     _controller.dispose();
     _scrollController.dispose();
@@ -673,15 +662,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   void _stopVoiceConversation() {
-    _silenceTimer?.cancel();
-    _silenceTimer = null;
     _hardCapTimer?.cancel();
     _hardCapTimer = null;
     _ttsTimeoutTimer?.cancel();
     _ttsTimeoutTimer = null;
-    _amplitudeSubscription?.cancel();
-    _amplitudeSubscription = null;
-    _processingAudio = false;
     HapticFeedback.mediumImpact();
     setState(() {
       _voiceConversationActive  = false;
@@ -689,195 +673,88 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       _currentState             = JarvisState.idle;
       _listeningText            = '';
     });
-    _audioRecorder.stop().catchError((_) {});
     _speech.stop();
     _audioPlayer.stop();
     _flutterTts.stop();
   }
 
-  // ─── Whisper-based continuous listening ───────────────────────────────────────
+  // ─── SpeechToText-based continuous listening (same engine as mic button) ────────
   void _listenContinuous() async {
     if (!_voiceConversationActive || !mounted) return;
-
-    // Request microphone permission if not already granted
-    bool hasPermission = await _audioRecorder.hasPermission();
-    if (!hasPermission) {
-      final status = await Permission.microphone.request();
-      hasPermission = status.isGranted;
-    }
-    if (!hasPermission) {
-      if (!mounted) return;
-      setState(() {
-        _voiceConversationActive = false;
-        _currentState            = JarvisState.idle;
-        messages.add({
-          'sender': 'jarvis',
-          'text': '🎤 אין הרשאת מיקרופון. פתח הגדרות → הרשאות → מיקרופון.',
-          'time': _getCurrentTime(),
-        });
-      });
-      return;
-    }
-    if (!mounted || !_voiceConversationActive) return;
 
     setState(() {
       _currentState  = JarvisState.listening;
       _listeningText = 'מקשיב...';
     });
 
-    final tmpDir  = await getTemporaryDirectory();
-    final tmpPath = '${tmpDir.path}/jarvis_${DateTime.now().millisecondsSinceEpoch}.wav';
-
-    try {
-      await _audioRecorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.wav,
-          sampleRate: 16000,
-          numChannels: 1,
-        ),
-        path: tmpPath,
-      );
-    } catch (_) {
-      if (mounted && _voiceConversationActive) {
-        setState(() => _currentState = JarvisState.idle);
-        // Retry after a short delay rather than leaving conversation stuck
-        Future.delayed(const Duration(milliseconds: 800), () {
-          if (mounted && _voiceConversationActive) _listenContinuous();
-        });
-      }
-      return;
-    }
-
-    _recordingSoundDetected = false;
-    _silenceTimer?.cancel();
-    _silenceTimer = null;
-    _hardCapTimer?.cancel();
-    // Cancel any previous amplitude subscription before creating a new one
-    // so that stale listeners from previous recording cycles don't interfere.
-    await _amplitudeSubscription?.cancel();
-    _amplitudeSubscription = null;
-
-    // Amplitude-based silence detection (wrapped in try-catch: some devices throw here)
-    try {
-      _amplitudeSubscription = _audioRecorder
-          .onAmplitudeChanged(const Duration(milliseconds: 250))
-          .listen((amp) {
-        if (!mounted || !_voiceConversationActive) return;
-        if (amp.current > -50) {
-          // Sound detected — reset silence countdown
-          _recordingSoundDetected = true;
-          _hardCapTimer?.cancel(); // reset hard cap once real speech begins
-          _silenceTimer?.cancel();
-          _silenceTimer = null;
-          if (_listeningText != 'שומע...') setState(() => _listeningText = 'שומע...');
-          // Hard cap of 25 s from first speech (prevents runaway recordings)
-          _hardCapTimer = Timer(const Duration(seconds: 25), () async {
-            if (_voiceConversationActive && await _audioRecorder.isRecording()) {
-              _stopRecordingAndTranscribe(tmpPath);
-            }
-          });
-        } else if (_recordingSoundDetected && _silenceTimer == null) {
-          // Silence after speech — start 2.5 s countdown
-          _silenceTimer = Timer(const Duration(milliseconds: 2500), () {
-            _stopRecordingAndTranscribe(tmpPath);
-          });
-        }
-      });
-    } catch (_) {
-      // Amplitude monitoring unavailable on this device — rely on fallback timer only
-    }
-
-    // Fallback timer: try transcription after 5 s if amplitude detection didn't catch speech
-    _hardCapTimer = Timer(const Duration(seconds: 5), () {
-      if (!_recordingSoundDetected && _voiceConversationActive) {
-        _stopRecordingAndTranscribe(tmpPath);
-      }
-    });
-  }
-
-  Future<void> _stopRecordingAndTranscribe(String path) async {
-    _silenceTimer?.cancel();
-    _silenceTimer = null;
+    // Stop any active recording from a previous cycle
     _hardCapTimer?.cancel();
     _hardCapTimer = null;
-    await _amplitudeSubscription?.cancel();
-    _amplitudeSubscription = null;
+    if (_speech.isListening) await _speech.stop();
 
-    if (_processingAudio) return; // another call already handling this recording
-    _processingAudio = true;
-
-    try {
-    final bool recording = await _audioRecorder.isRecording();
-    if (!recording) {
-      // Recorder stopped unexpectedly — restart the cycle instead of stalling
-      if (mounted && _voiceConversationActive) _listenContinuous();
-      return;
-    }
-
-    await _audioRecorder.stop();
-    if (!mounted) return;
-
-    setState(() {
-      _currentState  = JarvisState.thinking;
-      _listeningText = 'מעבד...';
-    });
-
-    final file = File(path);
-    if (!await file.exists() || await file.length() < 500) {
-      await file.delete().catchError((_) {});
-      if (mounted && _voiceConversationActive) _listenContinuous();
-      return;
-    }
-
-    try {
-      final bytes       = await file.readAsBytes();
-      final base64Audio = base64Encode(bytes);
-
-      final response = await http.post(
-        Uri.parse('${_settings.serverUrl}/transcribe'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'audio': base64Audio, 'format': 'wav'}),
-      ).timeout(const Duration(seconds: 15));
-
-      final data = jsonDecode(response.body);
-      final text = ((data['text'] as String?) ?? '').trim();
-
-      if (text.isNotEmpty && mounted) {
-        _transcribeFailures = 0;
-        setState(() => _controller.text = text);
-        sendCommand(text);
-      } else {
-        _transcribeFailures++;
-        if (_transcribeFailures >= 2 && mounted) {
-          _transcribeFailures = 0;
-          final errDetail = (data['error'] as String?) ?? 'שגיאה בזיהוי הקול';
-          setState(() {
-            messages.add({'sender': 'jarvis', 'text': '🎙️ $errDetail. בדוק שהשרת פעיל ו-GROQ_API_KEY תקין.', 'time': _getCurrentTime()});
-            _currentState = JarvisState.idle;
-            _voiceConversationActive = false;
+    bool available = await _speech.initialize(
+      onError: (val) {
+        // Restart on transient errors (e.g. network blip, no-match)
+        if (mounted && _voiceConversationActive &&
+            _currentState == JarvisState.listening) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted && _voiceConversationActive &&
+                _currentState == JarvisState.listening) {
+              _listenContinuous();
+            }
           });
-        } else if (mounted && _voiceConversationActive) {
-          _listenContinuous();
         }
-      }
-    } catch (e) {
-      _transcribeFailures++;
-      if (_transcribeFailures >= 2 && mounted) {
-        _transcribeFailures = 0;
-        setState(() {
-          messages.add({'sender': 'jarvis', 'text': '🎙️ לא הצלחתי לתקשר עם שרת הזיהוי. בדוק חיבור ל-${_settings.serverUrl}.', 'time': _getCurrentTime()});
-          _currentState = JarvisState.idle;
-          _voiceConversationActive = false;
+      },
+    );
+
+    if (!available) {
+      if (!mounted) return;
+      setState(() {
+        _voiceConversationActive = false;
+        _currentState            = JarvisState.idle;
+        messages.add({
+          'sender': 'jarvis',
+          'text': '🎤 זיהוי הקול אינו זמין. נסה לאפשר הרשאת מיקרופון.',
+          'time': _getCurrentTime(),
         });
-      } else if (mounted && _voiceConversationActive) {
+      });
+      return;
+    }
+
+    if (!mounted || !_voiceConversationActive) return;
+
+    _speech.listen(
+      onResult: (val) {
+        if (!mounted || !_voiceConversationActive) return;
+        if (!val.finalResult) {
+          // Show interim text while user speaks
+          if (val.recognizedWords.isNotEmpty) {
+            setState(() => _listeningText = val.recognizedWords);
+          }
+          return;
+        }
+        final text = val.recognizedWords.trim();
+        if (text.isNotEmpty) {
+          sendCommand(text);
+        }
+      },
+      localeId:  'he_IL',
+      listenFor: const Duration(seconds: 60),
+      pauseFor:  const Duration(seconds: 2),
+      onSoundLevelChange: (level) {
+        if (!mounted || !_voiceConversationActive) return;
+        if (level > 0 && _listeningText == 'מקשיב...') {
+          setState(() => _listeningText = 'שומע...');
+        }
+      },
+    );
+
+    // No-speech safety: if recognition doesn't produce a result in 12 s, restart
+    _hardCapTimer = Timer(const Duration(seconds: 12), () {
+      if (_voiceConversationActive && _currentState == JarvisState.listening) {
         _listenContinuous();
       }
-    } finally {
-      await file.delete().catchError((_) {});
-    }
-    } finally {
-      _processingAudio = false;
-    }
+    });
   }
 
   // ─── Quick commands (/task, /note, /remind) ───────────────────────────────────
@@ -946,9 +823,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     HapticFeedback.lightImpact();
     _speech.stop();
-    _silenceTimer?.cancel();
-    _silenceTimer = null;
-    _audioRecorder.stop().catchError((_) {});
+    _hardCapTimer?.cancel();
+    _hardCapTimer = null;
 
     setState(() {
       String display = text;

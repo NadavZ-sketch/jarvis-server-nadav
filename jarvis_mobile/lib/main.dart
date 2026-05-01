@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
@@ -353,8 +354,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final ScrollController       _scrollController = ScrollController();
 
   late stt.SpeechToText _speech;
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  final ImagePicker _picker      = ImagePicker();
+  final AudioPlayer  _audioPlayer = AudioPlayer();
+  final FlutterTts   _flutterTts  = FlutterTts();
+  final ImagePicker  _picker      = ImagePicker();
 
   JarvisState _currentState = JarvisState.idle;
   String      _listeningText = '';
@@ -390,22 +392,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _speech = stt.SpeechToText();
-
-    _audioPlayer.onPlayerComplete.listen((event) {
-      // Clean up temp TTS file
-      if (_lastTtsPath != null) {
-        File(_lastTtsPath!).delete().catchError((_) {});
-        _lastTtsPath = null;
-      }
-      if (mounted) {
-        setState(() => _currentState = JarvisState.idle);
-        if (_voiceConversationActive) {
-          _listenContinuous();   // orb mode → Whisper recording
-        } else if (_voiceConversationMode) {
-          _listen();             // mic button mode → native STT
-        }
-      }
-    });
+    _initTts();
 
     if (widget.initialSettings != null) {
       _settings = widget.initialSettings!;
@@ -518,10 +505,43 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _controller.dispose();
     _scrollController.dispose();
     _audioPlayer.dispose();
+    _flutterTts.stop();
     super.dispose();
   }
 
-  // ─── Audio ────────────────────────────────────────────────────────────────────
+  // ─── TTS (client-side) ───────────────────────────────────────────────────────
+  void _initTts() async {
+    await _flutterTts.setLanguage('he-IL');
+    await _flutterTts.setSpeechRate(0.9);
+    await _flutterTts.setVolume(1.0);
+    await _flutterTts.setPitch(1.0);
+    _flutterTts.setCompletionHandler(() {
+      if (!mounted) return;
+      setState(() => _currentState = JarvisState.idle);
+      if (_voiceConversationActive) _listenContinuous();
+      else if (_voiceConversationMode) _listen();
+    });
+  }
+
+  Future<void> _speakText(String text) async {
+    if (!_settings.voiceEnabled) {
+      setState(() => _currentState = JarvisState.idle);
+      if (_voiceConversationActive) _listenContinuous();
+      else if (_voiceConversationMode) _listen();
+      return;
+    }
+    setState(() => _currentState = JarvisState.speaking);
+    try {
+      await _flutterTts.stop();
+      await _flutterTts.speak(text);
+    } catch (_) {
+      setState(() => _currentState = JarvisState.idle);
+      if (_voiceConversationActive) _listenContinuous();
+      else if (_voiceConversationMode) _listen();
+    }
+  }
+
+  // ─── Audio (server-side mp3, kept for reference) ─────────────────────────────
   Future<void> _playAudio(String base64String) async {
     if (!_settings.voiceEnabled) {
       setState(() => _currentState = JarvisState.idle);
@@ -652,6 +672,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _audioRecorder.stop().catchError((_) {});
     _speech.stop();
     _audioPlayer.stop();
+    _flutterTts.stop();
   }
 
   // ─── Whisper-based continuous listening ───────────────────────────────────────
@@ -930,7 +951,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       if (response.statusCode == 200) {
         final data          = jsonDecode(response.body);
         final String answer = data['answer'];
-        final String? audio = data['audio'];
         final action        = data['action'];
 
         setState(() => messages.add(
@@ -939,16 +959,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
         if (action != null && mounted) await _confirmAndSend(action);
 
-        if (audio != null && audio.isNotEmpty) {
-          _playAudio(audio);
-        } else {
-          setState(() => _currentState = JarvisState.idle);
-          if (_voiceConversationActive) {
-            _listenContinuous();
-          } else if (_voiceConversationMode) {
-            _listen();
-          }
-        }
+        _speakText(answer);
       } else {
         setState(() {
           messages.add({'sender': 'jarvis', 'text': 'שגיאה מהשרת: קוד ${response.statusCode}', 'time': _getCurrentTime()});

@@ -520,7 +520,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     setState(() => _currentState = JarvisState.idle);
     if (_voiceConversationActive) {
       // Brief delay so Android can release TTS audio focus before mic opens
-      Future.delayed(const Duration(milliseconds: 700), () {
+      Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted && _voiceConversationActive) _listenContinuous();
       });
     } else if (_voiceConversationMode) {
@@ -755,7 +755,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       },
       localeId:  'he_IL',
       listenFor: const Duration(seconds: 60),
-      pauseFor:  const Duration(seconds: 2),
+      pauseFor:  const Duration(milliseconds: 1500),
       onSoundLevelChange: (level) {
         if (!mounted || !_voiceConversationActive) return;
         if (level > 0 && _listeningText == 'מקשיב...') {
@@ -868,7 +868,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         body: jsonEncode({
           'command':  text,
           'image':    imageToSend,
-          'settings': _settings.toJson(),
+          'settings': {
+            ..._settings.toJson(),
+            'voiceMode': _voiceConversationActive,
+          },
         }),
       ).timeout(
         const Duration(seconds: 20),

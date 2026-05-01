@@ -274,11 +274,11 @@ async function generateSpeech(text) {
 
 app.post('/transcribe', _rl(60), async (req, res) => {
     try {
-        const { audio } = req.body;
+        const { audio, format = 'wav' } = req.body;
         if (!audio) return res.status(400).json({ text: '', error: 'No audio provided' });
 
         const buffer = Buffer.from(audio, 'base64');
-        const file = await toFile(buffer, 'audio.m4a', { type: 'audio/m4a' });
+        const file = await toFile(buffer, `audio.${format}`, { type: `audio/${format}` });
 
         const transcription = await groqWhisper.audio.transcriptions.create({
             file,

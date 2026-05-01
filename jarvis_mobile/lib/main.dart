@@ -726,13 +726,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     });
 
     final tmpDir  = await getTemporaryDirectory();
-    final tmpPath = '${tmpDir.path}/jarvis_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final tmpPath = '${tmpDir.path}/jarvis_${DateTime.now().millisecondsSinceEpoch}.wav';
 
     try {
       await _audioRecorder.start(
         const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 96000,
+          encoder: AudioEncoder.wav,
           sampleRate: 16000,
           numChannels: 1,
         ),
@@ -837,7 +836,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       final response = await http.post(
         Uri.parse('${_settings.serverUrl}/transcribe'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'audio': base64Audio}),
+        body: jsonEncode({'audio': base64Audio, 'format': 'wav'}),
       ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);

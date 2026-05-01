@@ -1036,6 +1036,21 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
+  Future<void> _startNewChat() async {
+    await _archiveSessionToHistory();
+    if (!mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('current_messages');
+    setState(() {
+      _stopVoiceConversation();
+      messages = [
+        {'sender': 'jarvis', 'text': 'שיחה חדשה! מוכן לעזור, ${_settings.userName}.', 'time': _getCurrentTime()},
+      ];
+    });
+    _persistMessages();
+    _scrollToBottom();
+  }
+
   // ─── Settings ─────────────────────────────────────────────────────────────────
   void _openSettings() {
     Navigator.push(
@@ -1128,6 +1143,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add_comment_outlined,
+                color: JC.textSecondary, size: 22),
+            tooltip: 'שיחה חדשה',
+            onPressed: _startNewChat,
+          ),
           IconButton(
             icon: const Icon(Icons.history_rounded,
                 color: JC.textSecondary, size: 22),

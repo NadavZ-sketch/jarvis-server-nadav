@@ -1118,6 +1118,34 @@ app.get('/notes.json', (_req, res) => {
         err => { if (err && !res.headersSent) res.status(404).json({ notes: [], lastUpdated: null }); });
 });
 
+// ─── Calendar events ─────────────────────────────────────────────────────────
+app.get('/calendar-events', async (_req, res) => {
+    try {
+        const [tasksRes, remindersRes] = await Promise.all([
+            supabase.from('tasks').select('id, content, due_date, done').not('due_date', 'is', null),
+            supabase.from('reminders').select('id, text, scheduled_time, fired'),
+        ]);
+        const tasks = (tasksRes.data || []).map(t => ({
+            id:    `task-${t.id}`,
+            type:  'task',
+            title: t.content,
+            date:  t.due_date,
+            done:  t.done,
+        }));
+        const reminders = (remindersRes.data || []).map(r => ({
+            id:    `reminder-${r.id}`,
+            type:  'reminder',
+            title: r.text,
+            date:  r.scheduled_time,
+            done:  r.fired,
+        }));
+        res.json({ events: [...tasks, ...reminders] });
+    } catch (err) {
+        console.error('GET /calendar-events error:', err.message);
+        res.status(500).json({ events: [] });
+    }
+});
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 app.get('/dashboard/features', (_req, res) => {
     try {

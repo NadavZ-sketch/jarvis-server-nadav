@@ -511,16 +511,21 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   // ─── TTS (client-side) ───────────────────────────────────────────────────────
   void _initTts() async {
-    await _flutterTts.setLanguage('he-IL');
+    // Prefer Hebrew; fall back to English if not installed on the device
+    final heAvailable = await _flutterTts.isLanguageAvailable('he-IL');
+    await _flutterTts.setLanguage(heAvailable == true ? 'he-IL' : 'en-US');
     await _flutterTts.setSpeechRate(0.9);
     await _flutterTts.setVolume(1.0);
     await _flutterTts.setPitch(1.0);
-    _flutterTts.setCompletionHandler(() {
-      if (!mounted) return;
-      setState(() => _currentState = JarvisState.idle);
-      if (_voiceConversationActive) _listenContinuous();
-      else if (_voiceConversationMode) _listen();
-    });
+    _flutterTts.setCompletionHandler(_onTtsDone);
+    _flutterTts.setErrorHandler((_) => _onTtsDone());
+  }
+
+  void _onTtsDone() {
+    if (!mounted) return;
+    setState(() => _currentState = JarvisState.idle);
+    if (_voiceConversationActive) _listenContinuous();
+    else if (_voiceConversationMode) _listen();
   }
 
   Future<void> _speakText(String text) async {
@@ -533,11 +538,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     setState(() => _currentState = JarvisState.speaking);
     try {
       await _flutterTts.stop();
-      await _flutterTts.speak(text);
+      final result = await _flutterTts.speak(text);
+      // speak() returns 1 on success; anything else means TTS won't fire
+      // the completion handler, so we resume the cycle manually.
+      if (result != 1) _onTtsDone();
     } catch (_) {
-      setState(() => _currentState = JarvisState.idle);
-      if (_voiceConversationActive) _listenContinuous();
-      else if (_voiceConversationMode) _listen();
+      _onTtsDone();
     }
   }
 

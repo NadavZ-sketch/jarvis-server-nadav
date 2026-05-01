@@ -1,0 +1,36 @@
+{
+  "lastUpdated": "2026-05-01",
+  "features": {
+    "done": [
+      { "name": "צ'אט AI",              "desc": "Groq → DeepSeek → Gemini עם fallback" },
+      { "name": "מיקרופון — קלט קולי",  "desc": "speech_to_text, עברית, Google ASR" },
+      { "name": "ORB — שיחה רציפה",     "desc": "לחצן אורב לשיחה קולית חיה" },
+      { "name": "TTS — קריאה בקול",     "desc": "flutter_tts, עברית, מהירות מתכווננת" },
+      { "name": "ניהול משימות",          "desc": "הוספה, סימון, מחיקה, רשימה" },
+      { "name": "תזכורות",              "desc": "תזכורות עם זמן, push notifications" },
+      { "name": "פתקים",                "desc": "שמירת פתקים מובנים ב-Supabase" },
+      { "name": "זיכרון לטווח ארוך",    "desc": "חילוץ עובדות אוטומטי + Pinecone" },
+      { "name": "רשימת קניות",          "desc": "פריטים + סימון + מחיקה" },
+      { "name": "היסטוריית שיחות",      "desc": "60 הודעות אחרונות, שמורות ב-DB" },
+      { "name": "מצלמה וגלריה",         "desc": "שליחת תמונה ל-Jarvis לניתוח" },
+      { "name": "שרת מקומי / ענן",      "desc": "localhost או Render, מתחלף מהגדרות" },
+      { "name": "Obsidian Sync",         "desc": "סנכרון אוטומטי עם vault" },
+      { "name": "אונבורדינג",            "desc": "מסך ברוך הבא למשתמש חדש" },
+      { "name": "הגדרות מלאות",         "desc": "שם, מגדר, אופי, קול, שרת, הרשאות" },
+      { "name": "מייל",                  "desc": "שליחת מייל דרך Jarvis" },
+      { "name": "Dashboard",            "desc": "מפת ניהול פרויקט חיה" }
+    ],
+    "building": [
+      { "name": "ORB — טבעיות שיחה",   "desc": "תשובות מדוברות, pauseFor קצר, TTS חלק" },
+      { "name": "Dashboard חדש",        "desc": "פאנל ניהול מעודכן עם backlog וסטטוס חי" }
+    ],
+    "planned": [
+      { "name": "Widget מסך הבית",      "desc": "ווידג'ט iOS/Android עם quick actions" },
+      { "name": "התראות חכמות",         "desc": "reminders ב-background גם כשהאפל סגורה" },
+      { "name": "קלנדר",               "desc": "אינטגרציה עם Google Calendar" },
+      { "name": "Siri / Google",        "desc": "קיצורי Siri ו-Google Assistant" },
+      { "name": "Apple Watch",          "desc": "שיחה קולית ישירה מהשעון" },
+      { "name": "משתמשים נוספים",       "desc": "profile נפרד לכל משתמש" }
+    ]
+  }
+}

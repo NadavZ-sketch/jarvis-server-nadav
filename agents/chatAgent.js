@@ -91,6 +91,7 @@ function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followU
     const userName    = settings.userName      || 'נדב';
     const gender      = settings.gender        || 'male';
     const personality = settings.personality   || 'friendly';
+    const voiceMode   = settings.voiceMode     === true;
 
     const genderInstr = gender === 'female'
         ? 'את עוזרת אישית. השתמשי תמיד בלשון נקבה.'
@@ -121,10 +122,21 @@ function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followU
         ? `\n--- הקשר להמשך שיחה ---\n${followUpContext}\n-----------------------------------\n`
         : '';
 
+    const voiceModeBlock = voiceMode ? `
+--- מצב שיחה קולית ---
+אנחנו בשיחה קולית. כללים חשובים:
+- ענה בקצרה — 1 עד 3 משפטים מדוברים לכל היותר, אלא אם נשאלת שאלה שדורשת הרחבה ממשית.
+- שפה מדוברת ונזילה — כאילו אתה מדבר, לא כותב.
+- ללא markdown: ללא *, **, #, -, bullets, קוד בלוקים או סמלים מיוחדים.
+- ללא רשימות ממוספרות — שלב הכל בזרימה טבעית של דיבור.
+- אם השאלה פשוטה — משפט אחד מספיק.
+-----------------------------------` : '';
+
     return `You are ${name}, a personal AI assistant for ${userName}. Respond in Hebrew only.
 ${genderInstr}
 Personality: ${personalityDesc}
 CRITICAL: Mirror ${userName}'s own writing style, vocabulary and tone in every response.
+${voiceModeBlock}
 ${emotionalIntelligenceBlock}
 ${clarificationBlock}
 ${followUpBlock}

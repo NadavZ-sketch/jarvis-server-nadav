@@ -81,9 +81,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _requestPermission(Permission permission) async {
+    final current = await permission.status;
+    // Granted/limited → open system settings so user can revoke
+    if (current.isGranted || current.isLimited) {
+      await openAppSettings();
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _loadPermissions();
+      return;
+    }
     final status = await permission.request();
     if (!mounted) return;
-    // If permanently denied, open system settings
     if (status.isPermanentlyDenied) {
       await openAppSettings();
       await Future.delayed(const Duration(milliseconds: 500));
@@ -202,8 +209,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String _permLabel(PermissionStatus s) {
-    if (s.isGranted)           return 'מאושר';
-    if (s.isLimited)           return 'מוגבל';
+    if (s.isGranted)           return 'מאושר · נהל';
+    if (s.isLimited)           return 'מוגבל · נהל';
     if (s.isPermanentlyDenied) return 'חסום — פתח הגדרות';
     if (s.isDenied)            return 'לא אושר';
     return 'לא ידוע';

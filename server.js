@@ -1118,6 +1118,59 @@ app.get('/notes.json', (_req, res) => {
         err => { if (err && !res.headersSent) res.status(404).json({ notes: [], lastUpdated: null }); });
 });
 
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+app.get('/dashboard/features', (_req, res) => {
+    try {
+        const data = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'features.json'), 'utf8'));
+        res.json(data);
+    } catch { res.status(500).json({ error: 'features.json not found' }); }
+});
+
+app.get('/dashboard/backlog', (_req, res) => {
+    try {
+        const data = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'backlog.json'), 'utf8'));
+        res.json(data);
+    } catch { res.json({ items: [], _nextId: 1 }); }
+});
+
+app.post('/dashboard/backlog', (req, res) => {
+    try {
+        const { text } = req.body;
+        if (!text || !text.trim()) return res.status(400).json({ error: 'text required' });
+        const fp   = path.join(__dirname, 'backlog.json');
+        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+        const item = { id: data._nextId, text: text.trim(), done: false, added: new Date().toISOString().slice(0, 10) };
+        data.items.unshift(item);
+        data._nextId++;
+        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
+        res.json({ item });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/dashboard/backlog/:id', (req, res) => {
+    try {
+        const id   = parseInt(req.params.id, 10);
+        const fp   = path.join(__dirname, 'backlog.json');
+        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+        const item = data.items.find(i => i.id === id);
+        if (!item) return res.status(404).json({ error: 'not found' });
+        item.done = !item.done;
+        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
+        res.json({ item });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/dashboard/backlog/:id', (req, res) => {
+    try {
+        const id   = parseInt(req.params.id, 10);
+        const fp   = path.join(__dirname, 'backlog.json');
+        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+        data.items = data.items.filter(i => i.id !== id);
+        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 module.exports = { app };

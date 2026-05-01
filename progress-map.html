@@ -1,941 +1,280 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Jarvis – מפת התקדמות</title>
-  <style>
-    :root {
-      --done:    #22c55e;
-      --partial: #f59e0b;
-      --future:  #6b7280;
-      --bg:      #0f172a;
-      --surface: #1e293b;
-      --card:    #273449;
-      --border:  #334155;
-      --text:    #e2e8f0;
-      --muted:   #94a3b8;
-      --accent:  #6366f1;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 32px 24px 64px; }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Jarvis — לוח ניהול</title>
+<style>
+:root{
+  --bg:#0f172a;--surface:#1e293b;--card:#273449;--border:#334155;
+  --text:#e2e8f0;--muted:#94a3b8;--accent:#6366f1;
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--blue:#60a5fa;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:24px 20px 60px}
+a{color:inherit;text-decoration:none}
 
-    header { text-align: center; margin-bottom: 12px; }
-    header h1 { font-size: 2.2rem; letter-spacing: -1px; }
-    header h1 span { color: var(--accent); }
-    .updated { text-align: center; color: var(--muted); font-size: .82rem; margin-bottom: 28px; }
+/* ── layout ── */
+.container{max-width:960px;margin:0 auto}
+h1{font-size:1.6rem;font-weight:700;letter-spacing:-.5px;margin-bottom:2px}
+h1 span{color:var(--accent)}
+.subtitle{color:var(--muted);font-size:.85rem;margin-bottom:24px}
 
-    .legend { display: flex; gap: 24px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
-    .legend-item { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
-    .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+/* ── status bar ── */
+.status-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:12px 18px;margin-bottom:20px;font-size:.83rem}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.dot.green{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+.dot.red{background:var(--red)}
+.dot.loading{background:var(--amber)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.sep{width:1px;height:18px;background:var(--border)}
+.muted{color:var(--muted)}
 
-    /* ── STATS ── */
-    .stats { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px; }
-    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 22px; text-align: center; min-width: 120px; }
-    .stat-card .num { font-size: 1.9rem; font-weight: 700; }
-    .stat-card .lbl { color: var(--muted); font-size: .78rem; margin-top: 2px; }
-    .stat-card.green .num  { color: var(--done); }
-    .stat-card.amber .num  { color: var(--partial); }
-    .stat-card.gray  .num  { color: var(--future); }
-    .stat-card.blue  .num  { color: #60a5fa; }
-    .stat-card.purple .num { color: var(--accent); }
+/* ── metrics ── */
+.metrics{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:14px 18px;text-align:center;flex:1;min-width:100px;position:relative}
+.metric .live-dot{position:absolute;top:8px;left:8px;width:7px;height:7px;
+  border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+.metric-num{font-size:1.8rem;font-weight:700;color:var(--blue);line-height:1}
+.metric-label{color:var(--text);font-size:.8rem;font-weight:600;margin-bottom:4px}
+.metric-sub{color:var(--muted);font-size:.72rem;margin-top:4px}
 
-    /* ── LIVE DATA BAR ── */
-    .live-bar { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-bottom:20px; }
-    .live-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 18px; text-align:center; min-width:110px; position:relative; }
-    .live-card .live-num { font-size:1.7rem; font-weight:700; color:#60a5fa; transition:color .3s; }
-    .live-card .live-sub { color:var(--muted); font-size:.75rem; margin-top:2px; }
-    .live-card .live-label { color:var(--text); font-size:.82rem; font-weight:600; margin-bottom:4px; }
-    .live-badge { position:absolute; top:8px; left:8px; width:7px; height:7px; border-radius:50%; background:var(--done); animation:pulse 2s infinite; }
-    .refresh-row { text-align:center; color:var(--muted); font-size:.75rem; margin-bottom:28px; }
+/* ── section ── */
+.section-title{display:flex;align-items:center;gap:8px;font-size:.78rem;
+  font-weight:700;color:var(--accent);letter-spacing:1.2px;text-transform:uppercase;
+  margin:28px 0 12px}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
 
-    /* ── SERVER STATUS ── */
-    .server-status-bar {
-      display: flex; align-items: center; justify-content: center; gap: 20px;
-      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-      padding: 14px 24px; margin-bottom: 36px; flex-wrap: wrap; gap: 16px;
-    }
-    .status-indicator { display: flex; align-items: center; gap: 8px; font-size: .88rem; }
-    .status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .status-dot.online  { background: var(--done);    box-shadow: 0 0 6px var(--done); animation: pulse 2s infinite; }
-    .status-dot.offline { background: #ef4444; }
-    .status-dot.loading { background: var(--partial); }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-    .status-meta { color: var(--muted); font-size: .78rem; }
-    .status-divider { width: 1px; height: 28px; background: var(--border); }
+/* ── feature board ── */
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:8px}
+@media(max-width:640px){.board{grid-template-columns:1fr}}
+.col-header{font-size:.8rem;font-weight:700;padding:8px 14px;border-radius:8px;
+  display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.col-header.done{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25)}
+.col-header.building{background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25)}
+.col-header.planned{background:rgba(107,114,128,.12);color:var(--muted);border:1px solid rgba(107,114,128,.25)}
+.feature-pill{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:9px 12px;font-size:.83rem;margin-bottom:6px;cursor:default;
+  transition:transform .12s,box-shadow .12s}
+.feature-pill:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.feature-pill .fname{font-weight:600}
+.feature-pill .fdesc{color:var(--muted);font-size:.72rem;margin-top:2px;line-height:1.4}
+.badge{display:inline-block;font-size:.65rem;font-weight:700;border-radius:4px;
+  padding:2px 7px;letter-spacing:.3px;margin-bottom:5px}
+.badge.done{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)}
+.badge.building{background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.3)}
+.badge.planned{background:rgba(107,114,128,.15);color:var(--muted);border:1px solid rgba(107,114,128,.3)}
 
-    /* ── SECTION TITLE ── */
-    .section-title { font-size: 1.15rem; font-weight: 700; color: var(--accent); margin: 36px 0 16px; display: flex; align-items: center; gap: 10px; }
-    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+/* ── backlog ── */
+.backlog-add{display:flex;gap:8px;margin-bottom:14px}
+.backlog-add input{flex:1;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:10px 14px;color:var(--text);font-size:.88rem;font-family:inherit;outline:none;direction:rtl}
+.backlog-add input:focus{border-color:var(--accent)}
+.backlog-add button{background:var(--accent);border:none;border-radius:8px;
+  padding:10px 18px;color:#fff;font-size:.88rem;font-weight:600;cursor:pointer;
+  font-family:inherit;white-space:nowrap;transition:opacity .15s}
+.backlog-add button:hover{opacity:.85}
+.backlog-list{display:flex;flex-direction:column;gap:6px}
+.backlog-item{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:11px 14px;display:flex;align-items:center;gap:10px;transition:opacity .2s}
+.backlog-item.done-item{opacity:.45}
+.backlog-item.done-item .item-text{text-decoration:line-through}
+.check-btn{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--border);
+  background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;font-size:.8rem;transition:all .15s}
+.check-btn.checked{background:var(--green);border-color:var(--green);color:#fff}
+.item-text{flex:1;font-size:.88rem}
+.item-meta{color:var(--muted);font-size:.72rem;flex-shrink:0}
+.del-btn{background:none;border:none;color:var(--muted);cursor:pointer;
+  font-size:.9rem;padding:2px 6px;border-radius:4px;line-height:1;transition:color .12s}
+.del-btn:hover{color:var(--red)}
+.backlog-empty{color:var(--muted);font-size:.85rem;text-align:center;padding:20px}
 
-    /* ── NOTES ── */
-    .notes-list { display: grid; gap: 12px; }
-    .note-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; }
-    .note-card.done-note { opacity: .5; }
-    .note-tag { font-size: .72rem; font-weight: 700; border-radius: 4px; padding: 3px 8px; white-space: nowrap; flex-shrink: 0; }
-    .tag-רעיון  { background: rgba(99,102,241,.2); color: #a5b4fc; border: 1px solid rgba(99,102,241,.3); }
-    .tag-באג    { background: rgba(239,68,68,.2);  color: #fca5a5; border: 1px solid rgba(239,68,68,.3); }
-    .tag-שיפור  { background: rgba(34,197,94,.2);  color: #86efac; border: 1px solid rgba(34,197,94,.3); }
-    .tag-todo   { background: rgba(245,158,11,.2); color: #fcd34d; border: 1px solid rgba(245,158,11,.3); }
-    .note-body { flex: 1; }
-    .note-text { font-size: .9rem; line-height: 1.5; }
-    .note-date { color: var(--muted); font-size: .75rem; margin-top: 4px; }
-    .note-done-badge { font-size: .7rem; color: var(--done); background: rgba(34,197,94,.1); border: 1px solid rgba(34,197,94,.3); border-radius: 4px; padding: 2px 7px; margin-top: 5px; display: inline-block; }
+/* ── features edit hint ── */
+.edit-hint{color:var(--muted);font-size:.75rem;margin-top:8px;text-align:center}
+.edit-hint code{background:var(--card);border-radius:4px;padding:1px 6px;font-size:.72rem}
 
-    /* ── FLOW DIAGRAM ── */
-    .flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
-    .flow-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; width: 100%; }
-    .flow-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 9px 16px; font-size: .82rem; font-weight: 600; text-align: center; white-space: nowrap; min-width: 90px; }
-    .flow-box.input  { border-color: #818cf8; color: #a5b4fc; }
-    .flow-box.server { border-color: var(--accent); background: rgba(99,102,241,.12); color: #c7d2fe; font-size: .88rem; padding: 12px 24px; }
-    .flow-box.router { border-color: var(--partial); background: rgba(245,158,11,.1); color: #fcd34d; font-size: .88rem; padding: 12px 24px; }
-    .flow-box.agent  { border-color: #34d399; background: rgba(52,211,153,.08); color: #6ee7b7; font-size: .75rem; padding: 7px 10px; min-width: 70px; }
-    .flow-box.llm    { border-color: #f472b6; background: rgba(244,114,182,.08); color: #f9a8d4; font-size: .8rem; padding: 9px 14px; }
-    .flow-box.db     { border-color: #60a5fa; background: rgba(96,165,250,.08); color: #93c5fd; font-size: .8rem; padding: 9px 14px; }
-    .flow-box.output { border-color: var(--done); background: rgba(34,197,94,.08); color: #86efac; font-size: .86rem; padding: 11px 22px; }
-    .flow-box.flutter{ border-color: #38bdf8; background: rgba(56,189,248,.08); color: #7dd3fc; font-size: .86rem; padding: 11px 22px; }
-    .flow-arrow { color: var(--muted); font-size: 1.3rem; line-height: 1; margin: 3px 0; }
-    .flow-label { color: var(--muted); font-size: .7rem; margin: -4px 0 2px; }
-    .flow-parallel { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; width: 100%; }
-    .flow-section-label { font-size: .7rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; margin: 4px 0; }
-
-    /* ── TIERS ── */
-    .tiers { display: grid; gap: 24px; }
-    .tier { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
-    .tier-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-    .tier-badge { background: var(--accent); color: #fff; border-radius: 8px; padding: 4px 12px; font-size: .78rem; font-weight: 700; white-space: nowrap; }
-    .tier-progress-bar { height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; margin-bottom: 18px; }
-    .tier-progress-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--done)); }
-    .features { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
-    .feature { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px; font-size: .86rem; transition: transform .15s, box-shadow .15s; }
-    .feature:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.4); }
-    .feature-icon { font-size: 1.15rem; flex-shrink: 0; margin-top: 1px; }
-    .feature-name { font-weight: 600; }
-    .feature-desc { color: var(--muted); font-size: .76rem; margin-top: 3px; line-height: 1.4; }
-    .feature-status { display: inline-block; font-size: .68rem; font-weight: 700; border-radius: 4px; padding: 2px 7px; margin-top: 6px; letter-spacing: .4px; }
-    .status-done    { background: rgba(34,197,94,.15);   color: var(--done);    border: 1px solid rgba(34,197,94,.3); }
-    .status-partial { background: rgba(245,158,11,.15);  color: var(--partial); border: 1px solid rgba(245,158,11,.3); }
-    .status-future  { background: rgba(107,114,128,.15); color: var(--future);  border: 1px solid rgba(107,114,128,.3); }
-
-    /* ── API ENDPOINTS ── */
-    .api-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-    .api-table th { background: var(--card); color: var(--muted); padding: 9px 14px; text-align: right; font-weight: 600; border-bottom: 1px solid var(--border); }
-    .api-table td { padding: 9px 14px; border-bottom: 1px solid rgba(51,65,85,.5); vertical-align: top; }
-    .api-table tr:last-child td { border-bottom: none; }
-    .api-table tr:hover td { background: rgba(255,255,255,.03); }
-    .method { display: inline-block; font-size: .7rem; font-weight: 700; border-radius: 4px; padding: 2px 7px; font-family: monospace; white-space: nowrap; }
-    .method.get    { background: rgba(34,197,94,.15);  color: #4ade80; border: 1px solid rgba(34,197,94,.3); }
-    .method.post   { background: rgba(99,102,241,.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,.3); }
-    .method.put    { background: rgba(245,158,11,.15); color: #fcd34d; border: 1px solid rgba(245,158,11,.3); }
-    .method.delete { background: rgba(239,68,68,.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,.3); }
-    .method.patch  { background: rgba(56,189,248,.15); color: #7dd3fc; border: 1px solid rgba(56,189,248,.3); }
-    .api-path { font-family: monospace; color: #c7d2fe; }
-    .api-desc { color: var(--muted); }
-
-    /* ── TECH ── */
-    .tech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 10px; }
-    .tech-chip { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: .82rem; display: flex; align-items: center; gap: 8px; }
-    .tech-chip .ticon { font-size: 1rem; }
-    .tech-chip .tlabel { font-weight: 600; }
-    .tech-chip .trole { color: var(--muted); font-size: .72rem; margin-top: 1px; }
-
-    /* ── DB ── */
-    .db-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
-    .db-table { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-    .db-table-header { background: var(--accent); color: #fff; padding: 9px 14px; font-weight: 700; font-size: .86rem; }
-    .db-table-body { padding: 10px 14px; }
-    .db-col { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: .78rem; }
-    .db-col:last-child { border-bottom: none; }
-    .col-type { color: var(--partial); font-size: .7rem; font-family: monospace; flex-shrink: 0; }
-    .col-pk { color: var(--accent); font-size: .7rem; flex-shrink: 0; }
-
-    footer { text-align: center; margin-top: 48px; color: var(--muted); font-size: .78rem; }
-
-    /* ── TABS ── */
-    .tab-bar { display: flex; gap: 0; background: var(--surface); border-radius: 12px; padding: 4px; margin-bottom: 24px; border: 1px solid var(--border); }
-    .tab-btn { flex: 1; padding: 10px; border: none; background: transparent; color: var(--muted); cursor: pointer; border-radius: 10px; font-family: inherit; font-size: .88rem; font-weight: 600; transition: all .2s; }
-    .tab-btn.active { background: var(--accent); color: #fff; }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-
-    /* ── ACCORDION ── */
-    .accordion { border: 1px solid var(--border); border-radius: 14px; margin-bottom: 14px; overflow: hidden; }
-    .accordion-header { display: flex; align-items: center; justify-content: space-between; padding: 15px 20px; cursor: pointer; user-select: none; background: var(--surface); transition: background .15s; }
-    .accordion-header:hover { background: var(--card); }
-    .accordion-header .acc-title { font-size: .98rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
-    .accordion-header .acc-chevron { transition: transform .25s; color: var(--muted); }
-    .accordion.open .acc-chevron { transform: rotate(180deg); }
-    .accordion-body { max-height: 0; overflow: hidden; transition: max-height .4s ease; }
-    .accordion.open .accordion-body { max-height: 9999px; }
-    .accordion-body-inner { padding: 0 20px 20px; }
-
-    /* ── 3D GRAPH ── */
-    #graph3d-container { width: 100%; height: 500px; border-radius: 14px; overflow: hidden; background: #060d1f; border: 1px solid var(--border); position: relative; }
-    .graph-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-    .graph-btn { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: .82rem; font-family: inherit; transition: all .15s; }
-    .graph-btn:hover { background: var(--surface); }
-    .graph-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .graph-tooltip { position: absolute; top: 12px; right: 12px; background: rgba(15,23,42,.92); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: .8rem; pointer-events: none; z-index: 10; max-width: 200px; min-height: 36px; }
-    .graph-legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
-    .graph-legend-item { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--muted); }
-    .graph-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    @media (max-width: 600px) { #graph3d-container { height: 320px; } .tab-btn { font-size: .78rem; padding: 8px 4px; } }
-
-    /* ── CHARTS ── */
-    .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
-    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
-    .chart-card h3 { font-size: .88rem; font-weight: 600; color: var(--muted); margin-bottom: 16px; text-align: center; }
-    .chart-wrap { position: relative; height: 220px; }
-  </style>
-  <script src="/chart.js"></script>
+/* ── refresh row ── */
+.refresh-row{color:var(--muted);font-size:.74rem;text-align:center;margin-top:10px}
+</style>
 </head>
 <body>
+<div class="container">
 
-<header>
-  <h1>🤖 <span>Jarvis</span> — מפת התקדמות</h1>
-</header>
-<div class="updated" id="updatedLabel">טוען...</div>
-
-<!-- LEGEND -->
-<div class="legend">
-  <div class="legend-item"><div class="dot" style="background:var(--done)"></div> הושלם</div>
-  <div class="legend-item"><div class="dot" style="background:var(--partial)"></div> חלקי / בפיתוח</div>
-  <div class="legend-item"><div class="dot" style="background:var(--future)"></div> עתידי</div>
-</div>
-
-<!-- LIVE DB STATS -->
-<div class="section-title">📡 נתונים חיים מה-DB</div>
-<div class="live-bar" id="liveBar">
-  <div class="live-card"><div class="live-badge"></div><div class="live-label">שיחות</div><div class="live-num" id="lv-chat">—</div><div class="live-sub" id="lv-chat-today">טוען...</div></div>
-  <div class="live-card"><div class="live-badge"></div><div class="live-label">משימות</div><div class="live-num" id="lv-tasks">—</div><div class="live-sub" id="lv-tasks-done">— הושלמו</div></div>
-  <div class="live-card"><div class="live-badge"></div><div class="live-label">תזכורות</div><div class="live-num" id="lv-reminders">—</div><div class="live-sub" id="lv-reminders-active">— פעילות</div></div>
-  <div class="live-card"><div class="live-badge"></div><div class="live-label">זיכרונות</div><div class="live-num" id="lv-memories">—</div><div class="live-sub">long-term memory</div></div>
-  <div class="live-card"><div class="live-badge"></div><div class="live-label">פתקים</div><div class="live-num" id="lv-notes">—</div><div class="live-sub">notes</div></div>
-  <div class="live-card"><div class="live-badge"></div><div class="live-label">קניות</div><div class="live-num" id="lv-shopping">—</div><div class="live-sub" id="lv-shopping-checked">— סומנו</div></div>
-</div>
-<div class="refresh-row">🔄 מתעדכן כל 30 שניות · עדכון הבא: <span id="nextRefresh">30</span>ש׳ <span id="lastRefreshTime"></span></div>
-
-<!-- STATS -->
-<div class="stats">
-  <div class="stat-card green"> <div class="num">38</div> <div class="lbl">יכולות הושלמו</div></div>
-  <div class="stat-card amber"> <div class="num">2</div>  <div class="lbl">בפיתוח / חלקי</div></div>
-  <div class="stat-card gray">  <div class="num">8</div>  <div class="lbl">יכולות עתידיות</div></div>
-  <div class="stat-card blue">  <div class="num">179</div><div class="lbl">בדיקות Jest</div></div>
-  <div class="stat-card purple"><div class="num">23</div> <div class="lbl">חבילות בדיקה</div></div>
-</div>
+<h1>🤖 <span>Jarvis</span> — לוח ניהול</h1>
+<p class="subtitle" id="subtitle">טוען...</p>
 
 <!-- SERVER STATUS -->
-<div class="server-status-bar" id="serverStatusBar">
-  <div class="status-indicator">
-    <div class="status-dot loading" id="statusDot"></div>
-    <span id="statusText">בודק חיבור לשרת...</span>
-  </div>
-  <div class="status-divider"></div>
-  <div class="status-meta" id="statusVersion">—</div>
-  <div class="status-divider"></div>
-  <div class="status-indicator">
-    <div class="status-dot loading" id="pineconeDot"></div>
-    <span id="pineconeText" style="font-size:.82rem;">Pinecone: —</span>
-  </div>
-  <div class="status-divider"></div>
-  <div class="status-meta" id="statusLatency">—</div>
-  <div class="status-divider"></div>
-  <div class="status-meta" id="statusTime">—</div>
+<div class="status-bar">
+  <div class="dot loading" id="sdot"></div>
+  <span id="stext">בודק שרת...</span>
+  <div class="sep"></div>
+  <span class="muted" id="slat">—</span>
+  <div class="sep"></div>
+  <span class="muted" id="stime">—</span>
 </div>
 
-<!-- TABS -->
-<div class="tab-bar">
-  <button class="tab-btn active" data-tab="progress">📊 התקדמות</button>
-  <button class="tab-btn" data-tab="decision">🧭 מפת החלטות</button>
+<!-- LIVE METRICS -->
+<div class="section-title">📡 נתונים חיים</div>
+<div class="metrics" id="metricsRow">
+  <div class="metric"><div class="live-dot"></div><div class="metric-label">שיחות</div><div class="metric-num" id="m-chat">—</div><div class="metric-sub" id="m-chat-sub">טוען</div></div>
+  <div class="metric"><div class="live-dot"></div><div class="metric-label">משימות</div><div class="metric-num" id="m-tasks">—</div><div class="metric-sub" id="m-tasks-sub">—</div></div>
+  <div class="metric"><div class="live-dot"></div><div class="metric-label">תזכורות</div><div class="metric-num" id="m-rem">—</div><div class="metric-sub" id="m-rem-sub">—</div></div>
+  <div class="metric"><div class="live-dot"></div><div class="metric-label">זיכרונות</div><div class="metric-num" id="m-mem">—</div><div class="metric-sub">long-term</div></div>
+  <div class="metric"><div class="live-dot"></div><div class="metric-label">פתקים</div><div class="metric-num" id="m-notes">—</div><div class="metric-sub">notes</div></div>
+</div>
+<div class="refresh-row">מתעדכן כל 30 שניות · <span id="last-refresh">—</span></div>
+
+<!-- FEATURE BOARD -->
+<div class="section-title">🗂️ סטטוס יכולות</div>
+<div class="board" id="board">
+  <div><div class="col-header done">✅ <span id="done-count">—</span> הושלם</div><div id="col-done"></div></div>
+  <div><div class="col-header building">🔨 <span id="building-count">—</span> בבנייה</div><div id="col-building"></div></div>
+  <div><div class="col-header planned">📋 <span id="planned-count">—</span> מתוכנן</div><div id="col-planned"></div></div>
+</div>
+<p class="edit-hint">לעדכון הרשימה — ערוך <code>features.json</code> בשרת</p>
+
+<!-- BACKLOG -->
+<div class="section-title">📌 Backlog — מה עובד על הפרויקט</div>
+<div class="backlog-add">
+  <input id="backlogInput" placeholder="הוסף משימה או רעיון לפרויקט..." />
+  <button onclick="addBacklogItem()">הוסף</button>
+</div>
+<div class="backlog-list" id="backlogList">
+  <div class="backlog-empty">טוען...</div>
 </div>
 
-<!-- ══════════════ TAB: PROGRESS ══════════════ -->
-<div class="tab-panel active" id="tab-progress">
+</div><!-- /container -->
 
-<!-- CHARTS accordion -->
-<div class="accordion" id="acc-charts">
-<div class="accordion-header"><span class="acc-title">📊 גרפים</span><span class="acc-chevron">▼</span></div>
-<div class="accordion-body"><div class="accordion-body-inner">
-<div class="charts-grid" style="margin-top:12px">
-  <div class="chart-card"><h3>התקדמות כללית</h3><div class="chart-wrap"><canvas id="chartDonut"></canvas></div></div>
-  <div class="chart-card"><h3>השלמה לפי Tier</h3><div class="chart-wrap"><canvas id="chartTiers"></canvas></div></div>
-  <div class="chart-card"><h3>בדיקות לפי מודול (Top 10)</h3><div class="chart-wrap"><canvas id="chartTests"></canvas></div></div>
-</div>
-</div></div></div>
-
-<!-- NOTES accordion (open) -->
-<div class="accordion open" id="acc-notes">
-<div class="accordion-header"><span class="acc-title">📝 הערות ו-TODOs</span><span class="acc-chevron">▼</span></div>
-<div class="accordion-body"><div class="accordion-body-inner">
-<div class="notes-list" id="notesList"><div style="color:var(--muted);font-size:.85rem;">טוען הערות...</div></div>
-</div></div></div>
-
-<!-- FLOW accordion -->
-<div class="accordion" id="acc-flow">
-<div class="accordion-header"><span class="acc-title">🔄 זרימת פקודה — כל 17 הסוכנים</span><span class="acc-chevron">▼</span></div>
-<div class="accordion-body"><div class="accordion-body-inner">
-<div class="flow">
-  <div class="flow-row">
-    <div class="flow-box input">🎤 קלט קולי</div>
-    <div class="flow-box input">⌨️ טקסט</div>
-    <div class="flow-box input">📷 תמונה</div>
-  </div>
-  <div class="flow-arrow">↓</div>
-  <div class="flow-section-label">Flutter App</div>
-  <div class="flow-box flutter">📱 Flutter — POST /ask-jarvis</div>
-  <div class="flow-arrow">↓</div>
-  <div class="flow-box server">🚀 Express Server — server.js</div>
-  <div class="flow-arrow">↓</div>
-  <div class="flow-box router">🧭 Intent Router — מילות מפתח → LLM fallback</div>
-  <div class="flow-arrow">↓</div>
-  <div class="flow-section-label">17 סוכנים מתמחים</div>
-  <div class="flow-parallel">
-    <div class="flow-box agent">💬 Chat</div>
-    <div class="flow-box agent">✅ Task</div>
-    <div class="flow-box agent">⏰ Reminder</div>
-    <div class="flow-box agent">🧠 Memory</div>
-    <div class="flow-box agent">📝 Draft</div>
-    <div class="flow-box agent">⚽ Sports</div>
-    <div class="flow-box agent">🎵 Music</div>
-    <div class="flow-box agent">📱 Messaging</div>
-    <div class="flow-box agent">☁️ Weather</div>
-    <div class="flow-box agent">📰 News</div>
-    <div class="flow-box agent">🛒 Shopping</div>
-    <div class="flow-box agent">🗒️ Notes</div>
-    <div class="flow-box agent">📈 Stocks</div>
-    <div class="flow-box agent">🌐 Translate</div>
-    <div class="flow-box agent">💡 Insight</div>
-    <div class="flow-box agent">🔐 Security</div>
-    <div class="flow-box agent">🏭 Factory</div>
-  </div>
-  <div class="flow-arrow">↓</div>
-  <div class="flow-section-label">עיבוד במקביל לפי צורך</div>
-  <div class="flow-row">
-    <div class="flow-box llm">🤖 LLM — Groq → DeepSeek → Gemini → Ollama</div>
-    <span style="color:var(--muted);padding:0 6px;align-self:center">+</span>
-    <div class="flow-box db">🗄️ Supabase DB</div>
-  </div>
-  <div class="flow-arrow">↓</div>
-  <div class="flow-box output">🔊 Google TTS — אודיו עברית</div>
-  <div class="flow-arrow">↓</div>
-  <div class="flow-box output">📤 { answer, audio, action }</div>
-  <div class="flow-arrow">↓</div>
-  <div class="flow-box flutter">📱 Flutter — תשובה + השמעה + פעולה (WhatsApp / Email / Music)</div>
-</div>
-</div></div></div>
-
-<!-- TIERS accordion -->
-<div class="accordion" id="acc-tiers">
-<div class="accordion-header"><span class="acc-title">🏗️ עץ יכולות (6 Tiers · 48 יכולות)</span><span class="acc-chevron">▼</span></div>
-<div class="accordion-body"><div class="accordion-body-inner">
-<div class="tiers">
-
-  <!-- TIER 1 -->
-  <div class="tier">
-    <div class="tier-header"><span class="tier-badge">TIER 1</span><span class="tier-title">תשתית ליבה</span></div>
-    <div class="tier-progress-bar"><div class="tier-progress-fill" style="width:100%"></div></div>
-    <div class="features">
-      <div class="feature"><div class="feature-icon">🚀</div><div><div class="feature-name">Express Server</div><div class="feature-desc">Node.js עם CORS, rate-limit, helmet</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🗄️</div><div><div class="feature-name">Supabase PostgreSQL</div><div class="feature-desc">8 טבלאות, realtime, RLS</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🧭</div><div><div class="feature-name">Multi-Agent Router</div><div class="feature-desc">מילות מפתח + LLM fallback ל-17 סוכנים</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🔗</div><div><div class="feature-name">LLM Fallback Chain</div><div class="feature-desc">Groq → DeepSeek → Gemini → Ollama</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🔐</div><div><div class="feature-name">אבטחה</div><div class="feature-desc">Helmet, rate limiting, env vars</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">☁️</div><div><div class="feature-name">Render Deployment</div><div class="feature-desc">שרת ענן פעיל בפרודקשן</div><span class="feature-status status-done">הושלם</span></div></div>
-    </div>
-  </div>
-
-  <!-- TIER 2 -->
-  <div class="tier">
-    <div class="tier-header"><span class="tier-badge">TIER 2</span><span class="tier-title">סוכני AI מרכזיים</span></div>
-    <div class="tier-progress-bar"><div class="tier-progress-fill" style="width:100%"></div></div>
-    <div class="features">
-      <div class="feature"><div class="feature-icon">💬</div><div><div class="feature-name">Chat Agent</div><div class="feature-desc">שיחה חופשית, פרסונה, זיהוי המשך שיחה</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">✅</div><div><div class="feature-name">Task Agent</div><div class="feature-desc">הוספה / מחיקה / סימון / הצגת משימות</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">⏰</div><div><div class="feature-name">Reminder Agent</div><div class="feature-desc">תזכורות עם ניתוח זמן עברי, cron</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🧠</div><div><div class="feature-name">Memory Agent</div><div class="feature-desc">שמירה / שליפה / מחיקת עובדות + חילוץ אוטומטי</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📝</div><div><div class="feature-name">Draft Agent</div><div class="feature-desc">ניסוח טקסט עם שיקוף סגנון המשתמש</div><span class="feature-status status-done">הושלם</span></div></div>
-    </div>
-  </div>
-
-  <!-- TIER 3 — 16 agents -->
-  <div class="tier">
-    <div class="tier-header"><span class="tier-badge">TIER 3</span><span class="tier-title">סוכני AI מתקדמים (16)</span></div>
-    <div class="tier-progress-bar"><div class="tier-progress-fill" style="width:100%"></div></div>
-    <div class="features">
-      <div class="feature"><div class="feature-icon">⚽</div><div><div class="feature-name">Sports Agent</div><div class="feature-desc">פרמייר ליג בזמן אמת (Gemini Search)</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🎵</div><div><div class="feature-name">Music Agent</div><div class="feature-desc">המלצות, פלייליסט, קישורי YouTube Music</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📱</div><div><div class="feature-name">Messaging Agent</div><div class="feature-desc">ניסוח WhatsApp / מייל, ניהול אנשי קשר</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">👁️</div><div><div class="feature-name">Vision (Gemini)</div><div class="feature-desc">ניתוח תמונות בשיחה</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📧</div><div><div class="feature-name">Email (Gmail)</div><div class="feature-desc">שליחת מיילים דרך Nodemailer</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🔍</div><div><div class="feature-name">Web Search Grounding</div><div class="feature-desc">חיפוש Gemini לנתונים בזמן אמת</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">☁️</div><div><div class="feature-name">Weather Agent</div><div class="feature-desc">תחזית מזג אוויר לפי עיר</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📰</div><div><div class="feature-name">News Agent</div><div class="feature-desc">כותרות חדשות מישראל ומהעולם</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🛒</div><div><div class="feature-name">Shopping Agent</div><div class="feature-desc">ניהול רשימת קניות עם Supabase</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🗒️</div><div><div class="feature-name">Notes Agent</div><div class="feature-desc">שמירה / חיפוש / מחיקת פתקים</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📈</div><div><div class="feature-name">Stocks Agent</div><div class="feature-desc">מניות, קריפטו, מטבעות, מדדים</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🌐</div><div><div class="feature-name">Translation Agent</div><div class="feature-desc">תרגום בין שפות עם הסבר</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">💡</div><div><div class="feature-name">Insight Agent</div><div class="feature-desc">ניתוח הרגלי שימוש, טיפים לשיפור</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🔐</div><div><div class="feature-name">Security Agent</div><div class="feature-desc">סריקת קוד, דוח אבטחה</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🏭</div><div><div class="feature-name">Agent Factory</div><div class="feature-desc">יצירת סוכנים מותאמים דינמית</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📂</div><div><div class="feature-name">Obsidian Sync</div><div class="feature-desc">סנכרון דו-כיווני Vault ↔ Supabase</div><span class="feature-status status-done">הושלם</span></div></div>
-    </div>
-  </div>
-
-  <!-- TIER 4 -->
-  <div class="tier">
-    <div class="tier-header"><span class="tier-badge">TIER 4</span><span class="tier-title">אפליקציית Flutter</span></div>
-    <div class="tier-progress-bar"><div class="tier-progress-fill" style="width:100%"></div></div>
-    <div class="features">
-      <div class="feature"><div class="feature-icon">🫧</div><div><div class="feature-name">Animated Orb UI</div><div class="feature-desc">אנימציית נשימה, מצבי idle/listen/think</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🎤</div><div><div class="feature-name">Speech-to-Text</div><div class="feature-desc">Groq Whisper, עברית, בזמן אמת</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🔊</div><div><div class="feature-name">Text-to-Speech</div><div class="feature-desc">Google TTS בעברית, השמעה אוטומטית</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📷</div><div><div class="feature-name">Image Capture</div><div class="feature-desc">צילום לשאלות Vision</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">⚙️</div><div><div class="feature-name">Settings Screen</div><div class="feature-desc">שם, מגדר, סגנון, שרת, קול</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📜</div><div><div class="feature-name">History Screen</div><div class="feature-desc">היסטוריית שיחות עם timestamps</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🌐</div><div><div class="feature-name">Local/Cloud Toggle</div><div class="feature-desc">בחירה בין שרת מקומי לענן</div><span class="feature-status status-done">הושלם</span></div></div>
-    </div>
-  </div>
-
-  <!-- TIER 5 -->
-  <div class="tier">
-    <div class="tier-header"><span class="tier-badge">TIER 5</span><span class="tier-title">איכות ובדיקות</span></div>
-    <div class="tier-progress-bar"><div class="tier-progress-fill" style="width:92%"></div></div>
-    <div class="features">
-      <div class="feature"><div class="feature-icon">🧪</div><div><div class="feature-name">Unit Tests (Jest)</div><div class="feature-desc">20 קבצים, 162 מקרים, כל הסוכנים מכוסים</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🔗</div><div><div class="feature-name">Integration Tests</div><div class="feature-desc">3 קבצים, 17 בדיקות end-to-end</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📊</div><div><div class="feature-name">Coverage Reports</div><div class="feature-desc">jest --coverage על server.js + agents</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🛡️</div><div><div class="feature-name">Error Handling</div><div class="feature-desc">Fallback לכשלון DB / LLM / SSE stream</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">📱</div><div><div class="feature-name">Flutter Widget Tests</div><div class="feature-desc">בדיקות UI למובייל</div><span class="feature-status status-partial">חלקי</span></div></div>
-    </div>
-  </div>
-
-  <!-- TIER 6 -->
-  <div class="tier">
-    <div class="tier-header"><span class="tier-badge" style="background:var(--future)">TIER 6</span><span class="tier-title">יכולות עתידיות</span></div>
-    <div class="tier-progress-bar"><div class="tier-progress-fill" style="width:6%;background:linear-gradient(90deg,var(--future),var(--partial))"></div></div>
-    <div class="features">
-      <div class="feature"><div class="feature-icon">🔮</div><div><div class="feature-name">Vector Search (Pinecone)</div><div class="feature-desc">חיפוש סמנטי בזיכרונות — Google embeddings + Pinecone cosine search</div><span class="feature-status status-done">הושלם</span></div></div>
-      <div class="feature"><div class="feature-icon">🔁</div><div><div class="feature-name">Recurring Reminders</div><div class="feature-desc">תזכורות חוזרות יומי / שבועי</div><span class="feature-status status-future">עתידי</span></div></div>
-      <div class="feature"><div class="feature-icon">📡</div><div><div class="feature-name">Streaming Responses</div><div class="feature-desc">SSE לתגובות ארוכות</div><span class="feature-status status-future">עתידי</span></div></div>
-      <div class="feature"><div class="feature-icon">🔑</div><div><div class="feature-name">Authentication</div><div class="feature-desc">תמיכה מרובת משתמשים</div><span class="feature-status status-future">עתידי</span></div></div>
-      <div class="feature"><div class="feature-icon">📵</div><div><div class="feature-name">Offline Mode</div><div class="feature-desc">תור הודעות כשאין חיבור</div><span class="feature-status status-future">עתידי</span></div></div>
-      <div class="feature"><div class="feature-icon">🎙️</div><div><div class="feature-name">Custom Voice</div><div class="feature-desc">קול מותאם אישית לג'רביס</div><span class="feature-status status-future">עתידי</span></div></div>
-      <div class="feature"><div class="feature-icon">🟢</div><div><div class="feature-name">Native Spotify</div><div class="feature-desc">אינטגרציה ישירה עם Spotify API</div><span class="feature-status status-future">עתידי</span></div></div>
-      <div class="feature"><div class="feature-icon">🌍</div><div><div class="feature-name">Multi-Language</div><div class="feature-desc">תמיכה נוספת מעבר לעברית</div><span class="feature-status status-future">עתידי</span></div></div>
-    </div>
-  </div>
-
-</div><!-- end tiers -->
-</div></div></div><!-- end acc-tiers -->
-
-<!-- TECH accordion -->
-<div class="accordion" id="acc-tech">
-<div class="accordion-header"><span class="acc-title">🛠️ ערימת הטכנולוגיות</span><span class="acc-chevron">▼</span></div>
-<div class="accordion-body"><div class="accordion-body-inner">
-<div class="tech-grid">
-  <div class="tech-chip"><span class="ticon">🟢</span><div><div class="tlabel">Node.js / Express 5</div><div class="trole">שרת API ראשי</div></div></div>
-  <div class="tech-chip"><span class="ticon">🐦</span><div><div class="tlabel">Flutter</div><div class="trole">אפליקציית מובייל</div></div></div>
-  <div class="tech-chip"><span class="ticon">🐘</span><div><div class="tlabel">Supabase</div><div class="trole">PostgreSQL בענן</div></div></div>
-  <div class="tech-chip"><span class="ticon">⚡</span><div><div class="tlabel">Groq API</div><div class="trole">LLM ראשי — llama-3.3-70b</div></div></div>
-  <div class="tech-chip"><span class="ticon">🌊</span><div><div class="tlabel">DeepSeek</div><div class="trole">LLM גיבוי #1</div></div></div>
-  <div class="tech-chip"><span class="ticon">💎</span><div><div class="tlabel">Gemini 2.5 Flash</div><div class="trole">Vision + Search + גיבוי #2</div></div></div>
-  <div class="tech-chip"><span class="ticon">🦙</span><div><div class="tlabel">Ollama</div><div class="trole">LLM מקומי (gemma4)</div></div></div>
-  <div class="tech-chip"><span class="ticon">🎙️</span><div><div class="tlabel">Groq Whisper</div><div class="trole">STT בעברית</div></div></div>
-  <div class="tech-chip"><span class="ticon">🔊</span><div><div class="tlabel">Google TTS</div><div class="trole">הקראה בעברית</div></div></div>
-  <div class="tech-chip"><span class="ticon">📧</span><div><div class="tlabel">Nodemailer</div><div class="trole">שליחת מיילים</div></div></div>
-  <div class="tech-chip"><span class="ticon">⏱️</span><div><div class="tlabel">node-cron</div><div class="trole">תזמון תזכורות</div></div></div>
-  <div class="tech-chip"><span class="ticon">🌲</span><div><div class="tlabel">Pinecone</div><div class="trole">Vector DB — חיפוש סמנטי</div></div></div>
-  <div class="tech-chip"><span class="ticon">📂</span><div><div class="tlabel">Chokidar</div><div class="trole">File watching — Obsidian</div></div></div>
-  <div class="tech-chip"><span class="ticon">🧪</span><div><div class="tlabel">Jest + Supertest</div><div class="trole">179 בדיקות, 23 חבילות</div></div></div>
-</div>
-</div></div></div>
-
-<!-- DB accordion -->
-<div class="accordion" id="acc-db">
-<div class="accordion-header"><span class="acc-title">🗄️ סכמת DB (Supabase)</span><span class="acc-chevron">▼</span></div>
-<div class="accordion-body"><div class="accordion-body-inner">
-<div class="db-grid">
-  <div class="db-table"><div class="db-table-header">✅ tasks</div><div class="db-table-body">
-    <div class="db-col"><span class="col-pk">PK</span> id <span class="col-type">int8</span></div>
-    <div class="db-col">content <span class="col-type">text</span></div>
-    <div class="db-col">done <span class="col-type">bool</span></div>
-    <div class="db-col">due_date <span class="col-type">timestamp</span></div>
-    <div class="db-col">created_at <span class="col-type">timestamp</span></div>
-  </div></div>
-  <div class="db-table"><div class="db-table-header">⏰ reminders</div><div class="db-table-body">
-    <div class="db-col"><span class="col-pk">PK</span> id <span class="col-type">int8</span></div>
-    <div class="db-col">text <span class="col-type">text</span></div>
-    <div class="db-col">scheduled_time <span class="col-type">timestamp</span></div>
-    <div class="db-col">fired <span class="col-type">bool</span></div>
-    <div class="db-col">created_at <span class="col-type">timestamp</span></div>
-  </div></div>
-  <div class="db-table"><div class="db-table-header">🧠 memories</div><div class="db-table-body">
-    <div class="db-col"><span class="col-pk">PK</span> id <span class="col-type">int8</span></div>
-    <div class="db-col">content <span class="col-type">text</span></div>
-    <div class="db-col">category <span class="col-type">text</span></div>
-    <div class="db-col">created_at <span class="col-type">timestamp</span></div>
-  </div></div>
-  <div class="db-table"><div class="db-table-header">📱 contacts</div><div class="db-table-body">
-    <div class="db-col"><span class="col-pk">PK</span> id <span class="col-type">int8</span></div>
-    <div class="db-col">name <span class="col-type">text</span></div>
-    <div class="db-col">phone <span class="col-type">text</span></div>
-    <div class="db-col">email <span class="col-type">text</span></div>
-    <div class="db-col">aliases <span class="col-type">text[]</span></div>
-  </div></div>
-  <div class="db-table"><div class="db-table-header">🎵 playlist</div><div class="db-table-body">
-    <div class="db-col"><span class="col-pk">PK</span> id <span class="col-type">int8</span></div>
-    <div class="db-col">title <span class="col-type">text</span></div>
-    <div class="db-col">artist <span class="col-type">text</span></div>
-    <div class="db-col">created_at <span class="col-type">timestamp</span></div>
-  </div></div>
-  <div class="db-table"><div class="db-table-header">💬 chat_history</div><div class="db-table-body">
-    <div class="db-col"><span class="col-pk">PK</span> id <span class="col-type">int8</span></div>
-    <div class="db-col">role <span class="col-type">text</span></div>
-    <div class="db-col">text <span class="col-type">text</span></div>
-    <div class="db-col">created_at <span class="col-type">timestamp</span></div>
-  </div></div>
-  <div class="db-table"><div class="db-table-header">🛒 shopping</div><div class="db-table-body">
-    <div class="db-col"><span class="col-pk">PK</span> id <span class="col-type">int8</span></div>
-    <div class="db-col">item <span class="col-type">text</span></div>
-    <div class="db-col">done <span class="col-type">bool</span></div>
-    <div class="db-col">created_at <span class="col-type">timestamp</span></div>
-  </div></div>
-  <div class="db-table"><div class="db-table-header">🗒️ notes</div><div class="db-table-body">
-    <div class="db-col"><span class="col-pk">PK</span> id <span class="col-type">int8</span></div>
-    <div class="db-col">title <span class="col-type">text</span></div>
-    <div class="db-col">content <span class="col-type">text</span></div>
-    <div class="db-col">created_at <span class="col-type">timestamp</span></div>
-  </div></div>
-</div>
-</div></div></div>
-
-<!-- API ENDPOINTS accordion -->
-<div class="accordion" id="acc-api">
-<div class="accordion-header"><span class="acc-title">🔌 API Endpoints (16)</span><span class="acc-chevron">▼</span></div>
-<div class="accordion-body"><div class="accordion-body-inner">
-<table class="api-table">
-  <thead><tr><th>Method</th><th>Path</th><th>תיאור</th></tr></thead>
-  <tbody>
-    <tr><td><span class="method get">GET</span></td>  <td class="api-path">/health</td>              <td class="api-desc">בדיקת תקינות שרת, גרסה, timestamp</td></tr>
-    <tr><td><span class="method post">POST</span></td> <td class="api-path">/ask-jarvis</td>         <td class="api-desc">ממשק AI ראשי — ניתוב לסוכן, TTS, שמירת היסטוריה</td></tr>
-    <tr><td><span class="method post">POST</span></td> <td class="api-path">/stream-jarvis</td>      <td class="api-desc">תגובות streaming ב-SSE (chat/draft)</td></tr>
-    <tr><td><span class="method post">POST</span></td> <td class="api-path">/transcribe</td>         <td class="api-desc">Speech-to-Text — Groq Whisper, base64 audio</td></tr>
-    <tr><td><span class="method post">POST</span></td> <td class="api-path">/send-email</td>         <td class="api-desc">שליחת מייל דרך Gmail / Nodemailer</td></tr>
-    <tr><td><span class="method get">GET</span></td>   <td class="api-path">/check-reminders</td>   <td class="api-desc">שליפת תזכורות שהופעלו + מחיקתן (polling)</td></tr>
-    <tr><td><span class="method get">GET</span> <span class="method post">POST</span> <span class="method put">PUT</span> <span class="method delete">DELETE</span></td><td class="api-path">/tasks</td><td class="api-desc">CRUD ניהול משימות</td></tr>
-    <tr><td><span class="method get">GET</span> <span class="method post">POST</span> <span class="method put">PUT</span> <span class="method delete">DELETE</span></td><td class="api-path">/reminders</td><td class="api-desc">CRUD ניהול תזכורות</td></tr>
-    <tr><td><span class="method get">GET</span> <span class="method post">POST</span> <span class="method put">PUT</span> <span class="method delete">DELETE</span></td><td class="api-path">/notes</td><td class="api-desc">CRUD ניהול פתקים</td></tr>
-    <tr><td><span class="method get">GET</span> <span class="method post">POST</span> <span class="method patch">PATCH</span> <span class="method delete">DELETE</span></td><td class="api-path">/shopping</td><td class="api-desc">CRUD רשימת קניות</td></tr>
-    <tr><td><span class="method get">GET</span> <span class="method post">POST</span> <span class="method put">PUT</span> <span class="method delete">DELETE</span></td><td class="api-path">/contacts</td><td class="api-desc">CRUD ניהול אנשי קשר</td></tr>
-    <tr><td><span class="method get">GET</span> <span class="method post">POST</span></td><td class="api-path">/memories</td><td class="api-desc">קריאה / מחיקת זיכרונות ידנית</td></tr>
-    <tr><td><span class="method post">POST</span></td> <td class="api-path">/sync/obsidian</td>      <td class="api-desc">Obsidian Vault ↔ Supabase sync ידני</td></tr>
-    <tr><td><span class="method post">POST</span></td> <td class="api-path">/sync/obsidian/auto</td> <td class="api-desc">הפעלה / כיבוי auto-sync כל 5 דקות</td></tr>
-    <tr><td><span class="method get">GET</span></td>   <td class="api-path">/sync/obsidian/status</td><td class="api-desc">סטטוס sync ו-vault</td></tr>
-    <tr><td><span class="method get">GET</span></td>   <td class="api-path">/progress-map</td>       <td class="api-desc">דף זה — מפת התקדמות</td></tr>
-  </tbody>
-</table>
-</div></div></div>
-
-</div><!-- end tab-progress -->
-<!-- ══════════════ TAB: DECISION ══════════════ -->
-<div class="tab-panel" id="tab-decision">
-  <div class="graph-controls">
-    <button class="graph-btn active" id="btn-progress">🏗️ התקדמות פרויקט</button>
-    <button class="graph-btn" id="btn-decision">🧭 זרימת החלטות</button>
-    <button class="graph-btn" id="btn-reset">📷 אפס מצלמה</button>
-  </div>
-  <div id="graph3d-container">
-    <div class="graph-tooltip" id="graphTooltip">רחף מעל node לפרטים</div>
-  </div>
-  <div class="graph-legend">
-    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#22c55e"></div>הושלם</div>
-    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#f59e0b"></div>חלקי</div>
-    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#6b7280"></div>עתידי</div>
-    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#6366f1"></div>Tier Hub</div>
-    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#f472b6"></div>LLM</div>
-    <div class="graph-legend-item"><div class="graph-legend-dot" style="background:#34d399"></div>Agent</div>
-  </div>
-</div>
-
-<footer>Jarvis Server · nadavz-sketch/jarvis-server-nadav · 179 בדיקות · 23 סוכנים</footer>
 <script>
-// ── Server Status ──────────────────────────────────────────────────────────────
-async function checkServerHealth() {
-  const dot  = document.getElementById('statusDot');
-  const text = document.getElementById('statusText');
-  const ver  = document.getElementById('statusVersion');
-  const lat  = document.getElementById('statusLatency');
-  const tim  = document.getElementById('statusTime');
+// ── Server health ──────────────────────────────────────────────────────────────
+async function checkHealth() {
   try {
     const t0  = Date.now();
     const res = await fetch('/health', { signal: AbortSignal.timeout(4000) });
     const ms  = Date.now() - t0;
     const d   = await res.json();
-    dot.className  = 'status-dot online';
-    text.textContent = '✅ שרת פעיל';
-    ver.textContent  = `גרסה: ${d.version || '—'}`;
-    lat.textContent  = `זמן תגובה: ${ms}ms`;
-    tim.textContent  = `בדיקה: ${new Date().toLocaleTimeString('he-IL')}`;
-    const pdot = document.getElementById('pineconeDot');
-    const ptxt = document.getElementById('pineconeText');
-    if (pdot && ptxt) {
-      pdot.className   = d.pinecone ? 'status-dot online' : 'status-dot offline';
-      ptxt.textContent = d.pinecone ? 'Pinecone: ✅ מחובר' : 'Pinecone: ⚠️ לא פעיל';
-    }
+    document.getElementById('sdot').className  = 'dot green';
+    document.getElementById('stext').textContent = '● שרת פעיל';
+    document.getElementById('slat').textContent  = `זמן תגובה: ${ms}ms`;
+    document.getElementById('stime').textContent = `עודכן: ${new Date().toLocaleTimeString('he-IL')}`;
   } catch {
-    dot.className  = 'status-dot offline';
-    text.textContent = '❌ שרת לא זמין';
-    ver.textContent  = '—';
-    lat.textContent  = '—';
-    tim.textContent  = `בדיקה: ${new Date().toLocaleTimeString('he-IL')}`;
+    document.getElementById('sdot').className  = 'dot red';
+    document.getElementById('stext').textContent = '● שרת לא זמין';
   }
 }
-checkServerHealth();
-setInterval(checkServerHealth, 30000);
 
-// ── Live DB Stats ──────────────────────────────────────────────────────────────
-let refreshCountdown = 30;
-
-async function loadLiveStats() {
+// ── Live metrics ───────────────────────────────────────────────────────────────
+async function loadStats() {
   try {
-    const res  = await fetch('/stats', { signal: AbortSignal.timeout(6000) });
-    if (!res.ok) throw new Error('stats failed');
-    const d    = await res.json();
-
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val ?? '—'; };
-
-    set('lv-chat',              d.chat?.total ?? '—');
-    set('lv-chat-today',        `${d.chat?.today ?? 0} היום`);
-    set('lv-tasks',             d.tasks?.total ?? '—');
-    set('lv-tasks-done',        `${d.tasks?.done ?? 0} הושלמו`);
-    set('lv-reminders',         d.reminders?.total ?? '—');
-    set('lv-reminders-active',  `${d.reminders?.active ?? 0} פעילות`);
-    set('lv-memories',          d.memories?.total ?? '—');
-    set('lv-notes',             d.notes?.total ?? '—');
-    set('lv-shopping',          d.shopping?.total ?? '—');
-    set('lv-shopping-checked',  `${d.shopping?.checked ?? 0} סומנו`);
-
-    const t = document.getElementById('lastRefreshTime');
-    if (t) t.textContent = `(עודכן ${new Date().toLocaleTimeString('he-IL')})`;
-  } catch {
-    const t = document.getElementById('lastRefreshTime');
-    if (t) t.textContent = '(שגיאה בטעינה)';
-  }
-  refreshCountdown = 30;
+    const d = await fetch('/stats', { signal: AbortSignal.timeout(6000) }).then(r => r.json());
+    const s = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v ?? '—'; };
+    s('m-chat',     d.chat?.total);
+    s('m-chat-sub', `${d.chat?.today ?? 0} היום`);
+    s('m-tasks',    d.tasks?.total);
+    s('m-tasks-sub',`${d.tasks?.total - d.tasks?.done ?? 0} פתוחות`);
+    s('m-rem',      d.reminders?.total);
+    s('m-rem-sub',  `${d.reminders?.active ?? 0} פעילות`);
+    s('m-mem',      d.memories?.total);
+    s('m-notes',    d.notes?.total);
+    document.getElementById('last-refresh').textContent = new Date().toLocaleTimeString('he-IL');
+  } catch { document.getElementById('last-refresh').textContent = 'שגיאת טעינה'; }
 }
 
-function startRefreshTicker() {
-  setInterval(() => {
-    refreshCountdown--;
-    const el = document.getElementById('nextRefresh');
-    if (el) el.textContent = refreshCountdown;
-    if (refreshCountdown <= 0) {
-      loadLiveStats();
-      checkServerHealth();
-    }
-  }, 1000);
+// ── Feature board ──────────────────────────────────────────────────────────────
+function pill(f, status) {
+  return `<div class="feature-pill">
+    <span class="badge ${status}">${status==='done'?'✅ הושלם':status==='building'?'🔨 בבנייה':'📋 מתוכנן'}</span>
+    <div class="fname">${f.name}</div>
+    <div class="fdesc">${f.desc}</div>
+  </div>`;
 }
 
-loadLiveStats();
-startRefreshTicker();
-
-// ── Load notes.json ────────────────────────────────────────────────────────────
-async function loadNotes() {
+async function loadFeatures() {
   try {
-    const res  = await fetch('notes.json?t=' + Date.now());
-    if (!res.ok) throw new Error('failed');
-    const data = await res.json();
-    document.getElementById('updatedLabel').textContent =
-      'עוזר אישי AI רב-סוכנים · עברית · עודכן: ' + (data.lastUpdated || '—');
-    const list = document.getElementById('notesList');
-    if (!data.notes || data.notes.length === 0) {
-      list.innerHTML = '<div style="color:var(--muted);font-size:.85rem;">אין הערות — ערוך את notes.json.</div>';
-      return;
-    }
-    list.innerHTML = data.notes.map(n => `
-      <div class="note-card ${n.done ? 'done-note' : ''}">
-        <span class="note-tag tag-${n.tag}">${n.tag}</span>
-        <div class="note-body">
-          <div class="note-text">${n.text}</div>
-          <div class="note-date">${n.date}</div>
-          ${n.done ? '<span class="note-done-badge">✓ טופל</span>' : ''}
-        </div>
-      </div>`).join('');
+    const d = await fetch('/dashboard/features').then(r => r.json());
+    const done     = d.features?.done     || [];
+    const building = d.features?.building || [];
+    const planned  = d.features?.planned  || [];
+
+    document.getElementById('done-count').textContent     = done.length;
+    document.getElementById('building-count').textContent = building.length;
+    document.getElementById('planned-count').textContent  = planned.length;
+
+    document.getElementById('col-done').innerHTML     = done.map(f => pill(f,'done')).join('');
+    document.getElementById('col-building').innerHTML = building.map(f => pill(f,'building')).join('');
+    document.getElementById('col-planned').innerHTML  = planned.map(f => pill(f,'planned')).join('');
+
+    document.getElementById('subtitle').textContent =
+      `עוזר אישי AI · ${done.length} יכולות פעילות · עודכן: ${d.lastUpdated || '—'}`;
   } catch {
-    document.getElementById('updatedLabel').textContent = 'עוזר אישי AI רב-סוכנים עם תמיכה בעברית';
-    document.getElementById('notesList').innerHTML =
-      '<div style="color:var(--muted);font-size:.85rem;">⚠️ לא ניתן לטעון notes.json — פתח דרך שרת HTTP.</div>';
+    document.getElementById('subtitle').textContent = 'לא ניתן לטעון features.json';
   }
 }
-loadNotes();
 
-// ── Accordion ──────────────────────────────────────────────────────────────────
-let chartsInited = false;
-document.querySelectorAll('.accordion-header').forEach(h => {
-  h.addEventListener('click', () => {
-    const acc = h.parentElement;
-    acc.classList.toggle('open');
-    if (acc.id === 'acc-charts' && acc.classList.contains('open') && !chartsInited) {
-      initCharts(); chartsInited = true;
-    }
-  });
+// ── Backlog ────────────────────────────────────────────────────────────────────
+async function loadBacklog() {
+  try {
+    const d = await fetch('/dashboard/backlog').then(r => r.json());
+    renderBacklog(d.items || []);
+  } catch { document.getElementById('backlogList').innerHTML = '<div class="backlog-empty">⚠️ לא ניתן לטעון backlog</div>'; }
+}
+
+function renderBacklog(items) {
+  const list = document.getElementById('backlogList');
+  if (!items.length) { list.innerHTML = '<div class="backlog-empty">אין פריטים — הוסף רעיון או משימה</div>'; return; }
+  list.innerHTML = items.map(item => `
+    <div class="backlog-item ${item.done ? 'done-item' : ''}" id="bi-${item.id}">
+      <button class="check-btn ${item.done ? 'checked' : ''}" onclick="toggleItem(${item.id})">${item.done ? '✓' : ''}</button>
+      <span class="item-text">${item.text}</span>
+      <span class="item-meta">${item.added || ''}</span>
+      <button class="del-btn" onclick="deleteItem(${item.id})">✕</button>
+    </div>`).join('');
+}
+
+async function addBacklogItem() {
+  const input = document.getElementById('backlogInput');
+  const text  = input.value.trim();
+  if (!text) return;
+  try {
+    const d = await fetch('/dashboard/backlog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }).then(r => r.json());
+    input.value = '';
+    await loadBacklog();
+  } catch { alert('שגיאה בהוספה'); }
+}
+
+async function toggleItem(id) {
+  try {
+    await fetch(`/dashboard/backlog/${id}`, { method: 'PATCH' });
+    await loadBacklog();
+  } catch {}
+}
+
+async function deleteItem(id) {
+  try {
+    await fetch(`/dashboard/backlog/${id}`, { method: 'DELETE' });
+    await loadBacklog();
+  } catch {}
+}
+
+// Enter key on backlog input
+document.getElementById('backlogInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addBacklogItem();
 });
 
-// ── Tabs ───────────────────────────────────────────────────────────────────────
-let graphInited = false;
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'decision' && !graphInited) { initGraph(); graphInited = true; }
-  });
-});
-
-// ── Charts ─────────────────────────────────────────────────────────────────────
-function initCharts() {
-  if (typeof Chart === 'undefined') {
-    document.querySelectorAll('.chart-wrap').forEach(el => {
-      el.innerHTML = '<div style="color:#6b7280;text-align:center;padding-top:80px;font-size:.8rem;">⚠️ גרפים לא נטענו — בדוק חיבור</div>';
-    });
-    return;
-  }
-  const C = { done:'#22c55e', partial:'#f59e0b', future:'#6b7280', accent:'#6366f1', blue:'#60a5fa' };
-  const baseOpts = { plugins: { legend: { labels: { color:'#94a3b8', font:{size:11} } } } };
-
-  // 1. Donut — overall (38 done, 2 partial, 8 future)
-  new Chart(document.getElementById('chartDonut'), {
-    type: 'doughnut',
-    data: {
-      labels: ['הושלם (38)', 'חלקי (2)', 'עתידי (8)'],
-      datasets: [{ data:[38,2,8], backgroundColor:[C.done,C.partial,C.future], borderWidth:0, hoverOffset:6 }]
-    },
-    options: { ...baseOpts, cutout:'68%',
-      plugins: { ...baseOpts.plugins,
-        legend: { position:'bottom', labels:{color:'#94a3b8',font:{size:11},padding:14} } }
-    }
-  });
-
-  // 2. Bar — tier completion %
-  new Chart(document.getElementById('chartTiers'), {
-    type: 'bar',
-    data: {
-      labels: ['T1 תשתית','T2 מרכזי','T3 מתקדם','T4 Flutter','T5 בדיקות','T6 עתידי'],
-      datasets: [{
-        label: '% השלמה',
-        data: [100,100,100,100,92,6],
-        backgroundColor: [C.done,C.done,C.done,C.done,C.partial,C.future],
-        borderRadius: 6, borderSkipped: false
-      }]
-    },
-    options: { ...baseOpts, indexAxis:'y',
-      scales: {
-        x: { max:100, grid:{color:'#334155'}, ticks:{color:'#94a3b8', callback:v=>v+'%'} },
-        y: { grid:{display:false}, ticks:{color:'#94a3b8',font:{size:10}} }
-      },
-      plugins: { legend:{display:false} }
-    }
-  });
-
-  // 3. Bar — real test counts per module (top 10)
-  new Chart(document.getElementById('chartTests'), {
-    type: 'bar',
-    data: {
-      labels: ['Router','Reminder','ObsidianSync','Models','Music','Task','Chat','Messaging','Memory','Draft'],
-      datasets: [{
-        label: 'מספר בדיקות',
-        data:   [36, 23, 15, 13, 9, 9, 7, 7, 7, 5],
-        backgroundColor: C.accent + 'cc',
-        borderColor: C.accent,
-        borderWidth: 1,
-        borderRadius: 4
-      }]
-    },
-    options: { ...baseOpts,
-      scales: {
-        x: { grid:{display:false}, ticks:{color:'#94a3b8',font:{size:9}} },
-        y: { grid:{color:'#334155'}, ticks:{color:'#94a3b8'} }
-      },
-      plugins: { legend:{display:false} }
-    }
-  });
-}
-
-// ── 3D Graph ───────────────────────────────────────────────────────────────────
-function initGraph() {
-  const container = document.getElementById('graph3d-container');
-  const tooltip   = document.getElementById('graphTooltip');
-
-  const progressData = {
-    nodes: [
-      {id:'tier1',label:'תשתית ליבה',group:'tier',completion:100},
-      {id:'tier2',label:'סוכני AI מרכזיים',group:'tier',completion:100},
-      {id:'tier3',label:'סוכני AI מתקדמים',group:'tier',completion:100},
-      {id:'tier4',label:'Flutter App',group:'tier',completion:100},
-      {id:'tier5',label:'איכות ובדיקות',group:'tier',completion:92},
-      {id:'tier6',label:'יכולות עתידיות',group:'tier',completion:6},
-      // Tier 1
-      {id:'f_express',label:'Express Server',group:'feature',status:'done'},
-      {id:'f_supabase',label:'Supabase',group:'feature',status:'done'},
-      {id:'f_router',label:'Intent Router',group:'feature',status:'done'},
-      {id:'f_llm',label:'LLM Fallback Chain',group:'feature',status:'done'},
-      // Tier 2
-      {id:'f_chat',label:'Chat Agent',group:'feature',status:'done'},
-      {id:'f_task',label:'Task Agent',group:'feature',status:'done'},
-      {id:'f_reminder',label:'Reminder Agent',group:'feature',status:'done'},
-      {id:'f_memory',label:'Memory Agent',group:'feature',status:'done'},
-      {id:'f_draft',label:'Draft Agent',group:'feature',status:'done'},
-      // Tier 3
-      {id:'f_sports',label:'Sports Agent',group:'feature',status:'done'},
-      {id:'f_music',label:'Music Agent',group:'feature',status:'done'},
-      {id:'f_messaging',label:'Messaging Agent',group:'feature',status:'done'},
-      {id:'f_weather',label:'Weather Agent',group:'feature',status:'done'},
-      {id:'f_news',label:'News Agent',group:'feature',status:'done'},
-      {id:'f_shopping',label:'Shopping Agent',group:'feature',status:'done'},
-      {id:'f_notes',label:'Notes Agent',group:'feature',status:'done'},
-      {id:'f_stocks',label:'Stocks Agent',group:'feature',status:'done'},
-      {id:'f_translate',label:'Translation Agent',group:'feature',status:'done'},
-      {id:'f_insight',label:'Insight Agent',group:'feature',status:'done'},
-      {id:'f_security',label:'Security Agent',group:'feature',status:'done'},
-      {id:'f_factory',label:'Agent Factory',group:'feature',status:'done'},
-      {id:'f_obsidian',label:'Obsidian Sync',group:'feature',status:'done'},
-      // Tier 4
-      {id:'f_orb',label:'Animated Orb UI',group:'feature',status:'done'},
-      {id:'f_stt',label:'Speech-to-Text',group:'feature',status:'done'},
-      {id:'f_tts',label:'Text-to-Speech',group:'feature',status:'done'},
-      // Tier 5
-      {id:'f_tests',label:'Jest Tests (179)',group:'feature',status:'done'},
-      {id:'f_widget',label:'Flutter Widget Tests',group:'feature',status:'partial'},
-      // Tier 6
-      {id:'f_vector',label:'Vector Search',group:'feature',status:'partial'},
-      {id:'f_stream',label:'Streaming SSE',group:'feature',status:'future'},
-      {id:'f_auth',label:'Authentication',group:'feature',status:'future'},
-    ],
-    links: [
-      {source:'tier1',target:'tier2'},{source:'tier2',target:'tier3'},
-      {source:'tier1',target:'tier4'},{source:'tier1',target:'tier5'},
-      {source:'tier1',target:'f_express'},{source:'tier1',target:'f_supabase'},
-      {source:'tier1',target:'f_router'},{source:'tier1',target:'f_llm'},
-      {source:'tier2',target:'f_chat'},{source:'tier2',target:'f_task'},
-      {source:'tier2',target:'f_reminder'},{source:'tier2',target:'f_memory'},
-      {source:'tier2',target:'f_draft'},
-      {source:'tier3',target:'f_sports'},{source:'tier3',target:'f_music'},
-      {source:'tier3',target:'f_messaging'},{source:'tier3',target:'f_weather'},
-      {source:'tier3',target:'f_news'},{source:'tier3',target:'f_shopping'},
-      {source:'tier3',target:'f_notes'},{source:'tier3',target:'f_stocks'},
-      {source:'tier3',target:'f_translate'},{source:'tier3',target:'f_insight'},
-      {source:'tier3',target:'f_security'},{source:'tier3',target:'f_factory'},
-      {source:'tier3',target:'f_obsidian'},
-      {source:'tier4',target:'f_orb'},{source:'tier4',target:'f_stt'},
-      {source:'tier4',target:'f_tts'},
-      {source:'tier5',target:'f_tests'},{source:'tier5',target:'f_widget'},
-      {source:'tier6',target:'f_vector'},{source:'tier6',target:'f_stream'},
-      {source:'tier6',target:'f_auth'},
-      {source:'f_router',target:'f_chat'},{source:'f_llm',target:'f_chat'},
-      {source:'f_supabase',target:'f_task'},{source:'f_supabase',target:'f_memory'},
-      {source:'f_stt',target:'f_router'},{source:'f_tts',target:'f_orb'},
-    ]
-  };
-
-  const decisionData = {
-    nodes: [
-      {id:'user',label:'👤 משתמש',group:'input'},
-      {id:'flutter',label:'📱 Flutter App',group:'client'},
-      {id:'server',label:'🚀 Express Server',group:'server'},
-      {id:'classifier',label:'🧭 Intent Classifier',group:'router'},
-      {id:'ag_chat',label:'💬 Chat',group:'agent'},
-      {id:'ag_task',label:'✅ Task',group:'agent'},
-      {id:'ag_remind',label:'⏰ Reminder',group:'agent'},
-      {id:'ag_memory',label:'🧠 Memory',group:'agent'},
-      {id:'ag_weather',label:'☁️ Weather',group:'agent'},
-      {id:'ag_news',label:'📰 News',group:'agent'},
-      {id:'ag_sports',label:'⚽ Sports',group:'agent'},
-      {id:'ag_music',label:'🎵 Music',group:'agent'},
-      {id:'ag_stocks',label:'📈 Stocks',group:'agent'},
-      {id:'ag_translate',label:'🌐 Translate',group:'agent'},
-      {id:'ag_shop',label:'🛒 Shopping',group:'agent'},
-      {id:'ag_notes',label:'🗒️ Notes',group:'agent'},
-      {id:'ag_msg',label:'📱 Messaging',group:'agent'},
-      {id:'ag_insight',label:'💡 Insight',group:'agent'},
-      {id:'ag_sec',label:'🔐 Security',group:'agent'},
-      {id:'groq',label:'⚡ Groq',group:'llm'},
-      {id:'deepseek',label:'🌊 DeepSeek',group:'llm'},
-      {id:'gemini',label:'💎 Gemini',group:'llm'},
-      {id:'ollama',label:'🦙 Ollama',group:'llm'},
-      {id:'db',label:'🗄️ Supabase DB',group:'db'},
-      {id:'tts',label:'🔊 Google TTS',group:'output'},
-      {id:'response',label:'📤 תגובה',group:'output'},
-    ],
-    links: [
-      {source:'user',target:'flutter'},{source:'flutter',target:'server'},
-      {source:'server',target:'classifier'},
-      {source:'classifier',target:'ag_chat'},{source:'classifier',target:'ag_task'},
-      {source:'classifier',target:'ag_remind'},{source:'classifier',target:'ag_memory'},
-      {source:'classifier',target:'ag_weather'},{source:'classifier',target:'ag_news'},
-      {source:'classifier',target:'ag_sports'},{source:'classifier',target:'ag_music'},
-      {source:'classifier',target:'ag_stocks'},{source:'classifier',target:'ag_translate'},
-      {source:'classifier',target:'ag_shop'},{source:'classifier',target:'ag_notes'},
-      {source:'classifier',target:'ag_msg'},{source:'classifier',target:'ag_insight'},
-      {source:'classifier',target:'ag_sec'},
-      {source:'ag_chat',target:'groq'},{source:'groq',target:'deepseek'},
-      {source:'deepseek',target:'gemini'},{source:'gemini',target:'ollama'},
-      {source:'ag_task',target:'db'},{source:'ag_memory',target:'db'},
-      {source:'ag_remind',target:'db'},{source:'ag_shop',target:'db'},
-      {source:'ag_notes',target:'db'},{source:'ag_msg',target:'db'},
-      {source:'ag_weather',target:'gemini'},{source:'ag_news',target:'gemini'},
-      {source:'ag_sports',target:'gemini'},{source:'ag_stocks',target:'gemini'},
-      {source:'groq',target:'tts'},{source:'db',target:'tts'},
-      {source:'tts',target:'response'},{source:'response',target:'flutter'},
-    ]
-  };
-
-  const statusColors = {done:'#22c55e', partial:'#f59e0b', future:'#6b7280'};
-  const groupColors  = {tier:'#6366f1',input:'#60a5fa',client:'#38bdf8',
-    server:'#818cf8',router:'#f59e0b',agent:'#34d399',llm:'#f472b6',db:'#60a5fa',output:'#22c55e'};
-
-  function nodeColor(n) {
-    if (n.group==='tier') return n.completion===100?'#6366f1':n.completion>=50?'#f59e0b':'#6b7280';
-    if (n.group==='feature') return statusColors[n.status]||'#6b7280';
-    return groupColors[n.group]||'#94a3b8';
-  }
-  function nodeSize(n) {
-    return n.group==='tier'?18:n.group==='server'||n.group==='router'?14:8;
-  }
-
-  const graph = ForceGraph3D()(container)
-    .backgroundColor('#060d1f')
-    .linkColor(()=>'rgba(148,163,184,0.2)')
-    .linkWidth(1.2)
-    .nodeLabel('label')
-    .nodeColor(nodeColor)
-    .nodeVal(nodeSize)
-    .onNodeHover(node => {
-      if (node) {
-        let html = `<strong>${node.label}</strong>`;
-        if (node.completion!==undefined) html+=`<br><span style="color:#94a3b8">${node.completion}% הושלם</span>`;
-        if (node.status) html+=`<br><span style="color:#94a3b8">${{done:'✅ הושלם',partial:'🔄 חלקי',future:'🔮 עתידי'}[node.status]||''}</span>`;
-        if (node.group&&groupColors[node.group]) html+=`<br><span style="color:${groupColors[node.group]};font-size:.75rem">${node.group}</span>`;
-        tooltip.innerHTML=html;
-      } else { tooltip.innerHTML='רחף מעל node לפרטים'; }
-    })
-    .graphData(progressData);
-
-  document.getElementById('btn-progress').addEventListener('click', () => {
-    graph.graphData(progressData);
-    document.getElementById('btn-progress').classList.add('active');
-    document.getElementById('btn-decision').classList.remove('active');
-  });
-  document.getElementById('btn-decision').addEventListener('click', () => {
-    graph.graphData(decisionData);
-    document.getElementById('btn-decision').classList.add('active');
-    document.getElementById('btn-progress').classList.remove('active');
-  });
-  document.getElementById('btn-reset').addEventListener('click', () => {
-    graph.cameraPosition({x:0,y:0,z:300},{x:0,y:0,z:0},800);
-  });
-}
+// ── Auto-refresh ───────────────────────────────────────────────────────────────
+checkHealth();
+loadStats();
+loadFeatures();
+loadBacklog();
+setInterval(() => { checkHealth(); loadStats(); }, 30000);
 </script>
-<script src="https://unpkg.com/3d-force-graph@1/dist/3d-force-graph.min.js"></script>
 </body>
 </html>

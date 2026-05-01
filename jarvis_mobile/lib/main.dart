@@ -749,7 +749,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         .onAmplitudeChanged(const Duration(milliseconds: 250))
         .listen((amp) {
       if (!mounted || !_voiceConversationActive) return;
-      if (amp.current > -45) {
+      if (amp.current > -50) {
         // Sound detected — reset silence countdown
         _recordingSoundDetected = true;
         _hardCapTimer?.cancel(); // reset hard cap once real speech begins
@@ -770,12 +770,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       }
     });
 
-    // No-speech timeout: if nothing detected after 10 s, restart the cycle
-    _hardCapTimer = Timer(const Duration(seconds: 10), () async {
-      if (!_recordingSoundDetected && _voiceConversationActive &&
-          await _audioRecorder.isRecording()) {
-        await _audioRecorder.stop();
-        if (mounted && _voiceConversationActive) _listenContinuous();
+    // No-speech timeout: try transcription in case amplitude detection missed audio
+    // (device microphone sensitivity may differ from the -50 dBFS threshold)
+    _hardCapTimer = Timer(const Duration(seconds: 10), () {
+      if (!_recordingSoundDetected && _voiceConversationActive) {
+        _stopRecordingAndTranscribe(tmpPath);
       }
     });
   }
@@ -783,6 +782,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   Future<void> _stopRecordingAndTranscribe(String path) async {
     _silenceTimer?.cancel();
     _silenceTimer = null;
+    _hardCapTimer?.cancel();
+    _hardCapTimer = null;
+    await _amplitudeSubscription?.cancel();
+    _amplitudeSubscription = null;
 
     final bool recording = await _audioRecorder.isRecording();
     if (!recording) return;

@@ -365,8 +365,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   final AudioRecorder _audioRecorder      = AudioRecorder();
   bool        _recordingSoundDetected           = false;
+  bool        _processingAudio                  = false;
   Timer? _silenceTimer;
   Timer? _hardCapTimer;
+  Timer? _ttsTimeoutTimer;
   StreamSubscription? _amplitudeSubscription;
   int   _transcribeFailures               = 0;
   String? _lastTtsPath;
@@ -499,6 +501,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _voiceConversationActive = false;
     _silenceTimer?.cancel();
     _hardCapTimer?.cancel();
+    _ttsTimeoutTimer?.cancel();
     _amplitudeSubscription?.cancel();
     _audioRecorder.dispose();
     _orbBreathController.dispose();
@@ -522,6 +525,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   void _onTtsDone() {
+    _ttsTimeoutTimer?.cancel();
+    _ttsTimeoutTimer = null;
     if (!mounted) return;
     setState(() => _currentState = JarvisState.idle);
     if (_voiceConversationActive) _listenContinuous();
@@ -536,6 +541,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       return;
     }
     setState(() => _currentState = JarvisState.speaking);
+    // Safety timeout: if TTS completion handler never fires (known Android bug),
+    // resume the conversation cycle after at most 15 s.
+    _ttsTimeoutTimer?.cancel();
+    _ttsTimeoutTimer = Timer(const Duration(seconds: 15), () {
+      if (_currentState == JarvisState.speaking) _onTtsDone();
+    });
     try {
       await _flutterTts.stop();
       final result = await _flutterTts.speak(text);
@@ -666,8 +677,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _silenceTimer = null;
     _hardCapTimer?.cancel();
     _hardCapTimer = null;
+    _ttsTimeoutTimer?.cancel();
+    _ttsTimeoutTimer = null;
     _amplitudeSubscription?.cancel();
     _amplitudeSubscription = null;
+    _processingAudio = false;
     HapticFeedback.mediumImpact();
     setState(() {
       _voiceConversationActive  = false;
@@ -744,35 +758,38 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     await _amplitudeSubscription?.cancel();
     _amplitudeSubscription = null;
 
-    // Amplitude-based silence detection
-    _amplitudeSubscription = _audioRecorder
-        .onAmplitudeChanged(const Duration(milliseconds: 250))
-        .listen((amp) {
-      if (!mounted || !_voiceConversationActive) return;
-      if (amp.current > -50) {
-        // Sound detected — reset silence countdown
-        _recordingSoundDetected = true;
-        _hardCapTimer?.cancel(); // reset hard cap once real speech begins
-        _silenceTimer?.cancel();
-        _silenceTimer = null;
-        if (_listeningText != 'שומע...') setState(() => _listeningText = 'שומע...');
-        // Hard cap of 25 s from first speech (prevents runaway recordings)
-        _hardCapTimer = Timer(const Duration(seconds: 25), () async {
-          if (_voiceConversationActive && await _audioRecorder.isRecording()) {
+    // Amplitude-based silence detection (wrapped in try-catch: some devices throw here)
+    try {
+      _amplitudeSubscription = _audioRecorder
+          .onAmplitudeChanged(const Duration(milliseconds: 250))
+          .listen((amp) {
+        if (!mounted || !_voiceConversationActive) return;
+        if (amp.current > -50) {
+          // Sound detected — reset silence countdown
+          _recordingSoundDetected = true;
+          _hardCapTimer?.cancel(); // reset hard cap once real speech begins
+          _silenceTimer?.cancel();
+          _silenceTimer = null;
+          if (_listeningText != 'שומע...') setState(() => _listeningText = 'שומע...');
+          // Hard cap of 25 s from first speech (prevents runaway recordings)
+          _hardCapTimer = Timer(const Duration(seconds: 25), () async {
+            if (_voiceConversationActive && await _audioRecorder.isRecording()) {
+              _stopRecordingAndTranscribe(tmpPath);
+            }
+          });
+        } else if (_recordingSoundDetected && _silenceTimer == null) {
+          // Silence after speech — start 2.5 s countdown
+          _silenceTimer = Timer(const Duration(milliseconds: 2500), () {
             _stopRecordingAndTranscribe(tmpPath);
-          }
-        });
-      } else if (_recordingSoundDetected && _silenceTimer == null) {
-        // Silence after speech — start 2.5 s countdown
-        _silenceTimer = Timer(const Duration(milliseconds: 2500), () {
-          _stopRecordingAndTranscribe(tmpPath);
-        });
-      }
-    });
+          });
+        }
+      });
+    } catch (_) {
+      // Amplitude monitoring unavailable on this device — rely on fallback timer only
+    }
 
-    // No-speech timeout: try transcription in case amplitude detection missed audio
-    // (device microphone sensitivity may differ from the -50 dBFS threshold)
-    _hardCapTimer = Timer(const Duration(seconds: 10), () {
+    // Fallback timer: try transcription after 5 s if amplitude detection didn't catch speech
+    _hardCapTimer = Timer(const Duration(seconds: 5), () {
       if (!_recordingSoundDetected && _voiceConversationActive) {
         _stopRecordingAndTranscribe(tmpPath);
       }
@@ -787,8 +804,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     await _amplitudeSubscription?.cancel();
     _amplitudeSubscription = null;
 
+    if (_processingAudio) return; // another call already handling this recording
+    _processingAudio = true;
+
+    try {
     final bool recording = await _audioRecorder.isRecording();
-    if (!recording) return;
+    if (!recording) {
+      // Recorder stopped unexpectedly — restart the cycle instead of stalling
+      if (mounted && _voiceConversationActive) _listenContinuous();
+      return;
+    }
 
     await _audioRecorder.stop();
     if (!mounted) return;
@@ -850,6 +875,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       }
     } finally {
       await file.delete().catchError((_) {});
+    }
+    } finally {
+      _processingAudio = false;
     }
   }
 

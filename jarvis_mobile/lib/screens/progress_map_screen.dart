@@ -15,8 +15,7 @@ class ProgressMapScreen extends StatefulWidget {
   State<ProgressMapScreen> createState() => _ProgressMapScreenState();
 }
 
-class _ProgressMapScreenState extends State<ProgressMapScreen>
-    with SingleTickerProviderStateMixin {
+class _ProgressMapScreenState extends State<ProgressMapScreen> {
   // Server
   bool? _serverOk;
   int _latencyMs = 0;
@@ -49,20 +48,18 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   bool _generatingPrompt = false;
   bool _promptCopied = false;
 
-  late TabController _featureTabCtrl;
+  int _featureTabIndex = 0;
   Timer? _retryTimer;
 
   @override
   void initState() {
     super.initState();
-    _featureTabCtrl = TabController(length: 3, vsync: this);
     _loadAll();
   }
 
   @override
   void dispose() {
     _retryTimer?.cancel();
-    _featureTabCtrl.dispose();
     _addCtrl.dispose();
     _promptCtrl.dispose();
     super.dispose();
@@ -547,39 +544,62 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         ),
       );
     }
+    final labels    = ['✅ ${_done.length} הושלם', '🔨 ${_building.length} בבנייה', '📋 ${_planned.length} מתוכנן'];
+    final itemLists = [_done, _building, _planned];
+    final colors    = [const Color(0xFF22C55E), const Color(0xFFF59E0B), JC.textSecondary];
+    final currentItems = itemLists[_featureTabIndex];
+    final currentColor = colors[_featureTabIndex];
+
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TabBar(
-            controller: _featureTabCtrl,
-            labelColor: JC.blue400,
-            unselectedLabelColor: JC.textMuted,
-            indicatorColor: JC.blue400,
-            indicatorSize: TabBarIndicatorSize.label,
-            dividerColor: JC.border,
-            labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 12),
-            unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 12),
-            tabs: [
-              Tab(text: '✅ ${_done.length} הושלם'),
-              Tab(text: '🔨 ${_building.length} בבנייה'),
-              Tab(text: '📋 ${_planned.length} מתוכנן'),
-            ],
+          Row(
+            children: List.generate(3, (i) {
+              final selected = i == _featureTabIndex;
+              final color    = colors[i];
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _featureTabIndex = i),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selected ? color.withOpacity(0.1) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: selected ? color.withOpacity(0.5) : JC.border,
+                          width: selected ? 1.0 : 0.5,
+                        ),
+                      ),
+                      child: Text(labels[i],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: selected ? color : JC.textMuted,
+                            fontFamily: 'Heebo',
+                            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                            fontSize: 11,
+                          )),
+                    ),
+                  ),
+                ),
+              );
+            }),
           ),
-          SizedBox(
-            height: 220,
-            child: TabBarView(
-              controller: _featureTabCtrl,
-              children: [
-                _featureList(_done, const Color(0xFF22C55E)),
-                _featureList(_building, const Color(0xFFF59E0B)),
-                _featureList(_planned, JC.textMuted),
-              ],
-            ),
-          ),
+          const SizedBox(height: 10),
+          if (currentItems.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: Text('אין פריטים',
+                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
+            )
+          else
+            ...currentItems.map((f) => _featureItem(f, currentColor)),
           if (_featuresUpdated.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 4),
+              padding: const EdgeInsets.only(top: 6),
               child: Text('עודכן: $_featuresUpdated',
                   style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
                   textAlign: TextAlign.center),
@@ -589,48 +609,36 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     );
   }
 
-  Widget _featureList(List<Map<String, dynamic>> features, Color color) {
-    if (features.isEmpty) {
-      return const Center(child: Text('אין פריטים',
-          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: features.length,
-      itemBuilder: (_, i) {
-        final f = features[i];
-        final name = f['name']?.toString() ?? '';
-        final desc = f['desc']?.toString() ?? '';
-        return Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: JC.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border(
-              right: BorderSide(color: color.withOpacity(0.5), width: 2.5),
-              top: BorderSide(color: JC.border, width: 0.5),
-              bottom: BorderSide(color: JC.border, width: 0.5),
-              left: BorderSide(color: JC.border, width: 0.5),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(name.isNotEmpty ? name : '—',
-                  textDirection: TextDirection.rtl,
-                  style: const TextStyle(color: JC.textPrimary,
-                      fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
-              if (desc.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(desc,
-                    textDirection: TextDirection.rtl,
-                    style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-              ],
-            ],
-          ),
-        );
-      },
+  Widget _featureItem(Map<String, dynamic> f, Color color) {
+    final name = f['name']?.toString() ?? '';
+    final desc = f['desc']?.toString() ?? '';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          right: BorderSide(color: color.withOpacity(0.5), width: 2.5),
+          top: BorderSide(color: JC.border, width: 0.5),
+          bottom: BorderSide(color: JC.border, width: 0.5),
+          left: BorderSide(color: JC.border, width: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(name.isNotEmpty ? name : '—',
+              style: const TextStyle(color: JC.textPrimary,
+                  fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
+          if (desc.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(desc,
+                style: const TextStyle(color: JC.textSecondary,
+                    fontFamily: 'Heebo', fontSize: 11)),
+          ],
+        ],
+      ),
     );
   }
 

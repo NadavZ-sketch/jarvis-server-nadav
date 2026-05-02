@@ -827,6 +827,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        textDirection: TextDirection.rtl,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -841,6 +844,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(width: 8),
+                    _badge(priorityLabel, priorityColor),
                   ],
                   const SizedBox(height: 8),
                   // Footer row

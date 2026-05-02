@@ -594,43 +594,43 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       return const Center(child: Text('אין פריטים',
           style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)));
     }
-    // Use SingleChildScrollView + Column to avoid nested ListView-in-ListView rendering issues
-    return SingleChildScrollView(
+    return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        children: features.map((f) {
-          final name = f['name']?.toString() ?? '';
-          final desc = f['desc']?.toString() ?? '';
-          return Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: JC.surfaceAlt,
-              borderRadius: BorderRadius.circular(8),
-              border: Border(
-                right: BorderSide(color: color, width: 3),
-                top: BorderSide(color: JC.border, width: 0.5),
-                bottom: BorderSide(color: JC.border, width: 0.5),
-                left: BorderSide(color: JC.border, width: 0.5),
-              ),
+      itemCount: features.length,
+      itemBuilder: (_, i) {
+        final f = features[i];
+        final name = f['name']?.toString() ?? '';
+        final desc = f['desc']?.toString() ?? '';
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border(
+              right: BorderSide(color: color.withOpacity(0.5), width: 2.5),
+              top: BorderSide(color: JC.border, width: 0.5),
+              bottom: BorderSide(color: JC.border, width: 0.5),
+              left: BorderSide(color: JC.border, width: 0.5),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name.isNotEmpty ? name : '—',
-                    style: const TextStyle(color: JC.textPrimary,
-                        fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
-                if (desc.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(desc,
-                      style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-                ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(name.isNotEmpty ? name : '—',
+                  textDirection: TextDirection.rtl,
+                  style: const TextStyle(color: JC.textPrimary,
+                      fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
+              if (desc.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(desc,
+                    textDirection: TextDirection.rtl,
+                    style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
               ],
-            ),
-          );
-        }).toList(),
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 

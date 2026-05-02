@@ -901,7 +901,7 @@ app.patch('/shopping/:id', async (req, res) => {
 
 // ─── Streaming endpoint (SSE) ─────────────────────────────────────────────────
 
-const { callGemma4Stream } = require('./agents/models');
+const { callGemma4Stream, callGemma4 } = require('./agents/models');
 
 app.post('/stream-jarvis', async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -1194,6 +1194,90 @@ app.delete('/dashboard/backlog/:id', (req, res) => {
         const fp   = path.join(__dirname, 'backlog.json');
         const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
         data.items = data.items.filter(i => i.id !== id);
+        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Dashboard – AI backlog generation ───────────────────────────────────────
+app.post('/dashboard/backlog/generate', async (_req, res) => {
+    try {
+        const fp       = path.join(__dirname, 'backlog.json');
+        const features = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'features.json'), 'utf8'));
+        const backlog  = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+
+        const done     = features.features?.done     || [];
+        const building = features.features?.building || [];
+        const planned  = features.features?.planned  || [];
+
+        const prompt = `אתה מנהל פרויקט בכיר לפרויקט Jarvis — עוזר אישי AI מבוסס Flutter + Node.js עם 17+ אייג'נטים.
+
+מצב נוכחי של הפרויקט:
+✅ הושלם (${done.length}): ${done.map(f => f.name).join(', ')}
+🔨 בבנייה (${building.length}): ${building.map(f => `${f.name} — ${f.desc}`).join(', ')}
+📋 מתוכנן (${planned.length}): ${planned.map(f => `${f.name} — ${f.desc}`).join(', ')}
+
+הצע 6 פריטי backlog אסטרטגיים ממוינים לפי דחיפות. לכל פריט:
+- title: כותרת קצרה ומדויקת (עד 60 תווים)
+- plan: תוכנית מפורטת (3-4 משפטים: מה לעשות, למה זה חשוב, איך לבצע טכנית)
+- priority: high / medium / low
+- category: feature / improvement / bug / ux
+
+ענה בפורמט JSON בלבד, ללא טקסט נוסף:
+[{"title":"...","plan":"...","priority":"high","category":"improvement"},...]`;
+
+        const raw = await callGemma4(prompt, false);
+        const jsonMatch = raw.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) return res.status(500).json({ error: 'LLM did not return valid JSON' });
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const proposals = parsed.slice(0, 6).map((p, i) => ({
+            id: Date.now() + i,
+            title: (p.title || '').slice(0, 80),
+            plan: p.plan || '',
+            priority: ['high', 'medium', 'low'].includes(p.priority) ? p.priority : 'medium',
+            category: p.category || 'improvement',
+            status: 'proposal',
+            generated_at: new Date().toISOString().slice(0, 10),
+        }));
+
+        if (!backlog.proposals) backlog.proposals = [];
+        backlog.proposals = proposals;
+        backlog._lastGenerated = new Date().toISOString().slice(0, 10);
+        require('fs').writeFileSync(fp, JSON.stringify(backlog, null, 2));
+        res.json({ proposals, generated_at: backlog._lastGenerated });
+    } catch (e) {
+        console.error('backlog/generate error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
+    try {
+        const id   = parseInt(req.params.id, 10);
+        const fp   = path.join(__dirname, 'backlog.json');
+        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+        if (!data.proposals) data.proposals = [];
+        const item = data.proposals.find(p => p.id === id);
+        if (!item) return res.status(404).json({ error: 'not found' });
+        if (req.body && req.body.status) {
+            item.status = req.body.status;
+        } else {
+            const cycle = { proposal: 'active', active: 'done', done: 'proposal' };
+            item.status = cycle[item.status] || 'active';
+        }
+        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
+        res.json({ item });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/dashboard/backlog/proposals/:id', (req, res) => {
+    try {
+        const id   = parseInt(req.params.id, 10);
+        const fp   = path.join(__dirname, 'backlog.json');
+        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+        if (!data.proposals) data.proposals = [];
+        data.proposals = data.proposals.filter(p => p.id !== id);
         require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }

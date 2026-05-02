@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'main.dart' show JC, ChatScreen;
 import 'app_settings.dart';
 import 'screens/app_drawer.dart';
-import 'screens/dashboard_screen.dart';
+import 'screens/progress_map_screen.dart';
 import 'screens/productivity_screen.dart';
 import 'screens/lists_screen.dart';
 import 'services/api_service.dart';
@@ -146,18 +146,15 @@ class _MainShellState extends State<MainShell> {
           body: IndexedStack(
             index: _selectedIndex,
             children: [
-              // 0 — Dashboard
-              DashboardScreen(
-                settings: _settings,
-                onNavigate: _onTabTapped,
-              ),
+              // 0 — Progress Map
+              ProgressMapScreen(settings: _settings),
               // 1 — Chat (main screen)
               ChatScreen(
                 initialSettings: _settings,
                 onSettingsChanged: _onSettingsChanged,
                 onOpenDrawer: _openDrawer,
               ),
-              // 2 — Productivity (Tasks + Reminders)
+              // 2 — Productivity (Tasks + Reminders + Calendar)
               ProductivityScreen(settings: _settings),
               // 3 — Lists (Shopping + Notes + Contacts)
               ListsScreen(settings: _settings),
@@ -210,9 +207,9 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: _onTabTapped,
               destinations: const [
                 NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home_rounded),
-                  label: 'בית',
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map_rounded),
+                  label: 'מפה',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.mic_none_rounded),

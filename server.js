@@ -1147,6 +1147,22 @@ app.get('/calendar-events', async (_req, res) => {
 });
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
+const BACKLOG_PATH = () => path.join(__dirname, 'backlog.json');
+function readBacklog() {
+    try {
+        const data = JSON.parse(require('fs').readFileSync(BACKLOG_PATH(), 'utf8'));
+        if (!data.items)     data.items     = [];
+        if (!data.proposals) data.proposals = [];
+        if (!data._nextId)   data._nextId   = (data.items.length > 0 ? Math.max(...data.items.map(i => i.id)) + 1 : 1);
+        return data;
+    } catch {
+        return { items: [], proposals: [], _nextId: 1 };
+    }
+}
+function writeBacklog(data) {
+    require('fs').writeFileSync(BACKLOG_PATH(), JSON.stringify(data, null, 2));
+}
+
 app.get('/dashboard/features', (_req, res) => {
     try {
         const data = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'features.json'), 'utf8'));
@@ -1155,35 +1171,53 @@ app.get('/dashboard/features', (_req, res) => {
 });
 
 app.get('/dashboard/backlog', (_req, res) => {
-    try {
-        const data = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'backlog.json'), 'utf8'));
-        res.json(data);
-    } catch { res.json({ items: [], _nextId: 1 }); }
+    res.json(readBacklog());
 });
 
 app.post('/dashboard/backlog', (req, res) => {
     try {
         const { text } = req.body;
         if (!text || !text.trim()) return res.status(400).json({ error: 'text required' });
-        const fp   = path.join(__dirname, 'backlog.json');
-        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+        const data = readBacklog();
         const item = { id: data._nextId, text: text.trim(), done: false, added: new Date().toISOString().slice(0, 10) };
         data.items.unshift(item);
         data._nextId++;
-        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
+        writeBacklog(data);
         res.json({ item });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// proposals routes must come BEFORE /:id catch-all
+app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
+    try {
+        const id   = parseInt(req.params.id, 10);
+        const data = readBacklog();
+        const item = data.proposals.find(p => p.id === id);
+        if (!item) return res.status(404).json({ error: 'not found' });
+        item.status = (req.body?.status) || ({ proposal: 'active', active: 'done', done: 'proposal' }[item.status] || 'active');
+        writeBacklog(data);
+        res.json({ item });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/dashboard/backlog/proposals/:id', (req, res) => {
+    try {
+        const id   = parseInt(req.params.id, 10);
+        const data = readBacklog();
+        data.proposals = data.proposals.filter(p => p.id !== id);
+        writeBacklog(data);
+        res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.patch('/dashboard/backlog/:id', (req, res) => {
     try {
         const id   = parseInt(req.params.id, 10);
-        const fp   = path.join(__dirname, 'backlog.json');
-        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+        const data = readBacklog();
         const item = data.items.find(i => i.id === id);
         if (!item) return res.status(404).json({ error: 'not found' });
         item.done = !item.done;
-        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
+        writeBacklog(data);
         res.json({ item });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1191,10 +1225,9 @@ app.patch('/dashboard/backlog/:id', (req, res) => {
 app.delete('/dashboard/backlog/:id', (req, res) => {
     try {
         const id   = parseInt(req.params.id, 10);
-        const fp   = path.join(__dirname, 'backlog.json');
-        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+        const data = readBacklog();
         data.items = data.items.filter(i => i.id !== id);
-        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
+        writeBacklog(data);
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1202,9 +1235,8 @@ app.delete('/dashboard/backlog/:id', (req, res) => {
 // ─── Dashboard – AI backlog generation ───────────────────────────────────────
 app.post('/dashboard/backlog/generate', async (_req, res) => {
     try {
-        const fp       = path.join(__dirname, 'backlog.json');
         const features = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'features.json'), 'utf8'));
-        const backlog  = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
+        const backlog  = readBacklog();
 
         const done     = features.features?.done     || [];
         const building = features.features?.building || [];
@@ -1241,46 +1273,14 @@ app.post('/dashboard/backlog/generate', async (_req, res) => {
             generated_at: new Date().toISOString().slice(0, 10),
         }));
 
-        if (!backlog.proposals) backlog.proposals = [];
-        backlog.proposals = proposals;
+        backlog.proposals      = proposals;
         backlog._lastGenerated = new Date().toISOString().slice(0, 10);
-        require('fs').writeFileSync(fp, JSON.stringify(backlog, null, 2));
+        writeBacklog(backlog);
         res.json({ proposals, generated_at: backlog._lastGenerated });
     } catch (e) {
         console.error('backlog/generate error:', e.message);
         res.status(500).json({ error: e.message });
     }
-});
-
-app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
-    try {
-        const id   = parseInt(req.params.id, 10);
-        const fp   = path.join(__dirname, 'backlog.json');
-        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
-        if (!data.proposals) data.proposals = [];
-        const item = data.proposals.find(p => p.id === id);
-        if (!item) return res.status(404).json({ error: 'not found' });
-        if (req.body && req.body.status) {
-            item.status = req.body.status;
-        } else {
-            const cycle = { proposal: 'active', active: 'done', done: 'proposal' };
-            item.status = cycle[item.status] || 'active';
-        }
-        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
-        res.json({ item });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/dashboard/backlog/proposals/:id', (req, res) => {
-    try {
-        const id   = parseInt(req.params.id, 10);
-        const fp   = path.join(__dirname, 'backlog.json');
-        const data = JSON.parse(require('fs').readFileSync(fp, 'utf8'));
-        if (!data.proposals) data.proposals = [];
-        data.proposals = data.proposals.filter(p => p.id !== id);
-        require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
-        res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Dashboard – Claude Code prompt generator ────────────────────────────────

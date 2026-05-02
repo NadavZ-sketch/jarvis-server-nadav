@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jarvis_mobile/app_settings.dart';
 
 void main() {
+  setUpAll(TestWidgetsFlutterBinding.ensureInitialized);
+
   group('AppSettings defaults', () {
     test('has expected default values', () {
       final s = AppSettings();

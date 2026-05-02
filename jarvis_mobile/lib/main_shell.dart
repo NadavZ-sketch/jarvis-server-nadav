@@ -147,7 +147,10 @@ class _MainShellState extends State<MainShell> {
             index: _selectedIndex,
             children: [
               // 0 — Progress Map
-              ProgressMapScreen(settings: _settings),
+              ProgressMapScreen(
+                settings: _settings,
+                onSwitchToChat: () => _onTabTapped(1),
+              ),
               // 1 — Chat (main screen)
               ChatScreen(
                 initialSettings: _settings,

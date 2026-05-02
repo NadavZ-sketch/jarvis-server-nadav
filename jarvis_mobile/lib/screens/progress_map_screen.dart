@@ -7,7 +7,8 @@ import '../app_settings.dart';
 
 class ProgressMapScreen extends StatefulWidget {
   final AppSettings settings;
-  const ProgressMapScreen({super.key, required this.settings});
+  final VoidCallback? onSwitchToChat;
+  const ProgressMapScreen({super.key, required this.settings, this.onSwitchToChat});
 
   @override
   State<ProgressMapScreen> createState() => _ProgressMapScreenState();
@@ -171,6 +172,28 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       ).timeout(const Duration(seconds: 8));
       await _loadBacklog();
     } catch (_) {}
+  }
+
+  Future<void> _activateProposal(Map<String, dynamic> proposal) async {
+    final id    = proposal['id'];
+    final title = proposal['title']?.toString() ?? '';
+    final plan  = proposal['plan']?.toString() ?? '';
+    await _patchProposal(id, 'active');
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F1929),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _ActivateSheet(
+        base: _base,
+        title: title,
+        plan: plan,
+        onSwitchToChat: widget.onSwitchToChat,
+      ),
+    );
   }
 
   Future<void> _deleteProposal(dynamic id) async {
@@ -463,83 +486,90 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       return const Padding(padding: EdgeInsets.all(24),
           child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)));
     }
-    return Column(
-      children: [
-        TabBar(
-          controller: _featureTabCtrl,
-          labelColor: JC.blue400,
-          unselectedLabelColor: JC.textMuted,
-          indicatorColor: JC.blue400,
-          indicatorSize: TabBarIndicatorSize.label,
-          dividerColor: JC.border,
-          labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 12),
-          tabs: [
-            Tab(text: '✅ ${_done.length}  הושלם'),
-            Tab(text: '🔨 ${_building.length}  בבנייה'),
-            Tab(text: '📋 ${_planned.length}  מתוכנן'),
-          ],
-        ),
-        SizedBox(
-          height: 220,
-          child: TabBarView(
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Column(
+        children: [
+          TabBar(
             controller: _featureTabCtrl,
-            children: [
-              _featureList(_done, const Color(0xFF22C55E)),
-              _featureList(_building, const Color(0xFFF59E0B)),
-              _featureList(_planned, JC.textMuted),
+            labelColor: JC.blue400,
+            unselectedLabelColor: JC.textMuted,
+            indicatorColor: JC.blue400,
+            indicatorSize: TabBarIndicatorSize.label,
+            dividerColor: JC.border,
+            labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 12),
+            unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 12),
+            tabs: [
+              Tab(text: '✅ ${_done.length} הושלם'),
+              Tab(text: '🔨 ${_building.length} בבנייה'),
+              Tab(text: '📋 ${_planned.length} מתוכנן'),
             ],
           ),
-        ),
-        if (_featuresUpdated.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text('עודכן: $_featuresUpdated',
-                style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
-                textAlign: TextAlign.center),
+          SizedBox(
+            height: 220,
+            child: TabBarView(
+              controller: _featureTabCtrl,
+              children: [
+                _featureList(_done, const Color(0xFF22C55E)),
+                _featureList(_building, const Color(0xFFF59E0B)),
+                _featureList(_planned, JC.textMuted),
+              ],
+            ),
           ),
-      ],
+          if (_featuresUpdated.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('עודכן: $_featuresUpdated',
+                  style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                  textAlign: TextAlign.center),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _featureList(List<Map<String, dynamic>> features, Color color) {
     if (features.isEmpty) {
-      return Center(child: Text('אין פריטים',
-          style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)));
+      return const Center(child: Text('אין פריטים',
+          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)));
     }
-    return ListView.builder(
+    // Use SingleChildScrollView + Column to avoid nested ListView-in-ListView rendering issues
+    return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: features.length,
-      itemBuilder: (_, i) {
-        final f = features[i];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: JC.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border(right: BorderSide(color: color.withOpacity(0.5), width: 2.5),
+      child: Column(
+        children: features.map((f) {
+          final name = f['name']?.toString() ?? '';
+          final desc = f['desc']?.toString() ?? '';
+          return Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: JC.surfaceAlt,
+              borderRadius: BorderRadius.circular(8),
+              border: Border(
+                right: BorderSide(color: color, width: 3),
                 top: BorderSide(color: JC.border, width: 0.5),
                 bottom: BorderSide(color: JC.border, width: 0.5),
-                left: BorderSide(color: JC.border, width: 0.5)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(f['name']?.toString() ?? '',
-                  style: const TextStyle(color: JC.textPrimary,
-                      fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13),
-                  textDirection: TextDirection.rtl),
-              if ((f['desc']?.toString() ?? '').isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(f['desc']?.toString() ?? '',
-                    style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
-                    textDirection: TextDirection.rtl),
+                left: BorderSide(color: JC.border, width: 0.5),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name.isNotEmpty ? name : '—',
+                    style: const TextStyle(color: JC.textPrimary,
+                        fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
+                if (desc.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(desc,
+                      style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+                ],
               ],
-            ],
-          ),
-        );
-      },
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -675,7 +705,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   border: Border.all(color: JC.blue400.withOpacity(0.2)),
                 ),
                 child: const Text(
-                  '💡 "הפעל" = מסמן את ההצעה כ"עובד על זה עכשיו" — היא תסומן בכחול ותעלה לראש הרשימה. ניתן לייצר לה פרומפט ב-Claude Code דרך מקטע הפריטים הידניים.',
+                  '⚡ "הפעל" = שולח את ההצעה לג׳רביס כמשימה פעילה — הוא יגיב עם הצעד הראשון לביצוע. ניתן להמשיך את השיחה בטאב הצ׳אט.',
                   style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 12, height: 1.5),
                 ),
               ),
@@ -685,7 +715,13 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                 GestureDetector(
                   onTap: () async {
                     Navigator.pop(ctx);
-                    if (idInt != null) await _patchProposal(idInt, isActive ? 'proposal' : 'active');
+                    if (idInt != null) {
+                      if (isActive) {
+                        await _patchProposal(idInt, 'proposal');
+                      } else {
+                        await _activateProposal(p);
+                      }
+                    }
                   },
                   child: Container(
                     width: double.infinity,
@@ -751,92 +787,107 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     final idRaw = p['id'];
     final idInt = idRaw != null ? (idRaw as num).toInt() : null;
 
-    return Opacity(
-      opacity: isDone ? 0.5 : 1,
-      child: GestureDetector(
-        onTap: () => _showProposalDetail(p),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          decoration: BoxDecoration(
-            color: JC.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border(
-              right: BorderSide(color: priorityColor, width: 3),
-              left:   BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
-              top:    BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
-              bottom: BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Opacity(
+        opacity: isDone ? 0.5 : 1,
+        child: GestureDetector(
+          onTap: () => _showProposalDetail(p),
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: JC.surfaceAlt,
+              borderRadius: BorderRadius.circular(12),
+              border: Border(
+                right: BorderSide(color: priorityColor, width: 3),
+                left:   BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+                top:    BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+                bottom: BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 14, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                // Title row
-                Row(
-                  textDirection: TextDirection.rtl,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title.isNotEmpty ? title : '(כותרת ריקה)',
-                        style: TextStyle(
-                          color: title.isNotEmpty ? JC.textPrimary : JC.textMuted,
-                          fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 14, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title row
+                  Row(
+                    children: [
+                      _badge(priorityLabel, priorityColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title.isNotEmpty ? title : '(כותרת ריקה)',
+                          style: TextStyle(
+                            color: title.isNotEmpty ? JC.textPrimary : JC.textMuted,
+                            fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14,
+                          ),
+                          textAlign: TextAlign.right,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         textDirection: TextDirection.rtl,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
+                    ],
+                  ),
+                  // Plan preview (2 lines)
+                  if (plan.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      plan,
+                      style: const TextStyle(color: JC.textSecondary,
+                          fontFamily: 'Heebo', fontSize: 12, height: 1.45),
+                      textAlign: TextAlign.right,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(width: 8),
                     _badge(priorityLabel, priorityColor),
                   ],
-                ),
-                // Plan preview (2 lines)
-                if (plan.isNotEmpty) ...[
-                  const SizedBox(height: 5),
-                  Text(
-                    plan,
-                    style: const TextStyle(color: JC.textSecondary,
-                        fontFamily: 'Heebo', fontSize: 12, height: 1.45),
-                    textDirection: TextDirection.rtl,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(height: 8),
+                  // Footer row
+                  Row(
+                    children: [
+                      // Quick activate toggle
+                      if (!isDone)
+                        GestureDetector(
+                          onTap: () {
+                            if (idInt != null) {
+                              if (isActive) {
+                                _patchProposal(idInt, 'proposal');
+                              } else {
+                                _activateProposal(p);
+                              }
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isActive ? Colors.transparent : JC.blue500.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
+                            ),
+                            child: Text(isActive ? '⏸ בטל' : '⚡ הפעל',
+                                style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                                    fontWeight: FontWeight.w600, fontSize: 11)),
+                          ),
+                        ),
+                      const SizedBox(width: 6),
+                      Text('← תוכנית מלאה',
+                          style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+                      const Spacer(),
+                      _badge(statusLabel, statusColor),
+                      if (catLabel.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        _badge(catLabel, JC.textMuted),
+                      ],
+                    ],
                   ),
                 ],
-                const SizedBox(height: 8),
-                // Footer row
-                Row(
-                  textDirection: TextDirection.rtl,
-                  children: [
-                    _badge(statusLabel, statusColor),
-                    if (catLabel.isNotEmpty) ...[
-                      const SizedBox(width: 4),
-                      _badge(catLabel, JC.textMuted),
-                    ],
-                    const Spacer(),
-                    // Quick activate toggle (without opening detail)
-                    if (!isDone)
-                      GestureDetector(
-                        onTap: () { if (idInt != null) _patchProposal(idInt, isActive ? 'proposal' : 'active'); },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isActive ? Colors.transparent : JC.blue500.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
-                          ),
-                          child: Text(isActive ? '⏸ בטל' : '⚡ הפעל',
-                              style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
-                                  fontWeight: FontWeight.w600, fontSize: 11)),
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    Text('← תוכנית מלאה',
-                        style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1073,55 +1124,58 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   Widget _buildManualItem(Map<String, dynamic> item) {
     final id   = item['id'];
     final done = item['done'] == true;
-    return Opacity(
-      opacity: done ? 0.45 : 1,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: JC.surface,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: JC.border, width: 0.8),
-        ),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: () { if (id != null) _deleteItem(id); },
-              child: const Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
-            ),
-            const SizedBox(width: 8),
-            Text(item['added']?.toString() ?? '',
-                style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-            const Spacer(),
-            Flexible(
-              child: Text(
-                item['text']?.toString() ?? '',
-                style: TextStyle(
-                  color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13,
-                  decoration: done ? TextDecoration.lineThrough : null,
-                ),
-                textDirection: TextDirection.rtl,
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () { if (id != null) _toggleItem(id); },
-              child: Container(
-                width: 20, height: 20,
-                decoration: BoxDecoration(
-                  color: done ? const Color(0xFF22C55E) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(
-                    color: done ? const Color(0xFF22C55E) : JC.border,
-                    width: 1.5,
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Opacity(
+        opacity: done ? 0.45 : 1,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: JC.surfaceAlt,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: JC.border, width: 0.8),
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () { if (id != null) _toggleItem(id); },
+                child: Container(
+                  width: 20, height: 20,
+                  decoration: BoxDecoration(
+                    color: done ? const Color(0xFF22C55E) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                      color: done ? const Color(0xFF22C55E) : JC.border,
+                      width: 1.5,
+                    ),
                   ),
+                  child: done
+                      ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                      : null,
                 ),
-                child: done
-                    ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
-                    : null,
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  item['text']?.toString() ?? '',
+                  style: TextStyle(
+                    color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13,
+                    decoration: done ? TextDecoration.lineThrough : null,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(item['added']?.toString() ?? '',
+                  style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () { if (id != null) _deleteItem(id); },
+                child: const Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1139,4 +1193,137 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           fontFamily: 'Heebo', letterSpacing: 0.8)),
     ]),
   );
+}
+
+// ─── Activate Sheet ────────────────────────────────────────────────────────────
+
+class _ActivateSheet extends StatefulWidget {
+  final String base, title, plan;
+  final VoidCallback? onSwitchToChat;
+  const _ActivateSheet({
+    required this.base,
+    required this.title,
+    required this.plan,
+    this.onSwitchToChat,
+  });
+
+  @override
+  State<_ActivateSheet> createState() => _ActivateSheetState();
+}
+
+class _ActivateSheetState extends State<_ActivateSheet> {
+  String? _response;
+  bool    _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _dispatch();
+  }
+
+  Future<void> _dispatch() async {
+    final msg = 'קבלת משימה חדשה מה-Backlog:\n\nכותרת: ${widget.title}\n\nתוכנית: ${widget.plan}\n\nאנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?';
+    try {
+      final resp = await http.post(
+        Uri.parse('${widget.base}/ask-jarvis'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'command': msg}),
+      ).timeout(const Duration(seconds: 30));
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (mounted) {
+        setState(() {
+          _response = data['answer']?.toString() ?? '';
+          _loading  = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A2E4A),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            )),
+            const SizedBox(height: 16),
+            Row(children: [
+              const Text('⚡', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 8),
+              Expanded(child: Text(
+                widget.title,
+                style: const TextStyle(color: Color(0xFFF1F5F9), fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w700, fontSize: 15),
+                maxLines: 2, overflow: TextOverflow.ellipsis,
+              )),
+            ]),
+            const SizedBox(height: 14),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  CircularProgressIndicator(color: Color(0xFF6366F1), strokeWidth: 2),
+                  SizedBox(height: 12),
+                  Text('ג׳רביס מקבל את המשימה...', style: TextStyle(
+                      color: Color(0xFF475569), fontFamily: 'Heebo', fontSize: 13)),
+                ])),
+              )
+            else if (_error != null)
+              Text('שגיאה: $_error', style: const TextStyle(
+                  color: Color(0xFFEF4444), fontFamily: 'Heebo', fontSize: 13))
+            else
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0B1422),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF1A2E4A), width: 0.8),
+                ),
+                child: Text(
+                  _response ?? '',
+                  style: const TextStyle(color: Color(0xFFCBD5E1), fontFamily: 'Heebo',
+                      fontSize: 13, height: 1.6),
+                ),
+              ),
+            const SizedBox(height: 16),
+            Row(children: [
+              if (widget.onSwitchToChat != null && !_loading)
+                GestureDetector(
+                  onTap: () { Navigator.pop(context); widget.onSwitchToChat!(); },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: const Text('המשך בצ׳אט ←', style: TextStyle(
+                        color: Colors.white, fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
+                ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Text('סגור', style: TextStyle(
+                    color: Color(0xFF475569), fontFamily: 'Heebo', fontSize: 13)),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
 }

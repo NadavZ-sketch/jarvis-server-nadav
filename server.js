@@ -1242,36 +1242,47 @@ app.post('/dashboard/backlog/generate', async (_req, res) => {
         const building = features.features?.building || [];
         const planned  = features.features?.planned  || [];
 
-        const prompt = `אתה מנהל פרויקט בכיר לפרויקט Jarvis — עוזר אישי AI מבוסס Flutter + Node.js עם 17+ אייג'נטים.
+        const prompt = `You are a senior project manager for "Jarvis" — a personal AI assistant built with Flutter + Node.js.
 
-מצב נוכחי של הפרויקט:
-✅ הושלם (${done.length}): ${done.map(f => f.name).join(', ')}
-🔨 בבנייה (${building.length}): ${building.map(f => `${f.name} — ${f.desc}`).join(', ')}
-📋 מתוכנן (${planned.length}): ${planned.map(f => `${f.name} — ${f.desc}`).join(', ')}
+Project status:
+DONE (${done.length}): ${done.map(f => f.name).join(', ')}
+IN PROGRESS (${building.length}): ${building.map(f => `${f.name}`).join(', ')}
+PLANNED (${planned.length}): ${planned.map(f => `${f.name}`).join(', ')}
 
-הצע 6 פריטי backlog אסטרטגיים ממוינים לפי דחיפות. לכל פריט:
-- title: כותרת קצרה ומדויקת (עד 60 תווים)
-- plan: תוכנית מפורטת (3-4 משפטים: מה לעשות, למה זה חשוב, איך לבצע טכנית)
-- priority: high / medium / low
-- category: feature / improvement / bug / ux
+Suggest 6 high-priority backlog items sorted by urgency.
 
-ענה בפורמט JSON בלבד, ללא טקסט נוסף:
-[{"title":"...","plan":"...","priority":"high","category":"improvement"},...]`;
+IMPORTANT: Respond with ONLY a JSON array. No markdown, no explanation, no code blocks. Use ONLY these exact English field names.
+
+Output format (copy exactly, replace the values):
+[{"title":"short title in Hebrew (max 60 chars)","plan":"detailed plan in Hebrew (3-4 sentences: what to do, why it matters, how to implement technically)","priority":"high","category":"improvement"},{"title":"...","plan":"...","priority":"medium","category":"feature"}]`;
 
         const raw = await callGemma4(prompt, false, 2000);
+
+        // Extract JSON array — handle markdown code blocks and leading text
         const jsonMatch = raw.match(/\[[\s\S]*\]/);
-        if (!jsonMatch) return res.status(500).json({ error: 'LLM did not return valid JSON' });
+        if (!jsonMatch) {
+            console.error('backlog/generate: no JSON array found in LLM output:', raw.slice(0, 200));
+            return res.status(500).json({ error: 'מודל ה-AI לא החזיר JSON תקין — נסה שוב' });
+        }
 
         const parsed = JSON.parse(jsonMatch[0]);
+
+        // Map both English and Hebrew field name variants
         const proposals = parsed.slice(0, 6).map((p, i) => ({
             id: Date.now() + i,
-            title: (p.title || '').slice(0, 80),
-            plan: p.plan || '',
-            priority: ['high', 'medium', 'low'].includes(p.priority) ? p.priority : 'medium',
-            category: p.category || 'improvement',
+            title:    ((p.title    || p['כותרת']   || p['כותרת:'] || '').toString()).slice(0, 80),
+            plan:     ((p.plan     || p['תוכנית']  || p['תכנית']  || p['תיאור'] || '').toString()),
+            priority: ['high', 'medium', 'low'].includes(p.priority || p['עדיפות'])
+                ? (p.priority || p['עדיפות']) : 'medium',
+            category: (p.category || p['קטגוריה'] || 'improvement').toString(),
             status: 'proposal',
             generated_at: new Date().toISOString().slice(0, 10),
-        }));
+        })).filter(p => p.title.trim() || p.plan.trim()); // drop truly empty items
+
+        if (proposals.length === 0) {
+            console.error('backlog/generate: all proposals had empty title+plan. Raw:', raw.slice(0, 300));
+            return res.status(500).json({ error: 'לא הצלחתי לחלץ הצעות — נסה שוב' });
+        }
 
         backlog.proposals      = proposals;
         backlog._lastGenerated = new Date().toISOString().slice(0, 10);

@@ -12,93 +12,144 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:24px 20px 60px}
-a{color:inherit;text-decoration:none}
 
-/* ── layout ── */
 .container{max-width:960px;margin:0 auto}
-h1{font-size:1.6rem;font-weight:700;letter-spacing:-.5px;margin-bottom:2px}
+h1{font-size:1.5rem;font-weight:700;letter-spacing:-.5px;margin-bottom:2px}
 h1 span{color:var(--accent)}
-.subtitle{color:var(--muted);font-size:.85rem;margin-bottom:24px}
+.subtitle{color:var(--muted);font-size:.83rem;margin-bottom:20px}
 
-/* ── status bar ── */
+/* status bar */
 .status-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   background:var(--surface);border:1px solid var(--border);border-radius:12px;
-  padding:12px 18px;margin-bottom:20px;font-size:.83rem}
-.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+  padding:10px 16px;margin-bottom:16px;font-size:.82rem}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .dot.green{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
-.dot.red{background:var(--red)}
-.dot.loading{background:var(--amber)}
+.dot.red{background:var(--red)}.dot.loading{background:var(--amber)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
-.sep{width:1px;height:18px;background:var(--border)}
+.sep{width:1px;height:16px;background:var(--border)}
 .muted{color:var(--muted)}
 
-/* ── metrics ── */
-.metrics{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px}
+/* metrics */
+.metrics{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .metric{background:var(--surface);border:1px solid var(--border);border-radius:12px;
-  padding:14px 18px;text-align:center;flex:1;min-width:100px;position:relative}
-.metric .live-dot{position:absolute;top:8px;left:8px;width:7px;height:7px;
+  padding:12px 16px;text-align:center;flex:1;min-width:90px;position:relative}
+.metric .live-dot{position:absolute;top:7px;left:7px;width:6px;height:6px;
   border-radius:50%;background:var(--green);animation:pulse 2s infinite}
-.metric-num{font-size:1.8rem;font-weight:700;color:var(--blue);line-height:1}
-.metric-label{color:var(--text);font-size:.8rem;font-weight:600;margin-bottom:4px}
-.metric-sub{color:var(--muted);font-size:.72rem;margin-top:4px}
+.metric-num{font-size:1.6rem;font-weight:700;color:var(--blue);line-height:1}
+.metric-label{color:var(--text);font-size:.77rem;font-weight:600;margin-bottom:3px}
+.metric-sub{color:var(--muted);font-size:.68rem;margin-top:3px}
 
-/* ── section ── */
-.section-title{display:flex;align-items:center;gap:8px;font-size:.78rem;
+/* progress bar */
+.progress-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:14px 18px;margin-bottom:20px}
+.progress-stats{display:flex;gap:18px;margin-bottom:10px;font-size:.82rem;flex-wrap:wrap;align-items:center}
+.progress-stats .ps-item{display:flex;align-items:center;gap:5px}
+.ps-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.progress-bar-track{height:8px;border-radius:6px;background:var(--border);overflow:hidden;display:flex}
+.pb-seg{transition:width .6s cubic-bezier(.4,0,.2,1)}
+.pct-label{margin-right:auto;font-weight:700;color:var(--text)}
+
+/* section title */
+.section-title{display:flex;align-items:center;gap:8px;font-size:.76rem;
   font-weight:700;color:var(--accent);letter-spacing:1.2px;text-transform:uppercase;
-  margin:28px 0 12px}
+  margin:24px 0 10px}
 .section-title::after{content:'';flex:1;height:1px;background:var(--border)}
 
-/* ── feature board ── */
-.board{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:8px}
+/* feature board */
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:6px}
 @media(max-width:640px){.board{grid-template-columns:1fr}}
-.col-header{font-size:.8rem;font-weight:700;padding:8px 14px;border-radius:8px;
-  display:flex;align-items:center;gap:7px;margin-bottom:8px}
-.col-header.done{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25)}
-.col-header.building{background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25)}
-.col-header.planned{background:rgba(107,114,128,.12);color:var(--muted);border:1px solid rgba(107,114,128,.25)}
+.col-header{font-size:.78rem;font-weight:700;padding:7px 12px;border-radius:8px;
+  display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.col-header.done{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.col-header.building{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
+.col-header.planned{background:rgba(107,114,128,.1);color:var(--muted);border:1px solid rgba(107,114,128,.2)}
 .feature-pill{background:var(--card);border:1px solid var(--border);border-radius:8px;
-  padding:9px 12px;font-size:.83rem;margin-bottom:6px;cursor:default;
+  padding:8px 11px;font-size:.81rem;margin-bottom:5px;cursor:default;
   transition:transform .12s,box-shadow .12s}
-.feature-pill:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.feature-pill:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.35)}
 .feature-pill .fname{font-weight:600}
-.feature-pill .fdesc{color:var(--muted);font-size:.72rem;margin-top:2px;line-height:1.4}
-.badge{display:inline-block;font-size:.65rem;font-weight:700;border-radius:4px;
-  padding:2px 7px;letter-spacing:.3px;margin-bottom:5px}
-.badge.done{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)}
-.badge.building{background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.3)}
-.badge.planned{background:rgba(107,114,128,.15);color:var(--muted);border:1px solid rgba(107,114,128,.3)}
+.feature-pill .fdesc{color:var(--muted);font-size:.7rem;margin-top:2px;line-height:1.4}
+.badge{display:inline-block;font-size:.63rem;font-weight:700;border-radius:4px;
+  padding:2px 6px;letter-spacing:.3px;margin-bottom:4px}
+.badge.done{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25)}
+.badge.building{background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25)}
+.badge.planned{background:rgba(107,114,128,.12);color:var(--muted);border:1px solid rgba(107,114,128,.25)}
+.edit-hint{color:var(--muted);font-size:.72rem;margin-top:6px;text-align:center}
+.edit-hint code{background:var(--card);border-radius:4px;padding:1px 5px;font-size:.68rem}
 
-/* ── backlog ── */
-.backlog-add{display:flex;gap:8px;margin-bottom:14px}
-.backlog-add input{flex:1;background:var(--surface);border:1px solid var(--border);
-  border-radius:8px;padding:10px 14px;color:var(--text);font-size:.88rem;font-family:inherit;outline:none;direction:rtl}
-.backlog-add input:focus{border-color:var(--accent)}
-.backlog-add button{background:var(--accent);border:none;border-radius:8px;
-  padding:10px 18px;color:#fff;font-size:.88rem;font-weight:600;cursor:pointer;
-  font-family:inherit;white-space:nowrap;transition:opacity .15s}
-.backlog-add button:hover{opacity:.85}
-.backlog-list{display:flex;flex-direction:column;gap:6px}
-.backlog-item{background:var(--surface);border:1px solid var(--border);border-radius:10px;
-  padding:11px 14px;display:flex;align-items:center;gap:10px;transition:opacity .2s}
-.backlog-item.done-item{opacity:.45}
-.backlog-item.done-item .item-text{text-decoration:line-through}
-.check-btn{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--border);
+/* AI backlog proposals */
+.backlog-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.backlog-meta{color:var(--muted);font-size:.75rem}
+.gen-btn{background:var(--surface);border:1px solid var(--accent);border-radius:8px;
+  padding:7px 16px;color:var(--accent);font-size:.82rem;font-weight:600;
+  cursor:pointer;font-family:inherit;transition:background .15s;display:flex;align-items:center;gap:6px}
+.gen-btn:hover:not(:disabled){background:rgba(99,102,241,.1)}
+.gen-btn:disabled{opacity:.5;cursor:not-allowed}
+.spinner{width:13px;height:13px;border:2px solid rgba(99,102,241,.3);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.proposal{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:14px 16px;margin-bottom:8px;border-right:3px solid var(--border);
+  transition:border-color .2s,box-shadow .2s}
+.proposal.priority-high{border-right-color:var(--red)}
+.proposal.priority-medium{border-right-color:var(--amber)}
+.proposal.priority-low{border-right-color:var(--muted)}
+.proposal.status-active{border-color:var(--accent);box-shadow:0 0 0 1px rgba(99,102,241,.3)}
+.proposal.status-done{opacity:.45}
+.proposal-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.proposal-title{font-weight:600;font-size:.88rem;flex:1;min-width:0}
+.pill-badge{font-size:.62rem;font-weight:700;border-radius:4px;padding:2px 7px;white-space:nowrap}
+.pill-priority-high{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25)}
+.pill-priority-medium{background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25)}
+.pill-priority-low{background:rgba(148,163,184,.12);color:var(--muted);border:1px solid rgba(148,163,184,.25)}
+.pill-cat{background:var(--card);color:var(--muted);border:1px solid var(--border)}
+.pill-status-proposal{background:rgba(148,163,184,.1);color:var(--muted);border:1px solid var(--border)}
+.pill-status-active{background:rgba(99,102,241,.12);color:var(--accent);border:1px solid rgba(99,102,241,.25)}
+.pill-status-done{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.proposal-plan{color:var(--muted);font-size:.79rem;line-height:1.6;
+  max-height:3.5em;overflow:hidden;transition:max-height .3s ease}
+.proposal-plan.expanded{max-height:300px}
+.proposal-actions{display:flex;gap:7px;margin-top:10px;align-items:center;flex-wrap:wrap}
+.btn-activate{background:var(--accent);border:none;border-radius:7px;
+  padding:5px 13px;color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .15s}
+.btn-activate:hover{opacity:.85}
+.btn-activate.deactivate{background:var(--surface);color:var(--accent);border:1px solid var(--accent)}
+.btn-expand{background:none;border:none;color:var(--muted);font-size:.75rem;cursor:pointer;
+  font-family:inherit;padding:0;transition:color .12s}
+.btn-expand:hover{color:var(--text)}
+.btn-del{background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;
+  padding:3px 7px;border-radius:4px;margin-right:auto;transition:color .12s}
+.btn-del:hover{color:var(--red)}
+
+/* manual items */
+.manual-section{margin-top:24px}
+.manual-add{display:flex;gap:7px;margin-bottom:10px}
+.manual-add input{flex:1;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:8px 12px;color:var(--text);font-size:.84rem;font-family:inherit;outline:none;direction:rtl}
+.manual-add input:focus{border-color:var(--accent)}
+.manual-add button{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:8px 14px;color:var(--text);font-size:.82rem;font-weight:600;cursor:pointer;
+  font-family:inherit;white-space:nowrap;transition:border-color .12s}
+.manual-add button:hover{border-color:var(--accent);color:var(--accent)}
+.manual-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;
+  padding:9px 12px;display:flex;align-items:center;gap:8px;margin-bottom:5px;transition:opacity .2s}
+.manual-item.done-item{opacity:.4}
+.manual-item.done-item .item-text{text-decoration:line-through}
+.check-btn{width:20px;height:20px;border-radius:5px;border:1.5px solid var(--border);
   background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;
-  justify-content:center;font-size:.8rem;transition:all .15s}
+  justify-content:center;font-size:.75rem;transition:all .15s}
 .check-btn.checked{background:var(--green);border-color:var(--green);color:#fff}
-.item-text{flex:1;font-size:.88rem}
-.item-meta{color:var(--muted);font-size:.72rem;flex-shrink:0}
+.item-text{flex:1;font-size:.84rem}
+.item-meta{color:var(--muted);font-size:.7rem;flex-shrink:0}
 .del-btn{background:none;border:none;color:var(--muted);cursor:pointer;
-  font-size:.9rem;padding:2px 6px;border-radius:4px;line-height:1;transition:color .12s}
+  font-size:.85rem;padding:2px 5px;border-radius:4px;transition:color .12s}
 .del-btn:hover{color:var(--red)}
-.backlog-empty{color:var(--muted);font-size:.85rem;text-align:center;padding:20px}
+.empty-state{color:var(--muted);font-size:.83rem;text-align:center;padding:18px;
+  display:flex;flex-direction:column;align-items:center;gap:8px}
+.empty-state span{font-size:1.6rem}
 
-/* ── features edit hint ── */
-.edit-hint{color:var(--muted);font-size:.75rem;margin-top:8px;text-align:center}
-.edit-hint code{background:var(--card);border-radius:4px;padding:1px 6px;font-size:.72rem}
-
-/* ── refresh row ── */
-.refresh-row{color:var(--muted);font-size:.74rem;text-align:center;margin-top:10px}
+.refresh-row{color:var(--muted);font-size:.72rem;text-align:center;margin-top:8px}
 </style>
 </head>
 <body>
@@ -128,6 +179,22 @@ h1 span{color:var(--accent)}
 </div>
 <div class="refresh-row">מתעדכן כל 30 שניות · <span id="last-refresh">—</span></div>
 
+<!-- PROGRESS BAR -->
+<div class="section-title">📊 מצב הפרויקט</div>
+<div class="progress-wrap" id="progressWrap" style="display:none">
+  <div class="progress-stats">
+    <div class="ps-item"><div class="ps-dot" style="background:var(--green)"></div><span style="color:var(--green)"><b id="pb-done">—</b> הושלמו</span></div>
+    <div class="ps-item"><div class="ps-dot" style="background:var(--amber)"></div><span style="color:var(--amber)"><b id="pb-building">—</b> בבנייה</span></div>
+    <div class="ps-item"><div class="ps-dot" style="background:var(--muted)"></div><span style="color:var(--muted)"><b id="pb-planned">—</b> מתוכננות</span></div>
+    <span class="pct-label" id="pb-pct-label"></span>
+  </div>
+  <div class="progress-bar-track">
+    <div class="pb-seg" id="pb-done-seg" style="background:var(--green);width:0%"></div>
+    <div class="pb-seg" id="pb-building-seg" style="background:var(--amber);width:0%"></div>
+    <div class="pb-seg" id="pb-planned-seg" style="background:#475569;width:0%"></div>
+  </div>
+</div>
+
 <!-- FEATURE BOARD -->
 <div class="section-title">🗂️ סטטוס יכולות</div>
 <div class="board" id="board">
@@ -137,26 +204,36 @@ h1 span{color:var(--accent)}
 </div>
 <p class="edit-hint">לעדכון הרשימה — ערוך <code>features.json</code> בשרת</p>
 
-<!-- BACKLOG -->
-<div class="section-title">📌 Backlog — מה עובד על הפרויקט</div>
-<div class="backlog-add">
-  <input id="backlogInput" placeholder="הוסף משימה או רעיון לפרויקט..." />
-  <button onclick="addBacklogItem()">הוסף</button>
+<!-- AI BACKLOG -->
+<div class="section-title">🤖 Backlog AI</div>
+<div class="backlog-header">
+  <span class="backlog-meta" id="backlog-meta">—</span>
+  <button class="gen-btn" id="genBtn" onclick="generateProposals()">
+    <div class="spinner" id="genSpinner"></div>
+    <span id="genBtnText">✨ צור הצעות AI</span>
+  </button>
 </div>
-<div class="backlog-list" id="backlogList">
-  <div class="backlog-empty">טוען...</div>
+<div id="proposalsList"></div>
+
+<!-- MANUAL ITEMS -->
+<div class="manual-section">
+  <div class="section-title" style="margin-top:8px">📌 פריטים ידניים</div>
+  <div class="manual-add">
+    <input id="backlogInput" placeholder="הוסף פריט ידני..." />
+    <button onclick="addManualItem()">הוסף</button>
+  </div>
+  <div id="backlogList"><div class="empty-state"><span>📋</span>אין פריטים ידניים</div></div>
 </div>
 
-</div><!-- /container -->
+</div>
 
 <script>
-// ── Server health ──────────────────────────────────────────────────────────────
+// ── Health ─────────────────────────────────────────────────────────────────────
 async function checkHealth() {
   try {
-    const t0  = Date.now();
-    const res = await fetch('/health', { signal: AbortSignal.timeout(4000) });
-    const ms  = Date.now() - t0;
-    const d   = await res.json();
+    const t0 = Date.now();
+    await fetch('/health', { signal: AbortSignal.timeout(4000) });
+    const ms = Date.now() - t0;
     document.getElementById('sdot').className  = 'dot green';
     document.getElementById('stext').textContent = '● שרת פעיל';
     document.getElementById('slat').textContent  = `זמן תגובה: ${ms}ms`;
@@ -167,7 +244,7 @@ async function checkHealth() {
   }
 }
 
-// ── Live metrics ───────────────────────────────────────────────────────────────
+// ── Stats ──────────────────────────────────────────────────────────────────────
 async function loadStats() {
   try {
     const d = await fetch('/stats', { signal: AbortSignal.timeout(6000) }).then(r => r.json());
@@ -175,7 +252,7 @@ async function loadStats() {
     s('m-chat',     d.chat?.total);
     s('m-chat-sub', `${d.chat?.today ?? 0} היום`);
     s('m-tasks',    d.tasks?.total);
-    s('m-tasks-sub',`${d.tasks?.total - d.tasks?.done ?? 0} פתוחות`);
+    s('m-tasks-sub',`${(d.tasks?.total ?? 0) - (d.tasks?.done ?? 0)} פתוחות`);
     s('m-rem',      d.reminders?.total);
     s('m-rem-sub',  `${d.reminders?.active ?? 0} פעילות`);
     s('m-mem',      d.memories?.total);
@@ -184,10 +261,11 @@ async function loadStats() {
   } catch { document.getElementById('last-refresh').textContent = 'שגיאת טעינה'; }
 }
 
-// ── Feature board ──────────────────────────────────────────────────────────────
+// ── Features + progress bar ────────────────────────────────────────────────────
 function pill(f, status) {
+  const labels = { done: '✅ הושלם', building: '🔨 בבנייה', planned: '📋 מתוכנן' };
   return `<div class="feature-pill">
-    <span class="badge ${status}">${status==='done'?'✅ הושלם':status==='building'?'🔨 בבנייה':'📋 מתוכנן'}</span>
+    <span class="badge ${status}">${labels[status]}</span>
     <div class="fname">${f.name}</div>
     <div class="fdesc">${f.desc}</div>
   </div>`;
@@ -195,39 +273,149 @@ function pill(f, status) {
 
 async function loadFeatures() {
   try {
-    const d = await fetch('/dashboard/features').then(r => r.json());
+    const d        = await fetch('/dashboard/features').then(r => r.json());
     const done     = d.features?.done     || [];
     const building = d.features?.building || [];
     const planned  = d.features?.planned  || [];
+    const total    = done.length + building.length + planned.length;
 
     document.getElementById('done-count').textContent     = done.length;
     document.getElementById('building-count').textContent = building.length;
     document.getElementById('planned-count').textContent  = planned.length;
-
-    document.getElementById('col-done').innerHTML     = done.map(f => pill(f,'done')).join('');
-    document.getElementById('col-building').innerHTML = building.map(f => pill(f,'building')).join('');
-    document.getElementById('col-planned').innerHTML  = planned.map(f => pill(f,'planned')).join('');
-
+    document.getElementById('col-done').innerHTML         = done.map(f => pill(f,'done')).join('');
+    document.getElementById('col-building').innerHTML     = building.map(f => pill(f,'building')).join('');
+    document.getElementById('col-planned').innerHTML      = planned.map(f => pill(f,'planned')).join('');
     document.getElementById('subtitle').textContent =
       `עוזר אישי AI · ${done.length} יכולות פעילות · עודכן: ${d.lastUpdated || '—'}`;
+
+    // progress bar
+    if (total > 0) {
+      const pctDone     = (done.length / total * 100).toFixed(0);
+      const pctBuilding = (building.length / total * 100).toFixed(0);
+      const pctPlanned  = (100 - pctDone - pctBuilding);
+      document.getElementById('pb-done').textContent     = done.length;
+      document.getElementById('pb-building').textContent = building.length;
+      document.getElementById('pb-planned').textContent  = planned.length;
+      document.getElementById('pb-pct-label').textContent = `${pctDone}% הושלם`;
+      document.getElementById('pb-done-seg').style.width     = pctDone + '%';
+      document.getElementById('pb-building-seg').style.width = pctBuilding + '%';
+      document.getElementById('pb-planned-seg').style.width  = pctPlanned + '%';
+      document.getElementById('progressWrap').style.display = '';
+    }
   } catch {
     document.getElementById('subtitle').textContent = 'לא ניתן לטעון features.json';
   }
 }
 
-// ── Backlog ────────────────────────────────────────────────────────────────────
+// ── Proposals ─────────────────────────────────────────────────────────────────
+const PRIORITY_LABELS = { high: '🔴 גבוה', medium: '🟡 בינוני', low: '🟢 נמוך' };
+const PRIORITY_PILLS  = { high: 'pill-priority-high', medium: 'pill-priority-medium', low: 'pill-priority-low' };
+const STATUS_LABELS   = { proposal: '💡 הצעה', active: '⚡ פעיל', done: '✅ הושלם' };
+const STATUS_PILLS    = { proposal: 'pill-status-proposal', active: 'pill-status-active', done: 'pill-status-done' };
+const CAT_LABELS      = { feature: 'פיצ\'ר', improvement: 'שיפור', bug: 'באג', ux: 'UX' };
+
+function renderProposals(proposals) {
+  const el = document.getElementById('proposalsList');
+  if (!proposals || !proposals.length) {
+    el.innerHTML = `<div class="empty-state"><span>🤖</span>אין הצעות — לחץ על "צור הצעות AI" כדי ש-Jarvis ינתח את הפרויקט</div>`;
+    return;
+  }
+  el.innerHTML = proposals.map(p => {
+    const statusBtn = p.status === 'active'
+      ? `<button class="btn-activate deactivate" onclick="patchProposal(${p.id},'proposal')">⏸ בטל הפעלה</button>`
+      : p.status === 'done' ? ''
+      : `<button class="btn-activate" onclick="patchProposal(${p.id},'active')">⚡ הפעל</button>`;
+    return `<div class="proposal priority-${p.priority} status-${p.status}" id="pr-${p.id}">
+      <div class="proposal-top">
+        <span class="proposal-title">${p.title}</span>
+        <span class="pill-badge ${PRIORITY_PILLS[p.priority]}">${PRIORITY_LABELS[p.priority]}</span>
+        <span class="pill-badge pill-cat">${CAT_LABELS[p.category] || p.category}</span>
+        <span class="pill-badge ${STATUS_PILLS[p.status]}">${STATUS_LABELS[p.status]}</span>
+      </div>
+      <div class="proposal-plan" id="plan-${p.id}">${p.plan}</div>
+      <div class="proposal-actions">
+        <button class="btn-del" onclick="deleteProposal(${p.id})">✕ הסר</button>
+        <button class="btn-expand" onclick="togglePlan(${p.id})">▼ תוכנית מלאה</button>
+        ${statusBtn}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function togglePlan(id) {
+  const el  = document.getElementById(`plan-${id}`);
+  const btn = el.nextElementSibling.querySelector('.btn-expand');
+  const exp = el.classList.toggle('expanded');
+  btn.textContent = exp ? '▲ סגור' : '▼ תוכנית מלאה';
+}
+
+async function patchProposal(id, status) {
+  try {
+    await fetch(`/dashboard/backlog/proposals/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    await loadBacklog();
+  } catch {}
+}
+
+async function deleteProposal(id) {
+  try {
+    await fetch(`/dashboard/backlog/proposals/${id}`, { method: 'DELETE' });
+    await loadBacklog();
+  } catch {}
+}
+
+async function generateProposals() {
+  const btn = document.getElementById('genBtn');
+  const spinner = document.getElementById('genSpinner');
+  const btnText = document.getElementById('genBtnText');
+  btn.disabled = true;
+  spinner.style.display = 'block';
+  btnText.textContent = 'מנתח פרויקט...';
+  document.getElementById('proposalsList').innerHTML =
+    `<div class="empty-state"><span>⏳</span>Jarvis מנתח את הפרויקט ויוצר הצעות...</div>`;
+  try {
+    const d = await fetch('/dashboard/backlog/generate', { method: 'POST' }).then(r => r.json());
+    if (d.proposals) {
+      renderProposals(d.proposals);
+      document.getElementById('backlog-meta').textContent = `נוצר: ${d.generated_at || '—'}`;
+    } else {
+      document.getElementById('proposalsList').innerHTML =
+        `<div class="empty-state"><span>⚠️</span>${d.error || 'שגיאה ביצירת הצעות'}</div>`;
+    }
+  } catch (e) {
+    document.getElementById('proposalsList').innerHTML =
+      `<div class="empty-state"><span>⚠️</span>שגיאת רשת — בדוק שהשרת פעיל</div>`;
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+    btnText.textContent = '✨ צור הצעות חדשות';
+  }
+}
+
+// ── Manual backlog ─────────────────────────────────────────────────────────────
 async function loadBacklog() {
   try {
     const d = await fetch('/dashboard/backlog').then(r => r.json());
-    renderBacklog(d.items || []);
-  } catch { document.getElementById('backlogList').innerHTML = '<div class="backlog-empty">⚠️ לא ניתן לטעון backlog</div>'; }
+    renderProposals(d.proposals || []);
+    if (d._lastGenerated) document.getElementById('backlog-meta').textContent = `נוצר: ${d._lastGenerated}`;
+    renderManual(d.items || []);
+  } catch {
+    document.getElementById('proposalsList').innerHTML =
+      `<div class="empty-state"><span>⚠️</span>לא ניתן לטעון backlog</div>`;
+  }
 }
 
-function renderBacklog(items) {
+function renderManual(items) {
   const list = document.getElementById('backlogList');
-  if (!items.length) { list.innerHTML = '<div class="backlog-empty">אין פריטים — הוסף רעיון או משימה</div>'; return; }
+  if (!items.length) {
+    list.innerHTML = '<div class="empty-state"><span>📋</span>אין פריטים ידניים</div>';
+    return;
+  }
   list.innerHTML = items.map(item => `
-    <div class="backlog-item ${item.done ? 'done-item' : ''}" id="bi-${item.id}">
+    <div class="manual-item ${item.done ? 'done-item' : ''}" id="bi-${item.id}">
       <button class="check-btn ${item.done ? 'checked' : ''}" onclick="toggleItem(${item.id})">${item.done ? '✓' : ''}</button>
       <span class="item-text">${item.text}</span>
       <span class="item-meta">${item.added || ''}</span>
@@ -235,41 +423,32 @@ function renderBacklog(items) {
     </div>`).join('');
 }
 
-async function addBacklogItem() {
+async function addManualItem() {
   const input = document.getElementById('backlogInput');
   const text  = input.value.trim();
   if (!text) return;
   try {
-    const d = await fetch('/dashboard/backlog', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    await fetch('/dashboard/backlog', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
-    }).then(r => r.json());
+    });
     input.value = '';
     await loadBacklog();
   } catch { alert('שגיאה בהוספה'); }
 }
 
 async function toggleItem(id) {
-  try {
-    await fetch(`/dashboard/backlog/${id}`, { method: 'PATCH' });
-    await loadBacklog();
-  } catch {}
+  try { await fetch(`/dashboard/backlog/${id}`, { method: 'PATCH' }); await loadBacklog(); } catch {}
 }
-
 async function deleteItem(id) {
-  try {
-    await fetch(`/dashboard/backlog/${id}`, { method: 'DELETE' });
-    await loadBacklog();
-  } catch {}
+  try { await fetch(`/dashboard/backlog/${id}`, { method: 'DELETE' }); await loadBacklog(); } catch {}
 }
 
-// Enter key on backlog input
 document.getElementById('backlogInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') addBacklogItem();
+  if (e.key === 'Enter') addManualItem();
 });
 
-// ── Auto-refresh ───────────────────────────────────────────────────────────────
+// ── Init ───────────────────────────────────────────────────────────────────────
 checkHealth();
 loadStats();
 loadFeatures();

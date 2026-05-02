@@ -1,7 +1,9 @@
 {
+  "proposals": [],
   "items": [
     { "id": 1, "text": "בדוק שהאורב ממשיך להקשיב אחרי תשובה", "done": false, "added": "2026-05-01" },
     { "id": 2, "text": "וודא שמהירות הדיבור נשמעת טבעית", "done": false, "added": "2026-05-01" }
   ],
-  "_nextId": 3
+  "_nextId": 3,
+  "_lastGenerated": null
 }

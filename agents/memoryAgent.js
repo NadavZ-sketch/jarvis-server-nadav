@@ -42,6 +42,8 @@ User message: `;
 async function autoExtractMemory(userMessage, assistantAnswer, supabase, settings = {}) {
     try {
         if (!userMessage || userMessage.trim().length < 8) return;
+        // Skip memory-recall and memory-delete questions — nothing personal to extract
+        if (/מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת|מחק זיכרון|הסר זיכרון|שכח ש/i.test(userMessage)) return;
 
         const prompt = AUTO_EXTRACT_PROMPT + userMessage
             + `\nAssistant reply: ${(assistantAnswer || '').slice(0, 200)}`;
@@ -114,7 +116,7 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
             return deleteMemory(userMessage, supabase);
         }
 
-        const isRecall = /תזכיר|מה אתה יודע|מה זכרת|ספר לי עליי|מה שמרת/i.test(userMessage);
+        const isRecall = /תזכיר|מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת/i.test(userMessage);
 
         if (isRecall) {
             // Try Pinecone semantic search first; fall back to fetching all

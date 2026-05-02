@@ -463,83 +463,90 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       return const Padding(padding: EdgeInsets.all(24),
           child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)));
     }
-    return Column(
-      children: [
-        TabBar(
-          controller: _featureTabCtrl,
-          labelColor: JC.blue400,
-          unselectedLabelColor: JC.textMuted,
-          indicatorColor: JC.blue400,
-          indicatorSize: TabBarIndicatorSize.label,
-          dividerColor: JC.border,
-          labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 12),
-          tabs: [
-            Tab(text: '✅ ${_done.length}  הושלם'),
-            Tab(text: '🔨 ${_building.length}  בבנייה'),
-            Tab(text: '📋 ${_planned.length}  מתוכנן'),
-          ],
-        ),
-        SizedBox(
-          height: 220,
-          child: TabBarView(
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Column(
+        children: [
+          TabBar(
             controller: _featureTabCtrl,
-            children: [
-              _featureList(_done, const Color(0xFF22C55E)),
-              _featureList(_building, const Color(0xFFF59E0B)),
-              _featureList(_planned, JC.textMuted),
+            labelColor: JC.blue400,
+            unselectedLabelColor: JC.textMuted,
+            indicatorColor: JC.blue400,
+            indicatorSize: TabBarIndicatorSize.label,
+            dividerColor: JC.border,
+            labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 12),
+            unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 12),
+            tabs: [
+              Tab(text: '✅ ${_done.length} הושלם'),
+              Tab(text: '🔨 ${_building.length} בבנייה'),
+              Tab(text: '📋 ${_planned.length} מתוכנן'),
             ],
           ),
-        ),
-        if (_featuresUpdated.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text('עודכן: $_featuresUpdated',
-                style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
-                textAlign: TextAlign.center),
+          SizedBox(
+            height: 220,
+            child: TabBarView(
+              controller: _featureTabCtrl,
+              children: [
+                _featureList(_done, const Color(0xFF22C55E)),
+                _featureList(_building, const Color(0xFFF59E0B)),
+                _featureList(_planned, JC.textMuted),
+              ],
+            ),
           ),
-      ],
+          if (_featuresUpdated.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('עודכן: $_featuresUpdated',
+                  style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                  textAlign: TextAlign.center),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _featureList(List<Map<String, dynamic>> features, Color color) {
     if (features.isEmpty) {
-      return Center(child: Text('אין פריטים',
-          style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)));
+      return const Center(child: Text('אין פריטים',
+          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)));
     }
-    return ListView.builder(
+    // Use SingleChildScrollView + Column to avoid nested ListView-in-ListView rendering issues
+    return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: features.length,
-      itemBuilder: (_, i) {
-        final f = features[i];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: JC.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border(right: BorderSide(color: color.withOpacity(0.5), width: 2.5),
+      child: Column(
+        children: features.map((f) {
+          final name = f['name']?.toString() ?? '';
+          final desc = f['desc']?.toString() ?? '';
+          return Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: JC.surfaceAlt,
+              borderRadius: BorderRadius.circular(8),
+              border: Border(
+                right: BorderSide(color: color, width: 3),
                 top: BorderSide(color: JC.border, width: 0.5),
                 bottom: BorderSide(color: JC.border, width: 0.5),
-                left: BorderSide(color: JC.border, width: 0.5)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(f['name']?.toString() ?? '',
-                  style: const TextStyle(color: JC.textPrimary,
-                      fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13),
-                  textDirection: TextDirection.rtl),
-              if ((f['desc']?.toString() ?? '').isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(f['desc']?.toString() ?? '',
-                    style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
-                    textDirection: TextDirection.rtl),
+                left: BorderSide(color: JC.border, width: 0.5),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name.isNotEmpty ? name : '—',
+                    style: const TextStyle(color: JC.textPrimary,
+                        fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
+                if (desc.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(desc,
+                      style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+                ],
               ],
-            ],
-          ),
-        );
-      },
+            ),
+          );
+        }).toList(),
+      ),
     );
   }
 
@@ -751,92 +758,94 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     final idRaw = p['id'];
     final idInt = idRaw != null ? (idRaw as num).toInt() : null;
 
-    return Opacity(
-      opacity: isDone ? 0.5 : 1,
-      child: GestureDetector(
-        onTap: () => _showProposalDetail(p),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          decoration: BoxDecoration(
-            color: JC.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border(
-              right: BorderSide(color: priorityColor, width: 3),
-              left:   BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
-              top:    BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
-              bottom: BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Opacity(
+        opacity: isDone ? 0.5 : 1,
+        child: GestureDetector(
+          onTap: () => _showProposalDetail(p),
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: JC.surfaceAlt,
+              borderRadius: BorderRadius.circular(12),
+              border: Border(
+                right: BorderSide(color: priorityColor, width: 3),
+                left:   BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+                top:    BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+                bottom: BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+              ),
             ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 14, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                // Title row
-                Row(
-                  textDirection: TextDirection.rtl,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title.isNotEmpty ? title : '(כותרת ריקה)',
-                        style: TextStyle(
-                          color: title.isNotEmpty ? JC.textPrimary : JC.textMuted,
-                          fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 14, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title row
+                  Row(
+                    children: [
+                      _badge(priorityLabel, priorityColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title.isNotEmpty ? title : '(כותרת ריקה)',
+                          style: TextStyle(
+                            color: title.isNotEmpty ? JC.textPrimary : JC.textMuted,
+                            fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14,
+                          ),
+                          textAlign: TextAlign.right,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        textDirection: TextDirection.rtl,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
+                    ],
+                  ),
+                  // Plan preview (2 lines)
+                  if (plan.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      plan,
+                      style: const TextStyle(color: JC.textSecondary,
+                          fontFamily: 'Heebo', fontSize: 12, height: 1.45),
+                      textAlign: TextAlign.right,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(width: 8),
-                    _badge(priorityLabel, priorityColor),
                   ],
-                ),
-                // Plan preview (2 lines)
-                if (plan.isNotEmpty) ...[
-                  const SizedBox(height: 5),
-                  Text(
-                    plan,
-                    style: const TextStyle(color: JC.textSecondary,
-                        fontFamily: 'Heebo', fontSize: 12, height: 1.45),
-                    textDirection: TextDirection.rtl,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  const SizedBox(height: 8),
+                  // Footer row
+                  Row(
+                    children: [
+                      // Quick activate toggle
+                      if (!isDone)
+                        GestureDetector(
+                          onTap: () { if (idInt != null) _patchProposal(idInt, isActive ? 'proposal' : 'active'); },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isActive ? Colors.transparent : JC.blue500.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
+                            ),
+                            child: Text(isActive ? '⏸ בטל' : '⚡ הפעל',
+                                style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                                    fontWeight: FontWeight.w600, fontSize: 11)),
+                          ),
+                        ),
+                      const SizedBox(width: 6),
+                      Text('← תוכנית מלאה',
+                          style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+                      const Spacer(),
+                      _badge(statusLabel, statusColor),
+                      if (catLabel.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        _badge(catLabel, JC.textMuted),
+                      ],
+                    ],
                   ),
                 ],
-                const SizedBox(height: 8),
-                // Footer row
-                Row(
-                  textDirection: TextDirection.rtl,
-                  children: [
-                    _badge(statusLabel, statusColor),
-                    if (catLabel.isNotEmpty) ...[
-                      const SizedBox(width: 4),
-                      _badge(catLabel, JC.textMuted),
-                    ],
-                    const Spacer(),
-                    // Quick activate toggle (without opening detail)
-                    if (!isDone)
-                      GestureDetector(
-                        onTap: () { if (idInt != null) _patchProposal(idInt, isActive ? 'proposal' : 'active'); },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isActive ? Colors.transparent : JC.blue500.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
-                          ),
-                          child: Text(isActive ? '⏸ בטל' : '⚡ הפעל',
-                              style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
-                                  fontWeight: FontWeight.w600, fontSize: 11)),
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    Text('← תוכנית מלאה',
-                        style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1073,55 +1082,58 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   Widget _buildManualItem(Map<String, dynamic> item) {
     final id   = item['id'];
     final done = item['done'] == true;
-    return Opacity(
-      opacity: done ? 0.45 : 1,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: JC.surface,
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: JC.border, width: 0.8),
-        ),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: () { if (id != null) _deleteItem(id); },
-              child: const Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
-            ),
-            const SizedBox(width: 8),
-            Text(item['added']?.toString() ?? '',
-                style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-            const Spacer(),
-            Flexible(
-              child: Text(
-                item['text']?.toString() ?? '',
-                style: TextStyle(
-                  color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13,
-                  decoration: done ? TextDecoration.lineThrough : null,
-                ),
-                textDirection: TextDirection.rtl,
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () { if (id != null) _toggleItem(id); },
-              child: Container(
-                width: 20, height: 20,
-                decoration: BoxDecoration(
-                  color: done ? const Color(0xFF22C55E) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(
-                    color: done ? const Color(0xFF22C55E) : JC.border,
-                    width: 1.5,
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Opacity(
+        opacity: done ? 0.45 : 1,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: JC.surfaceAlt,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: JC.border, width: 0.8),
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () { if (id != null) _toggleItem(id); },
+                child: Container(
+                  width: 20, height: 20,
+                  decoration: BoxDecoration(
+                    color: done ? const Color(0xFF22C55E) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                      color: done ? const Color(0xFF22C55E) : JC.border,
+                      width: 1.5,
+                    ),
                   ),
+                  child: done
+                      ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                      : null,
                 ),
-                child: done
-                    ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
-                    : null,
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  item['text']?.toString() ?? '',
+                  style: TextStyle(
+                    color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13,
+                    decoration: done ? TextDecoration.lineThrough : null,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(item['added']?.toString() ?? '',
+                  style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () { if (id != null) _deleteItem(id); },
+                child: const Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
+              ),
+            ],
+          ),
         ),
       ),
     );

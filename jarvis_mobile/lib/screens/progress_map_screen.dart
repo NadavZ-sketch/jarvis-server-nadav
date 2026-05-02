@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -49,6 +50,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   bool _promptCopied = false;
 
   late TabController _featureTabCtrl;
+  Timer? _retryTimer;
 
   @override
   void initState() {
@@ -59,22 +61,33 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
     _featureTabCtrl.dispose();
     _addCtrl.dispose();
     _promptCtrl.dispose();
     super.dispose();
   }
 
+  void _scheduleRetry() {
+    _retryTimer?.cancel();
+    _retryTimer = Timer(const Duration(seconds: 25), () {
+      if (mounted) _loadAll();
+    });
+  }
+
   String get _base => widget.settings.serverUrl;
 
   Future<void> _loadAll() async {
+    _retryTimer?.cancel();
     await Future.wait([_checkHealth(), _loadStats(), _loadFeatures(), _loadBacklog()]);
+    // Auto-retry if server was unreachable — Render free tier cold-starts in 15-60s
+    if (mounted && _serverOk != true) _scheduleRetry();
   }
 
   Future<void> _checkHealth() async {
     try {
       final t0  = DateTime.now().millisecondsSinceEpoch;
-      final res = await http.get(Uri.parse('$_base/health')).timeout(const Duration(seconds: 5));
+      final res = await http.get(Uri.parse('$_base/health')).timeout(const Duration(seconds: 10));
       if (!mounted) return;
       setState(() {
         _serverOk  = res.statusCode == 200;
@@ -338,9 +351,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildStatusBar() {
     final ok = _serverOk;
+    final isWaiting = ok == false && _retryTimer?.isActive == true;
     final statusColor = ok == null
         ? const Color(0xFFF59E0B)
         : ok ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+    final label = ok == null
+        ? 'בודק שרת...'
+        : ok
+            ? 'שרת פעיל'
+            : isWaiting
+                ? 'מחכה לשרת להתעורר... (עד 25 שנ׳)'
+                : 'שרת לא זמין';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -350,18 +371,29 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       ),
       child: Row(
         children: [
-          Container(width: 8, height: 8,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: statusColor)),
+          if (isWaiting)
+            const SizedBox(
+              width: 8, height: 8,
+              child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFFF59E0B)),
+            )
+          else
+            Container(width: 8, height: 8,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: statusColor)),
           const SizedBox(width: 8),
-          Text(
-            ok == null ? 'בודק שרת...' : ok ? '● שרת פעיל' : '● שרת לא זמין',
-            style: const TextStyle(color: JC.textSecondary, fontSize: 13, fontFamily: 'Heebo'),
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(color: JC.textSecondary, fontSize: 13, fontFamily: 'Heebo')),
           ),
-          if (ok == true) ...[
-            const Spacer(),
+          if (ok == true)
             Text('${_latencyMs}ms',
-                style: const TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
-          ],
+                style: const TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'))
+          else if (ok == false)
+            GestureDetector(
+              onTap: _loadAll,
+              child: const Text('נסה עכשיו',
+                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w600, fontSize: 12)),
+            ),
         ],
       ),
     );
@@ -485,6 +517,35 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     if (_loadingFeatures) {
       return const Padding(padding: EdgeInsets.all(24),
           child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)));
+    }
+    // No features loaded — server was unavailable
+    if (_done.isEmpty && _building.isEmpty && _planned.isEmpty && _serverOk != true) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.cloud_off_rounded, color: JC.textMuted, size: 28),
+            const SizedBox(height: 8),
+            const Text('לא ניתן לטעון נתונים — השרת לא זמין',
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: _loadAll,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: JC.blue500.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: JC.blue400.withOpacity(0.4)),
+                ),
+                child: const Text('טעון מחדש',
+                    style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600, fontSize: 13)),
+              ),
+            ),
+          ]),
+        ),
+      );
     }
     return Directionality(
       textDirection: TextDirection.rtl,

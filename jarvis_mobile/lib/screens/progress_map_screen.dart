@@ -547,28 +547,43 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildAIBacklog() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _lastGenerated != null ? 'נוצר: $_lastGenerated' : 'Jarvis ינתח ויציע משימות לפרויקט',
-                style: const TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'),
+        // Explanation + generate button
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: JC.border, width: 0.8),
+          ),
+          child: Row(
+            children: [
+              _outlineBtn(
+                icon: _generatingProposals ? null : Icons.auto_awesome_rounded,
+                label: _generatingProposals ? 'מנתח...' : 'צור הצעות',
+                loading: _generatingProposals,
+                onTap: _generatingProposals ? null : _generateProposals,
               ),
-            ),
-            const SizedBox(width: 8),
-            _outlineBtn(
-              icon: _generatingProposals ? null : Icons.auto_awesome_rounded,
-              label: _generatingProposals ? 'מנתח...' : 'צור הצעות',
-              loading: _generatingProposals,
-              onTap: _generatingProposals ? null : _generateProposals,
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _lastGenerated != null
+                      ? 'עדכון אחרון: $_lastGenerated'
+                      : 'Jarvis ינתח את הפרויקט ויציע פריטי עבודה עם תוכנית מלאה',
+                  style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                  textAlign: TextAlign.right,
+                  textDirection: TextDirection.rtl,
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 10),
+        // Content
         if (_generatingProposals)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
+            padding: EdgeInsets.symmetric(vertical: 28),
             child: Column(children: [
               CircularProgressIndicator(color: JC.blue400, strokeWidth: 2),
               SizedBox(height: 10),
@@ -578,10 +593,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             ]),
           )
         else if (_proposals.isEmpty)
-          Container(
+          Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
-            alignment: Alignment.center,
-            child: const Column(children: [
+            child: Column(children: const [
               Icon(Icons.auto_awesome_outlined, color: JC.textMuted, size: 32),
               SizedBox(height: 8),
               Text('לחץ "צור הצעות" כדי ש-Jarvis ינתח את הפרויקט',
@@ -595,111 +609,235 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     );
   }
 
+  void _showProposalDetail(Map<String, dynamic> p) {
+    final idRaw    = p['id'];
+    final idInt    = idRaw != null ? (idRaw as num).toInt() : null;
+    final status   = p['status']?.toString() ?? 'proposal';
+    final isActive = status == 'active';
+    final priority = p['priority']?.toString() ?? 'medium';
+    final priorityColor = priority == 'high'
+        ? const Color(0xFFEF4444)
+        : priority == 'low' ? JC.textMuted : const Color(0xFFF59E0B);
+    final priorityLabel = priority == 'high' ? '🔴 גבוה' : priority == 'low' ? '🟢 נמוך' : '🟡 בינוני';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: JC.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.95,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (_, scrollCtrl) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: ListView(
+            controller: scrollCtrl,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+            children: [
+              // Handle
+              Center(child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: JC.border, borderRadius: BorderRadius.circular(2)),
+              )),
+              const SizedBox(height: 16),
+              // Badges
+              Wrap(spacing: 6, children: [
+                _badge(priorityLabel, priorityColor),
+                _badge(isActive ? '⚡ עובד על זה' : '💡 הצעה', isActive ? JC.blue400 : JC.textMuted),
+              ]),
+              const SizedBox(height: 12),
+              // Title
+              Text(p['title']?.toString() ?? '',
+                  style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w700, fontSize: 18)),
+              const SizedBox(height: 16),
+              const Divider(color: JC.border, height: 1),
+              const SizedBox(height: 16),
+              // Plan label
+              const Text('📋 תוכנית מפורטת',
+                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w700, fontSize: 13)),
+              const SizedBox(height: 10),
+              // Plan text
+              Text(p['plan']?.toString() ?? '',
+                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
+                      fontSize: 14, height: 1.7)),
+              const SizedBox(height: 24),
+              // Explanation of "הפעל"
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: JC.blue500.withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: JC.blue400.withOpacity(0.2)),
+                ),
+                child: const Text(
+                  '💡 "הפעל" = מסמן את ההצעה כ"עובד על זה עכשיו" — היא תסומן בכחול ותעלה לראש הרשימה. ניתן לייצר לה פרומפט ב-Claude Code דרך מקטע הפריטים הידניים.',
+                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 12, height: 1.5),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Activate / deactivate button
+              if (status != 'done')
+                GestureDetector(
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (idInt != null) await _patchProposal(idInt, isActive ? 'proposal' : 'active');
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isActive ? JC.surface : JC.blue500,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: JC.blue400.withOpacity(0.4)),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      isActive ? '⏸ הפסק לעבוד על זה' : '⚡ הפעל — עובד על זה עכשיו',
+                      style: TextStyle(
+                          color: isActive ? JC.blue400 : Colors.white,
+                          fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 15),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              // Delete
+              GestureDetector(
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  if (idInt != null) await _deleteProposal(idInt);
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: JC.border),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text('🗑 הסר הצעה',
+                      style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 14)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildProposalCard(Map<String, dynamic> p) {
-    final id       = p['id'];
     final status   = p['status']?.toString() ?? 'proposal';
     final priority = p['priority']?.toString() ?? 'medium';
     final isActive = status == 'active';
     final isDone   = status == 'done';
-    final expanded = id != null && _expandedProposals.contains(id);
+    final title    = p['title']?.toString() ?? '';
+    final plan     = p['plan']?.toString() ?? '';
 
     final priorityColor = priority == 'high'
         ? const Color(0xFFEF4444)
         : priority == 'low' ? JC.textMuted : const Color(0xFFF59E0B);
-    final catMap = {'feature': "פיצ'ר", 'improvement': 'שיפור', 'bug': 'באג', 'ux': 'UX'};
-    final catLabel = catMap[p['category']?.toString()] ?? (p['category']?.toString() ?? '');
+    final priorityLabel = priority == 'high' ? '🔴 גבוה' : priority == 'low' ? '🟢 נמוך' : '🟡 בינוני';
+    final catMap    = {'feature': "פיצ'ר", 'improvement': 'שיפור', 'bug': 'באג', 'ux': 'UX'};
+    final catLabel  = catMap[p['category']?.toString()] ?? (p['category']?.toString() ?? '');
+    final statusLabel = isActive ? '⚡ עובד על זה' : isDone ? '✅ הושלם' : '💡 הצעה';
+    final statusColor = isActive ? JC.blue400 : isDone ? const Color(0xFF22C55E) : JC.textMuted;
+
+    final idRaw = p['id'];
+    final idInt = idRaw != null ? (idRaw as num).toInt() : null;
 
     return Opacity(
-      opacity: isDone ? 0.45 : 1,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: JC.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border(
-            right: BorderSide(color: priorityColor, width: 3),
-            left: BorderSide(color: isActive ? JC.blue400.withOpacity(0.35) : JC.border, width: 0.8),
-            top: BorderSide(color: isActive ? JC.blue400.withOpacity(0.35) : JC.border, width: 0.8),
-            bottom: BorderSide(color: isActive ? JC.blue400.withOpacity(0.35) : JC.border, width: 0.8),
+      opacity: isDone ? 0.5 : 1,
+      child: GestureDetector(
+        onTap: () => _showProposalDetail(p),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border(
+              right: BorderSide(color: priorityColor, width: 3),
+              left:   BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+              top:    BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+              bottom: BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+            ),
           ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              // Badges row
-              Wrap(
-                alignment: WrapAlignment.end,
-                spacing: 4,
-                children: [
-                  _badge(priority == 'high' ? '🔴 גבוה' : priority == 'low' ? '🟢 נמוך' : '🟡 בינוני', priorityColor),
-                  if (catLabel.isNotEmpty) _badge(catLabel, JC.textMuted),
-                  _badge(
-                    status == 'active' ? '⚡ פעיל' : status == 'done' ? '✅ הושלם' : '💡 הצעה',
-                    isActive ? JC.blue400 : isDone ? const Color(0xFF22C55E) : JC.textMuted,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              // Title
-              Text(p['title']?.toString() ?? '',
-                  style: const TextStyle(color: JC.textPrimary,
-                      fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14),
-                  textDirection: TextDirection.rtl),
-              const SizedBox(height: 6),
-              // Plan text
-              Text(
-                p['plan']?.toString() ?? '',
-                style: const TextStyle(color: JC.textSecondary,
-                    fontFamily: 'Heebo', fontSize: 12, height: 1.5),
-                textDirection: TextDirection.rtl,
-                maxLines: expanded ? null : 2,
-                overflow: expanded ? null : TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              // Actions
-              Row(
-                children: [
-                  // Delete
-                  GestureDetector(
-                    onTap: () { if (id != null) _deleteProposal(id); },
-                    child: const Text('✕ הסר',
-                        style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-                  ),
-                  const Spacer(),
-                  // Expand
-                  GestureDetector(
-                    onTap: () => setState(() {
-                      if (expanded) _expandedProposals.remove(id);
-                      else if (id != null) _expandedProposals.add(id as int);
-                    }),
-                    child: Text(expanded ? '▲ סגור' : '▼ תוכנית מלאה',
-                        style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-                  ),
-                  if (!isDone) ...[
-                    const SizedBox(width: 10),
-                    // Activate
-                    GestureDetector(
-                      onTap: () { if (id != null) _patchProposal(id, isActive ? 'proposal' : 'active'); },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: isActive ? Colors.transparent : JC.blue500.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 14, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Title row
+                Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title.isNotEmpty ? title : '(כותרת ריקה)',
+                        style: TextStyle(
+                          color: title.isNotEmpty ? JC.textPrimary : JC.textMuted,
+                          fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14,
                         ),
-                        child: Text(
-                          isActive ? '⏸ בטל' : '⚡ הפעל',
-                          style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
-                              fontWeight: FontWeight.w600, fontSize: 12),
-                        ),
+                        textDirection: TextDirection.rtl,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    _badge(priorityLabel, priorityColor),
                   ],
+                ),
+                // Plan preview (2 lines)
+                if (plan.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    plan,
+                    style: const TextStyle(color: JC.textSecondary,
+                        fontFamily: 'Heebo', fontSize: 12, height: 1.45),
+                    textDirection: TextDirection.rtl,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
-              ),
-            ],
+                const SizedBox(height: 8),
+                // Footer row
+                Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    _badge(statusLabel, statusColor),
+                    if (catLabel.isNotEmpty) ...[
+                      const SizedBox(width: 4),
+                      _badge(catLabel, JC.textMuted),
+                    ],
+                    const Spacer(),
+                    // Quick activate toggle (without opening detail)
+                    if (!isDone)
+                      GestureDetector(
+                        onTap: () { if (idInt != null) _patchProposal(idInt, isActive ? 'proposal' : 'active'); },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isActive ? Colors.transparent : JC.blue500.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
+                          ),
+                          child: Text(isActive ? '⏸ בטל' : '⚡ הפעל',
+                              style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                                  fontWeight: FontWeight.w600, fontSize: 11)),
+                        ),
+                      ),
+                    const SizedBox(width: 8),
+                    Text('← תוכנית מלאה',
+                        style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

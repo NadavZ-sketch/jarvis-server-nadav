@@ -132,6 +132,36 @@ h1 span{color:var(--accent)}
   padding:8px 14px;color:var(--text);font-size:.82rem;font-weight:600;cursor:pointer;
   font-family:inherit;white-space:nowrap;transition:border-color .12s}
 .manual-add button:hover{border-color:var(--accent);color:var(--accent)}
+
+/* prompt generator */
+.prompt-gen-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:14px 16px;margin-bottom:14px}
+.prompt-gen-label{font-size:.76rem;font-weight:700;color:var(--accent);
+  letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.prompt-gen-row{display:flex;gap:7px;margin-bottom:0}
+.prompt-gen-row input{flex:1;background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:8px 12px;color:var(--text);font-size:.84rem;font-family:inherit;outline:none;direction:rtl}
+.prompt-gen-row input:focus{border-color:var(--accent)}
+.btn-gen-prompt{background:var(--accent);border:none;border-radius:8px;
+  padding:8px 16px;color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;
+  font-family:inherit;white-space:nowrap;transition:opacity .15s;display:flex;align-items:center;gap:5px}
+.btn-gen-prompt:hover:not(:disabled){opacity:.85}
+.btn-gen-prompt:disabled{opacity:.5;cursor:not-allowed}
+.prompt-result{background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:14px 16px;margin-top:12px}
+.prompt-result-header{display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:10px;font-size:.78rem;font-weight:700;color:var(--text)}
+.prompt-result-header .copy-btn{background:var(--surface);border:1px solid var(--border);
+  border-radius:6px;padding:4px 12px;color:var(--text);font-size:.75rem;font-weight:600;
+  cursor:pointer;font-family:inherit;transition:border-color .12s}
+.prompt-result-header .copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+.prompt-text{white-space:pre-wrap;font-size:.79rem;color:var(--muted);
+  line-height:1.6;font-family:'Segoe UI',system-ui,sans-serif;direction:rtl;
+  max-height:280px;overflow-y:auto;padding-bottom:4px}
+.save-prompt-btn{margin-top:10px;background:none;border:1px solid var(--border);
+  border-radius:7px;padding:5px 12px;color:var(--muted);font-size:.76rem;font-weight:600;
+  cursor:pointer;font-family:inherit;transition:all .12s}
+.save-prompt-btn:hover{border-color:var(--accent);color:var(--accent)}
 .manual-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;
   padding:9px 12px;display:flex;align-items:center;gap:8px;margin-bottom:5px;transition:opacity .2s}
 .manual-item.done-item{opacity:.4}
@@ -218,8 +248,23 @@ h1 span{color:var(--accent)}
 <!-- MANUAL ITEMS -->
 <div class="manual-section">
   <div class="section-title" style="margin-top:8px">📌 פריטים ידניים</div>
+
+  <!-- AI Prompt Generator -->
+  <div class="prompt-gen-wrap">
+    <div class="prompt-gen-label">🤖 מחולל פרומפט לפיצ'ר חדש ב-Claude Code</div>
+    <div class="prompt-gen-row">
+      <input id="promptInput" placeholder="תאר את הפיצ'ר שאתה רוצה לפתח..." />
+      <button class="btn-gen-prompt" id="promptGenBtn" onclick="generateFeaturePrompt()">
+        <div class="spinner" id="promptSpinner" style="width:13px;height:13px;border-width:2px"></div>
+        <span id="promptGenText">✨ צור פרומפט</span>
+      </button>
+    </div>
+    <div id="promptResult"></div>
+  </div>
+
+  <!-- Quick add -->
   <div class="manual-add">
-    <input id="backlogInput" placeholder="הוסף פריט ידני..." />
+    <input id="backlogInput" placeholder="הוסף פריט ידני מהיר..." />
     <button onclick="addManualItem()">הוסף</button>
   </div>
   <div id="backlogList"><div class="empty-state"><span>📋</span>אין פריטים ידניים</div></div>
@@ -394,6 +439,84 @@ async function generateProposals() {
     btnText.textContent = '✨ צור הצעות חדשות';
   }
 }
+
+// ── Feature Prompt Generator ───────────────────────────────────────────────────
+async function generateFeaturePrompt() {
+  const input  = document.getElementById('promptInput');
+  const desc   = input.value.trim();
+  if (!desc) { input.focus(); return; }
+
+  const btn     = document.getElementById('promptGenBtn');
+  const spinner = document.getElementById('promptSpinner');
+  const btnText = document.getElementById('promptGenText');
+  const result  = document.getElementById('promptResult');
+
+  btn.disabled = true;
+  spinner.style.display = 'block';
+  btnText.textContent = 'מייצר...';
+  result.innerHTML = '';
+
+  try {
+    const d = await fetch('/dashboard/generate-prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: desc }),
+    }).then(r => r.json());
+
+    if (d.prompt) {
+      window._generatedPrompt = d.prompt;
+      result.innerHTML = `
+        <div class="prompt-result">
+          <div class="prompt-result-header">
+            <span>📋 פרומפט מוכן ל-Claude Code</span>
+            <button class="copy-btn" id="copyBtn" onclick="copyPrompt()">העתק</button>
+          </div>
+          <pre class="prompt-text" id="generatedPromptText">${escapeHtml(d.prompt)}</pre>
+          <button class="save-prompt-btn" onclick="savePromptAsItem()">+ שמור כפריט ב-Backlog</button>
+        </div>`;
+    } else {
+      result.innerHTML = `<div class="empty-state" style="padding:12px"><span>⚠️</span>${escapeHtml(d.error || 'שגיאה ביצירת הפרומפט')}</div>`;
+    }
+  } catch {
+    result.innerHTML = `<div class="empty-state" style="padding:12px"><span>⚠️</span>שגיאת רשת — בדוק שהשרת פעיל</div>`;
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+    btnText.textContent = '✨ צור פרומפט';
+  }
+}
+
+function copyPrompt() {
+  const text = window._generatedPrompt || '';
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyBtn');
+    if (!btn) return;
+    btn.textContent = '✓ הועתק!';
+    setTimeout(() => { btn.textContent = 'העתק'; }, 2000);
+  }).catch(() => {
+    const el = document.getElementById('generatedPromptText');
+    if (el) { const r = document.createRange(); r.selectNode(el); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); }
+  });
+}
+
+function savePromptAsItem() {
+  const input = document.getElementById('promptInput');
+  const desc  = input.value.trim();
+  if (desc) {
+    document.getElementById('backlogInput').value = desc;
+    addManualItem();
+  }
+}
+
+function escapeHtml(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('promptInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') generateFeaturePrompt();
+  });
+});
 
 // ── Manual backlog ─────────────────────────────────────────────────────────────
 async function loadBacklog() {

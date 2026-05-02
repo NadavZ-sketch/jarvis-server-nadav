@@ -1226,7 +1226,7 @@ app.post('/dashboard/backlog/generate', async (_req, res) => {
 ענה בפורמט JSON בלבד, ללא טקסט נוסף:
 [{"title":"...","plan":"...","priority":"high","category":"improvement"},...]`;
 
-        const raw = await callGemma4(prompt, false);
+        const raw = await callGemma4(prompt, false, 2000);
         const jsonMatch = raw.match(/\[[\s\S]*\]/);
         if (!jsonMatch) return res.status(500).json({ error: 'LLM did not return valid JSON' });
 
@@ -1281,6 +1281,39 @@ app.delete('/dashboard/backlog/proposals/:id', (req, res) => {
         require('fs').writeFileSync(fp, JSON.stringify(data, null, 2));
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Dashboard – Claude Code prompt generator ────────────────────────────────
+app.post('/dashboard/generate-prompt', async (req, res) => {
+    try {
+        const { description } = req.body;
+        if (!description?.trim()) return res.status(400).json({ error: 'description required' });
+
+        const prompt = `אתה מומחה בכתיבת הוראות מדויקות ל-Claude Code — עוזר הקוד של Anthropic.
+
+הקשר פרויקט Jarvis:
+- אפליקציית Flutter (ממשק עברית RTL) עם ORB קולי, צ'אט, משימות, תזכורות, פתקים, קניות, לוח שנה
+- שרת Node.js (server.js) עם 17+ אייג'נטים בתיקיית agents/ (router.js, chatAgent.js, taskAgent.js וכו')
+- Supabase כ-DB, Pinecone לזיכרון סמנטי, LLMs (Groq → DeepSeek → Gemini כ-fallback)
+- קבצים מרכזיים: server.js, jarvis_mobile/lib/main.dart, agents/router.js, agents/models.js
+
+בקשת המפתח: "${description.trim()}"
+
+כתוב פרומפט מפורט ל-Claude Code שהמפתח יוכל להדביק ישירות כדי לממש את הפיצ'ר. הפרומפט צריך:
+- להיות ישיר ומעשי ללא הקדמות — כאילו כותבים הוראות לעוזר קוד
+- לציין קבצים ספציפיים לשינוי (עם נתיבים)
+- לפרט שינויים בצד שרת ו/או Flutter לפי הצורך
+- לכלול endpoints חדשים, widgets, schemas — כל מה שנחוץ למימוש מלא
+- לסיים בהוראת בדיקה / וידוא
+
+כתוב את הפרומפט בעברית, מוכן להדבקה ב-Claude Code:`;
+
+        const result = await callGemma4(prompt, false, 1500);
+        res.json({ prompt: result });
+    } catch (e) {
+        console.error('generate-prompt error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────

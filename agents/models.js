@@ -20,7 +20,7 @@ const DEEPSEEK_MODEL = 'deepseek-chat';
 const OLLAMA_URL   = process.env.OLLAMA_URL;
 const OLLAMA_MODEL = 'gemma4:e4b';
 
-async function callGemma4(messages, useLocal = true) {
+async function callGemma4(messages, useLocal = true, maxTokens = 800) {
     const msgs = typeof messages === 'string'
         ? [{ role: 'user', content: messages }]
         : messages;
@@ -36,7 +36,7 @@ async function callGemma4(messages, useLocal = true) {
     // ── 2. Groq (free, fast) ──
     try {
         const response = await axios.post(GROQ_URL, {
-            model: GROQ_MODEL, messages: msgs, max_tokens: 800
+            model: GROQ_MODEL, messages: msgs, max_tokens: maxTokens
         }, {
             headers: {
                 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
@@ -60,7 +60,7 @@ async function callGemma4(messages, useLocal = true) {
     // ── 3. DeepSeek fallback ──
     try {
         const response = await axios.post(DEEPSEEK_URL, {
-            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 800
+            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: maxTokens
         }, {
             headers: {
                 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,

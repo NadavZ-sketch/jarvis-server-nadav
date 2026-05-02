@@ -159,6 +159,88 @@ function deleteAgent(userMessage) {
     return { answer: `מחקתי את האייג'נט "${removed.displayName}".` };
 }
 
+// ─── Build agent from approved mission plan ───────────────────────────────────
+// Called by the mission orchestrator's executor when the user approves the
+// plan for a `source: 'factory'` mission. The mission's clarification + plan
+// have already produced the spec implicitly (in `mission.origin` plus the
+// conversation), so we run the existing design → code → demo → pending pipeline
+// and return progress text to be appended to the mission conversation.
+
+async function buildAgentFromMission(mission, supabase, useLocal) {
+    try {
+        // Compose the design source: original request + the clarified plan +
+        // the user/Jarvis conversation so the design model has full context.
+        const planText = (mission.plan || []).map((s, i) => `${i + 1}. ${s.text}`).join('\n');
+        const convoText = (mission.conversation || [])
+            .map(m => `${m.role === 'user' ? 'נדב' : 'Jarvis'}: ${m.text}`)
+            .join('\n');
+        const designSource = [
+            `בקשה מקורית: ${mission.origin}`,
+            mission.goal ? `מטרה מוסכמת: ${mission.goal}` : '',
+            planText ? `תוכנית מאושרת:\n${planText}` : '',
+            convoText ? `שיחת בירור:\n${convoText}` : '',
+        ].filter(Boolean).join('\n\n');
+
+        console.log(`🏭 AgentFactory[mission #${mission.id}]: designing agent...`);
+        const designRaw = await callGemma4(buildDesignPrompt(designSource), false);
+        const designMatch = designRaw.match(/\{[\s\S]*"agentName"[\s\S]*\}/);
+        if (!designMatch) throw new Error('לא הצלחתי לעצב את האייג\'נט');
+
+        let design;
+        try { design = JSON.parse(designMatch[0]); }
+        catch { throw new Error('תכנון האייג\'נט הגיע בפורמט לא תקין'); }
+
+        design.agentName = design.agentName.replace(/[^a-zA-Z0-9]/g, '').replace(/^./, c => c.toLowerCase());
+        if (!design.agentName) throw new Error('שם האייג\'נט לא תקין');
+
+        console.log(`🏭 AgentFactory[mission #${mission.id}]: generating code for "${design.agentName}"...`);
+        const generatedCode = await callGemma4(buildCodePrompt(design), false);
+        const cleanCode = generatedCode
+            .replace(/^```(?:javascript|js)?\n?/, '')
+            .replace(/\n?```$/, '')
+            .trim();
+
+        if (!fs.existsSync(CUSTOM_DIR)) fs.mkdirSync(CUSTOM_DIR, { recursive: true });
+        const filePath = path.join(CUSTOM_DIR, `${design.agentName}.js`);
+        fs.writeFileSync(filePath, cleanCode, 'utf8');
+
+        const sampleQuery = (Array.isArray(design.exampleUsage) && design.exampleUsage[0])
+            ? design.exampleUsage[0]
+            : design.purpose;
+        console.log(`🏭 AgentFactory[mission #${mission.id}]: running demo with "${sampleQuery}"...`);
+        const demoAnswer = await runDemo(filePath, design.agentName, sampleQuery, supabase, useLocal);
+
+        const entry = {
+            name: design.agentName,
+            displayName: design.displayName || design.agentName,
+            keywords: Array.isArray(design.keywords) ? design.keywords : [],
+            filePath,
+        };
+        savePending({ entry, design });
+
+        const caps     = Array.isArray(design.capabilities) ? design.capabilities.map(c => `• ${c}`).join('\n') : '';
+        const keywords = entry.keywords.join(' | ') || '—';
+        return {
+            answer: [
+                `🤖 יצרתי אייג'נט: **${entry.displayName}**`,
+                `📋 ${design.purpose}`,
+                caps ? `\n⚙️ יכולות:\n${caps}` : '',
+                `\n🔑 מילות מפתח: ${keywords}`,
+                '',
+                `🧪 דמו (${sampleQuery}):`,
+                demoAnswer,
+                '',
+                '❓ האם לשלב את האייג\'נט באפליקציה? כתוב "כן" כדי לשלב או "לא" כדי לבטל.',
+            ].filter(Boolean).join('\n'),
+            entry,
+            design,
+        };
+    } catch (err) {
+        console.error('AgentFactory[mission] Error:', err.message);
+        return { answer: `סליחה, לא הצלחתי ליצור את האייג'נט. ${err.message}`, error: err.message };
+    }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function runAgentFactoryAgent(userMessage, supabase, useLocal) {
@@ -185,73 +267,25 @@ async function runAgentFactoryAgent(userMessage, supabase, useLocal) {
             return deleteAgent(userMessage);
         }
 
-        // ── Create agent ───────────────────────────────────────────────────────
-        console.log('🏭 AgentFactory: designing agent...');
-
-        // Step 1: Design
-        const designRaw = await callGemma4(buildDesignPrompt(userMessage), false);
-        const designMatch = designRaw.match(/\{[\s\S]*"agentName"[\s\S]*\}/);
-        if (!designMatch) throw new Error('לא הצלחתי לעצב את האייג\'נט');
-
-        let design;
-        try { design = JSON.parse(designMatch[0]); }
-        catch { throw new Error('תכנון האייג\'נט הגיע בפורמט לא תקין'); }
-
-        design.agentName = design.agentName.replace(/[^a-zA-Z0-9]/g, '').replace(/^./, c => c.toLowerCase());
-        if (!design.agentName) throw new Error('שם האייג\'נט לא תקין');
-
-        console.log(`🏭 AgentFactory: generating code for "${design.agentName}"...`);
-
-        // Step 2: Generate code
-        const generatedCode = await callGemma4(buildCodePrompt(design), false);
-        const cleanCode = generatedCode
-            .replace(/^```(?:javascript|js)?\n?/, '')
-            .replace(/\n?```$/, '')
-            .trim();
-
-        // Step 3: Write file (pending — not in registry yet)
-        if (!fs.existsSync(CUSTOM_DIR)) fs.mkdirSync(CUSTOM_DIR, { recursive: true });
-        const filePath = path.join(CUSTOM_DIR, `${design.agentName}.js`);
-        fs.writeFileSync(filePath, cleanCode, 'utf8');
-        console.log(`🏭 AgentFactory: wrote ${filePath} (pending approval)`);
-
-        // Step 4: Run demo
-        const sampleQuery = (Array.isArray(design.exampleUsage) && design.exampleUsage[0])
-            ? design.exampleUsage[0]
-            : design.purpose;
-
-        console.log(`🏭 AgentFactory: running demo with "${sampleQuery}"...`);
-        const demoAnswer = await runDemo(filePath, design.agentName, sampleQuery, supabase, useLocal);
-
-        // Step 5: Save to pending (not registry)
-        const entry = {
-            name: design.agentName,
-            displayName: design.displayName || design.agentName,
-            keywords: Array.isArray(design.keywords) ? design.keywords : [],
-            filePath,
-        };
-        savePending({ entry, design });
-
-        // Step 6: Return demo + confirmation request
-        const caps     = Array.isArray(design.capabilities) ? design.capabilities.map(c => `• ${c}`).join('\n') : '';
-        const keywords = entry.keywords.join(' | ') || '—';
-
+        // ── Create agent → spawn a mission ────────────────────────────────────
+        // The actual design+code+demo cycle now runs inside the mission's
+        // execute step (see buildAgentFromMission). Here we return an
+        // open_mission action so the mobile UI navigates straight to the
+        // Active Mission screen for the clarify→plan→approve flow.
+        const missionStore = require('../missionStore');
+        const missionAgent = require('./missionAgent');
+        const mission = missionStore.createMission({
+            source:   'factory',
+            sourceId: 'inline',
+            title:    'יצירת אייג\'נט חדש',
+            origin:   userMessage,
+        });
+        // Seed Jarvis's first clarifying question so the user has something to read
+        // when the screen opens.
+        await missionAgent.seedMission(mission.id, {});
         return {
-            answer: [
-                `🤖 יצרתי אייג'נט: **${entry.displayName}**`,
-                `📋 ${design.purpose}`,
-                caps ? `\n⚙️ יכולות:\n${caps}` : '',
-                `\n🔑 מילות מפתח: ${keywords}`,
-                '',
-                `🧪 **ניסיון עם השאילתה:** "${sampleQuery}"`,
-                '─────────────────────────',
-                demoAnswer,
-                '─────────────────────────',
-                '',
-                '❓ האם לשלב את האייג\'נט באפליקציה?',
-                '• "כן" / "אשר" — לשלב',
-                '• "לא" / "בטל" — לא לשמור',
-            ].filter(Boolean).join('\n'),
+            answer: 'פתחתי משימה פעילה ליצירת אייג\'נט. בוא נדבר עליה כדי לדייק את התכנון.',
+            action: { type: 'open_mission', missionId: mission.id },
         };
 
     } catch (err) {
@@ -260,4 +294,4 @@ async function runAgentFactoryAgent(userMessage, supabase, useLocal) {
     }
 }
 
-module.exports = { runAgentFactoryAgent };
+module.exports = { runAgentFactoryAgent, buildAgentFromMission };

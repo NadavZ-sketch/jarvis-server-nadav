@@ -51,6 +51,9 @@ const { runNotesAgent }       = require('./agents/notesAgent');
 const { runStocksAgent }      = require('./agents/stocksAgent');
 const { runTranslationAgent } = require('./agents/translationAgent');
 const { runMusicAgent }       = require('./agents/musicAgent');
+const missionAgent            = require('./agents/missionAgent');
+const missionStore            = require('./missionStore');
+const { runExecutor }         = require('./agents/executors');
 const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
 
@@ -1188,15 +1191,40 @@ app.post('/dashboard/backlog', (req, res) => {
 });
 
 // proposals routes must come BEFORE /:id catch-all
-app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
+app.patch('/dashboard/backlog/proposals/:id', async (req, res) => {
     try {
         const id   = parseInt(req.params.id, 10);
         const data = readBacklog();
         const item = data.proposals.find(p => p.id === id);
         if (!item) return res.status(404).json({ error: 'not found' });
+        const oldStatus = item.status;
         item.status = (req.body?.status) || ({ proposal: 'active', active: 'done', done: 'proposal' }[item.status] || 'active');
+
+        // Lazy-create the mission the first time a proposal goes "active".
+        // We stash the missionId on the proposal so subsequent toggles don't
+        // spawn duplicates.
+        let missionId = item.missionId || null;
+        if (item.status === 'active' && oldStatus !== 'active' && !missionId) {
+            try {
+                const mission = missionStore.createMission({
+                    source:   'proposal',
+                    sourceId: String(id),
+                    title:    item.title || '(הצעה)',
+                    origin:   item.plan || item.title || '',
+                });
+                missionId = mission.id;
+                item.missionId = missionId;
+                // Fire seed in background so the activation response is fast;
+                // mobile UI can poll the mission once it lands on the screen.
+                missionAgent.seedMission(missionId, req.body?.settings || {})
+                    .catch(err => console.error('mission seed (proposal) failed:', err.message));
+            } catch (err) {
+                console.error('mission create (proposal) failed:', err.message);
+            }
+        }
+
         writeBacklog(data);
-        res.json({ item });
+        res.json({ item, missionId });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1231,6 +1259,198 @@ app.delete('/dashboard/backlog/:id', (req, res) => {
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Activate a manual backlog item → create a mission and return the mission id
+// so the mobile UI can navigate straight into the Active Mission screen.
+app.post('/dashboard/backlog/:id/activate', async (req, res) => {
+    try {
+        const id   = parseInt(req.params.id, 10);
+        const data = readBacklog();
+        const item = data.items.find(i => i.id === id);
+        if (!item) return res.status(404).json({ error: 'not found' });
+
+        const mission = missionStore.createMission({
+            source:   'manual',
+            sourceId: String(id),
+            title:    item.text,
+            origin:   item.text,
+        });
+        // Seed Jarvis's first clarifying question immediately so the user
+        // doesn't land in an empty conversation.
+        await missionAgent.seedMission(mission.id, req.body?.settings || {});
+        const fresh = missionStore.getMission(mission.id);
+        res.json({ mission: fresh });
+    } catch (e) {
+        console.error('manual activate error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── Missions ────────────────────────────────────────────────────────────────
+
+app.get('/missions', (_req, res) => {
+    try {
+        res.json({ missions: missionStore.listMissions() });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/missions/active', (_req, res) => {
+    try {
+        res.json({ missions: missionStore.listActiveMissions() });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/missions/:id', (req, res) => {
+    try {
+        const mission = missionStore.getMission(req.params.id);
+        if (!mission) return res.status(404).json({ error: 'not found' });
+        res.json({ mission });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Create a free-form mission. Most missions are created via proposal/manual
+// activation routes — this endpoint is used by the agent factory and by
+// future integrations that need to spawn a mission without a backlog item.
+app.post('/missions', async (req, res) => {
+    try {
+        const { source = 'manual', sourceId = null, title = '', origin = '', executor = 'local' } = req.body || {};
+        if (!title.trim() && !origin.trim()) {
+            return res.status(400).json({ error: 'title or origin required' });
+        }
+        const mission = missionStore.createMission({
+            source, sourceId, title: title || origin, origin: origin || title, executor,
+        });
+        await missionAgent.seedMission(mission.id, req.body?.settings || {});
+        const fresh = missionStore.getMission(mission.id);
+        res.json({ mission: fresh });
+    } catch (e) {
+        console.error('mission create error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/missions/:id/message', async (req, res) => {
+    try {
+        const { text = '' } = req.body || {};
+        const settings = req.body?.settings || {};
+        const result = await missionAgent.runMissionTurn(req.params.id, text, settings);
+        if (result.error) return res.status(404).json({ error: result.error });
+        res.json(result);
+    } catch (e) {
+        console.error('mission message error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/missions/:id/approve', async (req, res) => {
+    try {
+        const id = req.params.id;
+        let mission = missionStore.getMission(id);
+        if (!mission) return res.status(404).json({ error: 'not found' });
+        if (mission.status !== 'awaiting_approval' && mission.status !== 'paused') {
+            return res.status(400).json({ error: `cannot approve in status "${mission.status}"` });
+        }
+
+        mission = missionStore.updateMission(id, { status: 'executing' });
+        const ack = `מעולה. מתחיל לעבוד על "${mission.title}". אעדכן אותך כשיהיה דרוש קלט נוסף.`;
+        missionStore.appendMessage(id, 'jarvis', ack);
+
+        // Run the executor (may be async-heavy; we await so the mobile UI
+        // immediately sees the prompt + tasks). Errors are captured into
+        // executorState so the UI can surface them.
+        const ctx = { supabase };
+        let execOut;
+        try {
+            execOut = await runExecutor(missionStore.getMission(id), ctx);
+        } catch (e) {
+            execOut = { errors: [e.message] };
+        }
+
+        const executorState = {
+            ...(mission.executorState || {}),
+            lastRun: new Date().toISOString(),
+            tasks:   execOut.tasks  || [],
+            prompt:  execOut.prompt || null,
+            notice:  execOut.notice || null,
+            errors:  execOut.errors || [],
+            factory: execOut.factory || null,
+            deferred: !!execOut.deferred,
+        };
+        mission = missionStore.updateMission(id, { executorState });
+
+        // If executor reports specific steps as completed, apply them.
+        if (Array.isArray(execOut.completedSteps)) {
+            for (const stepId of execOut.completedSteps) {
+                missionStore.setStepStatus(id, stepId, 'done');
+            }
+        }
+
+        // Surface execution output into the mission chat. Factory missions
+        // get the design+demo summary; standard missions get a brief tasks
+        // summary.
+        if (execOut.factory && execOut.factory.summary) {
+            missionStore.appendMessage(id, 'jarvis', execOut.factory.summary);
+        } else if (execOut.prompt) {
+            const summary = `📋 הכנתי תוכנית עבודה ופרומפט מוכן ל-Claude Code. ${execOut.tasks.length ? `נוספו ${execOut.tasks.length} משימות לרשימה הראשית.` : ''}`;
+            missionStore.appendMessage(id, 'jarvis', summary.trim());
+        }
+        if (execOut.notice) {
+            missionStore.appendMessage(id, 'jarvis', execOut.notice);
+        }
+
+        const fresh = missionStore.getMission(id);
+        res.json({ mission: fresh });
+    } catch (e) {
+        console.error('mission approve error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/missions/:id/cancel', (req, res) => {
+    try {
+        const mission = missionStore.updateMission(req.params.id, { status: 'cancelled' });
+        if (!mission) return res.status(404).json({ error: 'not found' });
+        res.json({ mission });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/missions/:id/regenerate-plan', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const mission = missionStore.getMission(id);
+        if (!mission) return res.status(404).json({ error: 'not found' });
+        const settings = req.body?.settings || {};
+        const feedback = (req.body?.feedback || '').trim();
+        if (feedback) missionStore.appendMessage(id, 'user', feedback);
+        missionStore.updateMission(id, { status: 'planning' });
+        const result = await missionAgent.planMission(id, settings);
+        res.json(result);
+    } catch (e) {
+        console.error('mission regen error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.patch('/missions/:id/steps/:stepId', (req, res) => {
+    try {
+        const { status } = req.body || {};
+        if (!['pending', 'doing', 'done'].includes(status)) {
+            return res.status(400).json({ error: 'invalid status' });
+        }
+        const mission = missionStore.setStepStatus(req.params.id, req.params.stepId, status);
+        if (!mission) return res.status(404).json({ error: 'not found' });
+        res.json({ mission });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/missions/:id', (req, res) => {
+    try {
+        const ok = missionStore.deleteMission(req.params.id);
+        if (!ok) return res.status(404).json({ error: 'not found' });
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ─── Dashboard – AI backlog generation ───────────────────────────────────────
 app.post('/dashboard/backlog/generate', async (_req, res) => {

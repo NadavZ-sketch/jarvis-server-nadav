@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../main.dart' show JC;
 import '../app_settings.dart';
+import '../services/mission_service.dart';
+import 'active_mission_screen.dart';
 
 class ProgressMapScreen extends StatefulWidget {
   final AppSettings settings;
@@ -39,6 +41,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   // Manual items
   List<Map<String, dynamic>> _items = [];
   bool _loadingBacklog = true;
+
+  // Active missions (clarifying / planning / awaiting_approval / executing / paused)
+  List<Map<String, dynamic>> _activeMissions = [];
 
   // UI
   final Set<int> _expandedProposals = {};
@@ -76,9 +81,22 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
   Future<void> _loadAll() async {
     _retryTimer?.cancel();
-    await Future.wait([_checkHealth(), _loadStats(), _loadFeatures(), _loadBacklog()]);
+    await Future.wait([
+      _checkHealth(),
+      _loadStats(),
+      _loadFeatures(),
+      _loadBacklog(),
+      _loadActiveMissions(),
+    ]);
     // Auto-retry if server was unreachable — Render free tier cold-starts in 15-60s
     if (mounted && _serverOk != true) _scheduleRetry();
+  }
+
+  Future<void> _loadActiveMissions() async {
+    try {
+      final list = await MissionService(widget.settings).listActive();
+      if (mounted) setState(() => _activeMissions = list);
+    } catch (_) { /* non-fatal */ }
   }
 
   Future<void> _checkHealth() async {
@@ -185,25 +203,52 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   Future<void> _activateProposal(Map<String, dynamic> proposal) async {
-    final id    = proposal['id'];
-    final title = proposal['title']?.toString() ?? '';
-    final plan  = proposal['plan']?.toString() ?? '';
-    await _patchProposal(id, 'active');
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F1929),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    final id = proposal['id'];
+    if (id == null) return;
+    int? missionId = (proposal['missionId'] as num?)?.toInt();
+    try {
+      // PATCH returns { item, missionId }. The first activation also creates
+      // a mission server-side and returns its id; subsequent activations
+      // reuse the same one.
+      final res = await http.patch(
+        Uri.parse('$_base/dashboard/backlog/proposals/$id'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'status': 'active'}),
+      ).timeout(const Duration(seconds: 12));
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final mid = body['missionId'];
+        if (mid is num) missionId = mid.toInt();
+      }
+      await _loadBacklog();
+    } catch (_) {
+      if (mounted) _showSnack('שגיאה בהפעלה');
+      return;
+    }
+    if (!mounted || missionId == null) return;
+    await _openMission(missionId);
+  }
+
+  Future<void> _activateManual(int backlogId) async {
+    try {
+      final mission = await MissionService(widget.settings).activateManual(backlogId);
+      final mid = (mission['id'] as num?)?.toInt();
+      if (!mounted || mid == null) return;
+      await _loadActiveMissions();
+      await _openMission(mid);
+    } catch (e) {
+      if (mounted) _showSnack('שגיאת הפעלה: $e');
+    }
+  }
+
+  Future<void> _openMission(int missionId) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ActiveMissionScreen(
+        settings: widget.settings,
+        missionId: missionId,
       ),
-      builder: (ctx) => _ActivateSheet(
-        base: _base,
-        title: title,
-        plan: plan,
-        onSwitchToChat: widget.onSwitchToChat,
-      ),
-    );
+    ));
+    if (mounted) await _loadActiveMissions();
   }
 
   Future<void> _deleteProposal(dynamic id) async {
@@ -329,6 +374,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             const SizedBox(height: 8),
             _buildFeatureBoard(),
             const SizedBox(height: 24),
+            if (_activeMissions.isNotEmpty) ...[
+              _sectionTitle('🎯 משימות פעילות'),
+              const SizedBox(height: 8),
+              _buildActiveMissionsList(),
+              const SizedBox(height: 24),
+            ],
             _sectionTitle('🤖 Backlog AI'),
             const SizedBox(height: 8),
             _buildAIBacklog(),
@@ -640,6 +691,94 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                         fontFamily: 'Heebo', fontSize: 11)),
               ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Active Missions ───────────────────────────────────────────────────────
+
+  Widget _buildActiveMissionsList() {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: _activeMissions.map(_buildActiveMissionCard).toList(),
+      ),
+    );
+  }
+
+  Widget _buildActiveMissionCard(Map<String, dynamic> m) {
+    final id     = (m['id'] as num).toInt();
+    final title  = m['title']?.toString() ?? '(ללא כותרת)';
+    final status = m['status']?.toString() ?? '';
+    final source = m['source']?.toString() ?? '';
+
+    final statusColor = switch (status) {
+      'executing'         => const Color(0xFF22C55E),
+      'awaiting_approval' => const Color(0xFFF59E0B),
+      'paused'            => JC.textMuted,
+      _                   => JC.blue400,
+    };
+    final statusLabel = switch (status) {
+      'clarifying'        => '❓ בירור',
+      'planning'          => '🧠 תכנון',
+      'awaiting_approval' => '✋ ממתין',
+      'executing'         => '⚡ מבצע',
+      'paused'            => '⏸ מושהית',
+      _                   => status,
+    };
+    final sourceIcon = switch (source) {
+      'proposal' => '🤖',
+      'manual'   => '✍️',
+      'factory'  => '🏭',
+      _          => '•',
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: GestureDetector(
+          onTap: () => _openMission(id),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: JC.surface,
+              border: Border(
+                right: BorderSide(color: statusColor.withOpacity(0.7), width: 2.5),
+                top:    BorderSide(color: JC.border, width: 0.5),
+                bottom: BorderSide(color: JC.border, width: 0.5),
+                left:   BorderSide(color: JC.border, width: 0.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                Text(sourceIcon, style: const TextStyle(fontSize: 16)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(title,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: JC.textPrimary,
+                          fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: statusColor.withOpacity(0.35), width: 0.6),
+                  ),
+                  child: Text(statusLabel,
+                      style: TextStyle(color: statusColor,
+                          fontFamily: 'Heebo', fontSize: 10, fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.chevron_left_rounded, color: JC.textMuted, size: 18),
+              ],
+            ),
           ),
         ),
       ),
@@ -1241,7 +1380,23 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               const SizedBox(width: 8),
               Text(item['added']?.toString() ?? '',
                   style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
+              if (!done)
+                GestureDetector(
+                  onTap: () { if (id is num) _activateManual(id.toInt()); },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: JC.blue500.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.7),
+                    ),
+                    child: const Text('⚡ הפעל',
+                        style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                            fontSize: 10, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              const SizedBox(width: 6),
               GestureDetector(
                 onTap: () { if (id != null) _deleteItem(id); },
                 child: const Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
@@ -1267,135 +1422,3 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   );
 }
 
-// ─── Activate Sheet ────────────────────────────────────────────────────────────
-
-class _ActivateSheet extends StatefulWidget {
-  final String base, title, plan;
-  final VoidCallback? onSwitchToChat;
-  const _ActivateSheet({
-    required this.base,
-    required this.title,
-    required this.plan,
-    this.onSwitchToChat,
-  });
-
-  @override
-  State<_ActivateSheet> createState() => _ActivateSheetState();
-}
-
-class _ActivateSheetState extends State<_ActivateSheet> {
-  String? _response;
-  bool    _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _dispatch();
-  }
-
-  Future<void> _dispatch() async {
-    final msg = 'קבלת משימה חדשה מה-Backlog:\n\nכותרת: ${widget.title}\n\nתוכנית: ${widget.plan}\n\nאנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?';
-    try {
-      final resp = await http.post(
-        Uri.parse('${widget.base}/ask-jarvis'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'command': msg}),
-      ).timeout(const Duration(seconds: 30));
-      final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (mounted) {
-        setState(() {
-          _response = data['answer']?.toString() ?? '';
-          _loading  = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A2E4A),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            )),
-            const SizedBox(height: 16),
-            Row(children: [
-              const Text('⚡', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
-              Expanded(child: Text(
-                widget.title,
-                style: const TextStyle(color: Color(0xFFF1F5F9), fontFamily: 'Heebo',
-                    fontWeight: FontWeight.w700, fontSize: 15),
-                maxLines: 2, overflow: TextOverflow.ellipsis,
-              )),
-            ]),
-            const SizedBox(height: 14),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  CircularProgressIndicator(color: Color(0xFF6366F1), strokeWidth: 2),
-                  SizedBox(height: 12),
-                  Text('ג׳רביס מקבל את המשימה...', style: TextStyle(
-                      color: Color(0xFF475569), fontFamily: 'Heebo', fontSize: 13)),
-                ])),
-              )
-            else if (_error != null)
-              Text('שגיאה: $_error', style: const TextStyle(
-                  color: Color(0xFFEF4444), fontFamily: 'Heebo', fontSize: 13))
-            else
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0B1422),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF1A2E4A), width: 0.8),
-                ),
-                child: Text(
-                  _response ?? '',
-                  style: const TextStyle(color: Color(0xFFCBD5E1), fontFamily: 'Heebo',
-                      fontSize: 13, height: 1.6),
-                ),
-              ),
-            const SizedBox(height: 16),
-            Row(children: [
-              if (widget.onSwitchToChat != null && !_loading)
-                GestureDetector(
-                  onTap: () { Navigator.pop(context); widget.onSwitchToChat!(); },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1),
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: const Text('המשך בצ׳אט ←', style: TextStyle(
-                        color: Colors.white, fontFamily: 'Heebo',
-                        fontWeight: FontWeight.w600, fontSize: 13)),
-                  ),
-                ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: const Text('סגור', style: TextStyle(
-                    color: Color(0xFF475569), fontFamily: 'Heebo', fontSize: 13)),
-              ),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
-}

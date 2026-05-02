@@ -20,6 +20,7 @@ import 'transitions/slide_fade_route.dart';
 import 'screens/splash_screen.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
+import 'screens/active_mission_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -878,7 +879,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             {'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()}));
         _persistMessages();
 
-        if (action != null && mounted) await _confirmAndSend(action);
+        if (action != null && mounted) await _handleAction(action);
 
         _speakText(answer);
       } else {
@@ -928,6 +929,32 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         );
       }
     });
+  }
+
+  // ─── Action dispatcher (called when /ask-jarvis returns { action: ... }) ───
+  // Currently handles:
+  //   - whatsapp/email   → confirmation dialog + /send-email
+  //   - open_mission     → push the Active Mission screen
+  Future<void> _handleAction(Map<String, dynamic> action) async {
+    final type = action['type']?.toString();
+    if (type == 'whatsapp' || type == 'email') {
+      await _confirmAndSend(action);
+      return;
+    }
+    if (type == 'open_mission') {
+      final mid = action['missionId'];
+      if (mid is num) {
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ActiveMissionScreen(
+            settings: settings,
+            missionId: mid.toInt(),
+          ),
+        ));
+      }
+      return;
+    }
+    // Unknown action: log and ignore
+    debugPrint('[main] unknown action type: $type');
   }
 
   // ─── Confirm & Send ───────────────────────────────────────────────────────────

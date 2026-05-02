@@ -616,14 +616,18 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               ),
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(name.isNotEmpty ? name : '—',
+                    textAlign: TextAlign.right,
+                    textDirection: TextDirection.rtl,
                     style: const TextStyle(color: JC.textPrimary,
                         fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
                 if (desc.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(desc,
+                      textAlign: TextAlign.right,
+                      textDirection: TextDirection.rtl,
                       style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
                 ],
               ],
@@ -870,7 +874,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 14, 10),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Title row
                   Row(
@@ -885,6 +889,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                             fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14,
                           ),
                           textAlign: TextAlign.right,
+                          textDirection: TextDirection.rtl,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -899,10 +904,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                       style: const TextStyle(color: JC.textSecondary,
                           fontFamily: 'Heebo', fontSize: 12, height: 1.45),
                       textAlign: TextAlign.right,
+                      textDirection: TextDirection.rtl,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 4),
                     _badge(priorityLabel, priorityColor),
                   ],
                   const SizedBox(height: 8),

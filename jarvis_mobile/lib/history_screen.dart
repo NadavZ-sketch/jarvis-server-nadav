@@ -197,11 +197,67 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-class _SessionDetailScreen extends StatelessWidget {
+class _SessionDetailScreen extends StatefulWidget {
   final String date;
   final List<Map<String, dynamic>> messages;
 
   const _SessionDetailScreen({required this.date, required this.messages});
+
+  @override
+  State<_SessionDetailScreen> createState() => _SessionDetailScreenState();
+}
+
+class _SessionDetailScreenState extends State<_SessionDetailScreen> {
+  Future<void> _deleteSession() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: JC.surfaceAlt,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('מחיקת שיחה',
+            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
+        content: const Text('האם למחוק את השיחה הזאת? לא ניתן לשחזר.',
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ביטול',
+                style: TextStyle(color: JC.blue400, fontFamily: 'Heebo')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('מחק',
+                style: TextStyle(color: Color(0xFFEF4444), fontFamily: 'Heebo')),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('chat_sessions') ?? '[]';
+      final List sessions = jsonDecode(raw);
+      final dateStr = widget.date;
+      sessions.removeWhere((s) => _formatDate(s['date']) == dateStr);
+      await prefs.setString('chat_sessions', jsonEncode(sessions));
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  String _formatDate(String? isoDate) {
+    if (isoDate == null) return '';
+    try {
+      final dt = DateTime.parse(isoDate).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dt).inDays;
+      if (diff == 0) {
+        return 'היום ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+      if (diff == 1) return 'אתמול';
+      return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (_) {
+      return isoDate;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -217,7 +273,7 @@ class _SessionDetailScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          date,
+          widget.date,
           style: const TextStyle(
             color: JC.textPrimary,
             fontSize: 15,
@@ -225,12 +281,18 @@ class _SessionDetailScreen extends StatelessWidget {
             fontFamily: 'Heebo',
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
+            onPressed: _deleteSession,
+          ),
+        ],
       ),
       body: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        itemCount: messages.length,
+        itemCount: widget.messages.length,
         itemBuilder: (context, index) {
-          final msg = messages[index];
+          final msg = widget.messages[index];
           final isUser = msg['sender'] == 'user';
           return Align(
             alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,

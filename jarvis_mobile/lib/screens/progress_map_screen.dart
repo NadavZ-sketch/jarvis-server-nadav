@@ -15,7 +15,26 @@ class ProgressMapScreen extends StatefulWidget {
   State<ProgressMapScreen> createState() => _ProgressMapScreenState();
 }
 
+// Proposal status constants
+abstract final class _PS {
+  static const proposal = 'proposal';
+  static const active   = 'active';
+  static const done     = 'done';
+}
+
+// Priority helpers
+Color _priorityColor(String p) => p == 'high'
+    ? const Color(0xFFEF4444)
+    : p == 'low' ? JC.textMuted : const Color(0xFFF59E0B);
+
+String _priorityLabel(String p) =>
+    p == 'high' ? '🔴 גבוה' : p == 'low' ? '🟢 נמוך' : '🟡 בינוני';
+
 class _ProgressMapScreenState extends State<ProgressMapScreen> {
+  static const _kCatMap = {
+    'feature': "פיצ'ר", 'improvement': 'שיפור', 'bug': 'באג', 'ux': 'UX',
+  };
+
   // Server
   bool? _serverOk;
   int _latencyMs = 0;
@@ -41,7 +60,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   bool _loadingBacklog = true;
 
   // UI
-  final Set<int> _expandedProposals = {};
   final _addCtrl    = TextEditingController();
   final _promptCtrl = TextEditingController();
   String? _generatedPrompt;
@@ -50,6 +68,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
   int _featureTabIndex = 0;
   Timer? _retryTimer;
+  Timer? _copyTimer;
+  bool _isRefreshing = false;
 
   @override
   void initState() {
@@ -60,6 +80,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   @override
   void dispose() {
     _retryTimer?.cancel();
+    _copyTimer?.cancel();
     _addCtrl.dispose();
     _promptCtrl.dispose();
     super.dispose();
@@ -75,8 +96,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   String get _base => widget.settings.serverUrl;
 
   Future<void> _loadAll() async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
     _retryTimer?.cancel();
     await Future.wait([_checkHealth(), _loadStats(), _loadFeatures(), _loadBacklog()]);
+    _isRefreshing = false;
     // Auto-retry if server was unreachable — Render free tier cold-starts in 15-60s
     if (mounted && _serverOk != true) _scheduleRetry();
   }
@@ -188,7 +212,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final id    = proposal['id'];
     final title = proposal['title']?.toString() ?? '';
     final plan  = proposal['plan']?.toString() ?? '';
-    await _patchProposal(id, 'active');
+    await _patchProposal(id, _PS.active);
     if (!mounted) return;
     showModalBottomSheet(
       context: context,
@@ -214,8 +238,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     } catch (_) {}
   }
 
-  Future<void> _addItem() async {
-    final text = _addCtrl.text.trim();
+  Future<void> _addItem() => _addItemWithText(_addCtrl.text.trim());
+
+  Future<void> _addItemWithText(String text) async {
     if (text.isEmpty) return;
     try {
       final res = await http.post(
@@ -224,7 +249,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         body: jsonEncode({'text': text}),
       ).timeout(const Duration(seconds: 8));
       if (mounted && res.statusCode == 200) {
-        _addCtrl.clear();
+        if (text == _addCtrl.text.trim()) _addCtrl.clear();
         await _loadBacklog();
       } else if (mounted) {
         _showSnack('שגיאה בהוספה');
@@ -276,11 +301,13 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   Future<void> _copyPrompt() async {
     if (_generatedPrompt == null) return;
     await Clipboard.setData(ClipboardData(text: _generatedPrompt!));
+    if (!mounted) return;
     setState(() => _promptCopied = true);
-    Future.delayed(const Duration(seconds: 2), () {
+    _copyTimer?.cancel();
+    _copyTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) setState(() => _promptCopied = false);
     });
-    if (mounted) _showSnack('הפרומפט הועתק ✓', duration: const Duration(seconds: 1));
+    _showSnack('הפרומפט הועתק ✓', duration: const Duration(seconds: 1));
   }
 
   void _showSnack(String msg, {Duration? duration}) {
@@ -726,13 +753,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   void _showProposalDetail(Map<String, dynamic> p) {
     final idRaw    = p['id'];
     final idInt    = idRaw != null ? (idRaw as num).toInt() : null;
-    final status   = p['status']?.toString() ?? 'proposal';
-    final isActive = status == 'active';
-    final priority = p['priority']?.toString() ?? 'medium';
-    final priorityColor = priority == 'high'
-        ? const Color(0xFFEF4444)
-        : priority == 'low' ? JC.textMuted : const Color(0xFFF59E0B);
-    final priorityLabel = priority == 'high' ? '🔴 גבוה' : priority == 'low' ? '🟢 נמוך' : '🟡 בינוני';
+    final status   = p['status']?.toString() ?? _PS.proposal;
+    final isActive = status == _PS.active;
+    final priority      = p['priority']?.toString() ?? 'medium';
+    final priorityColor = _priorityColor(priority);
+    final priorityLabel = _priorityLabel(priority);
 
     showModalBottomSheet(
       context: context,
@@ -795,13 +820,13 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               ),
               const SizedBox(height: 20),
               // Activate / deactivate button
-              if (status != 'done')
+              if (status != _PS.done)
                 GestureDetector(
                   onTap: () async {
                     Navigator.pop(ctx);
                     if (idInt != null) {
                       if (isActive) {
-                        await _patchProposal(idInt, 'proposal');
+                        await _patchProposal(idInt, _PS.proposal);
                       } else {
                         await _activateProposal(p);
                       }
@@ -852,19 +877,16 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   Widget _buildProposalCard(Map<String, dynamic> p) {
-    final status   = p['status']?.toString() ?? 'proposal';
+    final status   = p['status']?.toString() ?? _PS.proposal;
     final priority = p['priority']?.toString() ?? 'medium';
-    final isActive = status == 'active';
-    final isDone   = status == 'done';
+    final isActive = status == _PS.active;
+    final isDone   = status == _PS.done;
     final title    = p['title']?.toString() ?? '';
     final plan     = p['plan']?.toString() ?? '';
 
-    final priorityColor = priority == 'high'
-        ? const Color(0xFFEF4444)
-        : priority == 'low' ? JC.textMuted : const Color(0xFFF59E0B);
-    final priorityLabel = priority == 'high' ? '🔴 גבוה' : priority == 'low' ? '🟢 נמוך' : '🟡 בינוני';
-    final catMap    = {'feature': "פיצ'ר", 'improvement': 'שיפור', 'bug': 'באג', 'ux': 'UX'};
-    final catLabel  = catMap[p['category']?.toString()] ?? (p['category']?.toString() ?? '');
+    final priorityColor = _priorityColor(priority);
+    final priorityLabel = _priorityLabel(priority);
+    final catLabel      = _kCatMap[p['category']?.toString()] ?? (p['category']?.toString() ?? '');
     final statusLabel = isActive ? '⚡ עובד על זה' : isDone ? '✅ הושלם' : '💡 הצעה';
     final statusColor = isActive ? JC.blue400 : isDone ? const Color(0xFF22C55E) : JC.textMuted;
 
@@ -923,7 +945,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                         onTap: () {
                           if (idInt != null) {
                             if (isActive) {
-                              _patchProposal(idInt, 'proposal');
+                              _patchProposal(idInt, _PS.proposal);
                             } else {
                               _activateProposal(p);
                             }
@@ -954,11 +976,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               ],
             ),
           ),
-        ),      // Container
-          ),    // ClipRRect
-        ),      // Padding(bottom: 8)
-      ),        // GestureDetector
-    );          // Opacity
+        ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _badge(String text, Color color) => Container(
@@ -1031,17 +1053,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                 controller: _promptCtrl,
                 textDirection: TextDirection.rtl,
                 style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: "תאר את הפיצ'ר שאתה רוצה לפתח...",
-                  hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: JC.border)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: JC.border, width: 0.8)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: JC.blue400)),
-                  filled: true, fillColor: JC.surfaceAlt,
+                decoration: _backlogInputDecoration(
+                  hint: "תאר את הפיצ'ר שאתה רוצה לפתח...",
+                  fill: JC.surfaceAlt,
                 ),
                 onSubmitted: (_) => _generatePrompt(),
               ),
@@ -1112,10 +1126,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                   ),
                   const SizedBox(height: 8),
                   GestureDetector(
-                    onTap: () {
-                      _addCtrl.text = _promptCtrl.text.trim();
-                      _addItem();
-                    },
+                    onTap: () => _addItemWithText(_promptCtrl.text.trim()),
                     child: const Text('+ שמור כפריט ב-Backlog',
                         style: TextStyle(color: JC.textMuted,
                             fontFamily: 'Heebo', fontSize: 12)),
@@ -1140,18 +1151,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               controller: _addCtrl,
               textDirection: TextDirection.rtl,
               style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'הוסף פריט ידני מהיר...',
-                hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: JC.border)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: JC.border, width: 0.8)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: JC.blue400)),
-                filled: true, fillColor: JC.surface,
-              ),
+              decoration: _backlogInputDecoration(hint: 'הוסף פריט ידני מהיר...'),
               onSubmitted: (_) => _addItem(),
             ),
           ),
@@ -1249,6 +1249,24 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  InputDecoration _backlogInputDecoration({required String hint, Color? fill}) =>
+      InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        filled: true,
+        fillColor: fill ?? JC.surface,
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: JC.border)),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: JC.border, width: 0.8)),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: JC.blue400)),
+      );
+
   Widget _sectionTitle(String title) => Padding(
     padding: const EdgeInsets.only(bottom: 2),
     child: Row(children: [
@@ -1321,7 +1339,7 @@ class _ActivateSheetState extends State<_ActivateSheet> {
             Center(child: Container(
               width: 36, height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFF1A2E4A),
+                color: JC.border,
                 borderRadius: BorderRadius.circular(2),
               ),
             )),
@@ -1331,7 +1349,7 @@ class _ActivateSheetState extends State<_ActivateSheet> {
               const SizedBox(width: 8),
               Expanded(child: Text(
                 widget.title,
-                style: const TextStyle(color: Color(0xFFF1F5F9), fontFamily: 'Heebo',
+                style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo',
                     fontWeight: FontWeight.w700, fontSize: 15),
                 maxLines: 2, overflow: TextOverflow.ellipsis,
               )),
@@ -1341,26 +1359,26 @@ class _ActivateSheetState extends State<_ActivateSheet> {
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  CircularProgressIndicator(color: Color(0xFF6366F1), strokeWidth: 2),
+                  CircularProgressIndicator(color: JC.blue400, strokeWidth: 2),
                   SizedBox(height: 12),
                   Text('ג׳רביס מקבל את המשימה...', style: TextStyle(
-                      color: Color(0xFF475569), fontFamily: 'Heebo', fontSize: 13)),
+                      color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
                 ])),
               )
             else if (_error != null)
               Text('שגיאה: $_error', style: const TextStyle(
-                  color: Color(0xFFEF4444), fontFamily: 'Heebo', fontSize: 13))
+                  color: JC.cancelRed, fontFamily: 'Heebo', fontSize: 13))
             else
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0B1422),
+                  color: JC.surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF1A2E4A), width: 0.8),
+                  border: Border.all(color: JC.border, width: 0.8),
                 ),
                 child: Text(
                   _response ?? '',
-                  style: const TextStyle(color: Color(0xFFCBD5E1), fontFamily: 'Heebo',
+                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
                       fontSize: 13, height: 1.6),
                 ),
               ),
@@ -1392,7 +1410,7 @@ class _ActivateSheetState extends State<_ActivateSheet> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1),
+                      color: JC.blue500,
                       borderRadius: BorderRadius.circular(9),
                     ),
                     child: const Text('המשך בצ׳אט ←', style: TextStyle(
@@ -1404,7 +1422,7 @@ class _ActivateSheetState extends State<_ActivateSheet> {
               GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: const Text('סגור', style: TextStyle(
-                    color: Color(0xFF475569), fontFamily: 'Heebo', fontSize: 13)),
+                    color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
               ),
             ]),
           ],

@@ -337,6 +337,7 @@ class ChatScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
   final String? pendingCommand;
   final VoidCallback? onCommandConsumed;
+  final VoidCallback? onBeforeUnfocus;
 
   const ChatScreen({
     super.key,
@@ -345,6 +346,7 @@ class ChatScreen extends StatefulWidget {
     this.onOpenDrawer,
     this.pendingCommand,
     this.onCommandConsumed,
+    this.onBeforeUnfocus,
   });
 
   @override
@@ -482,6 +484,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       await prefs.setString('chat_sessions', jsonEncode(trimmed));
     } catch (_) {}
   }
+
+  Future<void> archiveCurrentSession() => _archiveSessionToHistory();
 
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {

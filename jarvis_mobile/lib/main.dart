@@ -54,6 +54,8 @@ class JC {
 
   // Actions
   static const cancelRed = Color(0xFFEF4444);
+  static const indigo500 = Color(0xFF6366F1);
+  static const indigo300 = Color(0xFFA5B4FC);
 }
 
 class JarvisApp extends StatelessWidget {
@@ -437,15 +439,26 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
 
     _scrollController.addListener(_onScroll);
+    _audioPlayer.onPlayerComplete.listen((_) {
+      if (_lastTtsPath != null) {
+        File(_lastTtsPath!).delete().catchError((_) {});
+        _lastTtsPath = null;
+      }
+      if (!mounted) return;
+      setState(() => _currentState = JarvisState.idle);
+      if (_voiceConversationActive) _listenContinuous();
+    });
     NotificationService.init().catchError((_) {});
   }
 
   void _onScroll() {
     final pos = _scrollController.position;
-    final isNotAtBottom = (pos.maxScrollExtent - pos.pixels) > 200;
+    final showOrb    = pos.pixels < 100;
+    final showBottom = (pos.maxScrollExtent - pos.pixels) > 200 && messages.length > 3;
+    if (showOrb == _showOrbAndHint && showBottom == _showScrollToBottom) return;
     setState(() {
-      _showOrbAndHint = pos.pixels < 100;
-      _showScrollToBottom = isNotAtBottom && messages.length > 3;
+      _showOrbAndHint     = showOrb;
+      _showScrollToBottom = showBottom;
     });
   }
 
@@ -536,21 +549,20 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     final title = _currentProposalTitle ?? 'הצעה מה-Backlog';
     final content = '$title\n$_kPromptSep\n$prompt';
     try {
-      final api = ApiService(_settings);
-      await api.addTask(content);
+      await _api.addTask(content);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: const Color(0xFF0F1929),
+            backgroundColor: JC.surfaceAlt,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             content: Row(children: [
-              const Icon(Icons.task_alt_rounded, color: Color(0xFF6366F1), size: 18),
+              const Icon(Icons.task_alt_rounded, color: JC.indigo500, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'הפרומפט נשמר במשימות תחת "$title"',
-                  style: const TextStyle(color: Color(0xFFF1F5F9), fontFamily: 'Heebo', fontSize: 13),
+                  style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
                 ),
               ),
             ]),
@@ -563,6 +575,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   static const _kPromptSep = '<<<AI_PROMPT>>>';
+
+  ApiService get _api => ApiService(_settings);
 
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {
@@ -894,17 +908,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _scrollToBottom();
 
     try {
-      final api = ApiService(_settings);
       String reply;
       if (type == 'task') {
-        await api.addTask(content);
+        await _api.addTask(content);
         reply = '✅ משימה נוספה: $content';
       } else if (type == 'note') {
-        await api.addNote(content);
+        await _api.addNote(content);
         reply = '📝 הערה נשמרה: $content';
       } else {
         final when = DateTime.now().add(const Duration(hours: 1));
-        await api.addReminder(content, when.toIso8601String());
+        await _api.addReminder(content, when.toIso8601String());
         reply = '🔔 תזכורת נוספה לעוד שעה: $content';
       }
       setState(() {
@@ -927,6 +940,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   // ─── Send ─────────────────────────────────────────────────────────────────────
   Future<void> sendCommand(String text) async {
     if (text.trim().isEmpty && _base64Image == null) return;
+    if (_currentState == JarvisState.thinking) return;
 
     // Handle quick commands before sending to server
     if (_base64Image == null && await _tryQuickCommand(text)) return;
@@ -1024,7 +1038,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
@@ -1093,7 +1107,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           Uri.parse('${_settings.serverUrl}/send-email'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'to': action['email'], 'message': message}),
-        );
+        ).timeout(const Duration(seconds: 15));
         final ok = jsonDecode(res.body)['ok'] == true;
         if (mounted) {
           setState(() => messages.add({

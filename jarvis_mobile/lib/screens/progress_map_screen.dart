@@ -1404,8 +1404,14 @@ class _ActivateSheetState extends State<_ActivateSheet> {
                       '<<<PROMPT_START>>>\n'
                       '[הפרומפט המלא כאן]\n'
                       '<<<PROMPT_END>>>';
-                    widget.onSwitchToChat!(cmd);
+                    // Pop the sheet first, then switch tab in the next frame.
+                    // Calling setState on MainShell while the bottom sheet is
+                    // still alive causes a GlobalKey collision under
+                    // _FocusInheritedScope (same key in overlay + IndexedStack).
                     Navigator.pop(context);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      widget.onSwitchToChat!(cmd);
+                    });
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),

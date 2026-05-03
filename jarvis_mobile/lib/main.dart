@@ -254,18 +254,25 @@ class _JarvisOrb extends StatelessWidget {
 }
 
 // ─── Chat Bubble ─────────────────────────────────────────────────────────────
-class _ChatBubble extends StatelessWidget {
+class _ChatBubble extends StatefulWidget {
   final Map<String, String> msg;
   final int index;
 
   const _ChatBubble({required this.msg, required this.index});
 
   @override
+  State<_ChatBubble> createState() => _ChatBubbleState();
+}
+
+class _ChatBubbleState extends State<_ChatBubble> {
+  bool _showTime = false;
+
+  @override
   Widget build(BuildContext context) {
-    final isUser = msg['sender'] == 'user';
+    final isUser = widget.msg['sender'] == 'user';
 
     return TweenAnimationBuilder<double>(
-      key: ValueKey(index),
+      key: ValueKey(widget.index),
       tween: Tween(begin: 0.0, end: 1.0),
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeOut,
@@ -274,55 +281,66 @@ class _ChatBubble extends StatelessWidget {
         child: Transform.translate(offset: Offset(0, 14 * (1 - v)), child: child),
       ),
       child: Align(
-        // User messages → right, Jarvis → left (standard RTL chat convention)
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          margin: EdgeInsets.only(
-            bottom: 6,
-            right: isUser ? 0 : 48,
-            left:  isUser ? 48 : 0,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: isUser ? JC.userBubble : JC.jarvisBubble,
-            borderRadius: BorderRadius.only(
-              topLeft:     const Radius.circular(18),
-              topRight:    const Radius.circular(18),
-              // Tail: user → bottom-right, jarvis → bottom-left
-              bottomLeft:  Radius.circular(isUser ? 18 : 4),
-              bottomRight: Radius.circular(isUser ? 4 : 18),
+        child: GestureDetector(
+          onTap: () => setState(() => _showTime = !_showTime),
+          child: Container(
+            margin: EdgeInsets.only(
+              bottom: 14,
+              right: isUser ? 0 : 48,
+              left:  isUser ? 48 : 0,
             ),
-            border: Border.all(
-              color: isUser
-                  ? JC.blue500.withOpacity(0.35)
-                  : JC.border.withOpacity(0.6),
-              width: 0.8,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isUser ? JC.userBubble : JC.jarvisBubble,
+              borderRadius: BorderRadius.only(
+                topLeft:     const Radius.circular(20),
+                topRight:    const Radius.circular(20),
+                bottomLeft:  Radius.circular(isUser ? 20 : 6),
+                bottomRight: Radius.circular(isUser ? 6 : 20),
+              ),
+              border: Border.all(
+                color: isUser
+                    ? JC.blue400.withOpacity(0.5)
+                    : JC.border.withOpacity(0.7),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: isUser ? JC.blue400.withOpacity(0.1) : Colors.transparent,
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-          ),
-          child: Column(
-            crossAxisAlignment:
-                isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-            children: [
-              Text(
-                msg['text']!,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: JC.textPrimary,
-                  height: 1.55,
-                  fontFamily: 'Heebo',
+            child: Column(
+              crossAxisAlignment:
+                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.msg['text']!,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: JC.textPrimary,
+                    height: 1.6,
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w400,
+                  ),
+                  textDirection: TextDirection.rtl,
                 ),
-                textDirection: TextDirection.rtl,
-              ),
-              const SizedBox(height: 3),
-              Text(
-                msg['time'] ?? '',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: JC.textMuted.withOpacity(0.7),
-                  fontFamily: 'Heebo',
-                ),
-              ),
-            ],
+                if (_showTime) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.msg['time'] ?? '',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: JC.textMuted.withOpacity(0.8),
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -379,6 +397,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   late AnimationController _orbBreathController;
   late Animation<double>   _orbBreath;
 
+  bool _showOrbAndHint = true;
+  bool _showScrollToBottom = false;
+
   String _getCurrentTime() {
     final now = DateTime.now();
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
@@ -413,7 +434,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _orbBreathController, curve: Curves.easeInOut),
     );
 
+    _scrollController.addListener(_onScroll);
     NotificationService.init().catchError((_) {});
+  }
+
+  void _onScroll() {
+    final pos = _scrollController.position;
+    final isNotAtBottom = (pos.maxScrollExtent - pos.pixels) > 200;
+    setState(() {
+      _showOrbAndHint = pos.pixels < 100;
+      _showScrollToBottom = isNotAtBottom && messages.length > 3;
+    });
   }
 
 
@@ -1203,36 +1234,40 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             children: [
 
               // ── Orb (tappable — primary mic trigger) ─────────────────────
-              Padding(
-                padding: const EdgeInsets.only(top: 96, bottom: 4),
-                child: GestureDetector(
-                  onTap: _voiceConversationActive ? null : _startVoiceConversation,
-                  onLongPress: null,
-                  child: Column(
-                    children: [
-                      _JarvisOrb(
-                        state: _currentState,
-                        breathAnim: _orbBreath,
-                      ),
-                      const SizedBox(height: 10),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 250),
-                        child: Text(
-                          _orbHint,
-                          key: ValueKey(_orbHint),
-                          style: TextStyle(
-                            color: _currentState == JarvisState.listening
-                                ? JC.blue400
-                                : JC.textMuted,
-                            fontSize: 13,
-                            fontFamily: 'Heebo',
-                            fontWeight: _currentState == JarvisState.listening
-                                ? FontWeight.w500
-                                : FontWeight.normal,
+              AnimatedOpacity(
+                opacity: _showOrbAndHint ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 250),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 96, bottom: 4),
+                  child: GestureDetector(
+                    onTap: _voiceConversationActive ? null : _startVoiceConversation,
+                    onLongPress: null,
+                    child: Column(
+                      children: [
+                        _JarvisOrb(
+                          state: _currentState,
+                          breathAnim: _orbBreath,
+                        ),
+                        const SizedBox(height: 10),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          child: Text(
+                            _orbHint,
+                            key: ValueKey(_orbHint),
+                            style: TextStyle(
+                              color: _currentState == JarvisState.listening
+                                  ? JC.blue400
+                                  : JC.textMuted,
+                              fontSize: 13,
+                              fontFamily: 'Heebo',
+                              fontWeight: _currentState == JarvisState.listening
+                                  ? FontWeight.w500
+                                  : FontWeight.normal,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1352,6 +1387,51 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                ),
+
+              // ── Scroll to bottom button ────────────────────────────────────
+              if (_showScrollToBottom)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: GestureDetector(
+                      onTap: () {
+                        _scrollController.animateTo(
+                          _scrollController.position.maxScrollExtent,
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.easeOut,
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: JC.blue400.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: JC.blue400.withOpacity(0.5), width: 1),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'הודעות חדשות',
+                              style: TextStyle(
+                                color: JC.blue400,
+                                fontSize: 12,
+                                fontFamily: 'Heebo',
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            SizedBox(width: 6),
+                            Icon(Icons.arrow_downward_rounded,
+                                color: JC.blue400, size: 14),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),

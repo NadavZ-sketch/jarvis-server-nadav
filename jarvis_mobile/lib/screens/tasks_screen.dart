@@ -369,80 +369,12 @@ class _TasksScreenState extends State<TasksScreen> {
                                       direction: DismissDirection.endToStart,
                                       background: _dismissBg(),
                                       onDismissed: (_) => _onDismissed(item),
-                                      child: Container(
-                                        margin: const EdgeInsets.only(bottom: 10),
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 14, vertical: 12),
-                                        decoration: BoxDecoration(
-                                          color: isDone
-                                              ? JC.surface.withOpacity(0.6)
-                                              : JC.surfaceAlt,
-                                          borderRadius: BorderRadius.circular(14),
-                                          border: Border.all(
-                                            color: overdue
-                                                ? JC.cancelRed.withOpacity(0.4)
-                                                : JC.border,
-                                            width: 0.8,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          textDirection: TextDirection.rtl,
-                                          children: [
-                                            // Checkbox
-                                            GestureDetector(
-                                              onTap: () => _toggleDone(item),
-                                              child: AnimatedSwitcher(
-                                                duration: const Duration(milliseconds: 200),
-                                                child: Icon(
-                                                  isDone
-                                                      ? Icons.check_circle_rounded
-                                                      : Icons.radio_button_unchecked_rounded,
-                                                  key: ValueKey(isDone),
-                                                  color: isDone
-                                                      ? JC.blue400.withOpacity(0.6)
-                                                      : JC.blue500,
-                                                  size: 22,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.end,
-                                                children: [
-                                                  Text(
-                                                    item['content']?.toString() ?? '',
-                                                    textDirection: TextDirection.rtl,
-                                                    style: TextStyle(
-                                                      color: isDone
-                                                          ? JC.textMuted
-                                                          : JC.textPrimary,
-                                                      fontSize: 15,
-                                                      fontFamily: 'Heebo',
-                                                      decoration: isDone
-                                                          ? TextDecoration.lineThrough
-                                                          : null,
-                                                    ),
-                                                  ),
-                                                  if (dueLabel.isNotEmpty)
-                                                    Text(
-                                                      dueLabel,
-                                                      style: TextStyle(
-                                                        color: overdue
-                                                            ? JC.cancelRed
-                                                            : JC.textMuted,
-                                                        fontSize: 11,
-                                                        fontFamily: 'Heebo',
-                                                        fontWeight: overdue
-                                                            ? FontWeight.w600
-                                                            : FontWeight.normal,
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                      child: _TaskItem(
+                                        item: item,
+                                        isDone: isDone,
+                                        overdue: overdue,
+                                        dueLabel: dueLabel,
+                                        onToggle: () => _toggleDone(item),
                                       ),
                                     ),
                                   );
@@ -455,6 +387,247 @@ class _TasksScreenState extends State<TasksScreen> {
     );
   }
 }
+
+// ─── Task item widget (supports regular + proposal-prompt tasks) ─────────────
+const _kPromptSep = '<<<AI_PROMPT>>>';
+
+class _TaskItem extends StatefulWidget {
+  final Map<String, dynamic> item;
+  final bool isDone;
+  final bool overdue;
+  final String dueLabel;
+  final VoidCallback onToggle;
+
+  const _TaskItem({
+    required this.item,
+    required this.isDone,
+    required this.overdue,
+    required this.dueLabel,
+    required this.onToggle,
+  });
+
+  @override
+  State<_TaskItem> createState() => _TaskItemState();
+}
+
+class _TaskItemState extends State<_TaskItem> {
+  bool _promptExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final raw     = widget.item['content']?.toString() ?? '';
+    final sepIdx  = raw.indexOf('\n$_kPromptSep\n');
+    final hasPrompt = sepIdx != -1;
+    final title   = hasPrompt ? raw.substring(0, sepIdx) : raw;
+    final prompt  = hasPrompt ? raw.substring(sepIdx + '\n$_kPromptSep\n'.length) : '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: widget.isDone ? JC.surface.withOpacity(0.6) : JC.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: hasPrompt
+              ? const Color(0xFF6366F1).withOpacity(0.5)
+              : widget.overdue
+                  ? JC.cancelRed.withOpacity(0.4)
+                  : JC.border,
+          width: hasPrompt ? 1.2 : 0.8,
+        ),
+      ),
+      child: Column(
+        children: [
+          // ── Main row ──────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                GestureDetector(
+                  onTap: widget.onToggle,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      widget.isDone
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      key: ValueKey(widget.isDone),
+                      color: widget.isDone
+                          ? JC.blue400.withOpacity(0.6)
+                          : JC.blue500,
+                      size: 22,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        title,
+                        textDirection: TextDirection.rtl,
+                        style: TextStyle(
+                          color: widget.isDone ? JC.textMuted : JC.textPrimary,
+                          fontSize: 15,
+                          fontFamily: 'Heebo',
+                          decoration: widget.isDone ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                      if (widget.dueLabel.isNotEmpty)
+                        Text(
+                          widget.dueLabel,
+                          style: TextStyle(
+                            color: widget.overdue ? JC.cancelRed : JC.textMuted,
+                            fontSize: 11,
+                            fontFamily: 'Heebo',
+                            fontWeight: widget.overdue ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (hasPrompt) ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => setState(() => _promptExpanded = !_promptExpanded),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6366F1).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: const Color(0xFF6366F1).withOpacity(0.4), width: 0.8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('🤖', style: TextStyle(fontSize: 11)),
+                          const SizedBox(width: 3),
+                          Text(
+                            _promptExpanded ? 'סגור' : 'פרומפט',
+                            style: const TextStyle(
+                              color: Color(0xFFA5B4FC),
+                              fontSize: 11,
+                              fontFamily: 'Heebo',
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Icon(
+                            _promptExpanded
+                                ? Icons.keyboard_arrow_up_rounded
+                                : Icons.keyboard_arrow_down_rounded,
+                            color: const Color(0xFFA5B4FC),
+                            size: 14,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // ── Expanded prompt section ────────────────────────────────────
+          if (hasPrompt && _promptExpanded)
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF080F1A),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: const Color(0xFF6366F1).withOpacity(0.25), width: 0.8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                    child: Row(
+                      textDirection: TextDirection.rtl,
+                      children: [
+                        const Text(
+                          'פרומפט AI לפיתוח',
+                          style: TextStyle(
+                            color: Color(0xFFA5B4FC),
+                            fontFamily: 'Heebo',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: prompt));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: const Color(0xFF0F1929),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                                content: const Text('הפרומפט הועתק ✓',
+                                    style: TextStyle(
+                                        color: Color(0xFFF1F5F9),
+                                        fontFamily: 'Heebo',
+                                        fontSize: 13)),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1A2E4A),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.copy_rounded,
+                                    color: JC.textMuted, size: 12),
+                                SizedBox(width: 4),
+                                Text('העתק',
+                                    style: TextStyle(
+                                        color: JC.textMuted,
+                                        fontFamily: 'Heebo',
+                                        fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Divider
+                  Container(height: 0.5, color: const Color(0xFF1A2E4A)),
+                  // Prompt text
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      prompt,
+                      textDirection: TextDirection.rtl,
+                      style: const TextStyle(
+                        color: Color(0xFFCBD5E1),
+                        fontFamily: 'Heebo',
+                        fontSize: 13,
+                        height: 1.7,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 InputDecoration _fieldDecoration(String hint) => InputDecoration(
       hintText: hint,

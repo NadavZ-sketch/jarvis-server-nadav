@@ -389,6 +389,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   Timer? _ttsTimeoutTimer;
   String? _lastTtsPath;
 
+  String? _currentProposalTitle;
+
   Uint8List? _imageBytes;
   String?    _base64Image;
 
@@ -518,6 +520,50 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> archiveCurrentSession() => _archiveSessionToHistory();
 
+  static const _promptStart = '<<<PROMPT_START>>>';
+  static const _promptEnd   = '<<<PROMPT_END>>>';
+
+  void _checkForFinalPrompt(String text) {
+    final s = text.indexOf(_promptStart);
+    final e = text.indexOf(_promptEnd);
+    if (s == -1 || e == -1 || e <= s) return;
+    final prompt = text.substring(s + _promptStart.length, e).trim();
+    if (prompt.isEmpty) return;
+    _savePromptAsTask(prompt);
+  }
+
+  Future<void> _savePromptAsTask(String prompt) async {
+    final title = _currentProposalTitle ?? 'הצעה מה-Backlog';
+    final content = '$title\n$_kPromptSep\n$prompt';
+    try {
+      final api = ApiService(_settings);
+      await api.addTask(content);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF0F1929),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            content: Row(children: [
+              const Icon(Icons.task_alt_rounded, color: Color(0xFF6366F1), size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'הפרומפט נשמר במשימות תחת "$title"',
+                  style: const TextStyle(color: Color(0xFFF1F5F9), fontFamily: 'Heebo', fontSize: 13),
+                ),
+              ),
+            ]),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        _currentProposalTitle = null;
+      }
+    } catch (_) {}
+  }
+
+  static const _kPromptSep = '<<<AI_PROMPT>>>';
+
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -527,10 +573,20 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
     if (widget.pendingCommand != null &&
         widget.pendingCommand != oldWidget.pendingCommand) {
-      final cmd = widget.pendingCommand!;
+      var cmd = widget.pendingCommand!;
+      // Extract proposal title marker if present
+      const titlePrefix = '[PROPOSAL_TITLE:';
+      if (cmd.startsWith(titlePrefix)) {
+        final end = cmd.indexOf(']\n\n');
+        if (end != -1) {
+          _currentProposalTitle = cmd.substring(titlePrefix.length, end);
+          cmd = cmd.substring(end + 3);
+        }
+      }
+      final cleanCmd = cmd;
       widget.onCommandConsumed?.call();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) sendCommand(cmd);
+        if (mounted) sendCommand(cleanCmd);
       });
     }
   }
@@ -925,6 +981,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         setState(() => messages.add(
             {'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()}));
         _persistMessages();
+        _checkForFinalPrompt(answer);
 
         if (action != null && mounted) await _confirmAndSend(action);
 

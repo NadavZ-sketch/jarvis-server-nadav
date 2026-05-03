@@ -613,29 +613,45 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final name = f['name']?.toString() ?? '';
     final desc = f['desc']?.toString() ?? '';
     final display = name.isNotEmpty ? name : '—';
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: JC.surface,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        border: Border(
-          right: BorderSide(color: color.withOpacity(0.5), width: 2.5),
-          top: BorderSide(color: JC.border, width: 0.5),
-          bottom: BorderSide(color: JC.border, width: 0.5),
-          left: BorderSide(color: JC.border, width: 0.5),
-        ),
-      ),
-      child: Text(
-        desc.isNotEmpty ? '$display\n$desc' : display,
-        textDirection: TextDirection.rtl,
-        style: TextStyle(
-          color: JC.textPrimary,
-          fontFamily: 'Heebo',
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-          height: 1.5,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            border: Border(
+              right: BorderSide(color: color.withOpacity(0.5), width: 2.5),
+              top: BorderSide(color: JC.border, width: 0.5),
+              bottom: BorderSide(color: JC.border, width: 0.5),
+              left: BorderSide(color: JC.border, width: 0.5),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(display,
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                    color: JC.textPrimary,
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  )),
+              if (desc.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(desc,
+                    textDirection: TextDirection.rtl,
+                    style: TextStyle(
+                      color: JC.textSecondary,
+                      fontFamily: 'Heebo',
+                      fontSize: 11,
+                    )),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -859,12 +875,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       opacity: isDone ? 0.5 : 1,
       child: GestureDetector(
         onTap: () => _showProposalDetail(p),
-        child: Container(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
           width: double.infinity,
-          margin: const EdgeInsets.only(bottom: 8),
           decoration: BoxDecoration(
             color: JC.surfaceAlt,
-            borderRadius: BorderRadius.circular(12),
             border: Border(
               right: BorderSide(color: priorityColor, width: 3),
               left:   BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
@@ -936,9 +954,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
+        ),      // Container
+          ),    // ClipRRect
+        ),      // Padding(bottom: 8)
+      ),        // GestureDetector
+    );          // Opacity
   }
 
   Widget _badge(String text, Color color) => Container(

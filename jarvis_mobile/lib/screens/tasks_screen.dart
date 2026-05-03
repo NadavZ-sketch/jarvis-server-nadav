@@ -428,7 +428,7 @@ class _TaskItemState extends State<_TaskItem> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: hasPrompt
-              ? const Color(0xFF6366F1).withOpacity(0.5)
+              ? JC.indigo500.withOpacity(0.5)
               : widget.overdue
                   ? JC.cancelRed.withOpacity(0.4)
                   : JC.border,
@@ -494,10 +494,10 @@ class _TaskItemState extends State<_TaskItem> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF6366F1).withOpacity(0.15),
+                        color: JC.indigo500.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: const Color(0xFF6366F1).withOpacity(0.4), width: 0.8),
+                            color: JC.indigo500.withOpacity(0.4), width: 0.8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -507,7 +507,7 @@ class _TaskItemState extends State<_TaskItem> {
                           Text(
                             _promptExpanded ? 'סגור' : 'פרומפט',
                             style: const TextStyle(
-                              color: Color(0xFFA5B4FC),
+                              color: JC.indigo300,
                               fontSize: 11,
                               fontFamily: 'Heebo',
                               fontWeight: FontWeight.w600,
@@ -518,7 +518,7 @@ class _TaskItemState extends State<_TaskItem> {
                             _promptExpanded
                                 ? Icons.keyboard_arrow_up_rounded
                                 : Icons.keyboard_arrow_down_rounded,
-                            color: const Color(0xFFA5B4FC),
+                            color: JC.indigo300,
                             size: 14,
                           ),
                         ],
@@ -538,7 +538,7 @@ class _TaskItemState extends State<_TaskItem> {
                 color: const Color(0xFF080F1A),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: const Color(0xFF6366F1).withOpacity(0.25), width: 0.8),
+                    color: JC.indigo500.withOpacity(0.25), width: 0.8),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -552,7 +552,7 @@ class _TaskItemState extends State<_TaskItem> {
                         const Text(
                           'פרומפט AI לפיתוח',
                           style: TextStyle(
-                            color: Color(0xFFA5B4FC),
+                            color: JC.indigo300,
                             fontFamily: 'Heebo',
                             fontSize: 12,
                             fontWeight: FontWeight.w600,

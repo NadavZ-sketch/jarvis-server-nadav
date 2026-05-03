@@ -1368,7 +1368,7 @@ class _ActivateSheetState extends State<_ActivateSheet> {
             Row(children: [
               if (widget.onSwitchToChat != null && !_loading)
                 GestureDetector(
-                  onTap: () { Navigator.pop(context); widget.onSwitchToChat!(); },
+                  onTap: () { widget.onSwitchToChat!(); Navigator.pop(context); },
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                     decoration: BoxDecoration(

@@ -414,18 +414,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     NotificationService.init().catchError((_) {});
   }
 
-  @override
-  void didUpdateWidget(ChatScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.pendingCommand != null &&
-        widget.pendingCommand != oldWidget.pendingCommand) {
-      final cmd = widget.pendingCommand!;
-      widget.onCommandConsumed?.call();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) sendCommand(cmd);
-      });
-    }
-  }
 
   // ─── Chat history persistence ─────────────────────────────────────────────────
 
@@ -501,6 +489,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     if (widget.initialSettings != null &&
         widget.initialSettings != oldWidget.initialSettings) {
       setState(() => _settings = widget.initialSettings!);
+    }
+    if (widget.pendingCommand != null &&
+        widget.pendingCommand != oldWidget.pendingCommand) {
+      final cmd = widget.pendingCommand!;
+      widget.onCommandConsumed?.call();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) sendCommand(cmd);
+      });
     }
   }
 

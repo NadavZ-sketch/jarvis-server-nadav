@@ -8,7 +8,7 @@ import '../app_settings.dart';
 
 class ProgressMapScreen extends StatefulWidget {
   final AppSettings settings;
-  final VoidCallback? onSwitchToChat;
+  final void Function(String)? onSwitchToChat;
   const ProgressMapScreen({super.key, required this.settings, this.onSwitchToChat});
 
   @override
@@ -1265,7 +1265,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
 class _ActivateSheet extends StatefulWidget {
   final String base, title, plan;
-  final VoidCallback? onSwitchToChat;
+  final void Function(String)? onSwitchToChat;
   const _ActivateSheet({
     required this.base,
     required this.title,
@@ -1368,7 +1368,11 @@ class _ActivateSheetState extends State<_ActivateSheet> {
             Row(children: [
               if (widget.onSwitchToChat != null && !_loading)
                 GestureDetector(
-                  onTap: () { Navigator.pop(context); widget.onSwitchToChat!(); },
+                  onTap: () {
+                    final prompt = 'אני רוצה לפתח את ההצעה הבאה:\n\n**${widget.title}**\n\nתוכנית ראשונית: ${widget.plan}\n\nשאל אותי שאלות ממוקדות שיעזרו לנו לגבש יחד פרומפט מפורט ומוכן לשימוש שאוכל להעביר לכלי AI לפיתוח קוד (Claude Code, Codex, Gemini וכו׳). לאחר מספר סבבי שאלות ותשובות, צור את הפרומפט הסופי.';
+                    widget.onSwitchToChat!(prompt);
+                    Navigator.pop(context);
+                  },
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                     decoration: BoxDecoration(

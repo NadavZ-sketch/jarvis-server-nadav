@@ -26,6 +26,7 @@ class _MainShellState extends State<MainShell> {
 
   Timer? _notifPollTimer;
   int    _notifId = 10000;
+  String? _pendingChatCommand;
 
   @override
   void initState() {
@@ -149,13 +150,18 @@ class _MainShellState extends State<MainShell> {
               // 0 — Progress Map
               ProgressMapScreen(
                 settings: _settings,
-                onSwitchToChat: () => _onTabTapped(1),
+                onSwitchToChat: (cmd) => setState(() {
+                  _pendingChatCommand = cmd;
+                  _selectedIndex = 1;
+                }),
               ),
               // 1 — Chat (main screen)
               ChatScreen(
                 initialSettings: _settings,
                 onSettingsChanged: _onSettingsChanged,
                 onOpenDrawer: _openDrawer,
+                pendingCommand: _pendingChatCommand,
+                onCommandConsumed: () => setState(() => _pendingChatCommand = null),
               ),
               // 2 — Productivity (Tasks + Reminders + Calendar)
               ProductivityScreen(settings: _settings),

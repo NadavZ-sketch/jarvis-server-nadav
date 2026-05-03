@@ -335,12 +335,16 @@ class ChatScreen extends StatefulWidget {
   final AppSettings? initialSettings;
   final ValueChanged<AppSettings>? onSettingsChanged;
   final VoidCallback? onOpenDrawer;
+  final String? pendingCommand;
+  final VoidCallback? onCommandConsumed;
 
   const ChatScreen({
     super.key,
     this.initialSettings,
     this.onSettingsChanged,
     this.onOpenDrawer,
+    this.pendingCommand,
+    this.onCommandConsumed,
   });
 
   @override
@@ -408,6 +412,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
 
     NotificationService.init().catchError((_) {});
+  }
+
+  @override
+  void didUpdateWidget(ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.pendingCommand != null &&
+        widget.pendingCommand != oldWidget.pendingCommand) {
+      final cmd = widget.pendingCommand!;
+      widget.onCommandConsumed?.call();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) sendCommand(cmd);
+      });
+    }
   }
 
   // ─── Chat history persistence ─────────────────────────────────────────────────

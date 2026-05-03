@@ -1369,8 +1369,24 @@ class _ActivateSheetState extends State<_ActivateSheet> {
               if (widget.onSwitchToChat != null && !_loading)
                 GestureDetector(
                   onTap: () {
-                    final prompt = 'אני רוצה לפתח את ההצעה הבאה:\n\n**${widget.title}**\n\nתוכנית ראשונית: ${widget.plan}\n\nשאל אותי שאלות ממוקדות שיעזרו לנו לגבש יחד פרומפט מפורט ומוכן לשימוש שאוכל להעביר לכלי AI לפיתוח קוד (Claude Code, Codex, Gemini וכו׳). לאחר מספר סבבי שאלות ותשובות, צור את הפרומפט הסופי.';
-                    widget.onSwitchToChat!(prompt);
+                    final cmd =
+                      '[PROPOSAL_TITLE:${widget.title}]\n\n'
+                      'קיבלתי הצעת פיתוח חדשה ואני רוצה לפתח אותה:\n\n'
+                      '**${widget.title}**\n\n'
+                      'תוכנית ראשונית: ${widget.plan}\n\n'
+                      'בבקשה שאל אותי לפחות 10 שאלות ממוקדות (שאלה אחת בכל פעם) כדי להבין לעומק:\n'
+                      '- מה בדיוק הפיצ׳רים והיכולות הנדרשים\n'
+                      '- קהל היעד ומטרות המוצר\n'
+                      '- דרישות טכניות, אינטגרציות, הגבלות\n'
+                      '- חווית משתמש ועיצוב\n'
+                      '- עדיפויות ו-MVP\n\n'
+                      'אחרי שסיימנו את כל השאלות, נסח פרומפט פיתוח מפורט ומוכן לשימוש בכלי AI '
+                      '(Claude Code, Codex, Gemini וכו׳).\n'
+                      'את הפרומפט הסופי כתוב בדיוק בפורמט הזה (חשוב!):\n'
+                      '<<<PROMPT_START>>>\n'
+                      '[הפרומפט המלא כאן]\n'
+                      '<<<PROMPT_END>>>';
+                    widget.onSwitchToChat!(cmd);
                     Navigator.pop(context);
                   },
                   child: Container(

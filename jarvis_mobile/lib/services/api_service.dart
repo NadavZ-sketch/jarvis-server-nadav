@@ -243,4 +243,21 @@ class ApiService {
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
+
+  // ─── E2E Reports ──────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getE2eReports() async {
+    final res = await _client.get(_uri('/e2e-reports')).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['reports'] ?? []);
+  }
+
+  Future<Map<String, dynamic>> getE2eRun(String runId) async {
+    final res = await _client.get(_uri('/e2e-reports/$runId')).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<void> deleteE2eRun(String runId) async {
+    await _client.delete(_uri('/e2e-reports/$runId')).timeout(_timeout);
+  }
 }

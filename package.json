@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "jest",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "e2e": "node tests/e2e/runE2E.js",
+    "e2e:local": "node tests/e2e/runE2E.js --local"
   },
   "jest": {
     "testEnvironment": "node",

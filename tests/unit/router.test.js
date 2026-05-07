@@ -40,6 +40,11 @@ describe('classifyIntent — keyword routing', () => {
         ['נסח לי הודעה לבוס', 'draft'],
         ['תכתוב לי מייל', 'draft'],
         ['עזור לי לנסח', 'draft'],
+        // e2e keywords
+        ['בצע בדיקות קצה', 'e2e'],
+        ['בדיקות קצה לקצה', 'e2e'],
+        ['הרץ בדיקות', 'e2e'],
+        ['end-to-end', 'e2e'],
         // default to chat
         ['מה השעה עכשיו', 'chat'],
         ['שלום', 'chat'],

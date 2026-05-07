@@ -42,6 +42,7 @@ const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
+const { runE2EAgent }         = require('./agents/e2eAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent }     = require('./agents/insightAgent');
 const { runWeatherAgent }     = require('./agents/weatherAgent');
@@ -356,7 +357,7 @@ app.post('/ask-jarvis', async (req, res) => {
 
         // Follow-up override: if the user is continuing a previous conversation,
         // route to chat even if keywords matched a specialized agent
-        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'task', 'insight', 'security', 'factory'];
+        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'task', 'insight', 'security', 'e2e', 'factory'];
         if (CONTEXT_OVERRIDE_AGENTS.includes(agentName)) {
             const tempHistory = await loadChatHistory(); // uses TTL cache — cheap
             if (detectFollowUp(userMessage, tempHistory)) {
@@ -440,6 +441,8 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runInsightAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'security') {
             result = await runSecurityAgent(userMessage, useLocal, sendEmail);
+        } else if (agentName === 'e2e') {
+            result = await runE2EAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'factory') {
             result = await runAgentFactoryAgent(userMessage, supabase, useLocal);
         } else {

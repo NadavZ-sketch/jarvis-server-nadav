@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart' show JC;
+import 'transitions/slide_fade_route.dart';
 import 'widgets/empty_state.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -69,8 +70,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final msgs = (session['messages'] as List).cast<Map<String, dynamic>>();
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => _SessionDetailScreen(
+      SlideFadeRoute(
+        page: _SessionDetailScreen(
           date: _formatDate(session['date'] as String?),
           messages: msgs,
         ),

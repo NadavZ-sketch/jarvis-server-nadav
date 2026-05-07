@@ -19,7 +19,7 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
-  final _chatScreenKey = GlobalKey<State>();
+  Future<void> Function()? _archiveChatFn;
 
   // Start on Chat tab (index 1)
   int _selectedIndex = 1;
@@ -75,8 +75,7 @@ class _MainShellState extends State<MainShell> {
     if (i == _selectedIndex) return;
     // Archive chat before switching away from it
     if (_selectedIndex == 1) {
-      final chatState = _chatScreenKey.currentState as dynamic;
-      await chatState?.archiveCurrentSession();
+      await _archiveChatFn?.call();
     }
     HapticFeedback.selectionClick();
     setState(() => _selectedIndex = i);
@@ -163,7 +162,7 @@ class _MainShellState extends State<MainShell> {
               ),
               // 1 — Chat (main screen)
               ChatScreen(
-                key: _chatScreenKey,
+                onRegisterArchive: (fn) => _archiveChatFn = fn,
                 initialSettings: _settings,
                 onSettingsChanged: _onSettingsChanged,
                 onOpenDrawer: _openDrawer,

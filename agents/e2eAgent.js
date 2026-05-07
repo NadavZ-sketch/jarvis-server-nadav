@@ -119,6 +119,15 @@ async function persistFindings(supabase, runId, findings) {
 }
 
 async function runE2EAgent(userMessage = '', supabase = null, useLocal = false, settings = {}) {
+    try {
+        return await _runE2EAgent(userMessage, supabase, useLocal, settings);
+    } catch (err) {
+        console.error('E2EAgent error:', err.message);
+        return { answer: 'לא הצלחתי לבצע את בדיקות הקצה. ייתכן שהמיגרציות ב-Supabase לא הורצו עדיין. נסה שוב או הרץ: `npm run e2e`.' };
+    }
+}
+
+async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false, settings = {}) {
     const t0 = Date.now();
     const probes = selectedProbes(settings);
     const baseUrl = settings.baseUrl || process.env.E2E_BASE_URL || 'http://localhost:3000';
@@ -185,3 +194,4 @@ async function runE2EAgent(userMessage = '', supabase = null, useLocal = false, 
 }
 
 module.exports = { runE2EAgent };
+

@@ -457,7 +457,7 @@ app.post('/ask-jarvis', async (req, res) => {
                     cacheInvalidate('chatHistory');
                 }
             });
-            result = { answer: '🧪 מתחיל בדיקות קצה ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.' };
+            result = { answer: '🧪 מתחיל בדיקות קצה ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.', skipTts: true };
         } else if (agentName === 'factory') {
             result = await runAgentFactoryAgent(userMessage, supabase, useLocal);
         } else {
@@ -471,7 +471,9 @@ app.post('/ask-jarvis', async (req, res) => {
         const action = result.action || null;
 
         // ── Parallel: save history + TTS ──────────────────────────────────────
-        const ttsEnabled = settings.ttsEnabled !== false;
+        // Long-running agents (e.g. e2e in background) set skipTts to short-circuit
+        // the response and avoid the client-side timeout.
+        const ttsEnabled = settings.ttsEnabled !== false && !result.skipTts;
         const [,, audioBase64] = await Promise.all([
             saveChatMessage('user', userMessage),
             saveChatMessage('jarvis', answer),

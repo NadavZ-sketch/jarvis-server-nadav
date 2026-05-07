@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -65,9 +66,25 @@ class JarvisApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Jarvis',
+      title: 'ג׳רביס',
+      locale: const Locale('he', 'IL'),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('he', 'IL')],
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: JC.bg,
+        colorScheme: const ColorScheme.dark(
+          primary: JC.blue500,
+          onPrimary: Colors.white,
+          surface: JC.surface,
+          surfaceContainerHighest: JC.surfaceAlt,
+          outline: JC.border,
+          onSurface: JC.textSecondary,
+          onSurfaceVariant: JC.textMuted,
+        ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.transparent,
           elevation: 0,

@@ -142,6 +142,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: Row(
+                    textDirection: TextDirection.rtl,
                     children: [
                       Text(
                         _formatSelectedDate(_selected),
@@ -224,6 +225,7 @@ class _EventTile extends StatelessWidget {
         ),
       ),
       child: Row(
+        textDirection: TextDirection.rtl,
         children: [
           Container(
             width: 36, height: 36,
@@ -236,7 +238,7 @@ class _EventTile extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   event['title'] ?? '',

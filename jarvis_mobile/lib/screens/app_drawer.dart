@@ -28,8 +28,9 @@ class AppDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Drawer(
-      backgroundColor: JC.surface,
+      backgroundColor: cs.surface,
       child: Column(
         children: [
           // ── Header ───────────────────────────────────────────────────────
@@ -41,9 +42,9 @@ class AppDrawer extends StatelessWidget {
               right: 20,
               left: 20,
             ),
-            decoration: const BoxDecoration(
-              color: JC.surfaceAlt,
-              border: Border(bottom: BorderSide(color: JC.border, width: 0.8)),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              border: Border(bottom: BorderSide(color: cs.outline, width: 0.8)),
             ),
             child: Row(
               textDirection: TextDirection.rtl,
@@ -181,6 +182,7 @@ class _DrawerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -189,18 +191,18 @@ class _DrawerTile extends StatelessWidget {
       child: ListTile(
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-        leading: Icon(icon, color: JC.textMuted, size: 22),
+        leading: Icon(icon, color: cs.onSurfaceVariant, size: 22),
         title: Text(
           label,
           textDirection: TextDirection.rtl,
-          style: const TextStyle(
-            color: JC.textSecondary,
+          style: TextStyle(
+            color: cs.onSurface,
             fontSize: 15,
             fontFamily: 'Heebo',
           ),
         ),
-        trailing: const Icon(Icons.chevron_left_rounded,
-            color: JC.textMuted, size: 20),
+        trailing: Icon(Icons.chevron_left_rounded,
+            color: cs.onSurfaceVariant, size: 20),
         onTap: onTap,
       ),
     );

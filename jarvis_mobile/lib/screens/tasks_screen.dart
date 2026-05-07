@@ -317,25 +317,33 @@ class _TasksScreenState extends State<TasksScreen> {
                     if (_items.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: JarvisSearchBar(
-                            controller: _searchCtrl, hint: 'חיפוש במשימות...'),
+                        child: Semantics(
+                          label: 'חיפוש במשימות',
+                          textField: true,
+                          child: JarvisSearchBar(
+                              controller: _searchCtrl, hint: 'חיפוש במשימות...'),
+                        ),
                       ),
                     if (doneCount > 0)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                         child: Align(
                           alignment: Alignment.centerLeft,
-                          child: TextButton(
-                            onPressed: () =>
-                                setState(() => _showDone = !_showDone),
-                            child: Text(
-                              _showDone
-                                  ? 'הסתר בוצעו'
-                                  : 'הצג בוצעו ($doneCount)',
-                              style: const TextStyle(
-                                  color: JC.blue400,
-                                  fontFamily: 'Heebo',
-                                  fontSize: 13),
+                          child: Semantics(
+                            button: true,
+                            label: _showDone ? 'הסתר משימות שבוצעו' : 'הצג משימות שבוצעו',
+                            child: TextButton(
+                              onPressed: () =>
+                                  setState(() => _showDone = !_showDone),
+                              child: Text(
+                                _showDone
+                                    ? 'הסתר בוצעו'
+                                    : 'הצג בוצעו ($doneCount)',
+                                style: const TextStyle(
+                                    color: JC.blue400,
+                                    fontFamily: 'Heebo',
+                                    fontSize: 13),
+                              ),
                             ),
                           ),
                         ),

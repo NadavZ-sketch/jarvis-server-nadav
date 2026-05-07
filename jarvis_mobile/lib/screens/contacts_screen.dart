@@ -521,15 +521,19 @@ class _ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: color),
-      title: Text(
-        label,
-        textDirection: TextDirection.rtl,
-        style: const TextStyle(
-            color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 14),
+    return Semantics(
+      button: true,
+      label: label,
+      child: ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(
+          label,
+          textDirection: TextDirection.rtl,
+          style: const TextStyle(
+              color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 14),
+        ),
+        onTap: onTap,
       ),
-      onTap: onTap,
     );
   }
 }

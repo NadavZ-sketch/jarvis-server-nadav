@@ -358,6 +358,7 @@ class ChatScreen extends StatefulWidget {
   final String? pendingCommand;
   final VoidCallback? onCommandConsumed;
   final VoidCallback? onBeforeUnfocus;
+  final void Function(Future<void> Function())? onRegisterArchive;
 
   const ChatScreen({
     super.key,
@@ -367,6 +368,7 @@ class ChatScreen extends StatefulWidget {
     this.pendingCommand,
     this.onCommandConsumed,
     this.onBeforeUnfocus,
+    this.onRegisterArchive,
   });
 
   @override
@@ -416,6 +418,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    widget.onRegisterArchive?.call(() => archiveCurrentSession());
     _speech = stt.SpeechToText();
     _initTts();
 

@@ -393,6 +393,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   Timer? _ttsTimeoutTimer;
   String? _lastTtsPath;
 
+  // Background-job poll: used when the server is running a long task asynchronously
+  Timer? _bgPollTimer;
+  int    _bgPollAttempts = 0;
+  int    _bgPollBaseline = 0; // message count at poll start
+  static const int _bgPollMaxAttempts = 12; // 12 × 15s = 3 minutes
+
   String? _currentProposalTitle;
 
   Uint8List? _imageBytes;
@@ -608,10 +614,28 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
+  void _startBackgroundPoll() {
+    _bgPollTimer?.cancel();
+    _bgPollAttempts = 0;
+    _bgPollBaseline = messages.length;
+    _bgPollTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      _bgPollAttempts++;
+      await _loadChatHistory();
+      if (!mounted) { _bgPollTimer?.cancel(); return; }
+      // Stop when a new message arrived or we hit the limit
+      if (messages.length > _bgPollBaseline || _bgPollAttempts >= _bgPollMaxAttempts) {
+        _bgPollTimer?.cancel();
+        _bgPollTimer = null;
+        if (messages.length > _bgPollBaseline) _scrollToBottom();
+      }
+    });
+  }
+
   @override
   void dispose() {
     _archiveSessionToHistory();
     _voiceConversationActive = false;
+    _bgPollTimer?.cancel();
     _hardCapTimer?.cancel();
     _ttsTimeoutTimer?.cancel();
     _orbBreathController.dispose();
@@ -1001,6 +1025,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _checkForFinalPrompt(answer);
 
         if (action != null && mounted) await _confirmAndSend(action);
+
+        // If the server started a background job, poll for the result automatically
+        if (answer.contains('ברקע') && answer.contains('יופיע בשיחה')) {
+          _startBackgroundPoll();
+        }
 
         _speakText(answer);
       } else {

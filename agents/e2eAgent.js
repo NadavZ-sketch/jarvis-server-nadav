@@ -52,6 +52,50 @@ function categoryOfTarget(target) {
     return 'Other';
 }
 
+function buildClaudePrompt({ runId, findings, score, counts }) {
+    const order = { critical: 0, high: 1, medium: 2, low: 3 };
+    const sorted = [...findings].sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
+    const sevHeader = { critical: '## 🔴 Critical (fix first)', high: '## 🟠 High Priority', medium: '## 🟡 Medium', low: '## 🟢 Low' };
+
+    const grouped = { critical: [], high: [], medium: [], low: [] };
+    for (const f of sorted) {
+        const sev = grouped[f.severity] ? f.severity : 'low';
+        grouped[sev].push(f);
+    }
+
+    let body = '';
+    for (const sev of ['critical', 'high', 'medium', 'low']) {
+        if (!grouped[sev].length) continue;
+        body += `\n${sevHeader[sev]}\n\n`;
+        grouped[sev].forEach((f, i) => {
+            const tag = f.status && f.status !== 'new' ? ` _(${f.status})_` : '';
+            const lat = f.latency_ms != null ? ` — ${f.latency_ms}ms` : '';
+            body += `### ${i + 1}. \`${f.target}\`${lat}${tag}\n`;
+            body += `- **Category:** ${f.category}\n`;
+            body += `- **Issue:** ${f.finding}\n`;
+            body += `- **Fix:** ${f.recommendation || '(no recommendation)'}\n\n`;
+        });
+    }
+
+    const checklist = sorted.slice(0, 25).map(f =>
+        `- [ ] **[${(f.severity || '').toUpperCase()}]** ${f.target} — ${f.recommendation || f.finding}`
+    ).join('\n');
+
+    return [
+        '```markdown',
+        `# E2E Test Report — \`${runId}\``,
+        `**Score:** ${score}/100 | 🔴 ${counts.critical} · 🟠 ${counts.high} · 🟡 ${counts.medium} · 🟢 ${counts.low}`,
+        '',
+        '## Instructions for Claude',
+        'Please review the findings below and fix them in priority order (Critical → High → Medium → Low).',
+        'For each fix: read the referenced file, make the minimal change needed, run the test suite (`npm test`), and report what you changed.',
+        body.trim(),
+        '## Action Checklist',
+        checklist,
+        '```',
+    ].join('\n');
+}
+
 function formatAnswer({ runId, findings, score, deltas, learnedContext, distillSummary, summary }) {
     const counts = countsBySeverity(findings);
     const trend = (learnedContext.movingAvgScore != null)
@@ -81,6 +125,17 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
         ),
     ].filter(Boolean).join('\n');
 
+    const claudePrompt = findings.length
+        ? [
+            '',
+            '═══════════════════════════════════════════',
+            '📋 לתיקון בקלוד — העתק את הבלוק הבא ושלח לקלוד קוד:',
+            '═══════════════════════════════════════════',
+            '',
+            buildClaudePrompt({ runId, findings, score, counts }),
+        ].join('\n')
+        : '';
+
     return [
         `🧪 דוח בדיקות E2E (run_id: ${runId}) — ציון כללי: ${score}/100  ${trend}`.trim(),
         `${SEV_EMOJI.critical} קריטי: ${counts.critical}   ${SEV_EMOJI.high} גבוה: ${counts.high}   ${SEV_EMOJI.medium} בינוני: ${counts.medium}   ${SEV_EMOJI.low} נמוך: ${counts.low}`,
@@ -91,6 +146,7 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
         learning,
         '',
         summary ? `📋 סיכום: ${summary}` : '',
+        claudePrompt,
     ].filter(Boolean).join('\n');
 }
 

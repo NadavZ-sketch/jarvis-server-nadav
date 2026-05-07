@@ -4,6 +4,7 @@ import '../app_settings.dart';
 import '../settings_screen.dart';
 import '../history_screen.dart';
 import '../transitions/slide_fade_route.dart';
+import 'e2e_reports_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final AppSettings settings;
@@ -103,6 +104,19 @@ class AppDrawer extends StatelessWidget {
                     Navigator.push(
                       context,
                       SlideFadeRoute(page: const HistoryScreen()),
+                    );
+                  },
+                ),
+                _DrawerTile(
+                  icon: Icons.fact_check_outlined,
+                  label: 'דוחות בדיקות',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      SlideFadeRoute(
+                        page: E2eReportsScreen(settings: settings),
+                      ),
                     );
                   },
                 ),

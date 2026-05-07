@@ -249,5 +249,5 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
     };
 }
 
-module.exports = { runE2EAgent };
+module.exports = { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore };
 

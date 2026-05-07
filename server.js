@@ -42,7 +42,7 @@ const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
-const { runE2EAgent }         = require('./agents/e2eAgent');
+const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = require('./agents/e2eAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent }     = require('./agents/insightAgent');
 const { runWeatherAgent }     = require('./agents/weatherAgent');
@@ -839,6 +839,89 @@ app.delete('/notes/:id', async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         console.error('DELETE /notes:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── E2E Reports — list / detail / delete ────────────────────────────────────
+
+app.get('/e2e-reports', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('e2e_reports')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(2000);
+        if (error) throw error;
+
+        // Group by run_id and compute summary per run
+        const byRun = new Map();
+        for (const row of data || []) {
+            if (!byRun.has(row.run_id)) {
+                byRun.set(row.run_id, {
+                    run_id: row.run_id,
+                    created_at: row.created_at,
+                    count: 0,
+                    critical: 0, high: 0, medium: 0, low: 0,
+                });
+            }
+            const g = byRun.get(row.run_id);
+            g.count++;
+            if (g[row.severity] !== undefined) g[row.severity]++;
+            if (row.created_at > g.created_at) g.created_at = row.created_at;
+        }
+        const reports = Array.from(byRun.values())
+            .map(r => {
+                const w = { critical: 25, high: 10, medium: 4, low: 1 };
+                const penalty = r.critical * w.critical + r.high * w.high + r.medium * w.medium + r.low * w.low;
+                r.score = Math.max(0, 100 - penalty);
+                return r;
+            })
+            .sort((a, b) => b.created_at.localeCompare(a.created_at));
+        res.json({ reports });
+    } catch (err) {
+        console.error('GET /e2e-reports error:', err.message);
+        res.status(500).json({ reports: [], error: err.message });
+    }
+});
+
+app.get('/e2e-reports/:runId', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('e2e_reports')
+            .select('*')
+            .eq('run_id', req.params.runId)
+            .order('severity', { ascending: true });
+        if (error) throw error;
+        const findings = data || [];
+
+        const counts = countsBySeverity(findings);
+        const score  = computeScore(findings);
+        const claudePrompt = buildClaudePrompt({ runId: req.params.runId, findings, score, counts });
+        res.json({
+            run_id:  req.params.runId,
+            findings,
+            counts,
+            score,
+            claudePrompt,
+        });
+    } catch (err) {
+        console.error('GET /e2e-reports/:id error:', err.message);
+        res.status(500).json({ findings: [], error: err.message });
+    }
+});
+
+app.delete('/e2e-reports/:runId', async (req, res) => {
+    try {
+        const { error } = await supabase
+            .from('e2e_reports')
+            .delete()
+            .eq('run_id', req.params.runId);
+        if (error) throw error;
+        cacheInvalidate('chatHistory'); // not strictly needed but cheap
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /e2e-reports/:id error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
     }
 });

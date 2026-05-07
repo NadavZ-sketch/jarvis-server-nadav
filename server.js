@@ -442,7 +442,22 @@ app.post('/ask-jarvis', async (req, res) => {
         } else if (agentName === 'security') {
             result = await runSecurityAgent(userMessage, useLocal, sendEmail);
         } else if (agentName === 'e2e') {
-            result = await runE2EAgent(userMessage, supabase, useLocal, settings);
+            // Run in background — return immediately so the HTTP request doesn't time out.
+            // The full report is saved to chat_history when the run finishes; the app
+            // will see it on the next history refresh.
+            setImmediate(async () => {
+                try {
+                    const e2eResult = await runE2EAgent(userMessage, supabase, useLocal, settings);
+                    await saveChatMessage('jarvis', e2eResult.answer);
+                    cacheInvalidate('chatHistory');
+                    console.log('🧪 E2E background run saved to chat history');
+                } catch (err) {
+                    console.error('🧪 E2E background run failed:', err.message);
+                    await saveChatMessage('jarvis', '❌ בדיקות הקצה נכשלו: ' + err.message).catch(() => {});
+                    cacheInvalidate('chatHistory');
+                }
+            });
+            result = { answer: '🧪 מתחיל בדיקות קצה ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.' };
         } else if (agentName === 'factory') {
             result = await runAgentFactoryAgent(userMessage, supabase, useLocal);
         } else {

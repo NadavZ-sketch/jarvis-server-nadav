@@ -52,7 +52,24 @@ function categoryOfTarget(target) {
     return 'Other';
 }
 
-function buildClaudePrompt({ runId, findings, score, counts }) {
+async function getNextRunNumber(supabase) {
+    if (!supabase) return null;
+    try {
+        const { data, error } = await supabase
+            .from('e2e_reports')
+            .select('run_number')
+            .order('run_number', { ascending: false, nullsFirst: false })
+            .limit(1);
+        if (error) throw error;
+        const max = data && data.length ? (data[0].run_number ?? 0) : 0;
+        return (max || 0) + 1;
+    } catch (err) {
+        console.warn('e2eAgent: getNextRunNumber failed:', err.message);
+        return null;
+    }
+}
+
+function buildClaudePrompt({ runId, runNumber, findings, score, counts }) {
     const order = { critical: 0, high: 1, medium: 2, low: 3 };
     const sorted = [...findings].sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
     const sevHeader = { critical: '## 🔴 Critical (fix first)', high: '## 🟠 High Priority', medium: '## 🟡 Medium', low: '## 🟢 Low' };
@@ -81,9 +98,10 @@ function buildClaudePrompt({ runId, findings, score, counts }) {
         `- [ ] **[${(f.severity || '').toUpperCase()}]** ${f.target} — ${f.recommendation || f.finding}`
     ).join('\n');
 
+    const numLabel = runNumber ? `#${runNumber} — ` : '';
     return [
         '```markdown',
-        `# E2E Test Report — \`${runId}\``,
+        `# E2E Test Report ${numLabel}\`${runId}\``,
         `**Score:** ${score}/100 | 🔴 ${counts.critical} · 🟠 ${counts.high} · 🟡 ${counts.medium} · 🟢 ${counts.low}`,
         '',
         '## Instructions for Claude',
@@ -96,7 +114,7 @@ function buildClaudePrompt({ runId, findings, score, counts }) {
     ].join('\n');
 }
 
-function formatAnswer({ runId, findings, score, deltas, learnedContext, distillSummary, summary }) {
+function formatAnswer({ runId, runNumber, findings, score, deltas, learnedContext, distillSummary, summary }) {
     const counts = countsBySeverity(findings);
     const trend = (learnedContext.movingAvgScore != null)
         ? `(Δ ${score - learnedContext.movingAvgScore >= 0 ? '+' : ''}${score - learnedContext.movingAvgScore} מהממוצע)`
@@ -132,12 +150,15 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
             '📋 לתיקון בקלוד — העתק את הבלוק הבא ושלח לקלוד קוד:',
             '═══════════════════════════════════════════',
             '',
-            buildClaudePrompt({ runId, findings, score, counts }),
+            buildClaudePrompt({ runId, runNumber, findings, score, counts }),
         ].join('\n')
         : '';
 
+    const header = runNumber
+        ? `🧪 דוח בדיקות E2E #${runNumber} (run_id: ${runId}) — ציון כללי: ${score}/100  ${trend}`
+        : `🧪 דוח בדיקות E2E (run_id: ${runId}) — ציון כללי: ${score}/100  ${trend}`;
     return [
-        `🧪 דוח בדיקות E2E (run_id: ${runId}) — ציון כללי: ${score}/100  ${trend}`.trim(),
+        header.trim(),
         `${SEV_EMOJI.critical} קריטי: ${counts.critical}   ${SEV_EMOJI.high} גבוה: ${counts.high}   ${SEV_EMOJI.medium} בינוני: ${counts.medium}   ${SEV_EMOJI.low} נמוך: ${counts.low}`,
         `🆕 חדש: ${deltas.newCount}   🔁 רגרסיה: ${deltas.regressionCount}   ✅ נפתר: ${deltas.resolvedCount}   📉 פלייקי: ${deltas.flakyCount}`,
         '',
@@ -150,10 +171,11 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
     ].filter(Boolean).join('\n');
 }
 
-async function persistFindings(supabase, runId, findings) {
+async function persistFindings(supabase, runId, runNumber, findings) {
     if (!supabase || !findings.length) return;
     const rows = findings.map(f => ({
         run_id: runId,
+        run_number: runNumber ?? null,
         category: f.category || 'bug',
         severity: f.severity || 'low',
         target: (f.target || 'unknown').slice(0, 500),
@@ -221,9 +243,10 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
     const deltas = computeDeltas(allFindings, learnedContext);
     const score = computeScore(allFindings);
     const runId = crypto.randomUUID();
+    const runNumber = settings.runNumber ?? (settings.dryRun ? null : await getNextRunNumber(supabase));
 
     if (!settings.dryRun) {
-        await persistFindings(supabase, runId, allFindings);
+        await persistFindings(supabase, runId, runNumber, allFindings);
     }
 
     const distillSummary = settings.disableLearning
@@ -235,6 +258,7 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
 
     const answer = formatAnswer({
         runId,
+        runNumber,
         findings: allFindings,
         score,
         deltas,
@@ -245,9 +269,9 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
 
     return {
         answer,
-        action: { type: 'e2e_report', runId, score, counts: countsBySeverity(allFindings), deltas },
+        action: { type: 'e2e_report', runId, runNumber, score, counts: countsBySeverity(allFindings), deltas },
     };
 }
 
-module.exports = { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore };
+module.exports = { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore, getNextRunNumber };
 

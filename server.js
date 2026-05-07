@@ -42,7 +42,7 @@ const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
-const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = require('./agents/e2eAgent');
+const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore, getNextRunNumber } = require('./agents/e2eAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent }     = require('./agents/insightAgent');
 const { runWeatherAgent }     = require('./agents/weatherAgent');
@@ -445,9 +445,11 @@ app.post('/ask-jarvis', async (req, res) => {
             // Run in background — return immediately so the HTTP request doesn't time out.
             // The full report is saved to chat_history when the run finishes; the app
             // will see it on the next history refresh.
+            const nextRunNumber = await getNextRunNumber(supabase);
+            const e2eSettings = { ...settings, runNumber: nextRunNumber };
             setImmediate(async () => {
                 try {
-                    const e2eResult = await runE2EAgent(userMessage, supabase, useLocal, settings);
+                    const e2eResult = await runE2EAgent(userMessage, supabase, useLocal, e2eSettings);
                     await saveChatMessage('jarvis', e2eResult.answer);
                     cacheInvalidate('chatHistory');
                     console.log('🧪 E2E background run saved to chat history');
@@ -457,7 +459,8 @@ app.post('/ask-jarvis', async (req, res) => {
                     cacheInvalidate('chatHistory');
                 }
             });
-            result = { answer: '🧪 מתחיל בדיקות קצה ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.', skipTts: true };
+            const numLabel = nextRunNumber ? ` #${nextRunNumber}` : '';
+            result = { answer: `🧪 מתחיל בדיקות קצה${numLabel} ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.`, skipTts: true };
         } else if (agentName === 'factory') {
             result = await runAgentFactoryAgent(userMessage, supabase, useLocal);
         } else {
@@ -860,15 +863,26 @@ app.get('/e2e-reports', async (_req, res) => {
             if (!byRun.has(row.run_id)) {
                 byRun.set(row.run_id, {
                     run_id: row.run_id,
+                    run_number: row.run_number ?? null,
                     created_at: row.created_at,
                     count: 0,
                     critical: 0, high: 0, medium: 0, low: 0,
+                    fixed: 0,
                 });
             }
             const g = byRun.get(row.run_id);
             g.count++;
             if (g[row.severity] !== undefined) g[row.severity]++;
+            if (row.fixed_at) g.fixed++;
+            if (row.run_number != null && g.run_number == null) g.run_number = row.run_number;
             if (row.created_at > g.created_at) g.created_at = row.created_at;
+        }
+        // Backfill run_number for any pre-migration rows: assign by chronological order.
+        const sortedAsc = Array.from(byRun.values()).sort((a, b) => a.created_at.localeCompare(b.created_at));
+        let nextFallback = 1;
+        for (const r of sortedAsc) {
+            if (r.run_number == null) r.run_number = nextFallback;
+            nextFallback = Math.max(nextFallback, (r.run_number || 0)) + 1;
         }
         const reports = Array.from(byRun.values())
             .map(r => {
@@ -897,17 +911,54 @@ app.get('/e2e-reports/:runId', async (req, res) => {
 
         const counts = countsBySeverity(findings);
         const score  = computeScore(findings);
-        const claudePrompt = buildClaudePrompt({ runId: req.params.runId, findings, score, counts });
+        const runNumber = findings.find(f => f.run_number != null)?.run_number ?? null;
+        const fixedCount = findings.filter(f => f.fixed_at).length;
+        const claudePrompt = buildClaudePrompt({
+            runId: req.params.runId, runNumber, findings, score, counts,
+        });
         res.json({
-            run_id:  req.params.runId,
+            run_id:     req.params.runId,
+            run_number: runNumber,
             findings,
             counts,
             score,
+            fixed_count: fixedCount,
             claudePrompt,
         });
     } catch (err) {
         console.error('GET /e2e-reports/:id error:', err.message);
         res.status(500).json({ findings: [], error: err.message });
+    }
+});
+
+// PATCH /e2e-reports/findings/:id — mark a finding as fixed (or unfix it)
+app.patch('/e2e-reports/findings/:id', async (req, res) => {
+    try {
+        const { fixed, fix_note } = req.body || {};
+        const updates = {};
+        if (fixed === true) {
+            updates.fixed_at = new Date().toISOString();
+            if (typeof fix_note === 'string') updates.fix_note = fix_note.slice(0, 1000);
+        } else if (fixed === false) {
+            updates.fixed_at = null;
+            updates.fix_note = null;
+        } else if (typeof fix_note === 'string') {
+            updates.fix_note = fix_note.slice(0, 1000);
+        }
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ ok: false, error: 'no fields to update' });
+        }
+        const { data, error } = await supabase
+            .from('e2e_reports')
+            .update(updates)
+            .eq('id', req.params.id)
+            .select()
+            .single();
+        if (error) throw error;
+        res.json({ ok: true, finding: data });
+    } catch (err) {
+        console.error('PATCH /e2e-reports/findings/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
     }
 });
 

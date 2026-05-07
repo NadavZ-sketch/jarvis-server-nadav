@@ -63,9 +63,10 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
     final updated = await Navigator.push<bool>(
       context,
       SlideFadeRoute(page: E2eReportDetailScreen(
-        runId:    report['run_id'] as String,
-        date:     _formatDate(report['created_at'] as String?),
-        settings: widget.settings,
+        runId:     report['run_id'] as String,
+        runNumber: report['run_number'] as int?,
+        date:      _formatDate(report['created_at'] as String?),
+        settings:  widget.settings,
       )),
     );
     if (updated == true) _load();
@@ -145,14 +146,17 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
   }
 
   Widget _buildCard(Map<String, dynamic> r) {
-    final score    = (r['score'] as int?) ?? 0;
-    final critical = (r['critical'] as int?) ?? 0;
-    final high     = (r['high'] as int?) ?? 0;
-    final medium   = (r['medium'] as int?) ?? 0;
-    final low      = (r['low'] as int?) ?? 0;
-    final count    = (r['count'] as int?) ?? 0;
-    final date     = _formatDate(r['created_at'] as String?);
-    final runId    = r['run_id'] as String;
+    final score     = (r['score'] as int?) ?? 0;
+    final critical  = (r['critical'] as int?) ?? 0;
+    final high      = (r['high'] as int?) ?? 0;
+    final medium    = (r['medium'] as int?) ?? 0;
+    final low       = (r['low'] as int?) ?? 0;
+    final count     = (r['count'] as int?) ?? 0;
+    final fixed     = (r['fixed'] as int?) ?? 0;
+    final runNumber = r['run_number'] as int?;
+    final date      = _formatDate(r['created_at'] as String?);
+    final runId     = r['run_id'] as String;
+    final title     = runNumber != null ? 'דוח #$runNumber · $date' : date;
 
     return Dismissible(
       key: Key(runId),
@@ -200,13 +204,19 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(date,
+                Text(title,
                     style: const TextStyle(color: JC.textPrimary,
                         fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
                 const SizedBox(height: 4),
                 Text('$count ממצאים · 🔴 $critical · 🟠 $high · 🟡 $medium · 🟢 $low',
                     style: const TextStyle(color: JC.textMuted,
                         fontSize: 12, fontFamily: 'Heebo')),
+                if (fixed > 0) ...[
+                  const SizedBox(height: 4),
+                  Text('✅ $fixed תוקנו',
+                      style: const TextStyle(color: Color(0xFF22C55E),
+                          fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
+                ],
               ],
             )),
             const Icon(Icons.chevron_left_rounded, color: JC.textMuted),
@@ -242,10 +252,15 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
 
 class E2eReportDetailScreen extends StatefulWidget {
   final String runId;
+  final int? runNumber;
   final String date;
   final AppSettings settings;
   const E2eReportDetailScreen({
-    super.key, required this.runId, required this.date, required this.settings,
+    super.key,
+    required this.runId,
+    this.runNumber,
+    required this.date,
+    required this.settings,
   });
 
   @override
@@ -257,9 +272,11 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
   List<Map<String, dynamic>> _findings = [];
   Map<String, int> _counts = {};
   int _score = 0;
+  int? _runNumber;
   String _claudePrompt = '';
   bool _loading = true;
   String? _error;
+  bool _changed = false;  // tells the list screen to refresh on pop
 
   @override
   void initState() {
@@ -275,6 +292,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
         _findings = List<Map<String, dynamic>>.from(data['findings'] ?? []);
         _counts   = Map<String, int>.from(data['counts'] ?? {});
         _score    = (data['score'] as int?) ?? 0;
+        _runNumber = (data['run_number'] as int?) ?? widget.runNumber;
         _claudePrompt = (data['claudePrompt'] as String?) ?? '';
         _loading = false;
       });
@@ -282,6 +300,83 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
       if (!mounted) return;
       setState(() { _error = ApiService.friendlyError(e); _loading = false; });
     }
+  }
+
+  Future<void> _markFixed(Map<String, dynamic> f) async {
+    final id = f['id'];
+    if (id is! int) return;
+    final isFixed = f['fixed_at'] != null;
+    if (isFixed) {
+      // toggle off — no dialog
+      try {
+        await _api.markFindingFixed(id, fixed: false);
+        if (!mounted) return;
+        setState(() {
+          f['fixed_at'] = null;
+          f['fix_note'] = null;
+          _changed = true;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('שגיאה: ${ApiService.friendlyError(e)}')),
+        );
+      }
+      return;
+    }
+    final note = await _askFixNote();
+    if (note == null) return; // cancelled
+    try {
+      final result = await _api.markFindingFixed(id, fixed: true, note: note);
+      final updated = (result['finding'] as Map?)?.cast<String, dynamic>();
+      if (!mounted) return;
+      setState(() {
+        f['fixed_at'] = updated?['fixed_at'] ?? DateTime.now().toIso8601String();
+        f['fix_note'] = updated?['fix_note'] ?? note;
+        _changed = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ סומן כתוקן')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה: ${ApiService.friendlyError(e)}')),
+      );
+    }
+  }
+
+  Future<String?> _askFixNote() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: JC.surface,
+          title: const Text('סמן כתוקן',
+              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLines: 3,
+            style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+            decoration: const InputDecoration(
+              hintText: 'מה תוקן? (אופציונלי)',
+              hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('ביטול')),
+            TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                child: const Text('סמן',
+                    style: TextStyle(color: Color(0xFF22C55E)))),
+          ],
+        ),
+      ),
+    );
+    return result;
   }
 
   Future<void> _copyPrompt() async {
@@ -351,9 +446,16 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final num = _runNumber ?? widget.runNumber;
+    final title = num != null ? 'דוח #$num · ${widget.date}' : widget.date;
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Scaffold(
+      child: WillPopScope(
+        onWillPop: () async {
+          Navigator.pop(context, _changed);
+          return false;
+        },
+        child: Scaffold(
         backgroundColor: JC.bg,
         appBar: AppBar(
           backgroundColor: JC.surface,
@@ -361,10 +463,10 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
           centerTitle: true,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, color: JC.textPrimary),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, _changed),
           ),
           title: Text(
-            widget.date,
+            title,
             style: const TextStyle(color: JC.textPrimary, fontSize: 16,
                 fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
           ),
@@ -377,6 +479,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
           ],
         ),
         body: _buildBody(),
+        ),
       ),
     );
   }
@@ -397,6 +500,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     final high     = _counts['high']     ?? 0;
     final medium   = _counts['medium']   ?? 0;
     final low      = _counts['low']      ?? 0;
+    final fixedCount = _findings.where((f) => f['fixed_at'] != null).length;
 
     // Group findings by severity
     final byOrder = ['critical', 'high', 'medium', 'low'];
@@ -446,6 +550,17 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                   Text('🔴 $critical · 🟠 $high · 🟡 $medium · 🟢 $low',
                       style: const TextStyle(color: JC.textSecondary,
                           fontSize: 13, fontFamily: 'Heebo')),
+                  if (_findings.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text('✅ תוקנו: $fixedCount / ${_findings.length}',
+                        style: TextStyle(
+                            color: fixedCount > 0
+                                ? const Color(0xFF22C55E)
+                                : JC.textMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Heebo')),
+                  ],
                 ],
               )),
             ]),
@@ -511,6 +626,9 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     final cat     = (f['category'] as String?) ?? '';
     final lat     = f['latency_ms'] as int?;
     final status  = (f['status'] as String?) ?? 'new';
+    final fixedAt = f['fixed_at'] as String?;
+    final fixNote = (f['fix_note'] as String?) ?? '';
+    final isFixed = fixedAt != null;
 
     final statusBadge = {
       'regression': const _Chip(text: '🔁 רגרסיה', color: Color(0xFFF97316)),
@@ -518,25 +636,36 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
       'new':        const _Chip(text: '🆕 חדש',    color: Color(0xFF3B82F6)),
     }[status] ?? const SizedBox.shrink();
 
+    const fixedGreen = Color(0xFF22C55E);
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: JC.surface,
+        color: isFixed ? fixedGreen.withOpacity(0.06) : JC.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.border, width: 0.5),
+        border: Border.all(
+          color: isFixed ? fixedGreen.withOpacity(0.5) : JC.border,
+          width: isFixed ? 1.0 : 0.5,
+        ),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 6, runSpacing: 6, children: [
           _Chip(text: cat, color: JC.blue400),
           if (lat != null) _Chip(text: '$lat ms', color: JC.textMuted),
           statusBadge,
+          if (isFixed) const _Chip(text: '✅ תוקן', color: fixedGreen),
         ]),
         const SizedBox(height: 8),
         Text(target,
-            style: const TextStyle(color: JC.textPrimary,
-                fontSize: 13, fontWeight: FontWeight.w600,
-                fontFamily: 'Heebo', letterSpacing: 0.2)),
+            style: TextStyle(
+                color: JC.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Heebo',
+                letterSpacing: 0.2,
+                decoration: isFixed ? TextDecoration.lineThrough : null,
+                decorationColor: JC.textMuted)),
         const SizedBox(height: 6),
         Text(finding,
             style: const TextStyle(color: JC.textSecondary,
@@ -546,14 +675,50 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF22C55E).withOpacity(0.08),
+              color: fixedGreen.withOpacity(0.08),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Text('✅ $fix',
-                style: const TextStyle(color: Color(0xFF22C55E),
+            child: Text('💡 $fix',
+                style: const TextStyle(color: fixedGreen,
                     fontSize: 12, fontFamily: 'Heebo', height: 1.4)),
           ),
         ],
+        if (isFixed && fixNote.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: fixedGreen.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: fixedGreen.withOpacity(0.3), width: 0.6),
+            ),
+            child: Text('✅ תוקן: $fixNote',
+                style: const TextStyle(color: fixedGreen,
+                    fontSize: 12, fontWeight: FontWeight.w600,
+                    fontFamily: 'Heebo', height: 1.4)),
+          ),
+        ],
+        const SizedBox(height: 10),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: TextButton.icon(
+            onPressed: () => _markFixed(f),
+            icon: Icon(
+              isFixed ? Icons.undo_rounded : Icons.check_circle_outline_rounded,
+              size: 18,
+              color: isFixed ? JC.textMuted : fixedGreen,
+            ),
+            label: Text(
+              isFixed ? 'בטל סימון' : 'סמן כתוקן',
+              style: TextStyle(
+                color: isFixed ? JC.textMuted : fixedGreen,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
       ]),
     );
   }

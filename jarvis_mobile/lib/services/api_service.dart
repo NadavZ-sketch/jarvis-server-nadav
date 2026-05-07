@@ -260,4 +260,16 @@ class ApiService {
   Future<void> deleteE2eRun(String runId) async {
     await _client.delete(_uri('/e2e-reports/$runId')).timeout(_timeout);
   }
+
+  Future<Map<String, dynamic>> markFindingFixed(int findingId,
+      {required bool fixed, String? note}) async {
+    final body = <String, dynamic>{'fixed': fixed};
+    if (note != null) body['fix_note'] = note;
+    final res = await _client.patch(
+      _uri('/e2e-reports/findings/$findingId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
 }

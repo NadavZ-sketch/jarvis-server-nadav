@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -422,6 +423,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   String?    _base64Image;
 
   AppSettings _settings = AppSettings();
+  String _chatId = ''; // Unique ID for this chat session
 
   late AnimationController _orbBreathController;
   late Animation<double>   _orbBreath;
@@ -492,8 +494,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   // ─── Chat history persistence ─────────────────────────────────────────────────
 
   Future<void> _loadChatHistory() async {
-    // 1. Load cached messages from SharedPreferences immediately (instant)
+    // Load or generate chat_id
     final prefs = await SharedPreferences.getInstance();
+    _chatId = prefs.getString('current_chat_id') ?? '';
+    if (_chatId.isEmpty) {
+      // Generate new chat_id using UUID-like format
+      _chatId = 'chat-${DateTime.now().millisecondsSinceEpoch}-${(math.Random().nextInt(100000)).toString()}';
+      await prefs.setString('current_chat_id', _chatId);
+    }
+
+    // 1. Load cached messages from SharedPreferences immediately (instant)
     final cached = prefs.getString('current_messages');
     if (cached != null && mounted) {
       try {
@@ -509,7 +519,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     // 2. Fetch fresh history from server in the background
     try {
-      final url = Uri.parse('${_settings.serverUrl}/chat-history?limit=60');
+      final url = Uri.parse('${_settings.serverUrl}/chat-history?limit=60&chatId=$_chatId');
       final response = await http.get(url).timeout(const Duration(seconds: 8));
       if (response.statusCode == 200 && mounted) {
         final data = jsonDecode(response.body);
@@ -550,6 +560,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       sessions.add({
         'date': DateTime.now().toIso8601String(),
         'messages': messages,
+        'chat_id': _chatId,
       });
       // Keep last 50 sessions
       final trimmed = sessions.length > 50 ? sessions.sublist(sessions.length - 50) : sessions;
@@ -1021,6 +1032,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         body: jsonEncode({
           'command':  text,
           'image':    imageToSend,
+          'chatId':   _chatId,
           'settings': {
             ..._settings.toJson(),
             'voiceMode': _voiceConversationActive,
@@ -1209,6 +1221,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('current_messages');
+    // Generate new chat_id for the new session
+    _chatId = 'chat-${DateTime.now().millisecondsSinceEpoch}-${(math.Random().nextInt(100000)).toString()}';
+    await prefs.setString('current_chat_id', _chatId);
     setState(() {
       _stopVoiceConversation();
       messages = [

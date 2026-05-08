@@ -287,6 +287,54 @@ class _ChatBubble extends StatefulWidget {
 class _ChatBubbleState extends State<_ChatBubble> {
   bool _showTime = false;
 
+  void _showCopyMenu(String text) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: JC.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: text));
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('הודעה הועתקה'),
+                    duration: Duration(seconds: 2),
+                    backgroundColor: JC.blue500,
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: const [
+                    Icon(Icons.copy_rounded, color: JC.textPrimary, size: 22),
+                    SizedBox(width: 16),
+                    Text(
+                      'העתקה',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: JC.textPrimary,
+                        fontFamily: 'Heebo',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isUser = widget.msg['sender'] == 'user';
@@ -304,6 +352,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
         child: GestureDetector(
           onTap: () => setState(() => _showTime = !_showTime),
+          onLongPress: () => _showCopyMenu(widget.msg['text'] ?? ''),
           child: Container(
             margin: EdgeInsets.only(
               bottom: 14,
@@ -677,7 +726,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _archiveSessionToHistory();
     _voiceConversationActive = false;
     _bgPollTimer?.cancel();
     _hardCapTimer?.cancel();
@@ -1351,6 +1399,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded,
+                color: JC.textSecondary, size: 22),
+            tooltip: 'רענן שיחה',
+            onPressed: _loadChatHistory,
+          ),
           IconButton(
             icon: const Icon(Icons.add_comment_outlined,
                 color: JC.textSecondary, size: 22),

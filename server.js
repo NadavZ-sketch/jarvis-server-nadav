@@ -561,6 +561,26 @@ app.get('/chat-history', async (req, res) => {
     }
 });
 
+// ─── Delete chat history for a conversation ───────────────────────────────────
+app.delete('/chat-history/:chatId', async (req, res) => {
+    try {
+        const { chatId } = req.params;
+        if (!chatId) return res.status(400).json({ error: 'chatId required' });
+
+        const { error } = await supabase
+            .from('chat_history')
+            .delete()
+            .eq('chat_id', chatId);
+
+        if (error) throw error;
+        cacheInvalidate(`chatHistory:${chatId}`);
+        res.json({ success: true, deletedChatId: chatId });
+    } catch (err) {
+        console.error('⚠️ DELETE /chat-history error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── Live DB Stats ────────────────────────────────────────────────────────────
 
 app.get('/stats', async (_req, res) => {

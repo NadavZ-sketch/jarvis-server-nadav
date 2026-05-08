@@ -377,9 +377,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               color: JC.blue400,
                               backgroundColor: JC.surfaceAlt,
                               onRefresh: _fetch,
-                              child: Directionality(
-                                textDirection: TextDirection.rtl,
-                                child: ListView.builder(
+                              child: ListView.builder(
                                 padding:
                                     const EdgeInsets.fromLTRB(16, 8, 16, 32),
                                 itemCount: _filtered.length,
@@ -490,7 +488,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                   );
                                 },
                               ),
-                              ), // Directionality
                             ),
                     ),
                   ],

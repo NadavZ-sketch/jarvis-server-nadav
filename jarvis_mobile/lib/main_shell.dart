@@ -43,7 +43,7 @@ class _MainShellState extends State<MainShell> {
   void _startNotificationPolling() {
     _checkFiredReminders();
     _notifPollTimer = Timer.periodic(
-      const Duration(minutes: 5),
+      const Duration(minutes: 1),
       (_) => _checkFiredReminders(),
     );
   }

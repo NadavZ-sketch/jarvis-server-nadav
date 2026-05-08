@@ -56,7 +56,7 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         if (parsed.intent === 'complete') {
             const { data } = await supabase
                 .from('tasks')
-                .delete()
+                .update({ done: true })
                 .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`)
                 .select();
             if (data && data.length > 0) return { answer: `כל הכבוד ${userName}! סיימת את: "${data[0].content}" ✓` };

@@ -135,20 +135,22 @@ const HE_STOP_SEARCH = new Set([
 
 let chatMemoryFallback = [];
 
-async function loadChatHistory() {
-    const cached = cacheGet('chatHistory');
+async function loadChatHistory(chatId = 'default-session') {
+    const cacheKey = `chatHistory:${chatId}`;
+    const cached = cacheGet(cacheKey);
     if (cached) return cached;
 
     try {
         const { data, error } = await supabase
             .from('chat_history')
             .select('role, text')
+            .eq('chat_id', chatId)
             .order('created_at', { ascending: false })
             .limit(20);
 
         if (error) throw error;
         const result = (data || []).reverse();
-        cacheSet('chatHistory', result, TTL_CHAT_HISTORY);
+        cacheSet(cacheKey, result, TTL_CHAT_HISTORY);
         return result;
     } catch (err) {
         console.error('⚠️ loadChatHistory fallback:', err.message);
@@ -156,9 +158,9 @@ async function loadChatHistory() {
     }
 }
 
-async function saveChatMessage(role, text) {
+async function saveChatMessage(role, text, chatId = 'default-session') {
     try {
-        const { error } = await supabase.from('chat_history').insert([{ role, text }]);
+        const { error } = await supabase.from('chat_history').insert([{ role, text, chat_id: chatId }]);
         if (error) throw error;
     } catch (err) {
         console.error('⚠️ saveChatMessage fallback:', err.message);
@@ -339,12 +341,14 @@ app.post('/ask-jarvis', async (req, res) => {
     try {
         const userMessage = req.body.command || '';
         const imageBase64 = req.body.image;
+        // Extract chat_id from request, or generate one if not provided
+        const chatId = req.body.chatId || req.body.chat_id || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         if (userMessage.length > 5000) {
-            return res.status(400).json({ answer: 'ההודעה ארוכה מדי. נסה בקצר יותר.' });
+            return res.status(400).json({ answer: 'ההודעה ארוכה מדי. נסה בקצר יותר.', chatId });
         }
 
-        console.log(`\n--- Incoming: "${userMessage.slice(0, 60)}" | Image: ${!!imageBase64} ---`);
+        console.log(`\n--- Incoming: "${userMessage.slice(0, 60)}" | Image: ${!!imageBase64} | Chat: ${chatId.slice(0, 20)} ---`);
         const t0 = Date.now();
 
         const settings  = req.body.settings || {};
@@ -360,7 +364,7 @@ app.post('/ask-jarvis', async (req, res) => {
         // route to chat even if keywords matched a specialized agent
         const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'task', 'insight', 'security', 'e2e', 'factory'];
         if (CONTEXT_OVERRIDE_AGENTS.includes(agentName)) {
-            const tempHistory = await loadChatHistory(); // uses TTL cache — cheap
+            const tempHistory = await loadChatHistory(chatId); // uses TTL cache — cheap
             if (detectFollowUp(userMessage, tempHistory)) {
                 console.log(`🔄 Follow-up override: "${agentName}" → "chat"`);
                 agentName = 'chat';
@@ -381,7 +385,7 @@ app.post('/ask-jarvis', async (req, res) => {
         let chatHistory = [], longTermMemories = '';
         if (needsHistory) {
             [chatHistory, longTermMemories] = await Promise.all([
-                loadChatHistory(),
+                loadChatHistory(chatId),
                 // Pass userMessage for Pinecone semantic search; falls back to keyword filter
                 fetchLongTermMemories(userMessage)
             ]);
@@ -446,13 +450,13 @@ app.post('/ask-jarvis', async (req, res) => {
             setImmediate(async () => {
                 try {
                     const ceResult = await runCodeErrorAgent(userMessage, useLocal, sendEmail);
-                    await saveChatMessage('jarvis', ceResult.answer);
-                    cacheInvalidate('chatHistory');
+                    await saveChatMessage('jarvis', ceResult.answer, chatId);
+                    cacheInvalidate(`chatHistory:${chatId}`);
                     console.log('🔍 codeErrorAgent background run saved to chat history');
                 } catch (err) {
                     console.error('🔍 codeErrorAgent background run failed:', err.message);
-                    await saveChatMessage('jarvis', '❌ סריקת שגיאות נכשלה: ' + err.message).catch(() => {});
-                    cacheInvalidate('chatHistory');
+                    await saveChatMessage('jarvis', '❌ סריקת שגיאות נכשלה: ' + err.message, chatId).catch(() => {});
+                    cacheInvalidate(`chatHistory:${chatId}`);
                 }
             });
             result = { answer: '🔍 מתחיל סריקת שגיאות קוד ברקע — הדוח יופיע בשיחה כשיסיים. רענן את השיחה כדי לראות את התוצאות.', skipTts: true };
@@ -463,13 +467,13 @@ app.post('/ask-jarvis', async (req, res) => {
             setImmediate(async () => {
                 try {
                     const e2eResult = await runE2EAgent(userMessage, supabase, useLocal, settings);
-                    await saveChatMessage('jarvis', e2eResult.answer);
-                    cacheInvalidate('chatHistory');
+                    await saveChatMessage('jarvis', e2eResult.answer, chatId);
+                    cacheInvalidate(`chatHistory:${chatId}`);
                     console.log('🧪 E2E background run saved to chat history');
                 } catch (err) {
                     console.error('🧪 E2E background run failed:', err.message);
-                    await saveChatMessage('jarvis', '❌ בדיקות הקצה נכשלו: ' + err.message).catch(() => {});
-                    cacheInvalidate('chatHistory');
+                    await saveChatMessage('jarvis', '❌ בדיקות הקצה נכשלו: ' + err.message, chatId).catch(() => {});
+                    cacheInvalidate(`chatHistory:${chatId}`);
                 }
             });
             result = { answer: '🧪 מתחיל בדיקות קצה ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.', skipTts: true };
@@ -490,11 +494,11 @@ app.post('/ask-jarvis', async (req, res) => {
         // the response and avoid the client-side timeout.
         const ttsEnabled = settings.ttsEnabled !== false && !result.skipTts;
         const [,, audioBase64] = await Promise.all([
-            saveChatMessage('user', userMessage),
-            saveChatMessage('jarvis', answer),
+            saveChatMessage('user', userMessage, chatId),
+            saveChatMessage('jarvis', answer, chatId),
             ttsEnabled ? generateSpeech(answer) : Promise.resolve(null),
         ]);
-        cacheInvalidate('chatHistory'); // history just updated
+        cacheInvalidate(`chatHistory:${chatId}`); // history just updated
         const tDone = Date.now();
 
         console.log(
@@ -507,7 +511,8 @@ app.post('/ask-jarvis', async (req, res) => {
         );
 
         // For WhatsApp — pass action to Flutter to open deep link
-        res.json({ answer, audio: audioBase64, action });
+        // Return chatId so client can use it for subsequent messages
+        res.json({ answer, audio: audioBase64, action, chatId });
 
         // ── Fire-and-forget: passive memory extraction (zero latency impact) ─
         if (agentName === 'chat' && !imageBase64) {
@@ -540,17 +545,19 @@ app.post('/send-email', async (req, res) => {
 
 app.get('/chat-history', async (req, res) => {
     try {
+        const chatId = req.query.chatId || req.query.chat_id || 'default-session';
         const limit = Math.min(parseInt(req.query.limit) || 60, 200);
         const { data, error } = await supabase
             .from('chat_history')
             .select('role, text, created_at')
+            .eq('chat_id', chatId)
             .order('created_at', { ascending: false })
             .limit(limit);
         if (error) throw error;
-        res.json({ messages: (data || []).reverse() });
+        res.json({ messages: (data || []).reverse(), chatId });
     } catch (err) {
         console.error('⚠️ /chat-history error:', err.message);
-        res.status(500).json({ messages: [] });
+        res.status(500).json({ messages: [], chatId: 'default-session' });
     }
 });
 
@@ -1046,11 +1053,12 @@ app.post('/stream-jarvis', async (req, res) => {
 
     try {
         const userMessage = req.body.command || '';
+        const chatId = req.body.chatId || req.body.chat_id || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const settings    = req.body.settings || {};
         const useLocal    = settings.useLocalModel === true;
 
         if (userMessage.length > 5000) {
-            send({ error: 'ההודעה ארוכה מדי.' });
+            send({ error: 'ההודעה ארוכה מדי.', chatId });
             return res.end();
         }
 
@@ -1065,22 +1073,22 @@ app.post('/stream-jarvis', async (req, res) => {
             else if (agentName === 'translate') result = await runTranslationAgent(userMessage, supabase, useLocal);
             else {
                 const [chatHistory, longTermMemories] = await Promise.all([
-                    loadChatHistory(), fetchLongTermMemories()
+                    loadChatHistory(chatId), fetchLongTermMemories()
                 ]);
                 result = await runChatAgent(userMessage, null, chatHistory, longTermMemories, settings);
             }
             const answer = result.answer || '';
-            send({ chunk: answer, done: true });
+            send({ chunk: answer, done: true, chatId });
             await Promise.all([
-                saveChatMessage('user', userMessage),
-                saveChatMessage('jarvis', answer),
+                saveChatMessage('user', userMessage, chatId),
+                saveChatMessage('jarvis', answer, chatId),
             ]);
             return res.end();
         }
 
         // Chat streaming via Groq
         const [chatHistory, longTermMemories] = await Promise.all([
-            loadChatHistory(), fetchLongTermMemories()
+            loadChatHistory(chatId), fetchLongTermMemories()
         ]);
 
         const systemPrompt = `אתה ג'רביס, עוזר אישי חכם שמדבר עברית. ענה תמיד בעברית טבעית ויעילה.
@@ -1099,13 +1107,13 @@ ${longTermMemories}`;
             send({ chunk });
         }, controller.signal);
 
-        send({ done: true });
+        send({ done: true, chatId });
 
         await Promise.all([
-            saveChatMessage('user', userMessage),
-            saveChatMessage('jarvis', fullAnswer),
+            saveChatMessage('user', userMessage, chatId),
+            saveChatMessage('jarvis', fullAnswer, chatId),
         ]);
-        cacheInvalidate('chatHistory');
+        cacheInvalidate(`chatHistory:${chatId}`);
     } catch (err) {
         console.error('SSE error:', err.message);
         send({ error: 'שגיאת מערכת.' });

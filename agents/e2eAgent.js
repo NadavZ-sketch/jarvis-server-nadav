@@ -2,16 +2,17 @@
 // Triggered via chat ("בצע בדיקות קצה") or CLI (npm run e2e).
 
 const crypto = require('crypto');
-const { runApiProbe }      = require('./e2e/apiProbe');
-const { runStaticScan }    = require('./e2e/staticScan');
-const { runFlutterScan }   = require('./e2e/flutterScan');
-const { runUxScan }        = require('./e2e/uxScan');
+const { runApiProbe }          = require('./e2e/apiProbe');
+const { runStaticScan }        = require('./e2e/staticScan');
+const { runFlutterScan }       = require('./e2e/flutterScan');
+const { runUxScan }            = require('./e2e/uxScan');
+const { runCodeErrorScanner }  = require('./e2e/codeErrorScanner');
 const { loadContext, computeDeltas, distill, fingerprint } = require('./e2e/learning');
 
 const SEV_EMOJI = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢' };
 const STATUS_TAG = { regression: '🔁 רגרסיה', flaky: '📉 פלייקי', new: '🆕 חדש', known: '' };
 
-const ALL_PROBES = ['api', 'static', 'flutter', 'ux'];
+const ALL_PROBES = ['api', 'static', 'flutter', 'ux', 'errors'];
 
 function selectedProbes(settings) {
     const skip = new Set(settings.skipProbes || []);
@@ -200,15 +201,11 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
         apiResult = await runApiProbe({ baseUrl, learnedContext });
     }
 
-    const tasks = [];
-    if (probes.includes('static'))  tasks.push(runStaticScan({ learnedContext }).catch(e => ({ findings: [], _err: e.message })));
-    if (probes.includes('flutter')) tasks.push(runFlutterScan({ learnedContext }).catch(e => ({ findings: [], _err: e.message })));
-    if (probes.includes('ux'))      tasks.push(runUxScan({ samples: apiResult.samples, learnedContext }).catch(e => ({ findings: [], _err: e.message })));
-
-    const [staticRes, flutterRes, uxRes] = await Promise.all([
-        probes.includes('static')  ? tasks.shift() : Promise.resolve({ findings: [] }),
-        probes.includes('flutter') ? tasks.shift() : Promise.resolve({ findings: [] }),
-        probes.includes('ux')      ? tasks.shift() : Promise.resolve({ findings: [] }),
+    const [staticRes, flutterRes, uxRes, errorsRes] = await Promise.all([
+        probes.includes('static')  ? runStaticScan({ learnedContext }).catch(e => ({ findings: [], _err: e.message })) : Promise.resolve({ findings: [] }),
+        probes.includes('flutter') ? runFlutterScan({ learnedContext }).catch(e => ({ findings: [], _err: e.message })) : Promise.resolve({ findings: [] }),
+        probes.includes('ux')      ? runUxScan({ samples: apiResult.samples, learnedContext }).catch(e => ({ findings: [], _err: e.message })) : Promise.resolve({ findings: [] }),
+        probes.includes('errors')  ? runCodeErrorScanner({ learnedContext }).catch(e => ({ findings: [], _err: e.message })) : Promise.resolve({ findings: [] }),
     ]);
 
     const allFindings = [
@@ -216,6 +213,7 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
         ...(staticRes.findings || []),
         ...(flutterRes.findings || []),
         ...(uxRes.findings || []),
+        ...(errorsRes.findings || []),
     ];
 
     const deltas = computeDeltas(allFindings, learnedContext);

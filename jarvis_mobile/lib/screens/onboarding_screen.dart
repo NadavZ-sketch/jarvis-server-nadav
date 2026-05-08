@@ -92,6 +92,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             // Dots indicator
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
+              textDirection: TextDirection.rtl,
               children: List.generate(
                 _pages.length,
                 (i) => AnimatedContainer(

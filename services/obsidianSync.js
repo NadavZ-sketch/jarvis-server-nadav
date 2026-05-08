@@ -52,10 +52,14 @@ function readSyncState() {
     try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return {}; }
 }
 
-function writeSyncState() {
+async function writeSyncStateAsync() {
     const p = path.join(vaultPath, SYNC_STATE_FILE);
     ensureDirSync(path.dirname(p));
-    fs.writeFileSync(p, JSON.stringify(syncState, null, 2));
+    await fs.promises.writeFile(p, JSON.stringify(syncState, null, 2));
+}
+
+function writeSyncState() {
+    writeSyncStateAsync().catch(err => console.error('[ObsidianSync] writeSyncState error:', err.message));
 }
 
 function relFromVault(absPath) {
@@ -196,7 +200,7 @@ async function fileToDb(absPath) {
     if (suppress && Date.now() < suppress) return;
 
     if (!fs.existsSync(absPath)) return;
-    const raw   = fs.readFileSync(absPath, 'utf8');
+    const raw   = await fs.promises.readFile(absPath, 'utf8');
     const hash  = hashContent(raw);
     if (syncState[relPath] && syncState[relPath].hash === hash) return; // no change
 

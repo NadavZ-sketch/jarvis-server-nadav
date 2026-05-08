@@ -26,12 +26,12 @@ function relPath(abs) {
     return path.relative(path.join(__dirname, '..', '..'), abs).replace(/\\/g, '/');
 }
 
-function chunkFiles(files, budget) {
+async function chunkFiles(files, budget) {
     const chunks = [];
     let cur = [], used = 0;
     for (const abs of files) {
         let src;
-        try { src = fs.readFileSync(abs, 'utf8'); } catch { continue; }
+        try { src = await fs.promises.readFile(abs, 'utf8'); } catch { continue; }
         const trimmed = src.length > PER_FILE_BUDGET ? src.slice(0, PER_FILE_BUDGET) + '\n// ... (truncated)' : src;
         if (used + trimmed.length > budget && cur.length) {
             chunks.push(cur);
@@ -90,7 +90,7 @@ async function runFlutterScan({ learnedContext = {} } = {}) {
         return bh - ah;
     });
 
-    const chunks = chunkFiles(all, PER_CALL_BUDGET);
+    const chunks = await chunkFiles(all, PER_CALL_BUDGET);
     const all_findings = [];
     for (const chunk of chunks) {
         const f = await scanChunk(chunk);

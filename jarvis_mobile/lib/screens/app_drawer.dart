@@ -60,8 +60,11 @@ class AppDrawer extends StatelessWidget {
                       end: Alignment.bottomRight,
                     ),
                   ),
-                  child: const Icon(Icons.person_rounded,
-                      color: Colors.white, size: 24),
+                  child: const Semantics(
+                    label: 'תמונת פרופיל',
+                    child: Icon(Icons.person_rounded,
+                        color: Colors.white, size: 24),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

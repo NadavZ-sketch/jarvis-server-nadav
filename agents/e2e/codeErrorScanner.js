@@ -87,7 +87,8 @@ const REGEX_RULES = [
     },
     {
         id: 'missing_await_supabase',
-        pattern: /supabase\s*\.\s*from\s*\([^)]+\)\s*\.\s*(?:select|insert|update|delete|upsert)\s*\([^)]*\)(?!\s*;?\s*\/\/)[^;\n]*(?<!\bawait\b)[^;\n]*/g,
+        // Multiline: match lines that have supabase.from().<op>() but no `await` on the same line
+        pattern: /^(?![^\n]*\bawait\b)[^\n]*\bsupabase\s*\.\s*from\s*\([^)]+\)\s*\.\s*(?:select|insert|update|delete|upsert)\s*\(/gm,
         severity: 'high',
         category: 'bug',
         finding: 'קריאת Supabase ללא await — לא ממתינים לתוצאה, הנתונים לא ייקלטו',
@@ -96,6 +97,9 @@ const REGEX_RULES = [
 ];
 
 // ── File discovery (same pattern as staticScan) ───────────────────────────────
+// Exclude this scanner itself to avoid false positives from its own regex pattern strings.
+const SELF_REL = 'agents/e2e/codeErrorScanner.js';
+
 function listSources() {
     const files = ['server.js'];
     const dirs = ['agents', 'agents/e2e', 'services'];
@@ -104,7 +108,8 @@ function listSources() {
         try {
             for (const entry of fs.readdirSync(abs, { withFileTypes: true })) {
                 if (entry.isFile() && entry.name.endsWith('.js')) {
-                    files.push(path.join(d, entry.name).replace(/\\/g, '/'));
+                    const rel = path.join(d, entry.name).replace(/\\/g, '/');
+                    if (rel !== SELF_REL) files.push(rel);
                 }
             }
         } catch { /* dir may not exist */ }
@@ -112,18 +117,18 @@ function listSources() {
     return Array.from(new Set(files));
 }
 
-function readFiles(files, stableTargets) {
+async function readFiles(files, stableTargets) {
     const stable = new Set(stableTargets || []);
     const out = {};
-    for (const rel of files) {
+    await Promise.all(files.map(async (rel) => {
         try {
-            const src = fs.readFileSync(path.join(BASE_DIR, rel), 'utf8');
+            const src = await fs.promises.readFile(path.join(BASE_DIR, rel), 'utf8');
             const budget = stable.has(rel) ? STABLE_BUDGET : FULL_BUDGET;
             out[rel] = src.length > budget ? src.slice(0, budget) + '\n// ... (truncated)' : src;
         } catch (err) {
             console.warn(`codeErrorScanner: cannot read ${rel}: ${err.message}`);
         }
-    }
+    }));
     return out;
 }
 
@@ -300,7 +305,7 @@ async function runCodeErrorScanner({ learnedContext = {} } = {}) {
     const hot     = new Set(learnedContext.hotTargets || []);
     const ordered = [...all].sort((a, b) => (hot.has(b) ? 1 : 0) - (hot.has(a) ? 1 : 0));
 
-    const fileContents = readFiles(ordered, learnedContext.stableTargets);
+    const fileContents = await readFiles(ordered, learnedContext.stableTargets);
 
     console.log(`🔍 codeErrorScanner: scanning ${Object.keys(fileContents).length} files (Phase 1 regex)...`);
     const patternFindings = patternScan(fileContents);

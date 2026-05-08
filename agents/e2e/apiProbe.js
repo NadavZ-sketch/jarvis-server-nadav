@@ -12,11 +12,11 @@ const DEFAULT_QUERIES = [
 ];
 
 const GET_ENDPOINTS = [
-    { path: '/health',        expect: 'object' },
-    { path: '/tasks',         expect: 'array'  },
-    { path: '/reminders',     expect: 'array'  },
-    { path: '/notes',         expect: 'array'  },
-    { path: '/chat-history',  expect: 'array'  },
+    { path: '/health',        expect: 'object', key: null          },
+    { path: '/tasks',         expect: 'object', key: 'tasks'       },
+    { path: '/reminders',     expect: 'object', key: 'reminders'   },
+    { path: '/notes',         expect: 'object', key: 'notes'       },
+    { path: '/chat-history',  expect: 'object', key: 'messages'    },
 ];
 
 const HEBREW_RE = /[֐-׿]/;
@@ -49,8 +49,9 @@ async function runApiProbe({ baseUrl = 'http://localhost:3000', learnedContext =
         try {
             const res = await axios.get(`${baseUrl}${ep.path}`, { timeout: 8000 });
             const elapsed = Date.now() - t0;
-            const isArray = Array.isArray(res.data);
-            const okShape = ep.expect === 'array' ? isArray : (res.data && typeof res.data === 'object');
+            const okShape = ep.key
+                ? (res.data && typeof res.data === 'object' && ep.key in res.data)
+                : (res.data && typeof res.data === 'object');
 
             if (!okShape) {
                 findings.push({

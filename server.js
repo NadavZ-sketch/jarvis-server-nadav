@@ -622,8 +622,25 @@ app.post('/survey-submit', async (req, res) => {
             question: SURVEY_QUESTIONS[id]?.question || id,
         }));
 
+        // Get latest E2E test report for context
+        let e2eContext = '';
+        try {
+            const { data: e2eData } = await supabase
+                .from('e2e_reports')
+                .select('score, critical, high, medium')
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (e2eData && e2eData.length > 0) {
+                const report = e2eData[0];
+                e2eContext = `\n\n🧪 *דוח בדיקות אחרון:* Score ${report.score}, ` +
+                    `${report.critical || 0} קריטיות, ${report.high || 0} גבוהות`;
+            }
+        } catch (_) {}
+
         // Generate AI summary
-        const summary = await generateSurveySummary(survey, responses, userName);
+        let summary = await generateSurveySummary(survey, responses, userName);
+        summary += e2eContext;
 
         // Save survey to DB
         const { error } = await supabase
@@ -701,9 +718,25 @@ app.get('/check-reminders', async (_req, res) => {
         if (data && data.length > 0) {
             const ids = data.map(r => r.id);
             await supabase.from('reminders').delete().in('id', ids);
-        }
 
-        res.json({ reminders: data || [] });
+            // Enhance reminders with Pinecone context
+            const enriched = await Promise.all(data.map(async (r) => {
+                let context = '';
+                if (pinecone.isReady()) {
+                    try {
+                        const memories = await pinecone.searchMemories(r.text, 2);
+                        if (memories && memories.length > 0) {
+                            context = ` (הקשר: ${memories[0].substring(0, 80)}...)`;
+                        }
+                    } catch (_) {}
+                }
+                return { ...r, text: r.text + context };
+            }));
+
+            res.json({ reminders: enriched });
+        } else {
+            res.json({ reminders: [] });
+        }
     } catch (err) {
         console.error('check-reminders error:', err.message);
         res.json({ reminders: [] });

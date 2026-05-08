@@ -465,16 +465,18 @@ app.post('/ask-jarvis', async (req, res) => {
             // Run in background — return immediately so the HTTP request doesn't time out.
             // The full report is saved to chat_history when the run finishes; the app
             // will see it on the next history refresh.
+            const reportChatId = chatId; // Capture chatId in closure
             setImmediate(async () => {
                 try {
                     const e2eResult = await runE2EAgent(userMessage, supabase, useLocal, settings);
-                    await saveChatMessage('jarvis', e2eResult.answer, chatId);
-                    cacheInvalidate(`chatHistory:${chatId}`);
+                    console.log(`🧪 E2E saving to chatId: ${reportChatId}`);
+                    await saveChatMessage('jarvis', e2eResult.answer, reportChatId);
+                    cacheInvalidate(`chatHistory:${reportChatId}`);
                     console.log('🧪 E2E background run saved to chat history');
                 } catch (err) {
                     console.error('🧪 E2E background run failed:', err.message);
-                    await saveChatMessage('jarvis', '❌ בדיקות הקצה נכשלו: ' + err.message, chatId).catch(() => {});
-                    cacheInvalidate(`chatHistory:${chatId}`);
+                    await saveChatMessage('jarvis', '❌ בדיקות הקצה נכשלו: ' + err.message, reportChatId).catch(() => {});
+                    cacheInvalidate(`chatHistory:${reportChatId}`);
                 }
             });
             result = { answer: '🧪 מתחיל בדיקות קצה ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.', skipTts: true };

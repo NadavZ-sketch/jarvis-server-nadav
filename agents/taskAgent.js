@@ -44,23 +44,32 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         }
 
         if (parsed.intent === 'delete') {
-            const { data } = await supabase
+            const { data: matches } = await supabase
                 .from('tasks')
-                .delete()
-                .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`)
-                .select();
-            if (data && data.length > 0) return { answer: `מחקתי את המשימה: ${data[0].content}` };
-            return { answer: 'לא מצאתי משימה כזו למחוק.' };
+                .select('id, content')
+                .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`);
+            if (!matches || matches.length === 0) return { answer: 'לא מצאתי משימה כזו למחוק.' };
+            if (matches.length > 1) {
+                const list = matches.map((t, i) => `${i + 1}. ${t.content}`).join('\n');
+                return { answer: `מצאתי ${matches.length} משימות תואמות. תוכל להיות יותר ספציפי?\n${list}` };
+            }
+            await supabase.from('tasks').delete().eq('id', matches[0].id);
+            return { answer: `מחקתי את המשימה: ${matches[0].content}` };
         }
 
         if (parsed.intent === 'complete') {
-            const { data } = await supabase
+            const { data: matches } = await supabase
                 .from('tasks')
-                .delete()
+                .select('id, content')
                 .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`)
-                .select();
-            if (data && data.length > 0) return { answer: `כל הכבוד ${userName}! סיימת את: "${data[0].content}" ✓` };
-            return { answer: 'לא מצאתי משימה כזו. נסה לציין את שם המשימה.' };
+                .eq('done', false);
+            if (!matches || matches.length === 0) return { answer: 'לא מצאתי משימה כזו. נסה לציין את שם המשימה.' };
+            if (matches.length > 1) {
+                const list = matches.map((t, i) => `${i + 1}. ${t.content}`).join('\n');
+                return { answer: `מצאתי ${matches.length} משימות תואמות. על איזו מהן?\n${list}` };
+            }
+            await supabase.from('tasks').update({ done: true }).eq('id', matches[0].id);
+            return { answer: `כל הכבוד ${userName}! סיימת את: "${matches[0].content}" ✓` };
         }
 
         return { answer: 'לא הכרתי את הכוונה. נסה: "הוסף משימה", "רשימת משימות", "מחק משימה" או "סיימתי".' };

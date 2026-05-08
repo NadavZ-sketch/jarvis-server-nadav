@@ -560,10 +560,10 @@ app.get('/stats', async (_req, res) => {
         supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', true),
         supabase.from('reminders').select('id', { count: 'exact', head: true }),
         supabase.from('reminders').select('id', { count: 'exact', head: true }).eq('fired', false),
-        supabase.from('long_term_memory').select('id', { count: 'exact', head: true }),
+        supabase.from('memories').select('id', { count: 'exact', head: true }),
         supabase.from('notes').select('id', { count: 'exact', head: true }),
-        supabase.from('shopping').select('id', { count: 'exact', head: true }),
-        supabase.from('shopping').select('id', { count: 'exact', head: true }).eq('checked', true),
+        supabase.from('shopping_items').select('id', { count: 'exact', head: true }),
+        supabase.from('shopping_items').select('id', { count: 'exact', head: true }).eq('checked', true),
     ]);
 
     const getCount = (result) => {
@@ -1149,8 +1149,8 @@ cron.schedule('0 7 * * *', async () => {
                 .from('reminders')
                 .select('id')
                 .eq('fired', false)
-                .gte('scheduled_time', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
-                .lt('scheduled_time',  new Date(new Date().setHours(23, 59, 59, 999)).toISOString()),
+                .gte('scheduled_time', (() => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })); d.setHours(0, 0, 0, 0); return d.toISOString(); })())
+                .lt('scheduled_time',  (() => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })); d.setHours(23, 59, 59, 999); return d.toISOString(); })()),
         ]);
 
         const dayName = new Date().toLocaleDateString('he-IL', { weekday: 'long', timeZone: 'Asia/Jerusalem' });
@@ -1371,8 +1371,10 @@ Output format (copy exactly, replace the values):
         const parsed = JSON.parse(jsonMatch[0]);
 
         // Map both English and Hebrew field name variants
+        const baseId = backlog._nextId;
+        backlog._nextId += 6;
         const proposals = parsed.slice(0, 6).map((p, i) => ({
-            id: Date.now() + i,
+            id: baseId + i,
             title:    ((p.title    || p['כותרת']   || p['כותרת:'] || '').toString()).slice(0, 80),
             plan:     ((p.plan     || p['תוכנית']  || p['תכנית']  || p['תיאור'] || '').toString()),
             priority: ['high', 'medium', 'low'].includes(p.priority || p['עדיפות'])

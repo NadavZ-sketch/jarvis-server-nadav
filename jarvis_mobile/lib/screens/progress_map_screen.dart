@@ -15,14 +15,12 @@ class ProgressMapScreen extends StatefulWidget {
   State<ProgressMapScreen> createState() => _ProgressMapScreenState();
 }
 
-// Proposal status constants
 abstract final class _PS {
   static const proposal = 'proposal';
   static const active   = 'active';
   static const done     = 'done';
 }
 
-// Priority helpers
 Color _priorityColor(String p) => p == 'high'
     ? const Color(0xFFEF4444)
     : p == 'low' ? JC.textMuted : const Color(0xFFF59E0B);
@@ -55,6 +53,13 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   String? _lastGenerated;
   bool _generatingProposals = false;
 
+  // Filter / inline-activation state
+  String _filterStatus   = 'all';
+  String _filterPriority = 'all';
+  bool   _showDoneProposals = false;
+  final Map<String, String> _proposalResponses = {};
+  final Set<String>         _activatingIds     = {};
+
   // Manual items
   List<Map<String, dynamic>> _items = [];
   bool _loadingBacklog = true;
@@ -64,12 +69,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   final _promptCtrl = TextEditingController();
   String? _generatedPrompt;
   bool _generatingPrompt = false;
-  bool _promptCopied = false;
+  bool _promptCopied     = false;
 
-  int _featureTabIndex = 0;
+  int    _featureTabIndex = 0;
   Timer? _retryTimer;
   Timer? _copyTimer;
-  bool _isRefreshing = false;
+  bool   _isRefreshing = false;
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -86,6 +93,49 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     super.dispose();
   }
 
+  // ── Computed ──────────────────────────────────────────────────────────────
+
+  List<Map<String, dynamic>> get _filteredProposals {
+    var list = List<Map<String, dynamic>>.from(_proposals);
+    if (_filterStatus != 'all') {
+      list = list.where((p) => p['status'] == _filterStatus).toList();
+      // When explicitly filtering to 'done', show them regardless of toggle
+    } else if (!_showDoneProposals) {
+      list = list.where((p) => p['status'] != _PS.done).toList();
+    }
+    if (_filterPriority != 'all') {
+      list = list.where((p) => p['priority'] == _filterPriority).toList();
+    }
+    const statusOrder = {'active': 0, 'proposal': 1, 'done': 2};
+    list.sort((a, b) {
+      final aO = statusOrder[a['status']] ?? 9;
+      final bO = statusOrder[b['status']] ?? 9;
+      if (aO != bO) return aO - bO;
+      return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
+    });
+    return list;
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  String _relativeDate(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    final diff = DateTime.now().difference(dt);
+    if (diff.inDays == 0) return 'היום';
+    if (diff.inDays == 1) return 'אתמול';
+    if (diff.inDays < 7)  return 'לפני ${diff.inDays} ימים';
+    if (diff.inDays < 30) return 'לפני ${(diff.inDays / 7).floor()} שבועות';
+    return 'לפני ${(diff.inDays / 30).floor()} חודשים';
+  }
+
+  String _statusFilterLabel(String s) =>
+      const {'all': 'הכל', 'proposal': 'הצעה', 'active': 'פעיל', 'done': 'בוצע'}[s] ?? s;
+
+  String _priorityFilterLabel(String p) =>
+      const {'all': 'הכל', 'high': 'גבוה', 'medium': 'בינוני', 'low': 'נמוך'}[p] ?? p;
+
   void _scheduleRetry() {
     _retryTimer?.cancel();
     _retryTimer = Timer(const Duration(seconds: 25), () {
@@ -95,13 +145,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
   String get _base => widget.settings.serverUrl;
 
+  // ── Data loading ──────────────────────────────────────────────────────────
+
   Future<void> _loadAll() async {
     if (_isRefreshing) return;
     _isRefreshing = true;
     _retryTimer?.cancel();
     await Future.wait([_checkHealth(), _loadStats(), _loadFeatures(), _loadBacklog()]);
     _isRefreshing = false;
-    // Auto-retry if server was unreachable — Render free tier cold-starts in 15-60s
     if (mounted && _serverOk != true) _scheduleRetry();
   }
 
@@ -161,9 +212,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       if (mounted && res.statusCode == 200) {
         final d = jsonDecode(res.body);
         setState(() {
-          _proposals     = List<Map<String, dynamic>>.from(d['proposals'] ?? []);
-          _items         = List<Map<String, dynamic>>.from(d['items']     ?? []);
-          _lastGenerated = d['_lastGenerated']?.toString();
+          _proposals      = List<Map<String, dynamic>>.from(d['proposals'] ?? []);
+          _items          = List<Map<String, dynamic>>.from(d['items']     ?? []);
+          _lastGenerated  = d['_lastGenerated']?.toString();
           _loadingBacklog = false;
         });
       } else if (mounted) {
@@ -174,8 +225,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     }
   }
 
+  // ── Actions ───────────────────────────────────────────────────────────────
+
   Future<void> _generateProposals() async {
-    setState(() => _generatingProposals = true);
+    setState(() {
+      _generatingProposals = true;
+      _proposalResponses.clear();
+      _activatingIds.clear();
+    });
     try {
       final res = await http.post(
         Uri.parse('$_base/dashboard/backlog/generate'),
@@ -197,44 +254,86 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     }
   }
 
-  Future<void> _patchProposal(dynamic id, String status) async {
+  Future<void> _activateProposal(Map<String, dynamic> proposal) async {
+    final idRaw = proposal['id'];
+    final idStr = idRaw?.toString() ?? '';
+    if (idStr.isEmpty || _activatingIds.contains(idStr)) return;
+
+    final title = proposal['title']?.toString() ?? '';
+    final plan  = proposal['plan']?.toString()  ?? '';
+
+    setState(() => _activatingIds.add(idStr));
+
+    try {
+      final results = await Future.wait([
+        http.patch(
+          Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'status': _PS.active}),
+        ).timeout(const Duration(seconds: 8)),
+        http.post(
+          Uri.parse('$_base/ask-jarvis'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'command':
+                'קבלת משימה חדשה מה-Backlog:\n\nכותרת: $title\n\nתוכנית: $plan\n\n'
+                'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
+          }),
+        ).timeout(const Duration(seconds: 30)),
+      ]);
+
+      if (!mounted) return;
+
+      final jarvisAnswer = results[1].statusCode == 200
+          ? (jsonDecode(results[1].body) as Map<String, dynamic>)['answer']?.toString() ?? ''
+          : 'ג׳רביס לא הגיב';
+
+      setState(() {
+        _proposalResponses[idStr] = jarvisAnswer;
+        final idx = _proposals.indexWhere((p) => p['id']?.toString() == idStr);
+        if (idx != -1) {
+          _proposals[idx] = Map<String, dynamic>.from(_proposals[idx])
+            ..['status'] = _PS.active;
+        }
+        _activatingIds.remove(idStr);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _activatingIds.remove(idStr));
+      _showSnack('שגיאה בהפעלת ההצעה');
+    }
+  }
+
+  Future<void> _deactivateProposal(dynamic idRaw) async {
+    final idStr = idRaw?.toString() ?? '';
     try {
       await http.patch(
-        Uri.parse('$_base/dashboard/backlog/proposals/$id'),
+        Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': status}),
+        body: jsonEncode({'status': _PS.proposal}),
       ).timeout(const Duration(seconds: 8));
-      await _loadBacklog();
+      if (!mounted) return;
+      setState(() {
+        final idx = _proposals.indexWhere((p) => p['id']?.toString() == idStr);
+        if (idx != -1) {
+          _proposals[idx] = Map<String, dynamic>.from(_proposals[idx])
+            ..['status'] = _PS.proposal;
+        }
+        _proposalResponses.remove(idStr);
+      });
     } catch (_) {}
   }
 
-  Future<void> _activateProposal(Map<String, dynamic> proposal) async {
-    final id    = proposal['id'];
-    final title = proposal['title']?.toString() ?? '';
-    final plan  = proposal['plan']?.toString() ?? '';
-    await _patchProposal(id, _PS.active);
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F1929),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _ActivateSheet(
-        base: _base,
-        title: title,
-        plan: plan,
-        onSwitchToChat: widget.onSwitchToChat,
-      ),
-    );
-  }
-
-  Future<void> _deleteProposal(dynamic id) async {
+  Future<void> _deleteProposal(dynamic idRaw) async {
+    final idStr = idRaw?.toString() ?? '';
+    setState(() {
+      _proposals.removeWhere((p) => p['id']?.toString() == idStr);
+      _proposalResponses.remove(idStr);
+      _activatingIds.remove(idStr);
+    });
     try {
-      await http.delete(Uri.parse('$_base/dashboard/backlog/proposals/$id'))
+      await http.delete(Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'))
           .timeout(const Duration(seconds: 8));
-      await _loadBacklog();
     } catch (_) {}
   }
 
@@ -271,7 +370,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     try {
       await http.delete(Uri.parse('$_base/dashboard/backlog/$id'))
           .timeout(const Duration(seconds: 8));
-      await _loadBacklog();
     } catch (_) {}
   }
 
@@ -310,6 +408,31 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     _showSnack('הפרומפט הועתק ✓', duration: const Duration(seconds: 1));
   }
 
+  void _switchToChatWithProposal(Map<String, dynamic> p) {
+    final title = p['title']?.toString() ?? '';
+    final plan  = p['plan']?.toString()  ?? '';
+    final cmd =
+        '[PROPOSAL_TITLE:$title]\n\n'
+        'קיבלתי הצעת פיתוח חדשה ואני רוצה לפתח אותה:\n\n'
+        '**$title**\n\n'
+        'תוכנית ראשונית: $plan\n\n'
+        'בבקשה שאל אותי לפחות 10 שאלות ממוקדות (שאלה אחת בכל פעם) כדי להבין לעומק:\n'
+        '- מה בדיוק הפיצ׳רים והיכולות הנדרשים\n'
+        '- קהל היעד ומטרות המוצר\n'
+        '- דרישות טכניות, אינטגרציות, הגבלות\n'
+        '- חווית משתמש ועיצוב\n'
+        '- עדיפויות ו-MVP\n\n'
+        'אחרי שסיימנו את כל השאלות, נסח פרומפט פיתוח מפורט ומוכן לשימוש בכלי AI '
+        '(Claude Code, Codex, Gemini וכו׳).\n'
+        'את הפרומפט הסופי כתוב בדיוק בפורמט הזה (חשוב!):\n'
+        '<<<PROMPT_START>>>\n'
+        '[הפרומפט המלא כאן]\n'
+        '<<<PROMPT_END>>>';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onSwitchToChat!(cmd);
+    });
+  }
+
   void _showSnack(String msg, {Duration? duration}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg, style: const TextStyle(fontFamily: 'Heebo')),
@@ -318,7 +441,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     ));
   }
 
-  // ─── Build ─────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -426,12 +549,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   // ── Metrics ───────────────────────────────────────────────────────────────
 
   Widget _buildMetrics() {
+    final pendingProposals = _proposals.where((p) => p['status'] == _PS.proposal).length;
+    final activeProposals  = _proposals.where((p) => p['status'] == _PS.active).length;
     final items = [
       ('שיחות',   _stats['chat']?['total'],      '${_stats['chat']?['today'] ?? 0} היום'),
       ('משימות',  _stats['tasks']?['total'],     '${(_stats['tasks']?['total'] ?? 0) - (_stats['tasks']?['done'] ?? 0)} פתוחות'),
       ('תזכורות', _stats['reminders']?['total'], '${_stats['reminders']?['active'] ?? 0} פעילות'),
       ('זיכרונות',_stats['memories']?['total'],  'long-term'),
       ('פתקים',   _stats['notes']?['total'],     'notes'),
+      ('הצעות',   pendingProposals,              '$activeProposals פעילות'),
     ];
     return SizedBox(
       height: 88,
@@ -458,7 +584,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                     fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Text(
-                  _loadingStats ? '…' : (num?.toString() ?? '—'),
+                  _loadingStats && i < 5 ? '…' : (num?.toString() ?? '—'),
                   style: const TextStyle(
                       color: JC.blue400, fontSize: 22,
                       fontWeight: FontWeight.w700, height: 1.1),
@@ -510,7 +636,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: SizedBox(
-              height: 8,
+              height: 12,
               child: Row(children: [
                 Expanded(flex: (pctDone * 1000).toInt(),
                     child: Container(color: const Color(0xFF22C55E))),
@@ -542,7 +668,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       return const Padding(padding: EdgeInsets.all(24),
           child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)));
     }
-    // No features loaded — server was unavailable
     if (_done.isEmpty && _building.isEmpty && _planned.isEmpty && _serverOk != true) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 20),
@@ -571,6 +696,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         ),
       );
     }
+
     final labels    = ['✅ ${_done.length} הושלם', '🔨 ${_building.length} בבנייה', '📋 ${_planned.length} מתוכנן'];
     final itemLists = [_done, _building, _planned];
     final colors    = [const Color(0xFF22C55E), const Color(0xFFF59E0B), JC.textSecondary];
@@ -616,14 +742,21 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             }),
           ),
           const SizedBox(height: 10),
-          if (currentItems.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: Text('אין פריטים',
-                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
-            )
-          else
-            ...currentItems.map((f) => _featureItem(f, currentColor)),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: KeyedSubtree(
+              key: ValueKey(_featureTabIndex),
+              child: currentItems.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(child: Text('אין פריטים',
+                          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
+                    )
+                  : Column(
+                      children: currentItems.map((f) => _featureItem(f, currentColor)).toList(),
+                    ),
+            ),
+          ),
           if (_featuresUpdated.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -637,8 +770,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   Widget _featureItem(Map<String, dynamic> f, Color color) {
-    final name = f['name']?.toString() ?? '';
-    final desc = f['desc']?.toString() ?? '';
+    final name    = f['name']?.toString() ?? '';
+    final desc    = f['desc']?.toString() ?? '';
     final display = name.isNotEmpty ? name : '—';
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -651,9 +784,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             color: JC.surface,
             border: Border(
               right: BorderSide(color: color.withOpacity(0.5), width: 2.5),
-              top: BorderSide(color: JC.border, width: 0.5),
+              top:    BorderSide(color: JC.border, width: 0.5),
               bottom: BorderSide(color: JC.border, width: 0.5),
-              left: BorderSide(color: JC.border, width: 0.5),
+              left:   BorderSide(color: JC.border, width: 0.5),
             ),
           ),
           child: Column(
@@ -661,21 +794,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             children: [
               Text(display,
                   textDirection: TextDirection.rtl,
-                  style: TextStyle(
-                    color: JC.textPrimary,
-                    fontFamily: 'Heebo',
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  )),
+                  style: const TextStyle(
+                    color: JC.textPrimary, fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w600, fontSize: 13)),
               if (desc.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 Text(desc,
                     textDirection: TextDirection.rtl,
-                    style: TextStyle(
-                      color: JC.textSecondary,
-                      fontFamily: 'Heebo',
-                      fontSize: 11,
-                    )),
+                    style: const TextStyle(
+                      color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11)),
               ],
             ],
           ),
@@ -687,10 +814,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   // ── AI Backlog ────────────────────────────────────────────────────────────
 
   Widget _buildAIBacklog() {
+    final filtered = _filteredProposals;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Explanation + generate button
+        // Generate button + last-generated label
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -710,7 +838,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               Expanded(
                 child: Text(
                   _lastGenerated != null
-                      ? 'עדכון אחרון: $_lastGenerated'
+                      ? 'עדכון: ${_relativeDate(_lastGenerated)}'
                       : 'Jarvis ינתח את הפרויקט ויציע פריטי עבודה עם תוכנית מלאה',
                   style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
                   textAlign: TextAlign.right,
@@ -720,7 +848,51 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
+
+        // Filter chips
+        if (_proposals.isNotEmpty) ...[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: Row(
+                children: [
+                  for (final s in ['all', _PS.proposal, _PS.active, _PS.done])
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: _filterChip(
+                        _statusFilterLabel(s),
+                        _filterStatus == s,
+                        () => setState(() {
+                          _filterStatus = s;
+                          if (s == _PS.done) _showDoneProposals = true;
+                        }),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  for (final p in ['all', 'high', 'medium', 'low'])
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: _filterChip(
+                        _priorityFilterLabel(p),
+                        _filterPriority == p,
+                        () => setState(() => _filterPriority = p),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  _filterChip(
+                    'הצג בוצע',
+                    _showDoneProposals,
+                    () => setState(() => _showDoneProposals = !_showDoneProposals),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+
         // Content
         if (_generatingProposals)
           const Padding(
@@ -744,281 +916,193 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                   textAlign: TextAlign.center),
             ]),
           )
+        else if (filtered.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: Text('אין הצעות תואמות לפילטר הנוכחי',
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
+          )
         else
-          ..._proposals.map(_buildProposalCard),
+          ...filtered.map(_buildProposalCard),
       ],
     );
   }
 
-  void _showProposalDetail(Map<String, dynamic> p) {
-    final idRaw    = p['id'];
-    final idInt    = idRaw != null ? (idRaw as num).toInt() : null;
-    final status   = p['status']?.toString() ?? _PS.proposal;
-    final isActive = status == _PS.active;
-    final priority      = p['priority']?.toString() ?? 'medium';
-    final priorityColor = _priorityColor(priority);
-    final priorityLabel = _priorityLabel(priority);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: JC.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        maxChildSize: 0.95,
-        minChildSize: 0.4,
-        expand: false,
-        builder: (_, scrollCtrl) => Directionality(
-          textDirection: TextDirection.rtl,
-          child: ListView(
-            controller: scrollCtrl,
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-            children: [
-              // Handle
-              Center(child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(color: JC.border, borderRadius: BorderRadius.circular(2)),
-              )),
-              const SizedBox(height: 16),
-              // Badges
-              Wrap(spacing: 6, children: [
-                _badge(priorityLabel, priorityColor),
-                _badge(isActive ? '⚡ עובד על זה' : '💡 הצעה', isActive ? JC.blue400 : JC.textMuted),
-              ]),
-              const SizedBox(height: 12),
-              // Title
-              Text(p['title']?.toString() ?? '',
-                  style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo',
-                      fontWeight: FontWeight.w700, fontSize: 18)),
-              const SizedBox(height: 16),
-              const Divider(color: JC.border, height: 1),
-              const SizedBox(height: 16),
-              // Plan label
-              const Text('📋 תוכנית מפורטת',
-                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
-                      fontWeight: FontWeight.w700, fontSize: 13)),
-              const SizedBox(height: 10),
-              // Plan text
-              Text(p['plan']?.toString() ?? '',
-                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
-                      fontSize: 14, height: 1.7)),
-              const SizedBox(height: 24),
-              // Explanation of "הפעל"
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: JC.blue500.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: JC.blue400.withOpacity(0.2)),
-                ),
-                child: const Text(
-                  '⚡ "הפעל" = שולח את ההצעה לג׳רביס כמשימה פעילה — הוא יגיב עם הצעד הראשון לביצוע. ניתן להמשיך את השיחה בטאב הצ׳אט.',
-                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 12, height: 1.5),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Activate / deactivate button
-              if (status != _PS.done)
-                GestureDetector(
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    if (idInt != null) {
-                      if (isActive) {
-                        await _patchProposal(idInt, _PS.proposal);
-                      } else {
-                        await _activateProposal(p);
-                      }
-                    }
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: isActive ? JC.surface : JC.blue500,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: JC.blue400.withOpacity(0.4)),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      isActive ? '⏸ הפסק לעבוד על זה' : '⚡ הפעל — עובד על זה עכשיו',
-                      style: TextStyle(
-                          color: isActive ? JC.blue400 : Colors.white,
-                          fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 15),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 10),
-              // Delete
-              GestureDetector(
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  if (idInt != null) await _deleteProposal(idInt);
-                },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: JC.border),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text('🗑 הסר הצעה',
-                      style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 14)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildProposalCard(Map<String, dynamic> p) {
-    final status   = p['status']?.toString() ?? _PS.proposal;
+    final idRaw   = p['id'];
+    final idStr   = idRaw?.toString() ?? '';
+    final status  = p['status']?.toString() ?? _PS.proposal;
     final priority = p['priority']?.toString() ?? 'medium';
     final isActive = status == _PS.active;
     final isDone   = status == _PS.done;
     final title    = p['title']?.toString() ?? '';
-    final plan     = p['plan']?.toString() ?? '';
+    final plan     = p['plan']?.toString()  ?? '';
+    final dateLabel = _relativeDate(p['createdAt']?.toString());
 
     final priorityColor = _priorityColor(priority);
-    final priorityLabel = _priorityLabel(priority);
+    final priorityLbl   = _priorityLabel(priority);
     final catLabel      = _kCatMap[p['category']?.toString()] ?? (p['category']?.toString() ?? '');
-    final statusLabel = isActive ? '⚡ עובד על זה' : isDone ? '✅ הושלם' : '💡 הצעה';
-    final statusColor = isActive ? JC.blue400 : isDone ? const Color(0xFF22C55E) : JC.textMuted;
+    final statusLabel   = isActive ? '⚡ עובד על זה' : isDone ? '✅ הושלם' : '💡 הצעה';
+    final statusColor   = isActive ? JC.blue400 : isDone ? const Color(0xFF22C55E) : JC.textMuted;
 
-    final idRaw = p['id'];
-    final idInt = idRaw != null ? (idRaw as num).toInt() : null;
+    final activating = _activatingIds.contains(idStr);
+    final response   = _proposalResponses[idStr];
 
-    return Opacity(
-      opacity: isDone ? 0.5 : 1,
-      child: GestureDetector(
-        onTap: () => _showProposalDetail(p),
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: JC.surfaceAlt,
-            border: Border(
-              right: BorderSide(color: priorityColor, width: 3),
-              left:   BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
-              top:    BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
-              bottom: BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Card ──────────────────────────────────────────────────────────
+          Opacity(
+            opacity: isDone ? 0.55 : 1,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: JC.surfaceAlt,
+                  border: Border(
+                    right: BorderSide(color: priorityColor, width: 3),
+                    left:   BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+                    top:    BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+                    bottom: BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 12, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Title + date
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title.isNotEmpty ? title : '(כותרת ריקה)',
+                              textDirection: TextDirection.rtl,
+                              style: TextStyle(
+                                color: title.isNotEmpty ? JC.textPrimary : JC.textMuted,
+                                fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (dateLabel.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            _badge(dateLabel, JC.textMuted),
+                          ],
+                        ],
+                      ),
+                      // Plan preview
+                      if (plan.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          plan,
+                          textDirection: TextDirection.rtl,
+                          style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
+                              fontSize: 12, height: 1.45),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      // Badges + activate button
+                      Row(
+                        children: [
+                          if (!isDone)
+                            GestureDetector(
+                              onTap: activating
+                                  ? null
+                                  : () {
+                                      if (isActive) {
+                                        _deactivateProposal(idRaw);
+                                      } else {
+                                        _activateProposal(p);
+                                      }
+                                    },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isActive ? Colors.transparent : JC.blue500.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
+                                ),
+                                child: activating
+                                    ? const SizedBox(
+                                        width: 13, height: 13,
+                                        child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400),
+                                      )
+                                    : Text(isActive ? '⏸ בטל' : '⚡ הפעל',
+                                        style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                                            fontWeight: FontWeight.w600, fontSize: 11)),
+                              ),
+                            ),
+                          const Spacer(),
+                          _badge(statusLabel, statusColor),
+                          if (catLabel.isNotEmpty) ...[
+                            const SizedBox(width: 4),
+                            _badge(catLabel, JC.textMuted),
+                          ],
+                          const SizedBox(width: 4),
+                          _badge(priorityLbl, priorityColor),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _deleteProposal(idRaw),
+                            child: const Padding(
+                              padding: EdgeInsets.all(2),
+                              child: Icon(Icons.close_rounded, size: 14, color: JC.textMuted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 12, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  title.isNotEmpty ? title : '(כותרת ריקה)',
-                  textDirection: TextDirection.rtl,
-                  style: TextStyle(
-                    color: title.isNotEmpty ? JC.textPrimary : JC.textMuted,
-                    fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (plan.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    plan,
-                    textDirection: TextDirection.rtl,
-                    style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.45),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Row(
+
+          // ── Inline Jarvis response ─────────────────────────────────────────
+          if (response != null)
+            Container(
+              margin: const EdgeInsets.only(top: 4),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: JC.blue500.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: JC.blue400.withOpacity(0.2)),
+              ),
+              child: Directionality(
+                textDirection: TextDirection.rtl,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (!isDone)
-                      GestureDetector(
-                        onTap: () {
-                          if (idInt != null) {
-                            if (isActive) {
-                              _patchProposal(idInt, _PS.proposal);
-                            } else {
-                              _activateProposal(p);
-                            }
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isActive ? Colors.transparent : JC.blue500.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
+                    Row(
+                      children: [
+                        const Text('🤖 ג׳רביס:',
+                            style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                                fontWeight: FontWeight.w700, fontSize: 12)),
+                        const Spacer(),
+                        if (widget.onSwitchToChat != null)
+                          GestureDetector(
+                            onTap: () => _switchToChatWithProposal(p),
+                            child: const Text('המשך בצ׳אט ←',
+                                style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                                    fontSize: 12, fontWeight: FontWeight.w600)),
                           ),
-                          child: Text(isActive ? '⏸ בטל' : '⚡ הפעל',
-                              style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
-                                  fontWeight: FontWeight.w600, fontSize: 11)),
-                        ),
-                      ),
-                    const Spacer(),
-                    _badge(statusLabel, statusColor),
-                    if (catLabel.isNotEmpty) ...[
-                      const SizedBox(width: 4),
-                      _badge(catLabel, JC.textMuted),
-                    ],
-                    const SizedBox(width: 4),
-                    _badge(priorityLabel, priorityColor),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(response,
+                        style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
+                            fontSize: 13, height: 1.55)),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _badge(String text, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(4),
-      border: Border.all(color: color.withOpacity(0.25), width: 0.7),
-    ),
-    child: Text(text,
-        style: TextStyle(color: color, fontFamily: 'Heebo',
-            fontSize: 10, fontWeight: FontWeight.w600)),
-  );
-
-  Widget _outlineBtn({IconData? icon, required String label, bool loading = false, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: JC.blue500.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: JC.blue400.withOpacity(0.4), width: 0.8),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (loading)
-              const SizedBox(width: 13, height: 13,
-                  child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400))
-            else if (icon != null)
-              Icon(icon, size: 14, color: JC.blue400),
-            const SizedBox(width: 6),
-            Text(label, style: const TextStyle(
-                color: JC.blue400, fontFamily: 'Heebo',
-                fontWeight: FontWeight.w600, fontSize: 13)),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -1161,12 +1245,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
-                color: JC.surface,
+                color: JC.blue500,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: JC.border, width: 0.8),
               ),
               child: const Text('הוסף',
-                  style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo',
+                  style: TextStyle(color: Colors.white, fontFamily: 'Heebo',
                       fontWeight: FontWeight.w600, fontSize: 13)),
             ),
           ),
@@ -1188,66 +1271,158 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   Widget _buildManualItem(Map<String, dynamic> item) {
-    final id   = item['id'];
-    final done = item['done'] == true;
+    final id         = item['id'];
+    final done       = item['done'] == true;
+    final dateLabel  = _relativeDate(item['added']?.toString());
+
     return Directionality(
       textDirection: TextDirection.rtl,
-      child: Opacity(
-        opacity: done ? 0.45 : 1,
-        child: Container(
+      child: Dismissible(
+        key: ValueKey(id ?? item['text']),
+        direction: DismissDirection.endToStart,
+        background: Container(
           margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: JC.surfaceAlt,
+            color: const Color(0xFFEF4444).withOpacity(0.85),
             borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: JC.border, width: 0.8),
           ),
-          child: Row(
-            children: [
-              GestureDetector(
-                onTap: () { if (id != null) _toggleItem(id); },
-                child: Container(
-                  width: 20, height: 20,
-                  decoration: BoxDecoration(
-                    color: done ? const Color(0xFF22C55E) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(5),
-                    border: Border.all(
-                      color: done ? const Color(0xFF22C55E) : JC.border,
-                      width: 1.5,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 16),
+          child: const Icon(Icons.delete_rounded, color: Colors.white, size: 20),
+        ),
+        onDismissed: (_) {
+          final text = item['text']?.toString() ?? '';
+          setState(() => _items.removeWhere((i) => i['id'] == id));
+          if (id != null) _deleteItem(id);
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Text('פריט נמחק', style: TextStyle(fontFamily: 'Heebo')),
+            backgroundColor: JC.surfaceAlt,
+            action: SnackBarAction(
+              label: 'בטל',
+              textColor: JC.blue400,
+              onPressed: () => _addItemWithText(text),
+            ),
+          ));
+        },
+        child: Opacity(
+          opacity: done ? 0.45 : 1,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: JC.surfaceAlt,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: JC.border, width: 0.8),
+            ),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () { if (id != null) _toggleItem(id); },
+                  child: Container(
+                    width: 20, height: 20,
+                    decoration: BoxDecoration(
+                      color: done ? const Color(0xFF22C55E) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(
+                        color: done ? const Color(0xFF22C55E) : JC.border,
+                        width: 1.5,
+                      ),
                     ),
+                    child: done
+                        ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                        : null,
                   ),
-                  child: done
-                      ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
-                      : null,
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  item['text']?.toString() ?? '',
-                  style: TextStyle(
-                    color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13,
-                    decoration: done ? TextDecoration.lineThrough : null,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    item['text']?.toString() ?? '',
+                    style: TextStyle(
+                      color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13,
+                      decoration: done ? TextDecoration.lineThrough : null,
+                    ),
+                    textAlign: TextAlign.right,
                   ),
-                  textAlign: TextAlign.right,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(item['added']?.toString() ?? '',
-                  style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () { if (id != null) _deleteItem(id); },
-                child: const Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
-              ),
-            ],
+                if (dateLabel.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Text(dateLabel,
+                      style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+                ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Widget helpers ────────────────────────────────────────────────────────
+
+  Widget _filterChip(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? JC.blue500.withOpacity(0.15) : JC.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? JC.blue400.withOpacity(0.6) : JC.border,
+            width: selected ? 1.0 : 0.7,
+          ),
+        ),
+        child: Text(label,
+            style: TextStyle(
+              color: selected ? JC.blue400 : JC.textMuted,
+              fontFamily: 'Heebo',
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+            )),
+      ),
+    );
+  }
+
+  Widget _badge(String text, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: color.withOpacity(0.25), width: 0.7),
+    ),
+    child: Text(text,
+        style: TextStyle(color: color, fontFamily: 'Heebo',
+            fontSize: 10, fontWeight: FontWeight.w600)),
+  );
+
+  Widget _outlineBtn({IconData? icon, required String label, bool loading = false, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: JC.blue500.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: JC.blue400.withOpacity(0.4), width: 0.8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (loading)
+              const SizedBox(width: 13, height: 13,
+                  child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400))
+            else if (icon != null)
+              Icon(icon, size: 14, color: JC.blue400),
+            const SizedBox(width: 6),
+            Text(label, style: const TextStyle(
+                color: JC.blue400, fontFamily: 'Heebo',
+                fontWeight: FontWeight.w600, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
 
   InputDecoration _backlogInputDecoration({required String hint, Color? fill}) =>
       InputDecoration(
@@ -1277,163 +1452,4 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           fontFamily: 'Heebo', letterSpacing: 0.8)),
     ]),
   );
-}
-
-// ─── Activate Sheet ────────────────────────────────────────────────────────────
-
-class _ActivateSheet extends StatefulWidget {
-  final String base, title, plan;
-  final void Function(String)? onSwitchToChat;
-  const _ActivateSheet({
-    required this.base,
-    required this.title,
-    required this.plan,
-    this.onSwitchToChat,
-  });
-
-  @override
-  State<_ActivateSheet> createState() => _ActivateSheetState();
-}
-
-class _ActivateSheetState extends State<_ActivateSheet> {
-  String? _response;
-  bool    _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _dispatch();
-  }
-
-  Future<void> _dispatch() async {
-    final msg = 'קבלת משימה חדשה מה-Backlog:\n\nכותרת: ${widget.title}\n\nתוכנית: ${widget.plan}\n\nאנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?';
-    try {
-      final resp = await http.post(
-        Uri.parse('${widget.base}/ask-jarvis'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'command': msg}),
-      ).timeout(const Duration(seconds: 30));
-      final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (mounted) {
-        setState(() {
-          _response = data['answer']?.toString() ?? '';
-          _loading  = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: Container(
-              width: 36, height: 4,
-              decoration: BoxDecoration(
-                color: JC.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            )),
-            const SizedBox(height: 16),
-            Row(children: [
-              const Text('⚡', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
-              Expanded(child: Text(
-                widget.title,
-                style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo',
-                    fontWeight: FontWeight.w700, fontSize: 15),
-                maxLines: 2, overflow: TextOverflow.ellipsis,
-              )),
-            ]),
-            const SizedBox(height: 14),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  CircularProgressIndicator(color: JC.blue400, strokeWidth: 2),
-                  SizedBox(height: 12),
-                  Text('ג׳רביס מקבל את המשימה...', style: TextStyle(
-                      color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
-                ])),
-              )
-            else if (_error != null)
-              Text('שגיאה: $_error', style: const TextStyle(
-                  color: JC.cancelRed, fontFamily: 'Heebo', fontSize: 13))
-            else
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: JC.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: JC.border, width: 0.8),
-                ),
-                child: Text(
-                  _response ?? '',
-                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
-                      fontSize: 13, height: 1.6),
-                ),
-              ),
-            const SizedBox(height: 16),
-            Row(children: [
-              if (widget.onSwitchToChat != null && !_loading)
-                GestureDetector(
-                  onTap: () {
-                    final cmd =
-                      '[PROPOSAL_TITLE:${widget.title}]\n\n'
-                      'קיבלתי הצעת פיתוח חדשה ואני רוצה לפתח אותה:\n\n'
-                      '**${widget.title}**\n\n'
-                      'תוכנית ראשונית: ${widget.plan}\n\n'
-                      'בבקשה שאל אותי לפחות 10 שאלות ממוקדות (שאלה אחת בכל פעם) כדי להבין לעומק:\n'
-                      '- מה בדיוק הפיצ׳רים והיכולות הנדרשים\n'
-                      '- קהל היעד ומטרות המוצר\n'
-                      '- דרישות טכניות, אינטגרציות, הגבלות\n'
-                      '- חווית משתמש ועיצוב\n'
-                      '- עדיפויות ו-MVP\n\n'
-                      'אחרי שסיימנו את כל השאלות, נסח פרומפט פיתוח מפורט ומוכן לשימוש בכלי AI '
-                      '(Claude Code, Codex, Gemini וכו׳).\n'
-                      'את הפרומפט הסופי כתוב בדיוק בפורמט הזה (חשוב!):\n'
-                      '<<<PROMPT_START>>>\n'
-                      '[הפרומפט המלא כאן]\n'
-                      '<<<PROMPT_END>>>';
-                    // Pop the sheet first, then switch tab in the next frame.
-                    // Calling setState on MainShell while the bottom sheet is
-                    // still alive causes a GlobalKey collision under
-                    // _FocusInheritedScope (same key in overlay + IndexedStack).
-                    Navigator.pop(context);
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      widget.onSwitchToChat!(cmd);
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: JC.blue500,
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: const Text('המשך בצ׳אט ←', style: TextStyle(
-                        color: Colors.white, fontFamily: 'Heebo',
-                        fontWeight: FontWeight.w600, fontSize: 13)),
-                  ),
-                ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: const Text('סגור', style: TextStyle(
-                    color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
-              ),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
 }

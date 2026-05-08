@@ -1371,8 +1371,10 @@ Output format (copy exactly, replace the values):
         const parsed = JSON.parse(jsonMatch[0]);
 
         // Map both English and Hebrew field name variants
+        const baseId = backlog._nextId;
+        backlog._nextId += 6;
         const proposals = parsed.slice(0, 6).map((p, i) => ({
-            id: Date.now() + i,
+            id: baseId + i,
             title:    ((p.title    || p['כותרת']   || p['כותרת:'] || '').toString()).slice(0, 80),
             plan:     ((p.plan     || p['תוכנית']  || p['תכנית']  || p['תיאור'] || '').toString()),
             priority: ['high', 'medium', 'low'].includes(p.priority || p['עדיפות'])

@@ -84,7 +84,17 @@ function parseTime(msg) {
         const targetDay = HE_DAYS[dayMatch[1]];
         const d = new Date(now);
         let diff = targetDay - d.getDay();
-        if (diff <= 0) diff += 7;
+        if (diff < 0) diff += 7; // יום שעבר השבוע → שבוע הבא
+        if (diff === 0) {
+            // היום: נשאר היום רק אם ניתנה שעה שעוד לא עברה
+            if (hasTime) {
+                const candidate = new Date(now);
+                candidate.setHours(targetHour, targetMin, 0);
+                if (candidate <= now) diff = 7; // השעה כבר עברה → שבוע הבא
+            } else {
+                diff = 7; // לא ניתנה שעה → שבוע הבא
+            }
+        }
         d.setDate(d.getDate() + diff);
         d.setHours(targetHour, targetMin, 0);
         return d;

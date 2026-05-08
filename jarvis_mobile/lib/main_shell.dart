@@ -26,7 +26,6 @@ class _MainShellState extends State<MainShell> {
   AppSettings _settings = AppSettings();
 
   Timer? _notifPollTimer;
-  int    _notifId = 10000;
   String? _pendingChatCommand;
 
   @override
@@ -56,7 +55,8 @@ class _MainShellState extends State<MainShell> {
       for (final r in fired) {
         final text = r['text']?.toString() ?? '';
         if (text.isEmpty) continue;
-        await NotificationService.showNow(_notifId++, text);
+        final notifId = (r['id']?.toString() ?? text).hashCode.abs() % 100000;
+        await NotificationService.showNow(notifId, text);
       }
     } catch (_) {}
   }

@@ -2,6 +2,7 @@ const { sanitizeLike } = require('./utils');
 require('dotenv').config();
 const { callGemma4 } = require('./models');
 const obsidianSync   = require('../services/obsidianSync');
+const pinecone       = require('../services/pineconeMemory');
 
 const TASK_PROMPT = `You are a task management AI. Analyze the Hebrew user message and extract the intent.
 Allowed intents: 'add', 'list', 'delete', 'complete', 'suggest'.
@@ -113,6 +114,18 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
             }
 
             const pending = data.filter(t => !t.done);
+
+            // Get context from Pinecone for smarter suggestions
+            let contextualHint = '';
+            if (pinecone.isReady() && pending.length > 0) {
+                try {
+                    const relevantMemories = await pinecone.searchMemories(pending[0].content, 3);
+                    if (relevantMemories && relevantMemories.length > 0) {
+                        contextualHint = `\n• בהקשר קודם: ${relevantMemories[0]}`;
+                    }
+                } catch (_) {}
+            }
+
             const timeBasedSuggestions = [
                 'בוא נעבוד על משימה לפני שמתחיל הערב?',
                 'יש לך זמן כדי לסיים משימה עכשיו?',
@@ -125,7 +138,7 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                 answer: `💡 *הצעות חכמות:*\n` +
                     `• אתה עם ${pending.length} משימות פתוחות\n` +
                     `• ${randomSuggestion}\n` +
-                    `• בואו נהפוך את זה לדברים קטנים יותר וקל יותר לעשות?`
+                    `• בואו נהפוך את זה לדברים קטנים יותר וקל יותר לעשות?${contextualHint}`
             };
         }
 

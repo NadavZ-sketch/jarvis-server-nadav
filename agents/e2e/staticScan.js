@@ -26,18 +26,18 @@ function listSources() {
     return Array.from(new Set(files));
 }
 
-function readFiles(files, stableTargets) {
+async function readFiles(files, stableTargets) {
     const stable = new Set(stableTargets || []);
     const out = {};
-    for (const rel of files) {
+    await Promise.all(files.map(async (rel) => {
         try {
-            const src = fs.readFileSync(path.join(BASE_DIR, rel), 'utf8');
+            const src = await fs.promises.readFile(path.join(BASE_DIR, rel), 'utf8');
             const budget = stable.has(rel) ? STABLE_BUDGET : FULL_BUDGET;
             out[rel] = src.length > budget ? src.slice(0, budget) + '\n// ... (truncated)' : src;
         } catch (err) {
             console.warn(`staticScan: cannot read ${rel}: ${err.message}`);
         }
-    }
+    }));
     return out;
 }
 
@@ -71,7 +71,7 @@ async function runStaticScan({ learnedContext = {} } = {}) {
     const hot = new Set(learnedContext.hotTargets || []);
     const ordered = [...all].sort((a, b) => (hot.has(b) ? 1 : 0) - (hot.has(a) ? 1 : 0));
 
-    const files = readFiles(ordered, learnedContext.stableTargets);
+    const files = await readFiles(ordered, learnedContext.stableTargets);
     const codeBlock = Object.entries(files)
         .map(([name, src]) => `// ── ${name} ──\n${src}`)
         .join('\n\n');

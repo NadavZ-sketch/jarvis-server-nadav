@@ -9,44 +9,44 @@ const PENDING     = path.join(CUSTOM_DIR, 'pending.json');
 
 // ─── Registry helpers ─────────────────────────────────────────────────────────
 
-function loadRegistry() {
-    try { return JSON.parse(fs.readFileSync(REGISTRY, 'utf8')); } catch { return []; }
+async function loadRegistry() {
+    try { return JSON.parse(await fs.promises.readFile(REGISTRY, 'utf8')); } catch { return []; }
 }
 
-function saveRegistry(data) {
-    if (!fs.existsSync(CUSTOM_DIR)) fs.mkdirSync(CUSTOM_DIR, { recursive: true });
-    fs.writeFileSync(REGISTRY, JSON.stringify(data, null, 2));
+async function saveRegistry(data) {
+    await fs.promises.mkdir(CUSTOM_DIR, { recursive: true });
+    await fs.promises.writeFile(REGISTRY, JSON.stringify(data, null, 2));
 }
 
 // ─── Pending helpers ──────────────────────────────────────────────────────────
 
-function loadPending() {
-    try { return JSON.parse(fs.readFileSync(PENDING, 'utf8')); } catch { return null; }
+async function loadPending() {
+    try { return JSON.parse(await fs.promises.readFile(PENDING, 'utf8')); } catch { return null; }
 }
 
-function savePending(data) {
-    if (!fs.existsSync(CUSTOM_DIR)) fs.mkdirSync(CUSTOM_DIR, { recursive: true });
-    fs.writeFileSync(PENDING, JSON.stringify(data, null, 2));
+async function savePending(data) {
+    await fs.promises.mkdir(CUSTOM_DIR, { recursive: true });
+    await fs.promises.writeFile(PENDING, JSON.stringify(data, null, 2));
 }
 
-function clearPending() {
-    try { fs.unlinkSync(PENDING); } catch { /* ok */ }
+async function clearPending() {
+    try { await fs.promises.unlink(PENDING); } catch { /* ok */ }
 }
 
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 // ─── Confirm / Cancel ─────────────────────────────────────────────────────────
 
-function confirmPendingAgent() {
-    const pending = loadPending();
+async function confirmPendingAgent() {
+    const pending = await loadPending();
     if (!pending) return { answer: 'אין אייג\'נט ממתין לאישור.' };
 
-    const registry = loadRegistry();
+    const registry = await loadRegistry();
     const idx = registry.findIndex(r => r.name === pending.entry.name);
     if (idx >= 0) registry[idx] = pending.entry;
     else registry.push(pending.entry);
-    saveRegistry(registry);
-    clearPending();
+    await saveRegistry(registry);
+    await clearPending();
 
     const keywords = pending.entry.keywords.join(' | ') || '—';
     return {
@@ -57,13 +57,13 @@ function confirmPendingAgent() {
     };
 }
 
-function cancelPendingAgent() {
-    const pending = loadPending();
+async function cancelPendingAgent() {
+    const pending = await loadPending();
     if (!pending) return { answer: 'אין אייג\'נט ממתין לביטול.' };
 
     const name = pending.entry.displayName;
-    try { fs.unlinkSync(pending.entry.filePath); } catch { /* ok */ }
-    clearPending();
+    try { await fs.promises.unlink(pending.entry.filePath); } catch { /* ok */ }
+    await clearPending();
 
     return { answer: `בסדר, האייג'נט "${name}" לא נשמר ונמחק.` };
 }
@@ -127,8 +127,8 @@ async function runDemo(filePath, agentName, sampleQuery, supabase, useLocal) {
 
 // ─── List / Delete ────────────────────────────────────────────────────────────
 
-function listAgents() {
-    const registry = loadRegistry();
+async function listAgents() {
+    const registry = await loadRegistry();
     if (registry.length === 0) {
         return { answer: 'אין אייג\'נטים מותאמים אישית עדיין. תוכל ליצור אחד על ידי תיאור מה אתה צריך.' };
     }
@@ -138,8 +138,8 @@ function listAgents() {
     return { answer: `האייג'נטים שיצרת:\n\n${list}` };
 }
 
-function deleteAgent(userMessage) {
-    const registry = loadRegistry();
+async function deleteAgent(userMessage) {
+    const registry = await loadRegistry();
     const toDelete = userMessage
         .replace(/מחק אייג'נט|הסר אייג'נט|מחק סוכן/gi, '')
         .replace(/\b(את|ה)\b/g, '')
@@ -153,8 +153,8 @@ function deleteAgent(userMessage) {
 
     const removed = registry[idx];
     registry.splice(idx, 1);
-    saveRegistry(registry);
-    try { fs.unlinkSync(path.join(CUSTOM_DIR, `${removed.name}.js`)); } catch { /* ok */ }
+    await saveRegistry(registry);
+    try { await fs.promises.unlink(path.join(CUSTOM_DIR, `${removed.name}.js`)); } catch { /* ok */ }
 
     return { answer: `מחקתי את האייג'נט "${removed.displayName}".` };
 }
@@ -210,9 +210,9 @@ async function runAgentFactoryAgent(userMessage, supabase, useLocal) {
             .trim();
 
         // Step 3: Write file (pending — not in registry yet)
-        if (!fs.existsSync(CUSTOM_DIR)) fs.mkdirSync(CUSTOM_DIR, { recursive: true });
+        await fs.promises.mkdir(CUSTOM_DIR, { recursive: true });
         const filePath = path.join(CUSTOM_DIR, `${design.agentName}.js`);
-        fs.writeFileSync(filePath, cleanCode, 'utf8');
+        await fs.promises.writeFile(filePath, cleanCode, 'utf8');
         console.log(`🏭 AgentFactory: wrote ${filePath} (pending approval)`);
 
         // Step 4: Run demo
@@ -230,7 +230,7 @@ async function runAgentFactoryAgent(userMessage, supabase, useLocal) {
             keywords: Array.isArray(design.keywords) ? design.keywords : [],
             filePath,
         };
-        savePending({ entry, design });
+        await savePending({ entry, design });
 
         // Step 6: Return demo + confirmation request
         const caps     = Array.isArray(design.capabilities) ? design.capabilities.map(c => `• ${c}`).join('\n') : '';

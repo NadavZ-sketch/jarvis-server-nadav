@@ -23,16 +23,16 @@ const SCAN_FILES = [
 
 const MAX_CHARS_PER_FILE = 4000; // avoid token overflow on smaller models
 
-function readProjectFiles() {
+async function readProjectFiles() {
     const result = {};
-    for (const file of SCAN_FILES) {
+    await Promise.all(SCAN_FILES.map(async (file) => {
         try {
-            const content = fs.readFileSync(path.join(BASE_DIR, file), 'utf8');
+            const content = await fs.promises.readFile(path.join(BASE_DIR, file), 'utf8');
             result[file] = content.length > MAX_CHARS_PER_FILE
                 ? content.slice(0, MAX_CHARS_PER_FILE) + '\n// ... (truncated)'
                 : content;
         } catch (err) { console.warn(`⚠️ SecurityAgent: could not read ${file}: ${err.message}`); }
-    }
+    }));
     return result;
 }
 
@@ -69,7 +69,7 @@ async function runSecurityAgent(userMessage, useLocal, sendEmailFn) {
     try {
         const sendReport = /שלח|מייל|email|דוח ב|report/i.test(userMessage);
 
-        const files = readProjectFiles();
+        const files = await readProjectFiles();
         const codeBlock = Object.entries(files)
             .map(([name, src]) => `// ── ${name} ──\n${src}`)
             .join('\n\n');

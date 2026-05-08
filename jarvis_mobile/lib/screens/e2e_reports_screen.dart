@@ -6,6 +6,13 @@ import '../services/api_service.dart';
 import '../transitions/slide_fade_route.dart';
 import '../widgets/empty_state.dart';
 
+// ─── Localised labels ──────────────────────────────────────────────────────
+const _sevLabel  = {'critical':'קריטי','high':'גבוה','medium':'בינוני','low':'נמוך'};
+const _sevEmoji  = {'critical':'🔴','high':'🟠','medium':'🟡','low':'🟢'};
+const _statLabel = {'new':'🆕 חדש','regression':'🔁 רגרסיה','flaky':'📉 פלייקי','done':'✅ בוצע'};
+const _catHe     = {'API':'ממשק API','Flutter UI':'Flutter','Static':'קוד סטטי',
+                    'Hebrew Quality':'איכות עברית','Other':'כללי'};
+
 // ─── List screen ───────────────────────────────────────────────────────────
 
 class E2eReportsScreen extends StatefulWidget {
@@ -265,10 +272,25 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
   final Set<String> _selectedFingerprints = {};
   bool _showDone = false;
 
+  // Filter state
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  final Set<String> _sevFilter    = {};
+  final Set<String> _statusFilter = {};
+  final Set<String> _catFilter    = {};
+
   @override
   void initState() {
     super.initState();
     _load();
+    _searchCtrl.addListener(() =>
+        setState(() => _searchQuery = _searchCtrl.text.trim().toLowerCase()));
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -293,6 +315,51 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
   List<Map<String, dynamic>> get _visibleFindings =>
       _showDone ? _findings : _findings.where((f) => !_isDone(f)).toList();
 
+  Set<String> get _availableCategories =>
+      _findings.map((f) => (f['category'] as String?) ?? '').where((c) => c.isNotEmpty).toSet();
+
+  List<Map<String, dynamic>> get _filteredFindings {
+    return _visibleFindings.where((f) {
+      if (_sevFilter.isNotEmpty) {
+        final sev = (f['severity'] as String?) ?? 'low';
+        if (!_sevFilter.contains(sev)) return false;
+      }
+      if (_statusFilter.isNotEmpty) {
+        final st = (f['status'] as String?) ?? 'new';
+        if (!_statusFilter.contains(st)) return false;
+      }
+      if (_catFilter.isNotEmpty) {
+        final cat = (f['category'] as String?) ?? '';
+        if (!_catFilter.contains(cat)) return false;
+      }
+      if (_searchQuery.isNotEmpty) {
+        final finding = (f['finding'] as String? ?? '').toLowerCase();
+        final target  = (f['target'] as String? ?? '').toLowerCase();
+        final rec     = (f['recommendation'] as String? ?? '').toLowerCase();
+        if (!finding.contains(_searchQuery) &&
+            !target.contains(_searchQuery) &&
+            !rec.contains(_searchQuery)) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  bool get _hasActiveFilter =>
+      _sevFilter.isNotEmpty || _statusFilter.isNotEmpty ||
+      _catFilter.isNotEmpty || _searchQuery.isNotEmpty;
+
+  void _clearFilters() {
+    _searchCtrl.clear();
+    setState(() {
+      _sevFilter.clear();
+      _statusFilter.clear();
+      _catFilter.clear();
+    });
+  }
+
+  void _toggleFilter(Set<String> group, String value) =>
+      setState(() => group.contains(value) ? group.remove(value) : group.add(value));
+
   void _toggleSelection(Map<String, dynamic> f) {
     if (_isDone(f)) return;
     final fp = _fp(f);
@@ -310,7 +377,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     setState(() {
       _selectedFingerprints
         ..clear()
-        ..addAll(_findings
+        ..addAll(_filteredFindings
             .where((f) => !_isDone(f))
             .map(_fp)
             .whereType<String>());
@@ -411,15 +478,6 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
       case 'high':     return const Color(0xFFF97316);
       case 'medium':   return const Color(0xFFEAB308);
       default:         return const Color(0xFF22C55E);
-    }
-  }
-
-  String _sevEmoji(String sev) {
-    switch (sev) {
-      case 'critical': return '🔴';
-      case 'high':     return '🟠';
-      case 'medium':   return '🟡';
-      default:         return '🟢';
     }
   }
 
@@ -539,9 +597,10 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     final medium   = _counts['medium']   ?? 0;
     final low      = _counts['low']      ?? 0;
 
-    final byOrder = ['critical', 'high', 'medium', 'low'];
-    final groups = <String, List<Map<String, dynamic>>>{};
-    for (final f in _visibleFindings) {
+    final byOrder  = ['critical', 'high', 'medium', 'low'];
+    final filtered = _filteredFindings;
+    final groups   = <String, List<Map<String, dynamic>>>{};
+    for (final f in filtered) {
       final s = (f['severity'] as String?) ?? 'low';
       groups.putIfAbsent(s, () => []).add(f);
     }
@@ -549,7 +608,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
       children: [
-        // Header card
+        // ── Header card ─────────────────────────────────────────────────
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -560,7 +619,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Container(
-                width: 64, height: 64,
+                width: 60, height: 60,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: _scoreColor(_score).withOpacity(0.15),
@@ -575,17 +634,24 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
               Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('ציון כללי',
-                      style: TextStyle(color: JC.textMuted,
-                          fontSize: 12, fontFamily: 'Heebo')),
-                  const SizedBox(height: 4),
-                  Text('$_activeCount פתוחים${_doneCount > 0 ? ' · $_doneCount ✅ בוצע' : ''}',
+                  Text('$_activeCount פתוחים${_doneCount > 0 ? ' · $_doneCount ✅' : ''}',
                       style: const TextStyle(color: JC.textPrimary,
-                          fontSize: 15, fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
-                  const SizedBox(height: 6),
-                  Text('🔴 $critical · 🟠 $high · 🟡 $medium · 🟢 $low',
-                      style: const TextStyle(color: JC.textSecondary,
-                          fontSize: 13, fontFamily: 'Heebo')),
+                          fontSize: 15, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
+                  const SizedBox(height: 5),
+                  Wrap(spacing: 10, children: [
+                    if (critical > 0) Text('🔴 $critical קריטי',
+                        style: TextStyle(color: _sevColor('critical'),
+                            fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                    if (high > 0) Text('🟠 $high גבוה',
+                        style: TextStyle(color: _sevColor('high'),
+                            fontSize: 12, fontFamily: 'Heebo')),
+                    if (medium > 0) Text('🟡 $medium בינוני',
+                        style: TextStyle(color: _sevColor('medium'),
+                            fontSize: 12, fontFamily: 'Heebo')),
+                    if (low > 0) Text('🟢 $low נמוך',
+                        style: TextStyle(color: _sevColor('low'),
+                            fontSize: 12, fontFamily: 'Heebo')),
+                  ]),
                 ],
               )),
             ]),
@@ -595,27 +661,76 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                 onTap: () => setState(() => _showDone = !_showDone),
                 child: Row(children: [
                   Icon(_showDone ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                      size: 15, color: JC.textMuted),
+                      size: 14, color: JC.textMuted),
                   const SizedBox(width: 5),
-                  Text(_showDone ? 'הסתר ממצאים שבוצעו' : 'הצג ממצאים שבוצעו ($_doneCount)',
+                  Text(_showDone ? 'הסתר שבוצעו' : 'הצג שבוצעו ($_doneCount)',
                       style: const TextStyle(color: JC.textMuted,
                           fontSize: 12, fontFamily: 'Heebo')),
                 ]),
               ),
             ],
-            const SizedBox(height: 10),
-            const Text('בחר ממצאים ← צור פרומפט לקלוד או סמן כבוצע',
-                style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
           ]),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 10),
 
-        if (_visibleFindings.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('🎉 אין ממצאים פתוחים — הכל תקין!',
-                style: TextStyle(color: JC.textSecondary,
-                    fontSize: 16, fontFamily: 'Heebo'))),
+        // ── Search bar ──────────────────────────────────────────────────
+        TextField(
+          controller: _searchCtrl,
+          textDirection: TextDirection.rtl,
+          decoration: InputDecoration(
+            hintText: 'חפש ממצא, קובץ או המלצה...',
+            hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13),
+            prefixIcon: const Icon(Icons.search_rounded, color: JC.textMuted, size: 20),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18, color: JC.textMuted),
+                    onPressed: _searchCtrl.clear,
+                  )
+                : null,
+            filled: true,
+            fillColor: JC.surface,
+            contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: JC.border, width: 0.5),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: JC.border, width: 0.5),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: JC.blue400, width: 1),
+            ),
+          ),
+          style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+
+        // ── Filter chips ────────────────────────────────────────────────
+        _buildFilterChips(),
+        if (_hasActiveFilter) ...[
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: GestureDetector(
+              onTap: _clearFilters,
+              child: const Text('נקה סינון',
+                  style: TextStyle(color: JC.blue400,
+                      fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+
+        // ── Findings ────────────────────────────────────────────────────
+        if (filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: Text(
+                _hasActiveFilter ? 'אין ממצאים תואמים לסינון' : '🎉 אין ממצאים פתוחים — הכל תקין!',
+                style: const TextStyle(color: JC.textSecondary,
+                    fontSize: 15, fontFamily: 'Heebo'))),
           )
         else
           for (final sev in byOrder)
@@ -624,26 +739,95 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     );
   }
 
-  List<Widget> _sectionFor(String sev, List<Map<String, dynamic>> items) {
-    final sevLabel = {
-      'critical': 'קריטי', 'high': 'גבוה', 'medium': 'בינוני', 'low': 'נמוך',
-    }[sev]!;
-    return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-        child: Row(children: [
-          Text('${_sevEmoji(sev)} $sevLabel',
-              style: TextStyle(color: _sevColor(sev),
-                  fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
-          const SizedBox(width: 8),
-          Text('(${items.length})',
-              style: const TextStyle(color: JC.textMuted,
-                  fontSize: 12, fontFamily: 'Heebo')),
-        ]),
-      ),
-      ...items.map(_findingCard),
-    ];
+  Widget _buildFilterChips() {
+    final cats = _availableCategories.toList()..sort();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        // Severity
+        ..._buildChipGroup(
+          items: ['critical', 'high', 'medium', 'low'],
+          group: _sevFilter,
+          labelFn: (v) => '${_sevEmoji[v] ?? ''} ${_sevLabel[v] ?? v}',
+          colorFn: _sevColor,
+        ),
+        _divider(),
+        // Status
+        ..._buildChipGroup(
+          items: ['new', 'regression', 'flaky'],
+          group: _statusFilter,
+          labelFn: (v) => _statLabel[v] ?? v,
+          colorFn: (v) => const {'new': Color(0xFF3B82F6), 'regression': Color(0xFFF97316),
+            'flaky': Color(0xFFEAB308)}[v] ?? JC.textMuted,
+        ),
+        if (cats.isNotEmpty) ...[
+          _divider(),
+          ..._buildChipGroup(
+            items: cats,
+            group: _catFilter,
+            labelFn: (v) => _catHe[v] ?? v,
+            colorFn: (_) => JC.blue400,
+          ),
+        ],
+      ]),
+    );
   }
+
+  List<Widget> _buildChipGroup({
+    required List<String> items,
+    required Set<String> group,
+    required String Function(String) labelFn,
+    required Color Function(String) colorFn,
+  }) {
+    return items.map((v) {
+      final active = group.contains(v);
+      final col = colorFn(v);
+      return Padding(
+        padding: const EdgeInsets.only(left: 6),
+        child: GestureDetector(
+          onTap: () => _toggleFilter(group, v),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: active ? col.withOpacity(0.18) : JC.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: active ? col : JC.border,
+                width: active ? 1.2 : 0.6,
+              ),
+            ),
+            child: Text(labelFn(v),
+                style: TextStyle(
+                    color: active ? col : JC.textMuted,
+                    fontSize: 12, fontFamily: 'Heebo',
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w400)),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  Widget _divider() => Container(
+      height: 20, width: 1,
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      color: JC.border);
+
+  List<Widget> _sectionFor(String sev, List<Map<String, dynamic>> items) => [
+    Padding(
+      padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
+      child: Row(children: [
+        Container(width: 3, height: 16,
+            decoration: BoxDecoration(color: _sevColor(sev),
+                borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 8),
+        Text('${_sevLabel[sev] ?? sev} (${items.length})',
+            style: TextStyle(color: _sevColor(sev),
+                fontSize: 13, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
+      ]),
+    ),
+    ...items.map(_findingCard),
+  ];
 
   Widget _findingCard(Map<String, dynamic> f) {
     final target   = (f['target'] as String?) ?? '';
@@ -651,83 +835,111 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     final fix      = (f['recommendation'] as String?) ?? '';
     final cat      = (f['category'] as String?) ?? '';
     final lat      = f['latency_ms'] as int?;
+    final sev      = (f['severity'] as String?) ?? 'low';
     final status   = (f['status'] as String?) ?? 'new';
     final done     = status == 'done';
     final fp       = _fp(f);
     final selected = fp != null && _selectedFingerprints.contains(fp);
-
-    final statusBadge = done
-        ? const _Chip(text: '✅ בוצע', color: Color(0xFF22C55E))
-        : {
-            'regression': const _Chip(text: '🔁 רגרסיה', color: Color(0xFFF97316)),
-            'flaky':      const _Chip(text: '📉 פלייקי', color: Color(0xFFEAB308)),
-            'new':        const _Chip(text: '🆕 חדש',    color: Color(0xFF3B82F6)),
-          }[status] ?? const SizedBox.shrink();
+    final catHe    = _catHe[cat] ?? cat;
+    final statText = _statLabel[status] ?? status;
 
     return Opacity(
-      opacity: done ? 0.45 : 1.0,
+      opacity: done ? 0.5 : 1.0,
       child: GestureDetector(
         onTap: done ? null : () => _toggleSelection(f),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.symmetric(vertical: 3),
           decoration: BoxDecoration(
-            color: selected ? JC.blue500.withOpacity(0.07) : JC.surface,
+            color: selected ? JC.blue500.withOpacity(0.06) : JC.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: selected ? JC.blue400 : JC.border,
               width: selected ? 1.5 : 0.5,
             ),
           ),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (!done) Padding(
-              padding: const EdgeInsets.only(top: 1, left: 6),
-              child: SizedBox(
-                width: 20, height: 20,
-                child: Checkbox(
-                  value: selected,
-                  onChanged: (_) => _toggleSelection(f),
-                  activeColor: JC.blue500,
-                  side: BorderSide(color: JC.textMuted.withOpacity(0.5), width: 1.2),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+          child: IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              // Severity stripe
+              Container(
+                width: 4,
+                decoration: BoxDecoration(
+                  color: _sevColor(sev),
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(12),
+                    bottomRight: Radius.circular(12),
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Wrap(spacing: 6, runSpacing: 6, children: [
-                  _Chip(text: cat, color: JC.blue400),
-                  if (lat != null) _Chip(text: '$lat ms', color: JC.textMuted),
-                  statusBadge,
-                ]),
-                const SizedBox(height: 8),
-                Text(target,
-                    style: TextStyle(
-                        color: done ? JC.textMuted : JC.textPrimary,
-                        fontSize: 13, fontWeight: FontWeight.w600,
-                        fontFamily: 'Heebo', letterSpacing: 0.2,
-                        decoration: done ? TextDecoration.lineThrough : null)),
-                const SizedBox(height: 6),
-                Text(finding,
-                    style: const TextStyle(color: JC.textSecondary,
-                        fontSize: 13, fontFamily: 'Heebo', height: 1.4)),
-                if (fix.isNotEmpty && !done) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF22C55E).withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
+              // Content
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    // Chips row
+                    Row(children: [
+                      _Chip(text: catHe, color: JC.blue400),
+                      const SizedBox(width: 6),
+                      _Chip(text: statText,
+                          color: const {'🔁 רגרסיה': Color(0xFFF97316),
+                            '📉 פלייקי': Color(0xFFEAB308),
+                            '✅ בוצע': Color(0xFF22C55E),
+                          }[statText] ?? const Color(0xFF3B82F6)),
+                    ]),
+                    const SizedBox(height: 8),
+                    // Finding — the main content
+                    Text(finding,
+                        style: TextStyle(
+                            color: done ? JC.textMuted : JC.textPrimary,
+                            fontSize: 13, fontFamily: 'Heebo', height: 1.45,
+                            decoration: done ? TextDecoration.lineThrough : null)),
+                    // Fix recommendation
+                    if (fix.isNotEmpty && !done) ...[
+                      const SizedBox(height: 8),
+                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Icon(Icons.arrow_forward_rounded,
+                            size: 14, color: Color(0xFF22C55E)),
+                        const SizedBox(width: 5),
+                        Expanded(child: Text(fix,
+                            style: const TextStyle(color: Color(0xFF22C55E),
+                                fontSize: 12, fontFamily: 'Heebo', height: 1.4))),
+                      ]),
+                    ],
+                    // Footer: target + latency
+                    if (target.isNotEmpty || lat != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        [
+                          if (target.isNotEmpty) target.length > 50 ? '…${target.substring(target.length - 50)}' : target,
+                          if (lat != null) '$lat ms',
+                        ].join(' · '),
+                        style: const TextStyle(color: JC.textMuted,
+                            fontSize: 11, fontFamily: 'Heebo'),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ]),
+                ),
+              ),
+              // Checkbox
+              if (!done) Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Align(
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: 20, height: 20,
+                    child: Checkbox(
+                      value: selected,
+                      onChanged: (_) => _toggleSelection(f),
+                      activeColor: JC.blue500,
+                      side: BorderSide(color: JC.textMuted.withOpacity(0.5), width: 1.2),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
                     ),
-                    child: Text('✅ $fix',
-                        style: const TextStyle(color: Color(0xFF22C55E),
-                            fontSize: 12, fontFamily: 'Heebo', height: 1.4)),
                   ),
-                ],
-              ]),
-            ),
-          ]),
+                ),
+              ),
+            ]),
+          ),
         ),
       ),
     );

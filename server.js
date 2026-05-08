@@ -42,6 +42,7 @@ const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
+const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
 const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = require('./agents/e2eAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent }     = require('./agents/insightAgent');
@@ -441,6 +442,20 @@ app.post('/ask-jarvis', async (req, res) => {
             result = await runInsightAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'security') {
             result = await runSecurityAgent(userMessage, useLocal, sendEmail);
+        } else if (agentName === 'code_error') {
+            setImmediate(async () => {
+                try {
+                    const ceResult = await runCodeErrorAgent(userMessage, useLocal, sendEmail);
+                    await saveChatMessage('jarvis', ceResult.answer);
+                    cacheInvalidate('chatHistory');
+                    console.log('🔍 codeErrorAgent background run saved to chat history');
+                } catch (err) {
+                    console.error('🔍 codeErrorAgent background run failed:', err.message);
+                    await saveChatMessage('jarvis', '❌ סריקת שגיאות נכשלה: ' + err.message).catch(() => {});
+                    cacheInvalidate('chatHistory');
+                }
+            });
+            result = { answer: '🔍 מתחיל סריקת שגיאות קוד ברקע — הדוח יופיע בשיחה כשיסיים. רענן את השיחה כדי לראות את התוצאות.', skipTts: true };
         } else if (agentName === 'e2e') {
             // Run in background — return immediately so the HTTP request doesn't time out.
             // The full report is saved to chat_history when the run finishes; the app
@@ -923,6 +938,18 @@ app.delete('/e2e-reports/:runId', async (req, res) => {
     } catch (err) {
         console.error('DELETE /e2e-reports/:id error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── GET /scan/errors — run code error scanner and return JSON report ─────────
+app.get('/scan/errors', _rl(5), async (_req, res) => {
+    try {
+        const { runCodeErrorScanner } = require('./agents/e2e/codeErrorScanner');
+        const result = await runCodeErrorScanner({});
+        res.json(result);
+    } catch (err) {
+        console.error('❌ /scan/errors:', err.message);
+        res.status(500).json({ error: 'scan failed', message: err.message });
     }
 });
 

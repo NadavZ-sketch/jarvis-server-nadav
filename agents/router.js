@@ -18,8 +18,9 @@ const KEYWORDS = {
     messaging: /שלח.*ווצאפ|שלח.*וואטסאפ|שלח.*מייל|ווצאפ ל|וואטסאפ ל|מייל ל|שלח הודעה ל|שמור.*קשר|הוסף.*קשר|שמור.*טלפון|שמור.*מספר/i,
     draft:     /נסח לי|תנסח|עזור לי לנסח|כתוב לי|תכתוב לי|תכין לי|הכן לי.*הודעה|תעזור לי לכתוב|נוסח ל/i,
     insight:   /תן לי טיפים|מה אפשר לשפר|ניתוח שלי|דוח שימוש|עצות לשיפור|התייעלות|תובנות|איך אני משתמש/i,
-    e2e:       /בצע בדיקות קצה|בדיקות קצה לקצה|בדיקות קצה|בדיקת e2e|הרץ בדיקות|דוח בדיקות|end[- ]?to[- ]?end/i,
-    security:  /סריקת אבטחה|בדיקת אבטחה|מצא באגים|דוח באגים|דוח אבטחה|סרוק קוד|חפש בעיות|security scan/i,
+    e2e:        /בצע בדיקות קצה|בדיקות קצה לקצה|בדיקות קצה|בדיקת e2e|הרץ בדיקות|דוח בדיקות|end[- ]?to[- ]?end/i,
+    code_error: /סרוק שגיאות קוד|מצא שגיאות קוד|בדיקת שגיאות|שגיאות בקוד|code error|error scan|סרוק שגיאות|בדוק שגיאות קוד|code scan errors/i,
+    security:   /סריקת אבטחה|בדיקת אבטחה|מצא באגים|דוח באגים|דוח אבטחה|סרוק קוד|חפש בעיות|security scan/i,
     stocks:    /מניה|מניות|בורסה|שוק ההון|נסד"ק|nasdaq|s&p|ביטקוין|bitcoin|קריפטו|crypto|דולר|אירו|שקל|מטבע|תל אביב 35|ת"א 35|אפל|גוגל|טסלה|אמזון|מיקרוסופט|מדד|תיק השקעות|ריבית|אינפלציה/i,
     translate: /תרגם|תרגום|translate|translation|כתוב.*אנגלית|כתוב.*עברית|בעברית|באנגלית|בצרפתית|בספרדית|בערבית|בגרמנית|מה פירוש|מה המשמעות/i,
     factory:   /צור אייג'נט|יצור אייג'נט|בנה אייג'נט|הוסף אייג'נט|תייצר אייג'נט|תבנה אייג'נט|רשימת אייג'נטים|הצג אייג'נטים|מחק אייג'נט|הסר אייג'נט/i,
@@ -88,13 +89,13 @@ function classifyIntent(userMessage) {
 const VALID_INTENTS = new Set([
     'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
     'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'insight', 'security', 'e2e', 'factory', 'past_conv', 'chat',
+    'insight', 'security', 'code_error', 'e2e', 'factory', 'past_conv', 'chat',
 ]);
 
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
 Given a user message, classify it into exactly one of these intents:
 task, reminder, memory, weather, news, shopping, notes, music, stocks, translate,
-sports, messaging, draft, insight, security, e2e, factory, past_conv, chat
+sports, messaging, draft, insight, security, code_error, e2e, factory, past_conv, chat
 
 Rules:
 - task: add/delete/list/complete personal tasks or to-dos
@@ -111,7 +112,8 @@ Rules:
 - messaging: send WhatsApp/email messages or manage contacts
 - draft: compose a message/email/text for the user
 - insight: analyze the user's habits or provide usage tips
-- security: code security scan or bug report
+- security: code security scan, OWASP vulnerability or bug report
+- code_error: scan source code for runtime errors, logic bugs, anti-patterns, missing error handling
 - e2e: run autonomous end-to-end self-tests of the assistant (UI, API, code scan, UX)
 - factory: create/manage/delete custom agents
 - past_conv: asking about previous conversations with Jarvis

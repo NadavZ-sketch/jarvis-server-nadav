@@ -260,4 +260,22 @@ class ApiService {
   Future<void> deleteE2eRun(String runId) async {
     await _client.delete(_uri('/e2e-reports/$runId')).timeout(_timeout);
   }
+
+  Future<String> generatePromptForSelected(String runId, List<String> fingerprints) async {
+    final res = await _client
+        .post(_uri('/e2e-reports/$runId/prompt'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'fingerprints': fingerprints}))
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return (data['claudePrompt'] as String?) ?? '';
+  }
+
+  Future<void> markFindingsDone(String runId, List<String> fingerprints) async {
+    await _client
+        .post(_uri('/e2e-reports/$runId/mark-done'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'fingerprints': fingerprints}))
+        .timeout(_timeout);
+  }
 }

@@ -1001,12 +1001,14 @@ app.get('/e2e-reports', async (_req, res) => {
                     created_at: row.created_at,
                     count: 0,
                     critical: 0, high: 0, medium: 0, low: 0,
+                    done: 0,
                 });
             }
             const g = byRun.get(row.run_id);
+            if (row.created_at > g.created_at) g.created_at = row.created_at;
+            if (row.status === 'done') { g.done++; continue; }
             g.count++;
             if (g[row.severity] !== undefined) g[row.severity]++;
-            if (row.created_at > g.created_at) g.created_at = row.created_at;
         }
         const reports = Array.from(byRun.values())
             .map(r => {
@@ -1060,6 +1062,50 @@ app.delete('/e2e-reports/:runId', async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         console.error('DELETE /e2e-reports/:id error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
+// ─── POST /e2e-reports/:runId/prompt — generate Claude prompt for selected findings
+app.post('/e2e-reports/:runId/prompt', async (req, res) => {
+    try {
+        const { fingerprints } = req.body || {};
+        if (!Array.isArray(fingerprints) || !fingerprints.length) {
+            return res.status(400).json({ error: 'fingerprints array required' });
+        }
+        const { data, error } = await supabase
+            .from('e2e_reports')
+            .select('*')
+            .eq('run_id', req.params.runId)
+            .in('fingerprint', fingerprints);
+        if (error) throw error;
+        const findings = data || [];
+        const counts   = countsBySeverity(findings);
+        const score    = computeScore(findings);
+        const claudePrompt = buildClaudePrompt({ runId: req.params.runId, findings, score, counts });
+        res.json({ claudePrompt });
+    } catch (err) {
+        console.error('POST /e2e-reports/:id/prompt error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── POST /e2e-reports/:runId/mark-done — mark specific findings as done
+app.post('/e2e-reports/:runId/mark-done', async (req, res) => {
+    try {
+        const { fingerprints } = req.body || {};
+        if (!Array.isArray(fingerprints) || !fingerprints.length) {
+            return res.status(400).json({ error: 'fingerprints array required' });
+        }
+        const { error } = await supabase
+            .from('e2e_reports')
+            .update({ status: 'done' })
+            .eq('run_id', req.params.runId)
+            .in('fingerprint', fingerprints);
+        if (error) throw error;
+        res.json({ ok: true, updated: fingerprints.length });
+    } catch (err) {
+        console.error('POST /e2e-reports/:id/mark-done error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
     }
 });

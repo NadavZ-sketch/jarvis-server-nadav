@@ -1260,27 +1260,95 @@ app.get('/notes.json', (_req, res) => {
 app.get('/calendar-events', async (_req, res) => {
     try {
         const [tasksRes, remindersRes] = await Promise.all([
-            supabase.from('tasks').select('id, content, due_date, done').not('due_date', 'is', null),
-            supabase.from('reminders').select('id, text, scheduled_time, fired'),
+            supabase.from('tasks')
+                .select('id, content, due_date, done')
+                .not('due_date', 'is', null)
+                .order('due_date', { ascending: true }),
+            supabase.from('reminders')
+                .select('id, text, scheduled_time, fired')
+                .order('scheduled_time', { ascending: true }),
         ]);
-        const tasks = (tasksRes.data || []).map(t => ({
-            id:    `task-${t.id}`,
-            type:  'task',
-            title: t.content,
-            date:  t.due_date,
-            done:  t.done,
-        }));
-        const reminders = (remindersRes.data || []).map(r => ({
-            id:    `reminder-${r.id}`,
-            type:  'reminder',
-            title: r.text,
-            date:  r.scheduled_time,
-            done:  r.fired,
-        }));
-        res.json({ events: [...tasks, ...reminders] });
+
+        const formatDate = (dateStr) => {
+            if (!dateStr) return null;
+            try {
+                const d = new Date(dateStr);
+                return d.toISOString();
+            } catch {
+                return null;
+            }
+        };
+
+        const tasks = (tasksRes.data || [])
+            .filter(t => formatDate(t.due_date))
+            .map(t => ({
+                id:    `task-${t.id}`,
+                type:  'task',
+                title: t.content || 'משימה ללא כותרת',
+                date:  formatDate(t.due_date),
+                done:  t.done === true,
+            }));
+
+        const reminders = (remindersRes.data || [])
+            .filter(r => formatDate(r.scheduled_time))
+            .map(r => ({
+                id:    `reminder-${r.id}`,
+                type:  'reminder',
+                title: r.text || 'תזכורת ללא טקסט',
+                date:  formatDate(r.scheduled_time),
+                done:  r.fired === true,
+            }));
+
+        const events = [...tasks, ...reminders];
+        console.log(`📅 Calendar: returning ${events.length} events (${tasks.length} tasks, ${reminders.length} reminders)`);
+        res.json({ events });
     } catch (err) {
         console.error('GET /calendar-events error:', err.message);
         res.status(500).json({ events: [] });
+    }
+});
+
+// ─── Upcoming tasks/reminders (for proactive suggestions) ───────────────────
+app.get('/upcoming-items', async (_req, res) => {
+    try {
+        const now = new Date();
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+        const [tasksRes, remindersRes] = await Promise.all([
+            supabase.from('tasks')
+                .select('id, content, due_date, done')
+                .not('due_date', 'is', null)
+                .eq('done', false)
+                .lte('due_date', tomorrow.toISOString())
+                .gte('due_date', now.toISOString())
+                .order('due_date', { ascending: true })
+                .limit(5),
+            supabase.from('reminders')
+                .select('id, text, scheduled_time, fired')
+                .eq('fired', false)
+                .lte('scheduled_time', tomorrow.toISOString())
+                .gte('scheduled_time', now.toISOString())
+                .order('scheduled_time', { ascending: true })
+                .limit(5),
+        ]);
+
+        const upcoming = [
+            ...(tasksRes.data || []).map(t => ({
+                type: 'task',
+                title: t.content,
+                date: t.due_date,
+            })),
+            ...(remindersRes.data || []).map(r => ({
+                type: 'reminder',
+                title: r.text,
+                date: r.scheduled_time,
+            })),
+        ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        res.json({ upcoming });
+    } catch (err) {
+        console.error('GET /upcoming-items error:', err.message);
+        res.status(500).json({ upcoming: [] });
     }
 });
 

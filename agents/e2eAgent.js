@@ -97,11 +97,45 @@ function buildClaudePrompt({ runId, findings, score, counts }) {
     ].join('\n');
 }
 
+function buildSimpleUserReport({ score, findings }) {
+    const criticals = findings.filter(f => f.severity === 'critical');
+    const highs = findings.filter(f => f.severity === 'high');
+    const mediums = findings.filter(f => f.severity === 'medium');
+
+    let status = '✅ מעולה! הכל עובד כמו שצריך.';
+    let action = '';
+
+    if (criticals.length > 0) {
+        status = `🚨 יש ${criticals.length} בעיה קריטית שצריך לתקן מייד!`;
+        action = criticals.slice(0, 3).map(f =>
+            `• ${f.finding} → ${f.recommendation || 'צריך לתקן'}`
+        ).join('\n');
+    } else if (highs.length > 0) {
+        status = `⚠️ יש ${highs.length} בעיות חשובות שצריך לתקן.`;
+        action = highs.slice(0, 3).map(f =>
+            `• ${f.finding} → ${f.recommendation || 'צריך לשפר'}`
+        ).join('\n');
+    } else if (mediums.length > 0) {
+        status = `🔧 יש ${mediums.length} שיפורים שאפשר לעשות.`;
+        action = mediums.slice(0, 2).map(f =>
+            `• ${f.finding}`
+        ).join('\n');
+    }
+
+    const scoreColor = score >= 85 ? '💚' : score >= 70 ? '💛' : '❤️';
+
+    return [
+        `🧪 בדיקת מערכת — ציון: ${score}/100 ${scoreColor}`,
+        '',
+        status,
+        '',
+        ...(action ? [action, ''] : []),
+        `תגובה מפורטת לדחיסה בקלוד זמינה — בקש אם צריך עזרה בתיקון.`,
+    ].filter(Boolean).join('\n');
+}
+
 function formatAnswer({ runId, findings, score, deltas, learnedContext, distillSummary, summary }) {
     const counts = countsBySeverity(findings);
-    const trend = (learnedContext.movingAvgScore != null)
-        ? `(Δ ${score - learnedContext.movingAvgScore >= 0 ? '+' : ''}${score - learnedContext.movingAvgScore} מהממוצע)`
-        : '';
 
     const groups = groupBy(findings, f => categoryOfTarget(f.target));
     const sectionOrder = ['API', 'Static', 'Flutter UI', 'Hebrew Quality', 'Other'];
@@ -137,8 +171,16 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
         ].join('\n')
         : '';
 
+    // For users, show simple report. For developers, show detailed.
+    const simpleUserReport = buildSimpleUserReport({ score, findings });
+
     return [
-        `🧪 דוח בדיקות E2E (run_id: ${runId}) — ציון כללי: ${score}/100  ${trend}`.trim(),
+        simpleUserReport,
+        '',
+        '═══════════════════════════════════════════',
+        '🔬 דוח מפורט (טכני):',
+        '═══════════════════════════════════════════',
+        `דוח בדיקות E2E (run_id: ${runId}) — ציון כללי: ${score}/100`,
         `${SEV_EMOJI.critical} קריטי: ${counts.critical}   ${SEV_EMOJI.high} גבוה: ${counts.high}   ${SEV_EMOJI.medium} בינוני: ${counts.medium}   ${SEV_EMOJI.low} נמוך: ${counts.low}`,
         `🆕 חדש: ${deltas.newCount}   🔁 רגרסיה: ${deltas.regressionCount}   ✅ נפתר: ${deltas.resolvedCount}   📉 פלייקי: ${deltas.flakyCount}`,
         '',

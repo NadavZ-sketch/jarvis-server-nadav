@@ -494,18 +494,22 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   // ─── Chat history persistence ─────────────────────────────────────────────────
 
   Future<void> _loadChatHistory() async {
-    // Load or generate chat_id
     final prefs = await SharedPreferences.getInstance();
-    _chatId = prefs.getString('current_chat_id') ?? '';
-    if (_chatId.isEmpty) {
-      // Generate new chat_id using UUID-like format
+
+    // Load or generate chat_id
+    final saved = prefs.getString('current_chat_id');
+    if (saved != null && saved.isNotEmpty) {
+      _chatId = saved;
+    } else {
       _chatId = 'chat-${DateTime.now().millisecondsSinceEpoch}-${(math.Random().nextInt(100000)).toString()}';
       await prefs.setString('current_chat_id', _chatId);
     }
 
+    print('📂 Loading chat history for: $_chatId');
+
     // 1. Load cached messages from SharedPreferences immediately (instant)
     final cached = prefs.getString('current_messages');
-    if (cached != null && mounted) {
+    if (cached != null && cached.isNotEmpty && mounted) {
       try {
         final List decoded = jsonDecode(cached);
         final loaded = decoded.cast<Map<String, dynamic>>()
@@ -524,7 +528,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       if (response.statusCode == 200 && mounted) {
         final data = jsonDecode(response.body);
         final List raw = data['messages'] ?? [];
-        if (raw.isEmpty) return;
+        print('📥 Server returned ${raw.length} messages for chatId: $_chatId');
+
+        if (raw.isEmpty) {
+          // New conversation - ensure greeting is shown
+          if (messages.isEmpty || messages.length == 1 && messages[0]['sender'] == 'jarvis') {
+            return; // Keep local greeting
+          }
+          return;
+        }
+
         final serverMessages = raw.map((m) {
           final role = m['role'] as String? ?? 'jarvis';
           final text = m['text'] as String? ?? '';
@@ -538,10 +551,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           }
           return {'sender': role == 'user' ? 'user' : 'jarvis', 'text': text, 'time': time};
         }).toList();
+
         setState(() => messages = serverMessages);
         await prefs.setString('current_messages', jsonEncode(serverMessages));
       }
-    } catch (_) {}
+    } catch (e) {
+      print('⚠️ Error loading chat history: $e');
+    }
   }
 
   Future<void> _persistMessages() async {
@@ -1220,18 +1236,27 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     await _archiveSessionToHistory();
     if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('current_messages');
+
     // Generate new chat_id for the new session
     _chatId = 'chat-${DateTime.now().millisecondsSinceEpoch}-${(math.Random().nextInt(100000)).toString()}';
+
+    // Save new ID and clear all previous session data
     await prefs.setString('current_chat_id', _chatId);
+    await prefs.remove('current_messages');
+
     setState(() {
       _stopVoiceConversation();
       messages = [
         {'sender': 'jarvis', 'text': 'שיחה חדשה! מוכן לעזור, ${_settings.userName}.', 'time': _getCurrentTime()},
       ];
     });
-    _persistMessages();
+
+    // Ensure new chat is persisted immediately
+    await _persistMessages();
     _scrollToBottom();
+
+    // Log for debugging
+    print('✅ New chat started with ID: $_chatId');
   }
 
   // ─── Settings ─────────────────────────────────────────────────────────────────

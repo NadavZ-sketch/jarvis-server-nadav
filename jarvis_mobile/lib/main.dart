@@ -20,6 +20,7 @@ import 'history_screen.dart';
 import 'main_shell.dart';
 import 'transitions/slide_fade_route.dart';
 import 'screens/splash_screen.dart';
+import 'screens/survey_screen.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
 
@@ -474,6 +475,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   AppSettings _settings = AppSettings();
   String _chatId = ''; // Unique ID for this chat session
 
+  // Survey tracking
+  DateTime? _sessionStartTime;
+  int _agentCallCount = 0;
+  bool _surveyShownThisSession = false;
+
   late AnimationController _orbBreathController;
   late Animation<double>   _orbBreath;
 
@@ -526,6 +532,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       if (_voiceConversationActive) _listenContinuous();
     });
     NotificationService.init().catchError((_) {});
+
+    // Track session start for survey
+    _sessionStartTime = DateTime.now();
+    _agentCallCount = 0;
+    _surveyShownThisSession = false;
   }
 
   void _onScroll() {
@@ -1124,6 +1135,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           _startBackgroundPoll();
         }
 
+        // Track agent calls for survey
+        _agentCallCount++;
+        _checkSurveyEligibility();
+
         _speakText(answer);
       } else {
         setState(() {
@@ -1172,6 +1187,59 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         );
       }
     });
+  }
+
+  Future<void> _checkSurveyEligibility() async {
+    if (_surveyShownThisSession) return;
+
+    final sessionMinutes = _sessionStartTime != null
+        ? DateTime.now().difference(_sessionStartTime!).inMinutes
+        : 0;
+
+    if (sessionMinutes < 20 && _agentCallCount < 3) return;
+
+    _surveyShownThisSession = true;
+
+    try {
+      final url = Uri.parse(
+        '${_settings.serverUrl}/survey-check?sessionMinutes=$sessionMinutes&agentCallCount=$_agentCallCount',
+      );
+      final response = await http.get(url).timeout(const Duration(seconds: 8));
+
+      if (!mounted || response.statusCode != 200) return;
+
+      final data = jsonDecode(response.body);
+      if (data['showSurvey'] == true && mounted) {
+        final questions = List<Map<String, dynamic>>.from(data['questions'] ?? []);
+        if (questions.isNotEmpty) {
+          _showSurveyModal(questions);
+        }
+      }
+    } catch (e) {
+      print('⚠️ Survey check error: $e');
+    }
+  }
+
+  void _showSurveyModal(List<Map<String, dynamic>> questions) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (_, controller) => Container(
+          color: JC.bg,
+          child: SurveyModal(
+            questions: questions,
+            settings: _settings,
+            onDismiss: () {},
+          ),
+        ),
+      ),
+    );
   }
 
   // ─── Confirm & Send ───────────────────────────────────────────────────────────
@@ -1298,6 +1366,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         {'sender': 'jarvis', 'text': 'שיחה חדשה! מוכן לעזור, ${_settings.userName}.', 'time': _getCurrentTime()},
       ];
     });
+
+    // Reset survey tracking
+    _sessionStartTime = DateTime.now();
+    _agentCallCount = 0;
+    _surveyShownThisSession = false;
 
     // Ensure new chat is persisted immediately
     await _persistMessages();

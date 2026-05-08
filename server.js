@@ -47,6 +47,7 @@ const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = requi
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent }     = require('./agents/insightAgent');
 const { runWeatherAgent }     = require('./agents/weatherAgent');
+const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, generateSurveySummary } = require('./agents/surveyAgent');
 const { runNewsAgent }        = require('./agents/newsAgent');
 const { runShoppingAgent }    = require('./agents/shoppingAgent');
 const { runNotesAgent }       = require('./agents/notesAgent');
@@ -581,7 +582,67 @@ app.delete('/chat-history/:chatId', async (req, res) => {
     }
 });
 
-// ─── Live DB Stats ────────────────────────────────────────────────────────────
+// ─── Survey check (should user take survey?) ──────────────────────────────
+app.get('/survey-check', async (req, res) => {
+    try {
+        const { sessionMinutes, agentCallCount } = req.query;
+        const minutes = parseInt(sessionMinutes) || 0;
+        const calls = parseInt(agentCallCount) || 0;
+
+        // Trigger survey after 20+ minutes OR 3+ agent calls
+        const shouldShowSurvey = minutes >= 20 || calls >= 3;
+
+        if (shouldShowSurvey) {
+            const questions = selectSurveyQuestions({ minutes, calls });
+            const surveyJson = buildSurveyJson(questions);
+            res.json({ showSurvey: true, questions: surveyJson });
+        } else {
+            res.json({ showSurvey: false });
+        }
+    } catch (err) {
+        console.error('⚠️ /survey-check error:', err.message);
+        res.json({ showSurvey: false });
+    }
+});
+
+// ─── Survey submission ─────────────────────────────────────────────────────
+app.post('/survey-submit', async (req, res) => {
+    try {
+        const { responses, userName } = req.body;
+        if (!responses || !userName) {
+            return res.status(400).json({ error: 'Missing responses or userName' });
+        }
+
+        // Build survey structure for summary
+        const surveyQIds = Object.keys(responses);
+        const survey = surveyQIds.map(id => ({
+            id,
+            question: SURVEY_QUESTIONS[id]?.question || id,
+        }));
+
+        // Generate AI summary
+        const summary = await generateSurveySummary(survey, responses, userName);
+
+        // Save survey to DB
+        const { error } = await supabase
+            .from('user_surveys')
+            .insert([{
+                user_name: userName,
+                responses: JSON.stringify(responses),
+                summary,
+                created_at: new Date().toISOString(),
+            }]);
+
+        if (error) throw error;
+
+        res.json({ success: true, summary });
+    } catch (err) {
+        console.error('⚠️ /survey-submit error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Live DB Stats ────────────────────────────────────────────────────────
 
 app.get('/stats', async (_req, res) => {
     const todayStart = new Date();

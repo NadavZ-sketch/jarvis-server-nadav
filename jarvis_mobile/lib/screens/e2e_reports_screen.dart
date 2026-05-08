@@ -257,9 +257,13 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
   List<Map<String, dynamic>> _findings = [];
   Map<String, int> _counts = {};
   int _score = 0;
-  String _claudePrompt = '';
   bool _loading = true;
   String? _error;
+  bool _actionLoading = false;
+
+  // Selection state
+  final Set<String> _selectedFingerprints = {};
+  bool _showDone = false;
 
   @override
   void initState() {
@@ -275,8 +279,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
         _findings = List<Map<String, dynamic>>.from(data['findings'] ?? []);
         _counts   = Map<String, int>.from(data['counts'] ?? {});
         _score    = (data['score'] as int?) ?? 0;
-        _claudePrompt = (data['claudePrompt'] as String?) ?? '';
-        _loading = false;
+        _loading  = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -284,13 +287,90 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     }
   }
 
-  Future<void> _copyPrompt() async {
-    if (_claudePrompt.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: _claudePrompt));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('📋 הפרומפט הועתק — הדבק בקלוד קוד')),
-    );
+  bool _isDone(Map<String, dynamic> f) => (f['status'] as String?) == 'done';
+  String? _fp(Map<String, dynamic> f) => f['fingerprint'] as String?;
+
+  List<Map<String, dynamic>> get _visibleFindings =>
+      _showDone ? _findings : _findings.where((f) => !_isDone(f)).toList();
+
+  void _toggleSelection(Map<String, dynamic> f) {
+    if (_isDone(f)) return;
+    final fp = _fp(f);
+    if (fp == null) return;
+    setState(() {
+      if (_selectedFingerprints.contains(fp)) {
+        _selectedFingerprints.remove(fp);
+      } else {
+        _selectedFingerprints.add(fp);
+      }
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      _selectedFingerprints
+        ..clear()
+        ..addAll(_findings
+            .where((f) => !_isDone(f))
+            .map(_fp)
+            .whereType<String>());
+    });
+  }
+
+  void _deselectAll() => setState(() => _selectedFingerprints.clear());
+
+  Future<void> _generatePromptFromSelected() async {
+    if (_selectedFingerprints.isEmpty || _actionLoading) return;
+    setState(() => _actionLoading = true);
+    try {
+      final prompt = await _api.generatePromptForSelected(
+          widget.runId, _selectedFingerprints.toList());
+      if (!mounted) return;
+      await Clipboard.setData(ClipboardData(text: prompt));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+            '📋 פרומפט ל-${_selectedFingerprints.length} ממצאים הועתק — הדבק בקלוד קוד')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה: ${ApiService.friendlyError(e)}')),
+      );
+    } finally {
+      if (mounted) setState(() => _actionLoading = false);
+    }
+  }
+
+  Future<void> _markSelectedDone() async {
+    if (_selectedFingerprints.isEmpty || _actionLoading) return;
+    setState(() => _actionLoading = true);
+    try {
+      await _api.markFindingsDone(widget.runId, _selectedFingerprints.toList());
+      if (!mounted) return;
+      final marked = Set<String>.from(_selectedFingerprints);
+      setState(() {
+        for (int i = 0; i < _findings.length; i++) {
+          final fp = _fp(_findings[i]);
+          if (fp != null && marked.contains(fp)) {
+            _findings[i] = Map<String, dynamic>.from(_findings[i])
+              ..['status'] = 'done';
+          }
+        }
+        _selectedFingerprints.clear();
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✅ ${marked.length} ממצאים סומנו כבוצע')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאה: ${ApiService.friendlyError(e)}')),
+      );
+    } finally {
+      if (mounted) setState(() => _actionLoading = false);
+    }
   }
 
   Future<void> _deleteRun() async {
@@ -316,7 +396,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     try {
       await _api.deleteE2eRun(widget.runId);
       if (!mounted) return;
-      Navigator.pop(context, true); // signal list to refresh
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -349,8 +429,12 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     return JC.cancelRed;
   }
 
+  int get _doneCount => _findings.where(_isDone).length;
+  int get _activeCount => _findings.length - _doneCount;
+
   @override
   Widget build(BuildContext context) {
+    final hasSelected = _selectedFingerprints.isNotEmpty;
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
@@ -369,6 +453,18 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                 fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
           ),
           actions: [
+            if (hasSelected)
+              TextButton(
+                onPressed: _deselectAll,
+                child: const Text('בטל בחירה',
+                    style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 13)),
+              )
+            else
+              TextButton(
+                onPressed: _activeCount == 0 ? null : _selectAll,
+                child: const Text('בחר הכל',
+                    style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 13)),
+              ),
             IconButton(
               tooltip: 'מחק דוח',
               icon: const Icon(Icons.delete_outline, color: JC.cancelRed),
@@ -377,7 +473,52 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
           ],
         ),
         body: _buildBody(),
+        bottomNavigationBar: hasSelected ? _buildActionBar() : null,
       ),
+    );
+  }
+
+  Widget _buildActionBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 20),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        border: Border(top: BorderSide(color: JC.border, width: 0.5)),
+      ),
+      child: _actionLoading
+          ? const Center(child: SizedBox(height: 44,
+              child: CircularProgressIndicator(color: JC.blue400)))
+          : Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _markSelectedDone,
+                  icon: const Icon(Icons.check_circle_outline_rounded, size: 17),
+                  label: Text('בוצע (${_selectedFingerprints.length})',
+                      style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF22C55E),
+                    side: const BorderSide(color: Color(0xFF22C55E)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _generatePromptFromSelected,
+                  icon: const Icon(Icons.content_copy_rounded, size: 17),
+                  label: Text('פרומפט (${_selectedFingerprints.length})',
+                      style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: JC.blue500,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ]),
     );
   }
 
@@ -398,10 +539,9 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     final medium   = _counts['medium']   ?? 0;
     final low      = _counts['low']      ?? 0;
 
-    // Group findings by severity
     final byOrder = ['critical', 'high', 'medium', 'low'];
     final groups = <String, List<Map<String, dynamic>>>{};
-    for (final f in _findings) {
+    for (final f in _visibleFindings) {
       final s = (f['severity'] as String?) ?? 'low';
       groups.putIfAbsent(s, () => []).add(f);
     }
@@ -409,7 +549,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
       children: [
-        // Header card with score + counts + copy button
+        // Header card
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -439,9 +579,9 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                       style: TextStyle(color: JC.textMuted,
                           fontSize: 12, fontFamily: 'Heebo')),
                   const SizedBox(height: 4),
-                  Text('${_findings.length} ממצאים',
+                  Text('$_activeCount פתוחים${_doneCount > 0 ? ' · $_doneCount ✅ בוצע' : ''}',
                       style: const TextStyle(color: JC.textPrimary,
-                          fontSize: 16, fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
+                          fontSize: 15, fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
                   const SizedBox(height: 6),
                   Text('🔴 $critical · 🟠 $high · 🟡 $medium · 🟢 $low',
                       style: const TextStyle(color: JC.textSecondary,
@@ -449,30 +589,31 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                 ],
               )),
             ]),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _findings.isEmpty ? null : _copyPrompt,
-                icon: const Icon(Icons.content_copy_rounded, size: 18),
-                label: const Text('העתק פרומפט לקלוד',
-                    style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: JC.blue500,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
+            if (_doneCount > 0) ...[
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () => setState(() => _showDone = !_showDone),
+                child: Row(children: [
+                  Icon(_showDone ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                      size: 15, color: JC.textMuted),
+                  const SizedBox(width: 5),
+                  Text(_showDone ? 'הסתר ממצאים שבוצעו' : 'הצג ממצאים שבוצעו ($_doneCount)',
+                      style: const TextStyle(color: JC.textMuted,
+                          fontSize: 12, fontFamily: 'Heebo')),
+                ]),
               ),
-            ),
+            ],
+            const SizedBox(height: 10),
+            const Text('בחר ממצאים ← צור פרומפט לקלוד או סמן כבוצע',
+                style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
           ]),
         ),
         const SizedBox(height: 16),
 
-        if (_findings.isEmpty)
+        if (_visibleFindings.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('🎉 אין ממצאים — הכל תקין!',
+            child: Center(child: Text('🎉 אין ממצאים פתוחים — הכל תקין!',
                 style: TextStyle(color: JC.textSecondary,
                     fontSize: 16, fontFamily: 'Heebo'))),
           )
@@ -505,56 +646,90 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
   }
 
   Widget _findingCard(Map<String, dynamic> f) {
-    final target  = (f['target'] as String?) ?? '';
-    final finding = (f['finding'] as String?) ?? '';
-    final fix     = (f['recommendation'] as String?) ?? '';
-    final cat     = (f['category'] as String?) ?? '';
-    final lat     = f['latency_ms'] as int?;
-    final status  = (f['status'] as String?) ?? 'new';
+    final target   = (f['target'] as String?) ?? '';
+    final finding  = (f['finding'] as String?) ?? '';
+    final fix      = (f['recommendation'] as String?) ?? '';
+    final cat      = (f['category'] as String?) ?? '';
+    final lat      = f['latency_ms'] as int?;
+    final status   = (f['status'] as String?) ?? 'new';
+    final done     = status == 'done';
+    final fp       = _fp(f);
+    final selected = fp != null && _selectedFingerprints.contains(fp);
 
-    final statusBadge = {
-      'regression': const _Chip(text: '🔁 רגרסיה', color: Color(0xFFF97316)),
-      'flaky':      const _Chip(text: '📉 פלייקי', color: Color(0xFFEAB308)),
-      'new':        const _Chip(text: '🆕 חדש',    color: Color(0xFF3B82F6)),
-    }[status] ?? const SizedBox.shrink();
+    final statusBadge = done
+        ? const _Chip(text: '✅ בוצע', color: Color(0xFF22C55E))
+        : {
+            'regression': const _Chip(text: '🔁 רגרסיה', color: Color(0xFFF97316)),
+            'flaky':      const _Chip(text: '📉 פלייקי', color: Color(0xFFEAB308)),
+            'new':        const _Chip(text: '🆕 חדש',    color: Color(0xFF3B82F6)),
+          }[status] ?? const SizedBox.shrink();
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.border, width: 0.5),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Wrap(spacing: 6, runSpacing: 6, children: [
-          _Chip(text: cat, color: JC.blue400),
-          if (lat != null) _Chip(text: '$lat ms', color: JC.textMuted),
-          statusBadge,
-        ]),
-        const SizedBox(height: 8),
-        Text(target,
-            style: const TextStyle(color: JC.textPrimary,
-                fontSize: 13, fontWeight: FontWeight.w600,
-                fontFamily: 'Heebo', letterSpacing: 0.2)),
-        const SizedBox(height: 6),
-        Text(finding,
-            style: const TextStyle(color: JC.textSecondary,
-                fontSize: 13, fontFamily: 'Heebo', height: 1.4)),
-        if (fix.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF22C55E).withOpacity(0.08),
-              borderRadius: BorderRadius.circular(8),
+    return Opacity(
+      opacity: done ? 0.45 : 1.0,
+      child: GestureDetector(
+        onTap: done ? null : () => _toggleSelection(f),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: selected ? JC.blue500.withOpacity(0.07) : JC.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? JC.blue400 : JC.border,
+              width: selected ? 1.5 : 0.5,
             ),
-            child: Text('✅ $fix',
-                style: const TextStyle(color: Color(0xFF22C55E),
-                    fontSize: 12, fontFamily: 'Heebo', height: 1.4)),
           ),
-        ],
-      ]),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (!done) Padding(
+              padding: const EdgeInsets.only(top: 1, left: 6),
+              child: SizedBox(
+                width: 20, height: 20,
+                child: Checkbox(
+                  value: selected,
+                  onChanged: (_) => _toggleSelection(f),
+                  activeColor: JC.blue500,
+                  side: BorderSide(color: JC.textMuted.withOpacity(0.5), width: 1.2),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  _Chip(text: cat, color: JC.blue400),
+                  if (lat != null) _Chip(text: '$lat ms', color: JC.textMuted),
+                  statusBadge,
+                ]),
+                const SizedBox(height: 8),
+                Text(target,
+                    style: TextStyle(
+                        color: done ? JC.textMuted : JC.textPrimary,
+                        fontSize: 13, fontWeight: FontWeight.w600,
+                        fontFamily: 'Heebo', letterSpacing: 0.2,
+                        decoration: done ? TextDecoration.lineThrough : null)),
+                const SizedBox(height: 6),
+                Text(finding,
+                    style: const TextStyle(color: JC.textSecondary,
+                        fontSize: 13, fontFamily: 'Heebo', height: 1.4)),
+                if (fix.isNotEmpty && !done) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF22C55E).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text('✅ $fix',
+                        style: const TextStyle(color: Color(0xFF22C55E),
+                            fontSize: 12, fontFamily: 'Heebo', height: 1.4)),
+                  ),
+                ],
+              ]),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }

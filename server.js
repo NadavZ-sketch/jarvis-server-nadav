@@ -47,6 +47,7 @@ const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = requi
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent }     = require('./agents/insightAgent');
 const { runWeatherAgent }     = require('./agents/weatherAgent');
+const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, generateSurveySummary } = require('./agents/surveyAgent');
 const { runNewsAgent }        = require('./agents/newsAgent');
 const { runShoppingAgent }    = require('./agents/shoppingAgent');
 const { runNotesAgent }       = require('./agents/notesAgent');
@@ -464,16 +465,18 @@ app.post('/ask-jarvis', async (req, res) => {
             // Run in background — return immediately so the HTTP request doesn't time out.
             // The full report is saved to chat_history when the run finishes; the app
             // will see it on the next history refresh.
+            const reportChatId = chatId; // Capture chatId in closure
             setImmediate(async () => {
                 try {
                     const e2eResult = await runE2EAgent(userMessage, supabase, useLocal, settings);
-                    await saveChatMessage('jarvis', e2eResult.answer, chatId);
-                    cacheInvalidate(`chatHistory:${chatId}`);
+                    console.log(`🧪 E2E saving to chatId: ${reportChatId}`);
+                    await saveChatMessage('jarvis', e2eResult.answer, reportChatId);
+                    cacheInvalidate(`chatHistory:${reportChatId}`);
                     console.log('🧪 E2E background run saved to chat history');
                 } catch (err) {
                     console.error('🧪 E2E background run failed:', err.message);
-                    await saveChatMessage('jarvis', '❌ בדיקות הקצה נכשלו: ' + err.message, chatId).catch(() => {});
-                    cacheInvalidate(`chatHistory:${chatId}`);
+                    await saveChatMessage('jarvis', '❌ בדיקות הקצה נכשלו: ' + err.message, reportChatId).catch(() => {});
+                    cacheInvalidate(`chatHistory:${reportChatId}`);
                 }
             });
             result = { answer: '🧪 מתחיל בדיקות קצה ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.', skipTts: true };
@@ -561,7 +564,104 @@ app.get('/chat-history', async (req, res) => {
     }
 });
 
-// ─── Live DB Stats ────────────────────────────────────────────────────────────
+// ─── Delete chat history for a conversation ───────────────────────────────────
+app.delete('/chat-history/:chatId', async (req, res) => {
+    try {
+        const { chatId } = req.params;
+        if (!chatId) return res.status(400).json({ error: 'chatId required' });
+
+        const { error } = await supabase
+            .from('chat_history')
+            .delete()
+            .eq('chat_id', chatId);
+
+        if (error) throw error;
+        cacheInvalidate(`chatHistory:${chatId}`);
+        res.json({ success: true, deletedChatId: chatId });
+    } catch (err) {
+        console.error('⚠️ DELETE /chat-history error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Survey check (should user take survey?) ──────────────────────────────
+app.get('/survey-check', async (req, res) => {
+    try {
+        const { sessionMinutes, agentCallCount } = req.query;
+        const minutes = parseInt(sessionMinutes) || 0;
+        const calls = parseInt(agentCallCount) || 0;
+
+        // Trigger survey after 20+ minutes OR 3+ agent calls
+        const shouldShowSurvey = minutes >= 20 || calls >= 3;
+
+        if (shouldShowSurvey) {
+            const questions = selectSurveyQuestions({ minutes, calls });
+            const surveyJson = buildSurveyJson(questions);
+            res.json({ showSurvey: true, questions: surveyJson });
+        } else {
+            res.json({ showSurvey: false });
+        }
+    } catch (err) {
+        console.error('⚠️ /survey-check error:', err.message);
+        res.json({ showSurvey: false });
+    }
+});
+
+// ─── Survey submission ─────────────────────────────────────────────────────
+app.post('/survey-submit', async (req, res) => {
+    try {
+        const { responses, userName } = req.body;
+        if (!responses || !userName) {
+            return res.status(400).json({ error: 'Missing responses or userName' });
+        }
+
+        // Build survey structure for summary
+        const surveyQIds = Object.keys(responses);
+        const survey = surveyQIds.map(id => ({
+            id,
+            question: SURVEY_QUESTIONS[id]?.question || id,
+        }));
+
+        // Get latest E2E test report for context
+        let e2eContext = '';
+        try {
+            const { data: e2eData } = await supabase
+                .from('e2e_reports')
+                .select('score, critical, high, medium')
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            if (e2eData && e2eData.length > 0) {
+                const report = e2eData[0];
+                e2eContext = `\n\n🧪 *דוח בדיקות אחרון:* Score ${report.score}, ` +
+                    `${report.critical || 0} קריטיות, ${report.high || 0} גבוהות`;
+            }
+        } catch (_) {}
+
+        // Generate AI summary
+        let summary = await generateSurveySummary(survey, responses, userName);
+        summary += e2eContext;
+
+        // Save survey to DB
+        const { error } = await supabase
+            .from('user_surveys')
+            .insert([{
+                user_name: userName,
+                responses: JSON.stringify(responses),
+                summary,
+                created_at: new Date().toISOString(),
+            }]);
+
+        if (error) throw error;
+
+        res.json({ success: true, summary });
+    } catch (err) {
+        console.error('⚠️ /survey-submit error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Live DB Stats ────────────────────────────────────────────────────────
 
 app.get('/stats', async (_req, res) => {
     const todayStart = new Date();
@@ -618,9 +718,25 @@ app.get('/check-reminders', async (_req, res) => {
         if (data && data.length > 0) {
             const ids = data.map(r => r.id);
             await supabase.from('reminders').delete().in('id', ids);
-        }
 
-        res.json({ reminders: data || [] });
+            // Enhance reminders with Pinecone context
+            const enriched = await Promise.all(data.map(async (r) => {
+                let context = '';
+                if (pinecone.isReady()) {
+                    try {
+                        const memories = await pinecone.searchMemories(r.text, 2);
+                        if (memories && memories.length > 0) {
+                            context = ` (הקשר: ${memories[0].substring(0, 80)}...)`;
+                        }
+                    } catch (_) {}
+                }
+                return { ...r, text: r.text + context };
+            }));
+
+            res.json({ reminders: enriched });
+        } else {
+            res.json({ reminders: [] });
+        }
     } catch (err) {
         console.error('check-reminders error:', err.message);
         res.json({ reminders: [] });

@@ -20,6 +20,7 @@ import 'history_screen.dart';
 import 'main_shell.dart';
 import 'transitions/slide_fade_route.dart';
 import 'screens/splash_screen.dart';
+import 'screens/survey_screen.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
 
@@ -287,6 +288,54 @@ class _ChatBubble extends StatefulWidget {
 class _ChatBubbleState extends State<_ChatBubble> {
   bool _showTime = false;
 
+  void _showCopyMenu(String text) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: JC.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: text));
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('הודעה הועתקה'),
+                    duration: Duration(seconds: 2),
+                    backgroundColor: JC.blue500,
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: const [
+                    Icon(Icons.copy_rounded, color: JC.textPrimary, size: 22),
+                    SizedBox(width: 16),
+                    Text(
+                      'העתקה',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: JC.textPrimary,
+                        fontFamily: 'Heebo',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isUser = widget.msg['sender'] == 'user';
@@ -304,6 +353,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
         child: GestureDetector(
           onTap: () => setState(() => _showTime = !_showTime),
+          onLongPress: () => _showCopyMenu(widget.msg['text'] ?? ''),
           child: Container(
             margin: EdgeInsets.only(
               bottom: 14,
@@ -425,6 +475,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   AppSettings _settings = AppSettings();
   String _chatId = ''; // Unique ID for this chat session
 
+  // Survey tracking
+  DateTime? _sessionStartTime;
+  int _agentCallCount = 0;
+  bool _surveyShownThisSession = false;
+
   late AnimationController _orbBreathController;
   late Animation<double>   _orbBreath;
 
@@ -477,6 +532,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       if (_voiceConversationActive) _listenContinuous();
     });
     NotificationService.init().catchError((_) {});
+
+    // Track session start for survey
+    _sessionStartTime = DateTime.now();
+    _agentCallCount = 0;
+    _surveyShownThisSession = false;
   }
 
   void _onScroll() {
@@ -677,7 +737,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _archiveSessionToHistory();
     _voiceConversationActive = false;
     _bgPollTimer?.cancel();
     _hardCapTimer?.cancel();
@@ -1076,6 +1135,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           _startBackgroundPoll();
         }
 
+        // Track agent calls for survey
+        _agentCallCount++;
+        _checkSurveyEligibility();
+
         _speakText(answer);
       } else {
         setState(() {
@@ -1124,6 +1187,59 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         );
       }
     });
+  }
+
+  Future<void> _checkSurveyEligibility() async {
+    if (_surveyShownThisSession) return;
+
+    final sessionMinutes = _sessionStartTime != null
+        ? DateTime.now().difference(_sessionStartTime!).inMinutes
+        : 0;
+
+    if (sessionMinutes < 20 && _agentCallCount < 3) return;
+
+    _surveyShownThisSession = true;
+
+    try {
+      final url = Uri.parse(
+        '${_settings.serverUrl}/survey-check?sessionMinutes=$sessionMinutes&agentCallCount=$_agentCallCount',
+      );
+      final response = await http.get(url).timeout(const Duration(seconds: 8));
+
+      if (!mounted || response.statusCode != 200) return;
+
+      final data = jsonDecode(response.body);
+      if (data['showSurvey'] == true && mounted) {
+        final questions = List<Map<String, dynamic>>.from(data['questions'] ?? []);
+        if (questions.isNotEmpty) {
+          _showSurveyModal(questions);
+        }
+      }
+    } catch (e) {
+      print('⚠️ Survey check error: $e');
+    }
+  }
+
+  void _showSurveyModal(List<Map<String, dynamic>> questions) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (_, controller) => Container(
+          color: JC.bg,
+          child: SurveyModal(
+            questions: questions,
+            settings: _settings,
+            onDismiss: () {},
+          ),
+        ),
+      ),
+    );
   }
 
   // ─── Confirm & Send ───────────────────────────────────────────────────────────
@@ -1251,6 +1367,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       ];
     });
 
+    // Reset survey tracking
+    _sessionStartTime = DateTime.now();
+    _agentCallCount = 0;
+    _surveyShownThisSession = false;
+
     // Ensure new chat is persisted immediately
     await _persistMessages();
     _scrollToBottom();
@@ -1351,6 +1472,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded,
+                color: JC.textSecondary, size: 22),
+            tooltip: 'רענן שיחה',
+            onPressed: _loadChatHistory,
+          ),
           IconButton(
             icon: const Icon(Icons.add_comment_outlined,
                 color: JC.textSecondary, size: 22),

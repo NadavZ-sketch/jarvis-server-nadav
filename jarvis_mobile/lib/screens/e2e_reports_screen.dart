@@ -408,21 +408,32 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
       final prompt = await _api.generatePromptForSelected(
           widget.runId, fps.toList());
       if (!mounted) return;
+      if (prompt.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('השרת החזיר פרומפט ריק — נסה שוב')),
+        );
+        return;
+      }
       await Clipboard.setData(ClipboardData(text: prompt));
 
-      // Auto-mark as done — sent to Claude = handled
-      await _api.markFindingsDone(widget.runId, fps.toList());
-      if (!mounted) return;
-      setState(() {
-        for (int i = 0; i < _findings.length; i++) {
-          final fp = _fp(_findings[i]);
-          if (fp != null && fps.contains(fp)) {
-            _findings[i] = Map<String, dynamic>.from(_findings[i])
-              ..['status'] = 'done';
-          }
+      // Auto-mark as done — fire-and-forget; a failure here must not hide the copied prompt
+      try {
+        await _api.markFindingsDone(widget.runId, fps.toList());
+        if (mounted) {
+          setState(() {
+            for (int i = 0; i < _findings.length; i++) {
+              final fp = _fp(_findings[i]);
+              if (fp != null && fps.contains(fp)) {
+                _findings[i] = Map<String, dynamic>.from(_findings[i])
+                  ..['status'] = 'done';
+              }
+            }
+            _selectedFingerprints.clear();
+          });
         }
-        _selectedFingerprints.clear();
-      });
+      } catch (_) {
+        if (mounted) setState(() => _selectedFingerprints.clear());
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

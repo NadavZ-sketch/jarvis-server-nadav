@@ -286,4 +286,39 @@ class ApiService {
             body: jsonEncode({'fingerprints': fingerprints}))
         .timeout(_timeout);
   }
+
+
+  // ─── User Profile ─────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>?> getUserProfile() async {
+    final res = await _client.get(_uri('/user-profile')).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    final profile = data['profile'];
+    if (profile is Map<String, dynamic>) return profile;
+    if (profile is Map) return Map<String, dynamic>.from(profile);
+    return null;
+  }
+
+  Future<Map<String, dynamic>> saveUserProfile({
+    required String speakingTone,
+    required List<String> preferredHours,
+    required List<String> interests,
+    required List<String> recurringTasks,
+  }) async {
+    final res = await _client.post(
+      _uri('/user-profile'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'speaking_tone': speakingTone,
+        'preferred_hours': preferredHours,
+        'interests': interests,
+        'recurring_tasks': recurringTasks,
+      }),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<void> deleteUserProfile() async {
+    await _client.delete(_uri('/user-profile')).timeout(_timeout);
+  }
 }

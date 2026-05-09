@@ -71,7 +71,11 @@ function buildClaudePrompt({ runId, findings, score, counts }) {
         grouped[sev].forEach((f, i) => {
             const tag = f.status && f.status !== 'new' ? ` _(${f.status})_` : '';
             const lat = f.latency_ms != null ? ` — ${f.latency_ms}ms` : '';
+            const readHint = /^(GET|POST|PUT|DELETE|PATCH)\s/.test(f.target)
+                ? '_(validate in `server.js`)_'
+                : `_(Read \`${f.target}\` to validate)_`;
             body += `### ${i + 1}. \`${f.target}\`${lat}${tag}\n`;
+            body += `- **Validate:** ${readHint}\n`;
             body += `- **Category:** ${f.category}\n`;
             body += `- **Issue:** ${f.finding}\n`;
             body += `- **Fix:** ${f.recommendation || '(no recommendation)'}\n\n`;
@@ -88,11 +92,14 @@ function buildClaudePrompt({ runId, findings, score, counts }) {
         `**Score:** ${score}/100 | 🔴 ${counts.critical} · 🟠 ${counts.high} · 🟡 ${counts.medium} · 🟢 ${counts.low}`,
         '',
         '## Instructions for Claude',
-        '**Step 1 — Validate the report:**',
-        'Before making any changes, review each finding below. Confirm it is a real issue (not a false positive) by reading the referenced file. If a finding is not valid, skip it and note why.',
+        '**Step 1 — Validate each finding against the actual code:**',
+        'For EVERY finding below, use your Read tool to open the referenced file before touching anything.',
+        'For code files (.js, .dart): search for the exact pattern described in the issue — if it no longer exists, mark the finding as "already fixed" and skip it.',
+        'For API endpoints (GET /…, POST /…): open server.js and confirm the route and its handler actually have the described problem.',
+        'Write one line per finding: ✅ confirmed / ⏭️ skipped (reason).',
         '',
         '**Step 2 — Fix in priority order (Critical → High → Medium → Low):**',
-        'For each confirmed finding: read the referenced file, make the minimal change needed, run the test suite (`npm test`), and verify the fix works.',
+        'For each confirmed finding: make the minimal change needed, run the test suite (`npm test`), and verify the fix works.',
         '',
         '**Step 3 — Write a plain-language summary (REQUIRED):**',
         'After completing all fixes, write a detailed explanation in simple Hebrew — suitable for someone with no coding knowledge — that covers:',

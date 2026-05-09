@@ -43,12 +43,20 @@ class ApiService {
     return 'אירעה שגיאה. נסה שוב';
   }
 
-  // Detects Render.com cold-start HTML page and throws a clean error
+  // Detects Render.com cold-start HTML page or HTTP errors and throws a clean error
   String _safeBody(http.Response res) {
     final body = res.body;
     final trimmed = body.trimLeft();
     if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
       throw Exception('השרת אינו זמין כרגע — נסה שוב בעוד רגע');
+    }
+    if (res.statusCode >= 400) {
+      String? serverMsg;
+      try {
+        final json = jsonDecode(body) as Map<String, dynamic>;
+        serverMsg = json['error'] as String?;
+      } catch (_) {}
+      throw Exception(serverMsg ?? 'שגיאת שרת (${res.statusCode})');
     }
     return body;
   }

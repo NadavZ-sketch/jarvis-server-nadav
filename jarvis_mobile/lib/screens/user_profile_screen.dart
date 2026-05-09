@@ -17,6 +17,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   final _interestsCtrl = TextEditingController();
   final _tasksCtrl = TextEditingController();
   bool _loading = true;
+  bool _saving = false;
 
   ApiService get _api => ApiService(widget.settings);
 
@@ -27,13 +28,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Future<void> _load() async {
-    final profile = await _api.getUserProfile();
-    if (!mounted) return;
-    _toneCtrl.text = (profile?['speaking_tone'] ?? 'friendly').toString();
-    _hoursCtrl.text = ((profile?['preferred_hours'] as List?) ?? []).join(', ');
-    _interestsCtrl.text = ((profile?['interests'] as List?) ?? []).join(', ');
-    _tasksCtrl.text = ((profile?['recurring_tasks'] as List?) ?? []).join(', ');
-    setState(() => _loading = false);
+    try {
+      final profile = await _api.getUserProfile();
+      if (!mounted) return;
+      _toneCtrl.text = (profile?['speaking_tone'] ?? 'friendly').toString();
+      _hoursCtrl.text =
+          ((profile?['preferred_hours'] as List?) ?? []).join(', ');
+      _interestsCtrl.text = ((profile?['interests'] as List?) ?? []).join(', ');
+      _tasksCtrl.text =
+          ((profile?['recurring_tasks'] as List?) ?? []).join(', ');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ApiService.friendlyError(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   List<String> _split(String v) => v.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
@@ -52,26 +63,52 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: () async {
-              await _api.saveUserProfile(
-                speakingTone: _toneCtrl.text.trim().isEmpty ? 'friendly' : _toneCtrl.text.trim(),
-                preferredHours: _split(_hoursCtrl.text),
-                interests: _split(_interestsCtrl.text),
-                recurringTasks: _split(_tasksCtrl.text),
-              );
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('נשמר בהצלחה')));
+              setState(() => _saving = true);
+              try {
+                await _api.saveUserProfile(
+                  speakingTone: _toneCtrl.text.trim().isEmpty
+                      ? 'friendly'
+                      : _toneCtrl.text.trim(),
+                  preferredHours: _split(_hoursCtrl.text),
+                  interests: _split(_interestsCtrl.text),
+                  recurringTasks: _split(_tasksCtrl.text),
+                );
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('נשמר בהצלחה')),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(ApiService.friendlyError(e))),
+                );
+              } finally {
+                if (mounted) setState(() => _saving = false);
+              }
             },
-            child: const Text('שמור'),
+            child: Text(_saving ? 'שומר...' : 'שמור'),
           ),
           const SizedBox(height: 8),
           OutlinedButton(
             onPressed: () async {
-              await _api.deleteUserProfile();
-              if (!mounted) return;
-              _toneCtrl.text = 'friendly'; _hoursCtrl.clear(); _interestsCtrl.clear(); _tasksCtrl.clear();
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('הפרופיל נמחק')));
+              try {
+                await _api.deleteUserProfile();
+                if (!mounted) return;
+                _toneCtrl.text = 'friendly';
+                _hoursCtrl.clear();
+                _interestsCtrl.clear();
+                _tasksCtrl.clear();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('הפרופיל נמחק')),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(ApiService.friendlyError(e))),
+                );
+              }
             },
-            style: OutlinedButton.styleFrom(foregroundColor: JC.error),
+            style: OutlinedButton.styleFrom(foregroundColor: JC.cancelRed),
             child: const Text('מחק פרופיל'),
           ),
         ]),

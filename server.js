@@ -619,11 +619,15 @@ app.post('/user-profile', async (req, res) => {
             recurring_tasks = [],
         } = req.body || {};
 
+        const sanitizeList = (v, max = 20) => Array.isArray(v)
+            ? v.map(x => String(x).trim()).filter(Boolean).slice(0, max)
+            : [];
+
         const payload = {
-            speaking_tone,
-            preferred_hours,
-            interests,
-            recurring_tasks,
+            speaking_tone: String(speaking_tone || 'friendly').trim().slice(0, 40),
+            preferred_hours: sanitizeList(preferred_hours, 8),
+            interests: sanitizeList(interests, 20),
+            recurring_tasks: sanitizeList(recurring_tasks, 20),
             updated_at: new Date().toISOString(),
         };
 

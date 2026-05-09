@@ -5,6 +5,7 @@ import '../settings_screen.dart';
 import '../history_screen.dart';
 import '../transitions/slide_fade_route.dart';
 import 'e2e_reports_screen.dart';
+import 'user_profile_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final AppSettings settings;
@@ -118,6 +119,17 @@ class AppDrawer extends StatelessWidget {
                       SlideFadeRoute(
                         page: E2eReportsScreen(settings: settings),
                       ),
+                    );
+                  },
+                ),
+                _DrawerTile(
+                  icon: Icons.psychology_alt_outlined,
+                  label: 'מה למדנו עליך',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      SlideFadeRoute(page: UserProfileScreen(settings: settings)),
                     );
                   },
                 ),

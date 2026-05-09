@@ -36,10 +36,10 @@ class ApiService {
     if (error is FormatException || msg.contains('FormatException')) {
       return 'תשובה לא תקינה מהשרת';
     }
-    if (msg.contains('השרת אינו זמין כרגע')) {
-      // _safeBody already returned a Hebrew message; pass through.
-      return msg.replaceFirst('Exception: ', '');
-    }
+    // If the message came from the server and is already in Hebrew, pass it through
+    // so the user sees the actual error instead of a generic fallback.
+    final clean = msg.startsWith('Exception: ') ? msg.substring(11) : msg;
+    if (RegExp(r'[֐-׿]').hasMatch(clean)) return clean;
     return 'אירעה שגיאה. נסה שוב';
   }
 
@@ -319,6 +319,7 @@ class ApiService {
   }
 
   Future<void> deleteUserProfile() async {
-    await _client.delete(_uri('/user-profile')).timeout(_timeout);
+    final res = await _client.delete(_uri('/user-profile')).timeout(_timeout);
+    _safeBody(res);
   }
 }

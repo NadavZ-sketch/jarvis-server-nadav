@@ -51,6 +51,12 @@ void main() {
       expect(msg, contains('השרת אינו זמין כרגע'));
     });
 
+    test('Hebrew server error → passes through', () {
+      final msg = ApiService.friendlyError(
+          Exception('טבלת user_profiles חסרה. יש להריץ migration ואז לנסות שוב.'));
+      expect(msg, contains('user_profiles'));
+    });
+
     test('unknown error → generic retry message', () {
       final msg = ApiService.friendlyError(Exception('something weird'));
       expect(msg, contains('אירעה שגיאה'));

@@ -93,6 +93,29 @@ app.use('/contacts',      _rl(60));
 app.use('/shopping',      _rl(60));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const LOCAL_PROFILE_FILE = path.join(__dirname, 'notes', 'user_profile_fallback.json');
+
+function readLocalProfile() {
+    try {
+        if (!fs.existsSync(LOCAL_PROFILE_FILE)) return null;
+        return JSON.parse(fs.readFileSync(LOCAL_PROFILE_FILE, 'utf8'));
+    } catch (_) {
+        return null;
+    }
+}
+
+function writeLocalProfile(profile) {
+    try {
+        fs.mkdirSync(path.dirname(LOCAL_PROFILE_FILE), { recursive: true });
+        fs.writeFileSync(LOCAL_PROFILE_FILE, JSON.stringify(profile, null, 2), 'utf8');
+    } catch (_) {}
+}
+
+function deleteLocalProfile() {
+    try {
+        if (fs.existsSync(LOCAL_PROFILE_FILE)) fs.unlinkSync(LOCAL_PROFILE_FILE);
+    } catch (_) {}
+}
 
 // ─── Obsidian Sync ────────────────────────────────────────────────────────────
 obsidianSync.initSync({
@@ -344,6 +367,10 @@ async function getUserProfile() {
         .limit(1);
     if (error) {
         console.error('user_profiles fetch error:', error.message);
+        return readLocalProfile();
+    }
+    const dbProfile = Array.isArray(data) && data.length > 0 ? data[0] : null;
+    return dbProfile || readLocalProfile();
         return null;
     }
     return Array.isArray(data) && data.length > 0 ? data[0] : null;
@@ -646,7 +673,13 @@ app.post('/user-profile', async (req, res) => {
                 .select()
                 .single();
         }
-        if (result.error) throw result.error;
+        if (result.error) {
+            console.error('user_profiles save error:', result.error.message);
+            const localProfile = { id: 'local-fallback', ...payload };
+            writeLocalProfile(localProfile);
+            return res.json({ success: true, profile: localProfile, fallback: true });
+        }
+        writeLocalProfile(result.data);
         res.json({ success: true, profile: result.data });
     } catch (err) {
         const msg = String(err.message || '');
@@ -662,9 +695,17 @@ app.post('/user-profile', async (req, res) => {
 app.delete('/user-profile', async (_req, res) => {
     try {
         const existing = await getUserProfile();
-        if (!existing?.id) return res.json({ success: true, deleted: false });
+        if (!existing?.id || existing.id === 'local-fallback') {
+            deleteLocalProfile();
+            return res.json({ success: true, deleted: true, fallback: true });
+        }
         const { error } = await supabase.from('user_profiles').delete().eq('id', existing.id);
-        if (error) throw error;
+        if (error) {
+            console.error('user_profiles delete error:', error.message);
+            deleteLocalProfile();
+            return res.json({ success: true, deleted: true, fallback: true });
+        }
+        deleteLocalProfile();
         res.json({ success: true, deleted: true });
     } catch (err) {
         res.status(500).json({ error: err.message });

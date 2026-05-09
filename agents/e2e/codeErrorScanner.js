@@ -120,7 +120,7 @@ function listSources() {
 async function readFiles(files, stableTargets) {
     const stable = new Set(stableTargets || []);
     const out = {};
-    await Promise.all(files.map(async (rel) => {
+    await Promise.all(files.filter(f => f !== SELF_REL).map(async (rel) => {
         try {
             const src = await fs.promises.readFile(path.join(BASE_DIR, rel), 'utf8');
             const budget = stable.has(rel) ? STABLE_BUDGET : FULL_BUDGET;
@@ -136,6 +136,7 @@ async function readFiles(files, stableTargets) {
 function patternScan(fileContents) {
     const findings = [];
     for (const [relPath, src] of Object.entries(fileContents)) {
+        if (relPath === SELF_REL) continue; // never scan ourselves — our rule strings contain the very patterns we detect
         const lines = src.split('\n');
         for (const rule of REGEX_RULES) {
             // Reset lastIndex for global patterns

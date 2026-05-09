@@ -633,14 +633,29 @@ app.post('/user-profile', async (req, res) => {
         const existing = await getUserProfile();
         let result;
         if (existing?.id) {
-            result = await supabase.from('user_profiles').update(payload).eq('id', existing.id).select().single();
+            result = await supabase
+                .from('user_profiles')
+                .update(payload)
+                .eq('id', existing.id)
+                .select()
+                .single();
         } else {
-            result = await supabase.from('user_profiles').insert([payload]).select().single();
+            result = await supabase
+                .from('user_profiles')
+                .insert([payload])
+                .select()
+                .single();
         }
         if (result.error) throw result.error;
         res.json({ success: true, profile: result.data });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const msg = String(err.message || '');
+        if (msg.includes('relation') && msg.includes('user_profiles')) {
+            return res.status(500).json({
+                error: 'טבלת user_profiles חסרה. יש להריץ migration ואז לנסות שוב.',
+            });
+        }
+        res.status(500).json({ error: msg });
     }
 });
 

@@ -319,8 +319,11 @@ function isFalseAwaitPositive(finding, fileContents) {
     const lineIdx = parseInt(lineStr, 10) - 1; // 0-based
     const prevLine = lines[lineIdx - 1] || '';
     const currLine = lines[lineIdx] || '';
-    // If the current line or the line before it contains `await`, it's a false positive
-    return /\bawait\b/.test(currLine) || /\bawait\b/.test(prevLine);
+    // Only suppress if this is a multiline Supabase continuation:
+    // the current line OR the immediately preceding line must contain `await supabase`,
+    // indicating the chain started with await on a previous line.
+    // A generic `await` on an unrelated line does NOT qualify.
+    return /\bawait\s+supabase\b/.test(currLine) || /\bawait\s+supabase\b/.test(prevLine);
 }
 
 // ── Main entry point ──────────────────────────────────────────────────────────

@@ -206,7 +206,6 @@ ${knownTargets || '(אין)'}
 קוד הפרויקט:
 ${codeBlock}`;
 }
-}
 
 async function llmDeepScan(fileContents, existingFindings) {
     const codeBlock = Object.entries(fileContents)

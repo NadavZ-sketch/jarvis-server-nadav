@@ -431,8 +431,15 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
             _selectedFingerprints.clear();
           });
         }
-      } catch (_) {
-        if (mounted) setState(() => _selectedFingerprints.clear());
+      } catch (markErr) {
+        if (mounted) {
+          setState(() => _selectedFingerprints.clear());
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(
+                '📋 פרומפט הועתק — לא הצלחנו לסמן כהושלם (${ApiService.friendlyError(markErr)})')),
+          );
+          return;
+        }
       }
 
       if (!mounted) return;

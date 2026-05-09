@@ -341,13 +341,12 @@ async function getUserProfile() {
         .from('user_profiles')
         .select('*')
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
     if (error) {
         console.error('user_profiles fetch error:', error.message);
         return null;
     }
-    return data || null;
+    return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
 
 // ─── Route ────────────────────────────────────────────────────────────────────

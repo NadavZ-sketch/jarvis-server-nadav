@@ -58,12 +58,13 @@ function createRemindersController({ supabase, pinecone }) {
     async check(_req, res) {
       try {
         const now = new Date().toISOString();
-        const { data, error } = await supabase.from('reminders').select('*').eq('fired', false).lte('scheduled_time', now);
+        const { data, error } = await supabase.from('reminders').select('*').eq('fired', false);
         if (error) throw error;
-        if (data && data.length > 0) {
-          const ids = data.map(r => r.id);
+        const dueReminders = (data || []).filter((r) => !r?.scheduled_time || r.scheduled_time <= now);
+        if (dueReminders.length > 0) {
+          const ids = dueReminders.map(r => r.id);
           await supabase.from('reminders').delete().in('id', ids);
-          const enriched = await Promise.all(data.map(async (r) => {
+          const enriched = await Promise.all(dueReminders.map(async (r) => {
             let context = '';
             if (pinecone?.isReady?.()) {
               try {

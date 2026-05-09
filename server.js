@@ -58,6 +58,7 @@ const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
 const { createTasksRouter } = require('./routes/tasks');
 const { createRemindersRouter } = require('./routes/reminders');
+const { createRemindersController } = require('./controllers/remindersController');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -97,6 +98,8 @@ app.use('/shopping',      _rl(60));
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 app.use('/tasks', createTasksRouter({ supabase }));
 app.use('/reminders', createRemindersRouter({ supabase, pinecone }));
+const remindersController = createRemindersController({ supabase, pinecone });
+app.get('/check-reminders', remindersController.check);
 const LOCAL_PROFILE_FILE = path.join(__dirname, 'notes', 'user_profile_fallback.json');
 
 function readLocalProfile() {

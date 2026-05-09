@@ -119,6 +119,17 @@ ${unused.map(u => `• ${u}`).join('\n')}
 בחר רק את הטיפים הרלוונטיים ביותר ל${userName} לפי הנתונים.`;
 }
 
+function profileSuggestions(profile) {
+    if (!profile) return '';
+    return `
+═══ פרופיל משתמש (להתאמה אישית) ═══
+טון דיבור מועדף: ${profile.speaking_tone || 'friendly'}
+שעות מועדפות: ${(profile.preferred_hours || []).join(', ') || 'לא הוגדר'}
+תחומי עניין: ${(profile.interests || []).join(', ') || 'לא הוגדר'}
+משימות חוזרות: ${(profile.recurring_tasks || []).join(', ') || 'לא הוגדר'}
+`;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
@@ -161,7 +172,9 @@ async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
 
         // 3. Build prompt + call LLM (always cloud for quality)
         const memoriesText = data.memories.map(m => `- ${m.content}`).join('\n') || 'אין זיכרונות שמורים';
-        const prompt = buildInsightPrompt(analysis, memoriesText, userName);
+        const profile = settings.userProfile || null;
+        const prompt = buildInsightPrompt(analysis, memoriesText, userName) + profileSuggestions(profile) +
+            '\nהתאם את ההצעות לפרופיל הזה ותן לפחות טיפ אחד שנוגע לתחומי העניין/משימות החוזרות.';
         const answer = await callGemma4(prompt, false);
 
         return { answer };

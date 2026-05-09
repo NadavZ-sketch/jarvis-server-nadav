@@ -336,6 +336,20 @@ app.get('/health', (req, res) => {
     res.json({ ok: true, version: 'multi-agent-v3', ts: Date.now(), pinecone: pinecone.isReady() });
 });
 
+async function getUserProfile() {
+    const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) {
+        console.error('user_profiles fetch error:', error.message);
+        return null;
+    }
+    return data || null;
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 app.post('/ask-jarvis', async (req, res) => {
@@ -353,6 +367,8 @@ app.post('/ask-jarvis', async (req, res) => {
         const t0 = Date.now();
 
         const settings  = req.body.settings || {};
+        const userProfile = await getUserProfile();
+        settings.userProfile = userProfile;
         const useLocal  = settings.useLocalModel === true;
 
         // ── Routing ───────────────────────────────────────────────────────────
@@ -580,6 +596,59 @@ app.delete('/chat-history/:chatId', async (req, res) => {
         res.json({ success: true, deletedChatId: chatId });
     } catch (err) {
         console.error('⚠️ DELETE /chat-history error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── User Profile (Learning) ───────────────────────────────────────────────
+app.get('/user-profile', async (_req, res) => {
+    try {
+        const profile = await getUserProfile();
+        res.json({ profile });
+    } catch (err) {
+        res.status(500).json({ error: err.message, profile: null });
+    }
+});
+
+app.post('/user-profile', async (req, res) => {
+    try {
+        const {
+            speaking_tone = 'friendly',
+            preferred_hours = [],
+            interests = [],
+            recurring_tasks = [],
+        } = req.body || {};
+
+        const payload = {
+            speaking_tone,
+            preferred_hours,
+            interests,
+            recurring_tasks,
+            updated_at: new Date().toISOString(),
+        };
+
+        const existing = await getUserProfile();
+        let result;
+        if (existing?.id) {
+            result = await supabase.from('user_profiles').update(payload).eq('id', existing.id).select().single();
+        } else {
+            result = await supabase.from('user_profiles').insert([payload]).select().single();
+        }
+        if (result.error) throw result.error;
+        res.json({ success: true, profile: result.data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/user-profile', async (_req, res) => {
+    try {
+        const existing = await getUserProfile();
+        if (!existing?.id) return res.json({ success: true, deleted: false });
+        const { error } = await supabase.from('user_profiles').delete().eq('id', existing.id);
+        if (error) throw error;
+        res.json({ success: true, deleted: true });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });

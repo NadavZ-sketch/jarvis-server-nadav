@@ -132,6 +132,16 @@ function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followU
 - אם השאלה פשוטה — משפט אחד מספיק.
 -----------------------------------` : '';
 
+    const profile = settings.userProfile || null;
+    const profileBlock = profile ? `
+--- User Profile (Personalization) ---
+טון דיבור מועדף: ${profile.speaking_tone || 'friendly'}
+שעות מועדפות: ${(profile.preferred_hours || []).join(', ') || 'לא הוגדר'}
+תחומי עניין: ${(profile.interests || []).join(', ') || 'לא הוגדר'}
+משימות חוזרות: ${(profile.recurring_tasks || []).join(', ') || 'לא הוגדר'}
+השתמש במידע הזה כדי להתאים את הסגנון ולהציע צעדים הבאים רלוונטיים.
+-----------------------------------` : '';
+
     return `You are ${name}, a personal AI assistant for ${userName}. Respond in Hebrew only.
 ${genderInstr}
 Personality: ${personalityDesc}
@@ -139,6 +149,7 @@ CRITICAL: Mirror ${userName}'s own writing style, vocabulary and tone in every r
 ${voiceModeBlock}
 ${emotionalIntelligenceBlock}
 ${clarificationBlock}
+${profileBlock}
 ${followUpBlock}
 --- Permanent Memories About ${userName} ---
 ${longTermMemories}

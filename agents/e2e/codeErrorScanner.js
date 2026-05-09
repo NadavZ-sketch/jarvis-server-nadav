@@ -176,6 +176,11 @@ function buildLLMPrompt(codeBlock, existingFindings) {
 אל תחזור על הממצאים האלה שכבר נמצאו:
 ${knownTargets || '(אין)'}
 
+חוק חשוב — אל תדווח על false positives שכיחים:
+- קריאות Supabase רב-שורתיות כמו \`const x = await supabase\n    .from(...)\n    .select(...)\` הן תקינות — ה-await נמצא בשורה הקודמת. אל תדווח "ללא await" על שורות שמתחילות ב-.from() או .select() כאשר שורה אחת לפניהן מכילה await supabase.
+- process.exit() בתוך מחרוזות טקסט (strings) אינו שימוש אמיתי.
+- .then() בתוך regex literal או מחרוזת אינו promise chain.
+
 חפש בעיות כגון:
 - לוגיקה שגויה בתנאים (if/else, switch)
 - פרמטרים שנשכחו או הוחלפו
@@ -200,6 +205,7 @@ ${knownTargets || '(אין)'}
 
 קוד הפרויקט:
 ${codeBlock}`;
+}
 }
 
 async function llmDeepScan(fileContents, existingFindings) {
@@ -300,6 +306,24 @@ function buildClaudeReadyPrompt(findings, score) {
     ].join('\n');
 }
 
+// ── False-positive filter for LLM findings ───────────────────────────────────
+// Catches the common LLM mistake: flagging a multiline `await supabase\n.from()`
+// chain as "missing await" because the await is on the preceding line.
+function isFalseAwaitPositive(finding, fileContents) {
+    if (!/ללא await|missing await/i.test(finding.finding)) return false;
+    const m = (finding.target || '').match(/^(.+?):(\d+)$/);
+    if (!m) return false;
+    const [, relPath, lineStr] = m;
+    const src = fileContents[relPath];
+    if (!src) return false;
+    const lines = src.split('\n');
+    const lineIdx = parseInt(lineStr, 10) - 1; // 0-based
+    const prevLine = lines[lineIdx - 1] || '';
+    const currLine = lines[lineIdx] || '';
+    // If the current line or the line before it contains `await`, it's a false positive
+    return /\bawait\b/.test(currLine) || /\bawait\b/.test(prevLine);
+}
+
 // ── Main entry point ──────────────────────────────────────────────────────────
 async function runCodeErrorScanner({ learnedContext = {} } = {}) {
     const all     = listSources();
@@ -316,7 +340,9 @@ async function runCodeErrorScanner({ learnedContext = {} } = {}) {
 
     // Deduplicate by target+finding (simple string match)
     const seen = new Set(patternFindings.map(f => `${f.target}|${f.finding}`));
-    const newLlm = llmFindings.filter(f => !seen.has(`${f.target}|${f.finding}`));
+    const newLlm = llmFindings
+        .filter(f => !seen.has(`${f.target}|${f.finding}`))
+        .filter(f => !isFalseAwaitPositive(f, fileContents));
 
     const allFindings = [...patternFindings, ...newLlm];
     const score = computeScore(allFindings);

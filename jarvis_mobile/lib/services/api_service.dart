@@ -319,7 +319,6 @@ class ApiService {
   }
 
   Future<void> deleteUserProfile() async {
-    final res = await _client.delete(_uri('/user-profile')).timeout(_timeout);
-    _safeBody(res);
+    await _client.delete(_uri('/user-profile')).timeout(_timeout);
   }
 }

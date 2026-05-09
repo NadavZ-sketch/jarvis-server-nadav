@@ -298,13 +298,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     decoration: BoxDecoration(
       color: JC.surfaceAlt,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: JC.border.withOpacity(0.7), width: 0.8),
+      border: Border.all(color: JC.border.withValues(alpha: 0.7), width: 0.8),
     ),
     child: Column(children: children),
   );
 
   Widget _divider() => Divider(
-    color: JC.border.withOpacity(0.5),
+    color: JC.border.withValues(alpha: 0.5),
     height: 1,
     indent: 16,
     endIndent: 16,
@@ -342,7 +342,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 decoration: InputDecoration(
                   border: InputBorder.none,
                   hintText: hint,
-                  hintStyle: TextStyle(color: JC.textMuted.withOpacity(0.6)),
+                  hintStyle: TextStyle(color: JC.textMuted.withValues(alpha: 0.6)),
                   isDense: true,
                 ),
               ),
@@ -490,10 +490,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [JC.blue500.withOpacity(0.15), JC.surfaceAlt],
+                    colors: [JC.blue500.withValues(alpha: 0.15), JC.surfaceAlt],
                   ),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: JC.blue500.withOpacity(0.3), width: 0.8),
+                  border: Border.all(color: JC.blue500.withValues(alpha: 0.3), width: 0.8),
                 ),
                 child: Row(
                   children: [
@@ -509,7 +509,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: JC.blue500.withOpacity(0.4),
+                            color: JC.blue500.withValues(alpha: 0.4),
                             blurRadius: 12,
                             spreadRadius: 1,
                           ),
@@ -552,7 +552,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   color: const Color(0xFF22C55E),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFF22C55E).withOpacity(0.5),
+                                      color: const Color(0xFF22C55E).withValues(alpha: 0.5),
                                       blurRadius: 4,
                                     )
                                   ],
@@ -672,7 +672,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               duration: const Duration(milliseconds: 200),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                               decoration: BoxDecoration(
-                                color: active ? JC.blue500.withOpacity(0.2) : JC.surface,
+                                color: active ? JC.blue500.withValues(alpha: 0.2) : JC.surface,
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
                                   color: active ? JC.blue400 : JC.border,
@@ -719,9 +719,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                           decoration: BoxDecoration(
-                            color: JC.blue500.withOpacity(0.15),
+                            color: JC.blue500.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: JC.blue500.withOpacity(0.4), width: 0.8),
+                            border: Border.all(color: JC.blue500.withValues(alpha: 0.4), width: 0.8),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -885,7 +885,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: JC.blue500.withOpacity(0.4),
+                        color: JC.blue500.withValues(alpha: 0.4),
                         blurRadius: 16,
                         offset: const Offset(0, 6),
                       ),

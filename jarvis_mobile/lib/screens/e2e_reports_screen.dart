@@ -172,7 +172,7 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
         padding: const EdgeInsets.only(left: 24),
         margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         decoration: BoxDecoration(
-          color: JC.cancelRed.withOpacity(0.15),
+          color: JC.cancelRed.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(12),
         ),
         child: const Icon(Icons.delete_outline, color: JC.cancelRed, size: 26),
@@ -195,7 +195,7 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
               width: 56, height: 56,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: _scoreColor(score).withOpacity(0.15),
+                color: _scoreColor(score).withValues(alpha: 0.15),
                 shape: BoxShape.circle,
                 border: Border.all(color: _scoreColor(score), width: 1.5),
               ),
@@ -622,7 +622,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                 width: 60, height: 60,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: _scoreColor(_score).withOpacity(0.15),
+                  color: _scoreColor(_score).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                   border: Border.all(color: _scoreColor(_score), width: 2),
                 ),
@@ -790,7 +790,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: active ? col.withOpacity(0.18) : JC.surface,
+              color: active ? col.withValues(alpha: 0.18) : JC.surface,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: active ? col : JC.border,
@@ -850,7 +850,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 3),
           decoration: BoxDecoration(
-            color: selected ? JC.blue500.withOpacity(0.06) : JC.surface,
+            color: selected ? JC.blue500.withValues(alpha: 0.06) : JC.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: selected ? JC.blue400 : JC.border,
@@ -931,7 +931,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                       value: selected,
                       onChanged: (_) => _toggleSelection(f),
                       activeColor: JC.blue500,
-                      side: BorderSide(color: JC.textMuted.withOpacity(0.5), width: 1.2),
+                      side: BorderSide(color: JC.textMuted.withValues(alpha: 0.5), width: 1.2),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                     ),
@@ -956,9 +956,9 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.4), width: 0.6),
+        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.6),
       ),
       child: Text(text,
           style: TextStyle(color: color, fontSize: 11,

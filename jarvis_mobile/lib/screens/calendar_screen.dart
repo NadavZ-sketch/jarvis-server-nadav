@@ -102,7 +102,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       weekendTextStyle: const TextStyle(
                           color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13),
                       todayDecoration: BoxDecoration(
-                          color: JC.blue500.withOpacity(0.3),
+                          color: JC.blue500.withValues(alpha: 0.3),
                           shape: BoxShape.circle),
                       todayTextStyle: const TextStyle(
                           color: JC.blue400, fontFamily: 'Heebo',
@@ -154,7 +154,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: JC.blue500.withOpacity(0.15),
+                            color: JC.blue500.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text('${dayEvents.length}',
@@ -220,7 +220,7 @@ class _EventTile extends StatelessWidget {
         color: JC.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDone ? JC.border : color.withOpacity(0.35),
+          color: isDone ? JC.border : color.withValues(alpha: 0.35),
           width: 0.9,
         ),
       ),
@@ -230,7 +230,7 @@ class _EventTile extends StatelessWidget {
           Container(
             width: 36, height: 36,
             decoration: BoxDecoration(
-              color: color.withOpacity(isDone ? 0.07 : 0.12),
+              color: color.withValues(alpha: isDone ? 0.07 : 0.12),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: isDone ? JC.textMuted : color, size: 18),
@@ -262,7 +262,7 @@ class _EventTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(

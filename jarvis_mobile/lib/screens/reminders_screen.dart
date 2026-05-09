@@ -222,6 +222,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     ),
                   );
                   if (date == null) return;
+                  if (!ctx.mounted) return;
                   final time = await showTimePicker(
                     context: ctx,
                     initialTime: TimeOfDay.fromDateTime(selectedDate),
@@ -292,7 +293,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                             horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: active
-                              ? JC.blue500.withOpacity(0.2)
+                              ? JC.blue500.withValues(alpha: 0.2)
                               : JC.surface,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
@@ -496,7 +497,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                                               decoration: BoxDecoration(
                                                 shape: BoxShape.circle,
                                                 color: JC.blue500
-                                                    .withOpacity(0.15),
+                                                    .withValues(alpha: 0.15),
                                               ),
                                               child: const Icon(
                                                   Icons.access_time_rounded,
@@ -571,7 +572,7 @@ Widget _remDismissBg() => Container(
       padding: const EdgeInsets.only(left: 20),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: JC.cancelRed.withOpacity(0.18),
+        color: JC.cancelRed.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),

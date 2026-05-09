@@ -194,7 +194,7 @@ class _MainShellState extends State<MainShell> {
           child: NavigationBarTheme(
             data: NavigationBarThemeData(
               backgroundColor: JC.surface,
-              indicatorColor: JC.blue500.withOpacity(0.18),
+              indicatorColor: JC.blue500.withValues(alpha: 0.18),
               labelTextStyle: WidgetStateProperty.resolveWith((states) {
                 final selected = states.contains(WidgetState.selected);
                 return TextStyle(

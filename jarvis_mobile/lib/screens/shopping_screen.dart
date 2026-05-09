@@ -303,7 +303,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                                             horizontal: 16, vertical: 14),
                                         decoration: BoxDecoration(
                                           color: isDone
-                                              ? JC.surface.withOpacity(0.6)
+                                              ? JC.surface.withValues(alpha: 0.6)
                                               : JC.surfaceAlt,
                                           borderRadius:
                                               BorderRadius.circular(14),
@@ -327,7 +327,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                                                   key: ValueKey(isDone),
                                                   color: isDone
                                                       ? JC.blue400
-                                                          .withOpacity(0.6)
+                                                          .withValues(alpha: 0.6)
                                                       : JC.blue500,
                                                   size: 22,
                                                 ),
@@ -372,7 +372,7 @@ Widget _deleteBg() => Container(
       padding: const EdgeInsets.only(left: 20),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: JC.cancelRed.withOpacity(0.18),
+        color: JC.cancelRed.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),

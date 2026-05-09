@@ -250,7 +250,7 @@ Widget _noteDismissBg() => Container(
       padding: const EdgeInsets.only(left: 20),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: JC.cancelRed.withOpacity(0.18),
+        color: JC.cancelRed.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),

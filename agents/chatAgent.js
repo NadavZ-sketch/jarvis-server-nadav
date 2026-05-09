@@ -192,6 +192,10 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
         : '';
 
     const followUp = followUpContext ? `\nהקשר: ${followUpContext}` : '';
+    const profile = settings.userProfile || null;
+    const profileShort = profile
+        ? `פרופיל משתמש: טון=${profile.speaking_tone || 'friendly'}; תחומי עניין=${(profile.interests || []).slice(0, 5).join(', ') || 'לא הוגדר'}; משימות חוזרות=${(profile.recurring_tasks || []).slice(0, 5).join(', ') || 'לא הוגדר'}`
+        : '';
 
     const system = [
         `אתה ${name}, עוזר אישי של ${userName}. ענה תמיד בעברית בלבד.`,
@@ -199,6 +203,7 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
         `אופי: ${personalityShort[personality] || personalityShort.friendly}`,
         `תאריך ושעה: ${currentDate} ${currentTime}.`,
         memoriesShort,
+        profileShort,
         followUp,
     ].filter(Boolean).join('\n');
 

@@ -371,9 +371,6 @@ async function getUserProfile() {
     }
     const dbProfile = Array.isArray(data) && data.length > 0 ? data[0] : null;
     return dbProfile || readLocalProfile();
-        return null;
-    }
-    return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
 
 // ─── Route ────────────────────────────────────────────────────────────────────

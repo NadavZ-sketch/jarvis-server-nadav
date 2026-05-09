@@ -432,13 +432,13 @@ class _TaskItemState extends State<_TaskItem> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: widget.isDone ? JC.surface.withOpacity(0.6) : JC.surfaceAlt,
+        color: widget.isDone ? JC.surface.withValues(alpha: 0.6) : JC.surfaceAlt,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: hasPrompt
-              ? JC.indigo500.withOpacity(0.5)
+              ? JC.indigo500.withValues(alpha: 0.5)
               : widget.overdue
-                  ? JC.cancelRed.withOpacity(0.4)
+                  ? JC.cancelRed.withValues(alpha: 0.4)
                   : JC.border,
           width: hasPrompt ? 1.2 : 0.8,
         ),
@@ -461,7 +461,7 @@ class _TaskItemState extends State<_TaskItem> {
                           : Icons.radio_button_unchecked_rounded,
                       key: ValueKey(widget.isDone),
                       color: widget.isDone
-                          ? JC.blue400.withOpacity(0.6)
+                          ? JC.blue400.withValues(alpha: 0.6)
                           : JC.blue500,
                       size: 22,
                     ),
@@ -502,10 +502,10 @@ class _TaskItemState extends State<_TaskItem> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: JC.indigo500.withOpacity(0.15),
+                        color: JC.indigo500.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: JC.indigo500.withOpacity(0.4), width: 0.8),
+                            color: JC.indigo500.withValues(alpha: 0.4), width: 0.8),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -546,7 +546,7 @@ class _TaskItemState extends State<_TaskItem> {
                 color: const Color(0xFF080F1A),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: JC.indigo500.withOpacity(0.25), width: 0.8),
+                    color: JC.indigo500.withValues(alpha: 0.25), width: 0.8),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -659,7 +659,7 @@ Widget _dismissBg() => Container(
       padding: const EdgeInsets.only(left: 20),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: JC.cancelRed.withOpacity(0.18),
+        color: JC.cancelRed.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),

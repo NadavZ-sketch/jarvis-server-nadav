@@ -683,9 +683,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: JC.blue500.withOpacity(0.1),
+                  color: JC.blue500.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: JC.blue400.withOpacity(0.4)),
+                  border: Border.all(color: JC.blue400.withValues(alpha: 0.4)),
                 ),
                 child: const Text('טעון מחדש',
                     style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
@@ -720,10 +720,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
-                        color: selected ? color.withOpacity(0.1) : Colors.transparent,
+                        color: selected ? color.withValues(alpha: 0.1) : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: selected ? color.withOpacity(0.5) : JC.border,
+                          color: selected ? color.withValues(alpha: 0.5) : JC.border,
                           width: selected ? 1.0 : 0.5,
                         ),
                       ),
@@ -783,7 +783,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           decoration: BoxDecoration(
             color: JC.surface,
             border: Border(
-              right: BorderSide(color: color.withOpacity(0.5), width: 2.5),
+              right: BorderSide(color: color.withValues(alpha: 0.5), width: 2.5),
               top:    BorderSide(color: JC.border, width: 0.5),
               bottom: BorderSide(color: JC.border, width: 0.5),
               left:   BorderSide(color: JC.border, width: 0.5),
@@ -963,9 +963,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                   color: JC.surfaceAlt,
                   border: Border(
                     right: BorderSide(color: priorityColor, width: 3),
-                    left:   BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
-                    top:    BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
-                    bottom: BorderSide(color: isActive ? JC.blue400.withOpacity(0.4) : JC.border, width: 0.8),
+                    left:   BorderSide(color: isActive ? JC.blue400.withValues(alpha: 0.4) : JC.border, width: 0.8),
+                    top:    BorderSide(color: isActive ? JC.blue400.withValues(alpha: 0.4) : JC.border, width: 0.8),
+                    bottom: BorderSide(color: isActive ? JC.blue400.withValues(alpha: 0.4) : JC.border, width: 0.8),
                   ),
                 ),
                 child: Padding(
@@ -1025,9 +1025,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: isActive ? Colors.transparent : JC.blue500.withOpacity(0.12),
+                                  color: isActive ? Colors.transparent : JC.blue500.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
+                                  border: Border.all(color: JC.blue400.withValues(alpha: 0.35), width: 0.8),
                                 ),
                                 child: activating
                                     ? const SizedBox(
@@ -1070,9 +1070,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               margin: const EdgeInsets.only(top: 4),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: JC.blue500.withOpacity(0.06),
+                color: JC.blue500.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: JC.blue400.withOpacity(0.2)),
+                border: Border.all(color: JC.blue400.withValues(alpha: 0.2)),
               ),
               child: Directionality(
                 textDirection: TextDirection.rtl,
@@ -1150,7 +1150,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 decoration: BoxDecoration(
-                  color: _generatingPrompt ? JC.blue500.withOpacity(0.5) : JC.blue500,
+                  color: _generatingPrompt ? JC.blue500.withValues(alpha: 0.5) : JC.blue500,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: _generatingPrompt
@@ -1283,7 +1283,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         background: Container(
           margin: const EdgeInsets.only(bottom: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFFEF4444).withOpacity(0.85),
+            color: const Color(0xFFEF4444).withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(9),
           ),
           alignment: Alignment.centerLeft,
@@ -1366,10 +1366,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: selected ? JC.blue500.withOpacity(0.15) : JC.surface,
+          color: selected ? JC.blue500.withValues(alpha: 0.15) : JC.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected ? JC.blue400.withOpacity(0.6) : JC.border,
+            color: selected ? JC.blue400.withValues(alpha: 0.6) : JC.border,
             width: selected ? 1.0 : 0.7,
           ),
         ),
@@ -1387,9 +1387,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   Widget _badge(String text, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(4),
-      border: Border.all(color: color.withOpacity(0.25), width: 0.7),
+      border: Border.all(color: color.withValues(alpha: 0.25), width: 0.7),
     ),
     child: Text(text,
         style: TextStyle(color: color, fontFamily: 'Heebo',
@@ -1402,9 +1402,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: JC.blue500.withOpacity(0.08),
+          color: JC.blue500.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: JC.blue400.withOpacity(0.4), width: 0.8),
+          border: Border.all(color: JC.blue400.withValues(alpha: 0.4), width: 0.8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

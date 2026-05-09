@@ -127,7 +127,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     margin: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
-                      color: JC.cancelRed.withOpacity(0.15),
+                      color: JC.cancelRed.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.delete_outline,

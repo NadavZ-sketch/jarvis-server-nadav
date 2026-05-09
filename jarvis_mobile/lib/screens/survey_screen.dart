@@ -111,7 +111,7 @@ class _SurveyModalState extends State<SurveyModal> {
               const SizedBox(height: 12),
               LinearProgressIndicator(
                 value: progress,
-                backgroundColor: JC.border.withOpacity(0.3),
+                backgroundColor: JC.border.withValues(alpha: 0.3),
                 valueColor: const AlwaysStoppedAnimation<Color>(JC.blue400),
                 minHeight: 4,
               ),
@@ -172,8 +172,8 @@ class _SurveyModalState extends State<SurveyModal> {
                                   horizontal: 16, vertical: 14),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? JC.blue500.withOpacity(0.15)
-                                    : JC.border.withOpacity(0.2),
+                                    ? JC.blue500.withValues(alpha: 0.15)
+                                    : JC.border.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: isSelected ? JC.blue400 : JC.border,
@@ -254,7 +254,7 @@ class _SurveyModalState extends State<SurveyModal> {
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: JC.blue500,
-                    disabledBackgroundColor: JC.blue500.withOpacity(0.3),
+                    disabledBackgroundColor: JC.blue500.withValues(alpha: 0.3),
                   ),
                   child: const Text(
                     'הבא',
@@ -266,7 +266,7 @@ class _SurveyModalState extends State<SurveyModal> {
                   onPressed: isSubmitting ? null : _submitSurvey,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: JC.blue500,
-                    disabledBackgroundColor: JC.blue500.withOpacity(0.3),
+                    disabledBackgroundColor: JC.blue500.withValues(alpha: 0.3),
                   ),
                   child: isSubmitting
                       ? const SizedBox(

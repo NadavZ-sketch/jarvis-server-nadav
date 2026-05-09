@@ -170,8 +170,8 @@ class _OnboardPage extends StatelessWidget {
             height: 100,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: JC.blue500.withOpacity(0.15),
-              border: Border.all(color: JC.blue500.withOpacity(0.3), width: 1.5),
+              color: JC.blue500.withValues(alpha: 0.15),
+              border: Border.all(color: JC.blue500.withValues(alpha: 0.3), width: 1.5),
             ),
             child: Center(
               child: Text(emoji, style: const TextStyle(fontSize: 44)),

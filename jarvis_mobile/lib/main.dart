@@ -17,7 +17,6 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
-import 'main_shell.dart';
 import 'transitions/slide_fade_route.dart';
 import 'screens/splash_screen.dart';
 import 'screens/survey_screen.dart';
@@ -152,7 +151,7 @@ class _TypingDotsState extends State<_TypingDots> with TickerProviderStateMixin 
             margin: const EdgeInsets.symmetric(horizontal: 3),
             width: 6, height: 6,
             decoration: BoxDecoration(
-              color: JC.blue400.withOpacity(0.8),
+              color: JC.blue400.withValues(alpha: 0.8),
               shape: BoxShape.circle,
             ),
           ),
@@ -212,7 +211,7 @@ class _JarvisOrb extends StatelessWidget {
               height: _size + 52,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _glow.withOpacity(0.06),
+                color: _glow.withValues(alpha: 0.06),
               ),
             ),
             // Mid glow ring
@@ -223,7 +222,7 @@ class _JarvisOrb extends StatelessWidget {
               height: _size + 28,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _glow.withOpacity(0.13),
+                color: _glow.withValues(alpha: 0.13),
               ),
             ),
             // Core orb
@@ -241,12 +240,12 @@ class _JarvisOrb extends StatelessWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: _glow.withOpacity(0.55),
+                    color: _glow.withValues(alpha: 0.55),
                     blurRadius: 24,
                     spreadRadius: state == JarvisState.idle ? 1 : 6,
                   ),
                   BoxShadow(
-                    color: _glow.withOpacity(0.2),
+                    color: _glow.withValues(alpha: 0.2),
                     blurRadius: 56,
                     spreadRadius: 8,
                   ),
@@ -263,7 +262,7 @@ class _JarvisOrb extends StatelessWidget {
                 height: _size * 0.18,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  color: Colors.white.withOpacity(0.22),
+                  color: Colors.white.withValues(alpha: 0.22),
                 ),
               ),
             ),
@@ -371,13 +370,13 @@ class _ChatBubbleState extends State<_ChatBubble> {
               ),
               border: Border.all(
                 color: isUser
-                    ? JC.blue400.withOpacity(0.5)
-                    : JC.border.withOpacity(0.7),
+                    ? JC.blue400.withValues(alpha: 0.5)
+                    : JC.border.withValues(alpha: 0.7),
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: isUser ? JC.blue400.withOpacity(0.1) : Colors.transparent,
+                  color: isUser ? JC.blue400.withValues(alpha: 0.1) : Colors.transparent,
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -404,7 +403,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                     widget.msg['time'] ?? '',
                     style: TextStyle(
                       fontSize: 11,
-                      color: JC.textMuted.withOpacity(0.8),
+                      color: JC.textMuted.withValues(alpha: 0.8),
                       fontFamily: 'Heebo',
                     ),
                   ),
@@ -1321,25 +1320,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
-  // ─── Copy chat ────────────────────────────────────────────────────────────────
-  void _copyChat() {
-    final text = messages.map((m) {
-      final sender = m['sender'] == 'user' ? 'אתה' : 'ג׳רביס';
-      return '$sender: ${m['text']}';
-    }).join('\n\n');
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('השיחה הועתקה ללוח ✓',
-            style: TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
-        backgroundColor: JC.surfaceAlt,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
   // ─── History ──────────────────────────────────────────────────────────────────
   void _openHistory() {
     Navigator.push(
@@ -1397,17 +1377,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ─── State label ──────────────────────────────────────────────────────────────
-  String get _stateLabel {
-    if (_voiceConversationActive) return 'שיחה חיה';
-    switch (_currentState) {
-      case JarvisState.listening: return 'מקשיב...';
-      case JarvisState.thinking:  return 'חושב...';
-      case JarvisState.speaking:  return 'מדבר...';
-      default:                    return 'מצב Live';
-    }
-  }
-
   String get _orbHint {
     if (_voiceConversationActive) {
       switch (_currentState) {
@@ -1447,7 +1416,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [JC.bg, JC.bg.withOpacity(0)],
+              colors: [JC.bg, JC.bg.withValues(alpha: 0)],
             ),
           ),
         ),
@@ -1509,8 +1478,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   center: Alignment.center,
                   radius: 0.8,
                   colors: [
-                    JC.blue500.withOpacity(0.18),
-                    JC.bg.withOpacity(0),
+                    JC.blue500.withValues(alpha: 0.18),
+                    JC.bg.withValues(alpha: 0),
                   ],
                 ),
               ),
@@ -1595,7 +1564,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                 bottomLeft:  Radius.circular(4),
                               ),
                               border: Border.all(
-                                  color: JC.border.withOpacity(0.6),
+                                  color: JC.border.withValues(alpha: 0.6),
                                   width: 0.8),
                             ),
                             child: const _TypingDots(),
@@ -1617,9 +1586,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     decoration: BoxDecoration(
-                      color: Colors.redAccent.withOpacity(0.12),
+                      color: Colors.redAccent.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.redAccent.withOpacity(0.4), width: 1),
+                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4), width: 1),
                     ),
                     child: TextButton.icon(
                       icon: const Icon(Icons.stop_rounded, color: Colors.redAccent, size: 18),
@@ -1696,10 +1665,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
-                          color: JC.blue400.withOpacity(0.2),
+                          color: JC.blue400.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                              color: JC.blue400.withOpacity(0.5), width: 1),
+                              color: JC.blue400.withValues(alpha: 0.5), width: 1),
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1733,15 +1702,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(
                     color: isListening
-                        ? JC.blue400.withOpacity(0.6)
-                        : JC.border.withOpacity(0.7),
+                        ? JC.blue400.withValues(alpha: 0.6)
+                        : JC.border.withValues(alpha: 0.7),
                     width: isListening ? 1.2 : 0.8,
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: isListening
-                          ? JC.blue500.withOpacity(0.2)
-                          : Colors.black.withOpacity(0.3),
+                          ? JC.blue500.withValues(alpha: 0.2)
+                          : Colors.black.withValues(alpha: 0.3),
                       blurRadius: isListening ? 16 : 8,
                       offset: const Offset(0, 4),
                     ),
@@ -1797,12 +1766,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                             end: Alignment.bottomRight,
                             colors: [
                               JC.blue400,
-                              JC.blue500.withOpacity(0.8),
+                              JC.blue500.withValues(alpha: 0.8),
                             ],
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: JC.blue500.withOpacity(0.45),
+                              color: JC.blue500.withValues(alpha: 0.45),
                               blurRadius: 10,
                               offset: const Offset(0, 3),
                             ),
@@ -1850,7 +1819,7 @@ class _InputIconButton extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: active
-              ? JC.blue500.withOpacity(0.2)
+              ? JC.blue500.withValues(alpha: 0.2)
               : Colors.transparent,
         ),
         child: Icon(

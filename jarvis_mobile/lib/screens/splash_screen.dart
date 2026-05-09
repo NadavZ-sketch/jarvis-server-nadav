@@ -87,7 +87,7 @@ class _SplashScreenState extends State<SplashScreen>
                         height: 148,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: JC.blue500.withOpacity(0.06),
+                          color: JC.blue500.withValues(alpha: 0.06),
                         ),
                       ),
                       Container(
@@ -95,7 +95,7 @@ class _SplashScreenState extends State<SplashScreen>
                         height: 112,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: JC.blue500.withOpacity(0.12),
+                          color: JC.blue500.withValues(alpha: 0.12),
                         ),
                       ),
                       Container(
@@ -110,12 +110,12 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: JC.blue500.withOpacity(0.55),
+                              color: JC.blue500.withValues(alpha: 0.55),
                               blurRadius: 28,
                               spreadRadius: 4,
                             ),
                             BoxShadow(
-                              color: JC.blue500.withOpacity(0.2),
+                              color: JC.blue500.withValues(alpha: 0.2),
                               blurRadius: 60,
                               spreadRadius: 10,
                             ),

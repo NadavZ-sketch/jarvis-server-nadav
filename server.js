@@ -113,6 +113,7 @@ const supabase = supabaseAdmin;
 
 app.use('/tasks', createTasksRouter({ supabase }));
 app.use('/reminders', createRemindersRouter({ supabase, pinecone }));
+app.use('/', createChatRouter({ supabase, askJarvisHandler, streamJarvisHandler }));
 const remindersController = createRemindersController({ supabase, pinecone });
 app.get('/check-reminders', remindersController.check);
 const LOCAL_PROFILE_FILE = path.join(__dirname, 'notes', 'user_profile_fallback.json');
@@ -397,7 +398,7 @@ async function getUserProfile() {
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-const askJarvisHandler = async (req, res) => {
+async function askJarvisHandler(req, res) {
     try {
         const userMessage = req.body.command || '';
         const imageBase64 = req.body.image;
@@ -589,7 +590,7 @@ const askJarvisHandler = async (req, res) => {
         console.error('Route Error:', err.message);
         res.status(500).json({ answer: 'שגיאת מערכת פנימית.' });
     }
-};
+}
 
 // ─── Send Email (called after user confirms in Flutter) ───────────────────────
 
@@ -1199,7 +1200,7 @@ app.patch('/shopping/:id', async (req, res) => {
 
 const { callGemma4Stream, callGemma4 } = require('./agents/models');
 
-const streamJarvisHandler = async (req, res) => {
+async function streamJarvisHandler(req, res) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -1279,9 +1280,7 @@ ${longTermMemories}`;
     } finally {
         res.end();
     }
-};
-
-app.use('/', createChatRouter({ supabase, askJarvisHandler, streamJarvisHandler }));
+}
 
 // ─── Reminder Cron (every minute) ─────────────────────────────────────────────
 

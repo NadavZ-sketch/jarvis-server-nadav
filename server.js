@@ -852,6 +852,44 @@ app.get('/stats', async (_req, res) => {
 
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
 
+app.get('/check-reminders', async (_req, res) => {
+    try {
+        // Fetch fired reminders, then delete them so they only notify once
+        const { data, error } = await supabase
+            .from('reminders')
+            .select('id, text')
+            .eq('fired', true);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+            const ids = data.map(r => r.id);
+            await supabase.from('reminders').delete().in('id', ids);
+
+            // Enhance reminders with Pinecone context
+            const enriched = await Promise.all(data.map(async (r) => {
+                let context = '';
+                if (pinecone.isReady()) {
+                    try {
+                        const memories = await pinecone.searchMemories(r.text, 2);
+                        if (memories && memories.length > 0) {
+                            context = ` (הקשר: ${memories[0].substring(0, 80)}...)`;
+                        }
+                    } catch (_) {}
+                }
+                return { ...r, text: r.text + context };
+            }));
+
+            res.json({ reminders: enriched });
+        } else {
+            res.json({ reminders: [] });
+        }
+    } catch (err) {
+        console.error('check-reminders error:', err.message);
+        res.json({ reminders: [] });
+    }
+});
+
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
 app.get('/contacts', async (_req, res) => {

@@ -92,7 +92,22 @@ app.use('/memories',      _rl(60));
 app.use('/contacts',      _rl(60));
 app.use('/shopping',      _rl(60));
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+// Backward-compatible fallback for existing CI/test envs that still provide SUPABASE_KEY.
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Missing Supabase env vars. Required: SUPABASE_URL, SUPABASE_ANON_KEY (or SUPABASE_KEY), SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY)');
+}
+
+// Public client: safe for anonymous/public flows (never bypasses RLS).
+const supabasePublic = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Server-only admin client: never expose this key to web/mobile clients.
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Default backend data client (server runtime only).
+const supabase = supabaseAdmin;
 const LOCAL_PROFILE_FILE = path.join(__dirname, 'notes', 'user_profile_fallback.json');
 
 function readLocalProfile() {

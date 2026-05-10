@@ -95,10 +95,11 @@ app.use('/memories',      _rl(60));
 app.use('/contacts',      _rl(60));
 app.use('/shopping',      _rl(60));
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
+const isTestEnv = process.env.NODE_ENV === 'test';
+const SUPABASE_URL = process.env.SUPABASE_URL || (isTestEnv ? 'http://127.0.0.1:54321' : undefined);
 // Backward-compatible fallback for existing CI/test envs that still provide SUPABASE_KEY.
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || (isTestEnv ? 'test-anon-key' : undefined);
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || (isTestEnv ? 'test-service-key' : undefined);
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error('Missing Supabase env vars. Required: SUPABASE_URL, SUPABASE_ANON_KEY (or SUPABASE_KEY), SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY)');
@@ -848,6 +849,44 @@ app.get('/stats', async (_req, res) => {
 
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
 
+app.get('/check-reminders', async (_req, res) => {
+    try {
+        // Fetch fired reminders, then delete them so they only notify once
+        const { data, error } = await supabase
+            .from('reminders')
+            .select('id, text')
+            .eq('fired', true);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+            const ids = data.map(r => r.id);
+            await supabase.from('reminders').delete().in('id', ids);
+
+            // Enhance reminders with Pinecone context
+            const enriched = await Promise.all(data.map(async (r) => {
+                let context = '';
+                if (pinecone.isReady()) {
+                    try {
+                        const memories = await pinecone.searchMemories(r.text, 2);
+                        if (memories && memories.length > 0) {
+                            context = ` (הקשר: ${memories[0].substring(0, 80)}...)`;
+                        }
+                    } catch (_) {}
+                }
+                return { ...r, text: r.text + context };
+            }));
+
+            res.json({ reminders: enriched });
+        } else {
+            res.json({ reminders: [] });
+        }
+    } catch (err) {
+        console.error('check-reminders error:', err.message);
+        res.json({ reminders: [] });
+    }
+});
+
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
 app.get('/contacts', async (_req, res) => {
@@ -1308,7 +1347,7 @@ function computeNextOccurrence(scheduledTimeISO, recurrence) {
     return d;
 }
 
-cron.schedule('* * * * *', async () => {
+if (!isTestEnv) cron.schedule('* * * * *', async () => {
     try {
         const now = new Date().toISOString();
         const { data: due, error } = await supabase
@@ -1351,7 +1390,7 @@ async function enqueueNotification(text) {
 }
 
 // Morning briefing — 7:00 AM Jerusalem
-cron.schedule('0 7 * * *', async () => {
+if (!isTestEnv) cron.schedule('0 7 * * *', async () => {
     try {
         const [{ data: tasks }, { data: todayReminders }] = await Promise.all([
             supabase.from('tasks').select('id'),
@@ -1376,7 +1415,7 @@ cron.schedule('0 7 * * *', async () => {
 }, { timezone: 'Asia/Jerusalem' });
 
 // Evening nudge — 21:00 Jerusalem (only when tasks remain open)
-cron.schedule('0 21 * * *', async () => {
+if (!isTestEnv) cron.schedule('0 21 * * *', async () => {
     try {
         const { data: tasks } = await supabase.from('tasks').select('id');
         if (!tasks || tasks.length === 0) return;
@@ -1411,7 +1450,7 @@ app.get('/sync/obsidian/status', (_req, res) => {
 });
 
 // ─── Obsidian auto-sync cron (every 5 min) ────────────────────────────────────
-cron.schedule('*/5 * * * *', () => {
+if (!isTestEnv) cron.schedule('*/5 * * * *', () => {
     if (!obsidianAutoSync) return;
     obsidianSync.syncAll().catch(err => console.error('[ObsidianSync] cron:', err.message));
 });

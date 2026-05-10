@@ -179,6 +179,30 @@ h1 span{color:var(--accent)}
   display:flex;flex-direction:column;align-items:center;gap:8px}
 .empty-state span{font-size:1.6rem}
 
+
+/* project cockpit */
+.cockpit-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:12px;margin-bottom:18px}
+@media(max-width:900px){.cockpit-grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.panel h3{font-size:.88rem;margin-bottom:10px;color:var(--text)}
+.health-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.health-item{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:9px 10px}
+.health-item .k{font-size:.7rem;color:var(--muted)}
+.health-item .v{font-size:.92rem;font-weight:700;margin-top:3px}
+.roadmap-line{position:relative;padding-right:12px;border-right:2px dashed var(--border)}
+.roadmap-node{position:relative;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:9px;margin-bottom:7px}
+.roadmap-node::before{content:'';position:absolute;right:-18px;top:14px;width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.roadmap-node.done::before{background:var(--green)}
+.roadmap-node.active::before{background:var(--amber)}
+.roadmap-node .t{font-size:.8rem;font-weight:600}
+.roadmap-node .d{font-size:.72rem;color:var(--muted);margin-top:2px}
+.changes-list{display:flex;flex-direction:column;gap:7px;max-height:260px;overflow:auto}
+.change-item{border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--card)}
+.change-item .ct{font-size:.77rem;font-weight:600}
+.change-item .cm{font-size:.7rem;color:var(--muted);margin-top:3px;line-height:1.4}
+.panel-meta{margin-top:10px;font-size:.7rem;color:var(--muted)}
+.panel-warn{margin-top:8px;font-size:.72rem;color:var(--amber)}
+
 .refresh-row{color:var(--muted);font-size:.72rem;text-align:center;margin-top:8px}
 </style>
 </head>
@@ -208,6 +232,31 @@ h1 span{color:var(--accent)}
   <div class="metric"><div class="live-dot"></div><div class="metric-label">פתקים</div><div class="metric-num" id="m-notes">—</div><div class="metric-sub">notes</div></div>
 </div>
 <div class="refresh-row">מתעדכן כל 30 שניות · <span id="last-refresh">—</span></div>
+
+<!-- PROJECT COCKPIT -->
+<div class="section-title">🧭 מרכז פרויקט</div>
+<div class="cockpit-grid">
+  <div class="panel">
+    <h3>תמונת מצב מהירה</h3>
+    <div class="health-list" id="project-health">
+      <div class="health-item"><div class="k">שלב נוכחי</div><div class="v" id="phaseNow">—</div></div>
+      <div class="health-item"><div class="k">כיסוי MVP</div><div class="v" id="mvpCoverage">—</div></div>
+      <div class="health-item"><div class="k">עדיפות מיידית</div><div class="v" id="nextFocus">—</div></div>
+      <div class="health-item"><div class="k">שינויים פעילים</div><div class="v" id="activeChanges">—</div></div>
+    </div>
+    <div class="section-title" style="margin-top:14px">🛣️ מסלול התקדמות</div>
+    <div class="roadmap-line" id="roadmapLine"></div>
+    <div class="panel-meta" id="healthUpdatedAt">עודכן: —</div>
+    <div class="panel-warn" id="healthWarn" style="display:none"></div>
+  </div>
+  <div class="panel">
+    <h3>שינויים אחרונים לבדיקה</h3>
+    <div class="changes-list" id="changesFeed"></div>
+    <div class="panel-meta" id="changesUpdatedAt">עודכן: —</div>
+    <div class="panel-warn" id="changesWarn" style="display:none"></div>
+  </div>
+</div>
+
 
 <!-- PROGRESS BAR -->
 <div class="section-title">📊 מצב הפרויקט</div>
@@ -316,6 +365,9 @@ function pill(f, status) {
   </div>`;
 }
 
+let _featureCtx = { done: [], building: [], planned: [] };
+let _proposalCtx = [];
+
 async function loadFeatures() {
   try {
     const d        = await fetch('/dashboard/features').then(r => r.json());
@@ -330,6 +382,9 @@ async function loadFeatures() {
     document.getElementById('col-done').innerHTML         = done.map(f => pill(f,'done')).join('');
     document.getElementById('col-building').innerHTML     = building.map(f => pill(f,'building')).join('');
     document.getElementById('col-planned').innerHTML      = planned.map(f => pill(f,'planned')).join('');
+    _featureCtx = { done, building, planned };
+    renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });
+
     document.getElementById('subtitle').textContent =
       `עוזר אישי AI · ${done.length} יכולות פעילות · עודכן: ${d.lastUpdated || '—'}`;
 
@@ -349,6 +404,8 @@ async function loadFeatures() {
     }
   } catch {
     document.getElementById('subtitle').textContent = 'לא ניתן לטעון features.json';
+    showCockpitWarning('healthWarn','טעינת היכולות נכשלה — מוצגים נתונים אחרונים אם קיימים');
+    renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx }, { stale: true });
   }
 }
 
@@ -372,12 +429,12 @@ function renderProposals(proposals) {
       : `<button class="btn-activate" onclick="patchProposal(${p.id},'active')">⚡ הפעל</button>`;
     return `<div class="proposal priority-${p.priority} status-${p.status}" id="pr-${p.id}">
       <div class="proposal-top">
-        <span class="proposal-title">${p.title}</span>
+        <span class="proposal-title">${escapeHtml(p.title || '')}</span>
         <span class="pill-badge ${PRIORITY_PILLS[p.priority]}">${PRIORITY_LABELS[p.priority]}</span>
-        <span class="pill-badge pill-cat">${CAT_LABELS[p.category] || p.category}</span>
+        <span class="pill-badge pill-cat">${escapeHtml(CAT_LABELS[p.category] || p.category || '')}</span>
         <span class="pill-badge ${STATUS_PILLS[p.status]}">${STATUS_LABELS[p.status]}</span>
       </div>
-      <div class="proposal-plan" id="plan-${p.id}">${p.plan}</div>
+      <div class="proposal-plan" id="plan-${p.id}">${escapeHtml(p.plan || '')}</div>
       <div class="proposal-actions">
         <button class="btn-del" onclick="deleteProposal(${p.id})">✕ הסר</button>
         <button class="btn-expand" onclick="togglePlan(${p.id})">▼ תוכנית מלאה</button>
@@ -424,7 +481,9 @@ async function generateProposals() {
   try {
     const d = await fetch('/dashboard/backlog/generate', { method: 'POST' }).then(r => r.json());
     if (d.proposals) {
-      renderProposals(d.proposals);
+      _proposalCtx = d.proposals;
+      renderProposals(_proposalCtx);
+      renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });
       document.getElementById('backlog-meta').textContent = `נוצר: ${d.generated_at || '—'}`;
     } else {
       document.getElementById('proposalsList').innerHTML =
@@ -522,12 +581,16 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadBacklog() {
   try {
     const d = await fetch('/dashboard/backlog').then(r => r.json());
-    renderProposals(d.proposals || []);
+    _proposalCtx = d.proposals || [];
+    renderProposals(_proposalCtx);
+    renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });
     if (d._lastGenerated) document.getElementById('backlog-meta').textContent = `נוצר: ${d._lastGenerated}`;
     renderManual(d.items || []);
   } catch {
     document.getElementById('proposalsList').innerHTML =
       `<div class="empty-state"><span>⚠️</span>לא ניתן לטעון backlog</div>`;
+    showCockpitWarning('changesWarn','טעינת backlog נכשלה — מוצגים נתונים אחרונים אם קיימים');
+    renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx }, { stale: true });
   }
 }
 
@@ -540,8 +603,8 @@ function renderManual(items) {
   list.innerHTML = items.map(item => `
     <div class="manual-item ${item.done ? 'done-item' : ''}" id="bi-${item.id}">
       <button class="check-btn ${item.done ? 'checked' : ''}" onclick="toggleItem(${item.id})">${item.done ? '✓' : ''}</button>
-      <span class="item-text">${item.text}</span>
-      <span class="item-meta">${item.added || ''}</span>
+      <span class="item-text">${escapeHtml(item.text || '')}</span>
+      <span class="item-meta">${escapeHtml(item.added || '')}</span>
       <button class="del-btn" onclick="deleteItem(${item.id})">✕</button>
     </div>`).join('');
 }
@@ -570,6 +633,74 @@ async function deleteItem(id) {
 document.getElementById('backlogInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') addManualItem();
 });
+
+
+
+function renderProjectCockpit(ctx, opts = {}) {
+  const done = ctx.done || [];
+  const nowLabel = new Date().toLocaleTimeString('he-IL');
+  const stale = !!opts.stale;
+  if (!stale) {
+    hideCockpitWarning('healthWarn');
+    hideCockpitWarning('changesWarn');
+  }
+  const building = ctx.building || [];
+  const planned = ctx.planned || [];
+  const proposals = ctx.proposals || [];
+  const total = done.length + building.length + planned.length;
+  const mvp = total ? Math.round(((done.length + (building.length * 0.5)) / total) * 100) : 0;
+
+  document.getElementById('phaseNow').textContent = building.length ? 'Build + Polish' : (done.length ? 'Validation' : 'Planning');
+  document.getElementById('mvpCoverage').textContent = `${mvp}%`;
+  document.getElementById('nextFocus').textContent = (building[0]?.name || planned[0]?.name || 'הגדירו יעד חדש');
+  document.getElementById('activeChanges').textContent = proposals.filter(p => p.status === 'active').length;
+  document.getElementById('healthUpdatedAt').textContent = `עודכן: ${nowLabel}${stale ? ' (נתונים חלקיים)' : ''}`;
+
+  const roadmap = [
+    { cls: done.length ? 'done' : '', title: 'MVP Core', desc: `${done.length} יכולות יציבות` },
+    { cls: building.length ? 'active' : '', title: 'שיפורים בתהליך', desc: `${building.length} יכולות בבנייה` },
+    { cls: planned.length ? '' : 'done', title: 'תכנון והרחבה', desc: `${planned.length} פריטים בתכנון` },
+  ];
+  document.getElementById('roadmapLine').innerHTML = roadmap.map(r => `
+    <div class="roadmap-node ${r.cls}">
+      <div class="t">${escapeHtml(r.title)}</div>
+      <div class="d">${escapeHtml(r.desc)}</div>
+    </div>`).join('');
+
+  const allChanges = [
+    ...building.map(f => ({ type: 'feature', title: f.name, text: f.desc || 'בבנייה כעת', tag: 'בפיתוח' })),
+    ...proposals.filter(p => p.status !== 'proposal').map(p => ({ type: p.category, title: p.title, text: p.plan, tag: p.status === 'done' ? 'הושלם' : 'פעיל' })),
+    ...planned.slice(0, 3).map(f => ({ type: 'plan', title: f.name, text: f.desc || 'מתוכנן', tag: 'מתוכנן' })),
+  ].slice(0, 8);
+
+  const changesEl = document.getElementById('changesFeed');
+  if (!allChanges.length) {
+    changesEl.innerHTML = '<div class="empty-state"><span>🧩</span>אין עדיין שינויים להצגה</div>';
+    document.getElementById('changesUpdatedAt').textContent = `עודכן: ${nowLabel}${stale ? ' (נתונים חלקיים)' : ''}`;
+    return;
+  }
+  changesEl.innerHTML = allChanges.map(c => `
+    <div class="change-item">
+      <div class="ct">${escapeHtml(c.title)} · ${escapeHtml(c.tag)}</div>
+      <div class="cm">${escapeHtml(c.text)}</div>
+    </div>`).join('');
+  document.getElementById('changesUpdatedAt').textContent = `עודכן: ${nowLabel}${stale ? ' (נתונים חלקיים)' : ''}`;
+}
+
+
+function showCockpitWarning(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+function hideCockpitWarning(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = '';
+  el.style.display = 'none';
+}
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 checkHealth();

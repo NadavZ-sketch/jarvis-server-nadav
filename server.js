@@ -1280,7 +1280,7 @@ function computeNextOccurrence(scheduledTimeISO, recurrence) {
     return d;
 }
 
-cron.schedule('* * * * *', async () => {
+if (!isTestEnv) cron.schedule('* * * * *', async () => {
     try {
         const now = new Date().toISOString();
         const { data: due, error } = await supabase
@@ -1323,7 +1323,7 @@ async function enqueueNotification(text) {
 }
 
 // Morning briefing — 7:00 AM Jerusalem
-cron.schedule('0 7 * * *', async () => {
+if (!isTestEnv) cron.schedule('0 7 * * *', async () => {
     try {
         const [{ data: tasks }, { data: todayReminders }] = await Promise.all([
             supabase.from('tasks').select('id'),
@@ -1348,7 +1348,7 @@ cron.schedule('0 7 * * *', async () => {
 }, { timezone: 'Asia/Jerusalem' });
 
 // Evening nudge — 21:00 Jerusalem (only when tasks remain open)
-cron.schedule('0 21 * * *', async () => {
+if (!isTestEnv) cron.schedule('0 21 * * *', async () => {
     try {
         const { data: tasks } = await supabase.from('tasks').select('id');
         if (!tasks || tasks.length === 0) return;
@@ -1383,7 +1383,7 @@ app.get('/sync/obsidian/status', (_req, res) => {
 });
 
 // ─── Obsidian auto-sync cron (every 5 min) ────────────────────────────────────
-cron.schedule('*/5 * * * *', () => {
+if (!isTestEnv) cron.schedule('*/5 * * * *', () => {
     if (!obsidianAutoSync) return;
     obsidianSync.syncAll().catch(err => console.error('[ObsidianSync] cron:', err.message));
 });

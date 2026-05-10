@@ -96,7 +96,21 @@ app.use('/memories',      _rl(60));
 app.use('/contacts',      _rl(60));
 app.use('/shopping',      _rl(60));
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const isTestEnv = process.env.NODE_ENV === 'test';
+const SUPABASE_URL = process.env.SUPABASE_URL || (isTestEnv ? 'http://127.0.0.1:54321' : undefined);
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || (isTestEnv ? 'test-anon-key' : undefined);
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || (isTestEnv ? 'test-service-key' : undefined);
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Missing Supabase env vars. Required: SUPABASE_URL, SUPABASE_ANON_KEY (or SUPABASE_KEY), SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY)');
+}
+
+const supabasePublic = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseAdmin = (SUPABASE_SERVICE_ROLE_KEY === SUPABASE_ANON_KEY)
+    ? supabasePublic
+    : createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabase = supabaseAdmin;
+
 app.use('/tasks', createTasksRouter({ supabase }));
 app.use('/reminders', createRemindersRouter({ supabase, pinecone }));
 const remindersController = createRemindersController({ supabase, pinecone });

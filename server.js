@@ -56,6 +56,10 @@ const { runTranslationAgent } = require('./agents/translationAgent');
 const { runMusicAgent }       = require('./agents/musicAgent');
 const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
+const { createTasksRouter } = require('./routes/tasks');
+const { createRemindersRouter } = require('./routes/reminders');
+const { createRemindersController } = require('./controllers/remindersController');
+const { createChatRouter } = require('./routes/chat');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -93,6 +97,10 @@ app.use('/contacts',      _rl(60));
 app.use('/shopping',      _rl(60));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+app.use('/tasks', createTasksRouter({ supabase }));
+app.use('/reminders', createRemindersRouter({ supabase, pinecone }));
+const remindersController = createRemindersController({ supabase, pinecone });
+app.get('/check-reminders', remindersController.check);
 const LOCAL_PROFILE_FILE = path.join(__dirname, 'notes', 'user_profile_fallback.json');
 
 function readLocalProfile() {
@@ -375,7 +383,7 @@ async function getUserProfile() {
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-app.post('/ask-jarvis', async (req, res) => {
+const askJarvisHandler = async (req, res) => {
     try {
         const userMessage = req.body.command || '';
         const imageBase64 = req.body.image;
@@ -567,7 +575,7 @@ app.post('/ask-jarvis', async (req, res) => {
         console.error('Route Error:', err.message);
         res.status(500).json({ answer: 'שגיאת מערכת פנימית.' });
     }
-});
+};
 
 // ─── Send Email (called after user confirms in Flutter) ───────────────────────
 
@@ -580,26 +588,6 @@ app.post('/send-email', async (req, res) => {
     } catch (err) {
         console.error('📧 Email send error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
-    }
-});
-
-// ─── Chat History (read-only for Flutter UI) ──────────────────────────────────
-
-app.get('/chat-history', async (req, res) => {
-    try {
-        const chatId = req.query.chatId || req.query.chat_id || 'default-session';
-        const limit = Math.min(parseInt(req.query.limit) || 60, 200);
-        const { data, error } = await supabase
-            .from('chat_history')
-            .select('role, text, created_at')
-            .eq('chat_id', chatId)
-            .order('created_at', { ascending: false })
-            .limit(limit);
-        if (error) throw error;
-        res.json({ messages: (data || []).reverse(), chatId });
-    } catch (err) {
-        console.error('⚠️ /chat-history error:', err.message);
-        res.status(500).json({ messages: [], chatId: 'default-session' });
     }
 });
 
@@ -830,99 +818,6 @@ app.get('/stats', async (_req, res) => {
 
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
 
-app.get('/check-reminders', async (_req, res) => {
-    try {
-        // Fetch fired reminders, then delete them so they only notify once
-        const { data, error } = await supabase
-            .from('reminders')
-            .select('id, text')
-            .eq('fired', true);
-
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-            const ids = data.map(r => r.id);
-            await supabase.from('reminders').delete().in('id', ids);
-
-            // Enhance reminders with Pinecone context
-            const enriched = await Promise.all(data.map(async (r) => {
-                let context = '';
-                if (pinecone.isReady()) {
-                    try {
-                        const memories = await pinecone.searchMemories(r.text, 2);
-                        if (memories && memories.length > 0) {
-                            context = ` (הקשר: ${memories[0].substring(0, 80)}...)`;
-                        }
-                    } catch (_) {}
-                }
-                return { ...r, text: r.text + context };
-            }));
-
-            res.json({ reminders: enriched });
-        } else {
-            res.json({ reminders: [] });
-        }
-    } catch (err) {
-        console.error('check-reminders error:', err.message);
-        res.json({ reminders: [] });
-    }
-});
-
-// ─── Tasks REST ───────────────────────────────────────────────────────────────
-
-app.get('/tasks', async (_req, res) => {
-    try {
-        const { data, error } = await supabase
-            .from('tasks')
-            .select('*')
-            .order('created_at', { ascending: false });
-        if (error) throw error;
-        res.json({ tasks: data || [] });
-    } catch (err) {
-        console.error('GET /tasks error:', err.message);
-        res.status(500).json({ tasks: [] });
-    }
-});
-
-app.delete('/tasks/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ ok: true });
-    } catch (err) {
-        console.error('DELETE /tasks/:id error:', err.message);
-        res.status(500).json({ ok: false, error: err.message });
-    }
-});
-
-// ─── Reminders REST ───────────────────────────────────────────────────────────
-
-app.get('/reminders', async (_req, res) => {
-    try {
-        const { data, error } = await supabase
-            .from('reminders')
-            .select('id, text, scheduled_time, fired')
-            .eq('fired', false)
-            .order('scheduled_time', { ascending: true });
-        if (error) throw error;
-        res.json({ reminders: data || [] });
-    } catch (err) {
-        console.error('GET /reminders error:', err.message);
-        res.status(500).json({ reminders: [] });
-    }
-});
-
-app.delete('/reminders/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('reminders').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ ok: true });
-    } catch (err) {
-        console.error('DELETE /reminders/:id error:', err.message);
-        res.status(500).json({ ok: false, error: err.message });
-    }
-});
-
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
 app.get('/contacts', async (_req, res) => {
@@ -999,25 +894,6 @@ app.post('/tasks', async (req, res) => {
         res.json({ task: data });
     } catch (err) {
         console.error('POST /tasks error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ─── POST /reminders — add reminder from app ──────────────────────────────────
-app.post('/reminders', async (req, res) => {
-    try {
-        const { text, scheduled_time, recurrence } = req.body;
-        if (!text || !scheduled_time) return res.status(400).json({ error: 'text and scheduled_time required' });
-        const row = { text, scheduled_time, fired: false };
-        if (recurrence && ['daily', 'weekly', 'monthly'].includes(recurrence)) row.recurrence = recurrence;
-        const { data, error } = await supabase
-            .from('reminders')
-            .insert([row])
-            .select().single();
-        if (error) throw error;
-        res.json({ reminder: data });
-    } catch (err) {
-        console.error('POST /reminders error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1248,24 +1124,6 @@ app.get('/scan/errors', _rl(5), async (_req, res) => {
 });
 
 // ─── PUT /reminders/:id — update text and/or scheduled_time ──────────────────
-app.put('/reminders/:id', async (req, res) => {
-    try {
-        const { text, scheduled_time } = req.body;
-        const updates = {};
-        if (text           !== undefined) updates.text           = text;
-        if (scheduled_time !== undefined) updates.scheduled_time = scheduled_time;
-        if (Object.keys(updates).length === 0)
-            return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await supabase
-            .from('reminders').update(updates).eq('id', req.params.id).select().single();
-        if (error) throw error;
-        res.json({ reminder: data });
-    } catch (err) {
-        console.error('PUT /reminders/:id error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
 // ─── POST /contacts — add contact from app ───────────────────────────────────
 app.post('/contacts', async (req, res) => {
     try {
@@ -1327,7 +1185,7 @@ app.patch('/shopping/:id', async (req, res) => {
 
 const { callGemma4Stream, callGemma4 } = require('./agents/models');
 
-app.post('/stream-jarvis', async (req, res) => {
+const streamJarvisHandler = async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -1407,7 +1265,9 @@ ${longTermMemories}`;
     } finally {
         res.end();
     }
-});
+};
+
+app.use('/', createChatRouter({ supabase, askJarvisHandler, streamJarvisHandler }));
 
 // ─── Reminder Cron (every minute) ─────────────────────────────────────────────
 

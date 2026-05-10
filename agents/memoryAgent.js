@@ -116,9 +116,10 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
             return deleteMemory(userMessage, supabase);
         }
 
-        const isRecall = /תזכיר|מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת/i.test(userMessage);
+        // Explicit save keywords — everything else in memoryAgent is a recall
+        const isSave = /זכור ש|תזכור ש|שמור ש/i.test(userMessage);
 
-        if (isRecall) {
+        if (!isSave) {
             // Try Pinecone semantic search first; fall back to fetching all
             let memContents = await pinecone.searchMemories(userMessage, 15);
             if (!memContents) {
@@ -136,7 +137,7 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
             return { answer };
         }
 
-        // Default: save a memory
+        // Save a memory (explicit save keyword present)
         const aiText = await callGemma4(buildSavePrompt(userName) + userMessage, useLocal);
 
         const lastOpen = aiText.lastIndexOf('{');

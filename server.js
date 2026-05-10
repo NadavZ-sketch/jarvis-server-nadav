@@ -92,7 +92,26 @@ app.use('/memories',      _rl(60));
 app.use('/contacts',      _rl(60));
 app.use('/shopping',      _rl(60));
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const isTestEnv = process.env.NODE_ENV === 'test';
+const SUPABASE_URL = process.env.SUPABASE_URL || (isTestEnv ? 'http://127.0.0.1:54321' : undefined);
+// Backward-compatible fallback for existing CI/test envs that still provide SUPABASE_KEY.
+const TEST_SUPABASE_KEY = isTestEnv ? 'test-supabase-key' : undefined;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || TEST_SUPABASE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || TEST_SUPABASE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Missing Supabase env vars. Required: SUPABASE_URL, SUPABASE_ANON_KEY (or SUPABASE_KEY), SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY)');
+}
+
+// Public client: safe for anonymous/public flows (never bypasses RLS).
+const supabasePublic = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Server-only admin client: never expose this key to web/mobile clients.
+const supabaseAdmin = (SUPABASE_SERVICE_ROLE_KEY === SUPABASE_ANON_KEY)
+    ? supabasePublic
+    : createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Default backend data client (server runtime only).
+const supabase = supabaseAdmin;
 const LOCAL_PROFILE_FILE = path.join(__dirname, 'notes', 'user_profile_fallback.json');
 
 function readLocalProfile() {
@@ -1420,7 +1439,7 @@ function computeNextOccurrence(scheduledTimeISO, recurrence) {
     return d;
 }
 
-cron.schedule('* * * * *', async () => {
+if (!isTestEnv) cron.schedule('* * * * *', async () => {
     try {
         const now = new Date().toISOString();
         const { data: due, error } = await supabase
@@ -1463,7 +1482,7 @@ async function enqueueNotification(text) {
 }
 
 // Morning briefing — 7:00 AM Jerusalem
-cron.schedule('0 7 * * *', async () => {
+if (!isTestEnv) cron.schedule('0 7 * * *', async () => {
     try {
         const [{ data: tasks }, { data: todayReminders }] = await Promise.all([
             supabase.from('tasks').select('id'),
@@ -1488,7 +1507,7 @@ cron.schedule('0 7 * * *', async () => {
 }, { timezone: 'Asia/Jerusalem' });
 
 // Evening nudge — 21:00 Jerusalem (only when tasks remain open)
-cron.schedule('0 21 * * *', async () => {
+if (!isTestEnv) cron.schedule('0 21 * * *', async () => {
     try {
         const { data: tasks } = await supabase.from('tasks').select('id');
         if (!tasks || tasks.length === 0) return;
@@ -1523,7 +1542,7 @@ app.get('/sync/obsidian/status', (_req, res) => {
 });
 
 // ─── Obsidian auto-sync cron (every 5 min) ────────────────────────────────────
-cron.schedule('*/5 * * * *', () => {
+if (!isTestEnv) cron.schedule('*/5 * * * *', () => {
     if (!obsidianAutoSync) return;
     obsidianSync.syncAll().catch(err => console.error('[ObsidianSync] cron:', err.message));
 });

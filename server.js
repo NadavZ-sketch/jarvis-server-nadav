@@ -98,8 +98,9 @@ app.use('/shopping',      _rl(60));
 const isTestEnv = process.env.NODE_ENV === 'test';
 const SUPABASE_URL = process.env.SUPABASE_URL || (isTestEnv ? 'http://127.0.0.1:54321' : undefined);
 // Backward-compatible fallback for existing CI/test envs that still provide SUPABASE_KEY.
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || (isTestEnv ? 'test-anon-key' : undefined);
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || (isTestEnv ? 'test-service-key' : undefined);
+const TEST_SUPABASE_KEY = isTestEnv ? 'test-supabase-key' : undefined;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || TEST_SUPABASE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || TEST_SUPABASE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error('Missing Supabase env vars. Required: SUPABASE_URL, SUPABASE_ANON_KEY (or SUPABASE_KEY), SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY)');
@@ -108,7 +109,9 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
 // Public client: safe for anonymous/public flows (never bypasses RLS).
 const supabasePublic = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Server-only admin client: never expose this key to web/mobile clients.
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabaseAdmin = (SUPABASE_SERVICE_ROLE_KEY === SUPABASE_ANON_KEY)
+    ? supabasePublic
+    : createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // Default backend data client (server runtime only).
 const supabase = supabaseAdmin;

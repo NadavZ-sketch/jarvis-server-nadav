@@ -59,6 +59,7 @@ const pinecone                = require('./services/pineconeMemory');
 const { createTasksRouter } = require('./routes/tasks');
 const { createRemindersRouter } = require('./routes/reminders');
 const { createRemindersController } = require('./controllers/remindersController');
+const { createChatRouter } = require('./routes/chat');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -97,24 +98,23 @@ app.use('/shopping',      _rl(60));
 
 const isTestEnv = process.env.NODE_ENV === 'test';
 const SUPABASE_URL = process.env.SUPABASE_URL || (isTestEnv ? 'http://127.0.0.1:54321' : undefined);
-// Backward-compatible fallback for existing CI/test envs that still provide SUPABASE_KEY.
-const TEST_SUPABASE_KEY = isTestEnv ? 'test-supabase-key' : undefined;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || TEST_SUPABASE_KEY;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || TEST_SUPABASE_KEY;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || (isTestEnv ? 'test-anon-key' : undefined);
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || (isTestEnv ? 'test-service-key' : undefined);
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error('Missing Supabase env vars. Required: SUPABASE_URL, SUPABASE_ANON_KEY (or SUPABASE_KEY), SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY)');
 }
 
-// Public client: safe for anonymous/public flows (never bypasses RLS).
 const supabasePublic = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-// Server-only admin client: never expose this key to web/mobile clients.
 const supabaseAdmin = (SUPABASE_SERVICE_ROLE_KEY === SUPABASE_ANON_KEY)
     ? supabasePublic
     : createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-// Default backend data client (server runtime only).
 const supabase = supabaseAdmin;
+
+app.use('/tasks', createTasksRouter({ supabase }));
+app.use('/reminders', createRemindersRouter({ supabase, pinecone }));
+const remindersController = createRemindersController({ supabase, pinecone });
+app.get('/check-reminders', remindersController.check);
 const LOCAL_PROFILE_FILE = path.join(__dirname, 'notes', 'user_profile_fallback.json');
 
 function readLocalProfile() {
@@ -397,7 +397,7 @@ async function getUserProfile() {
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-app.post('/ask-jarvis', async (req, res) => {
+const askJarvisHandler = async (req, res) => {
     try {
         const userMessage = req.body.command || '';
         const imageBase64 = req.body.image;
@@ -589,7 +589,7 @@ app.post('/ask-jarvis', async (req, res) => {
         console.error('Route Error:', err.message);
         res.status(500).json({ answer: 'שגיאת מערכת פנימית.' });
     }
-});
+};
 
 // ─── Send Email (called after user confirms in Flutter) ───────────────────────
 
@@ -602,26 +602,6 @@ app.post('/send-email', async (req, res) => {
     } catch (err) {
         console.error('📧 Email send error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
-    }
-});
-
-// ─── Chat History (read-only for Flutter UI) ──────────────────────────────────
-
-app.get('/chat-history', async (req, res) => {
-    try {
-        const chatId = req.query.chatId || req.query.chat_id || 'default-session';
-        const limit = Math.min(parseInt(req.query.limit) || 60, 200);
-        const { data, error } = await supabase
-            .from('chat_history')
-            .select('role, text, created_at')
-            .eq('chat_id', chatId)
-            .order('created_at', { ascending: false })
-            .limit(limit);
-        if (error) throw error;
-        res.json({ messages: (data || []).reverse(), chatId });
-    } catch (err) {
-        console.error('⚠️ /chat-history error:', err.message);
-        res.status(500).json({ messages: [], chatId: 'default-session' });
     }
 });
 
@@ -851,44 +831,6 @@ app.get('/stats', async (_req, res) => {
 });
 
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
-
-app.get('/check-reminders', async (_req, res) => {
-    try {
-        // Fetch fired reminders, then delete them so they only notify once
-        const { data, error } = await supabase
-            .from('reminders')
-            .select('id, text')
-            .eq('fired', true);
-
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-            const ids = data.map(r => r.id);
-            await supabase.from('reminders').delete().in('id', ids);
-
-            // Enhance reminders with Pinecone context
-            const enriched = await Promise.all(data.map(async (r) => {
-                let context = '';
-                if (pinecone.isReady()) {
-                    try {
-                        const memories = await pinecone.searchMemories(r.text, 2);
-                        if (memories && memories.length > 0) {
-                            context = ` (הקשר: ${memories[0].substring(0, 80)}...)`;
-                        }
-                    } catch (_) {}
-                }
-                return { ...r, text: r.text + context };
-            }));
-
-            res.json({ reminders: enriched });
-        } else {
-            res.json({ reminders: [] });
-        }
-    } catch (err) {
-        console.error('check-reminders error:', err.message);
-        res.json({ reminders: [] });
-    }
-});
 
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
@@ -1257,7 +1199,7 @@ app.patch('/shopping/:id', async (req, res) => {
 
 const { callGemma4Stream, callGemma4 } = require('./agents/models');
 
-app.post('/stream-jarvis', async (req, res) => {
+const streamJarvisHandler = async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -1337,7 +1279,9 @@ ${longTermMemories}`;
     } finally {
         res.end();
     }
-});
+};
+
+app.use('/', createChatRouter({ supabase, askJarvisHandler, streamJarvisHandler }));
 
 // ─── Reminder Cron (every minute) ─────────────────────────────────────────────
 

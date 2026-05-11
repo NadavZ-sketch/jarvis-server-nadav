@@ -53,6 +53,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   // Proposals (AI backlog)
   List<Map<String, dynamic>> _proposals = [];
   String? _lastGenerated;
+  List<String> _learnedInsights = [];
   bool _generatingProposals = false;
 
   // Filter / inline-activation state
@@ -226,6 +227,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         setState(() {
           _proposals      = List<Map<String, dynamic>>.from(d['proposals'] ?? []);
           _items          = List<Map<String, dynamic>>.from(d['items']     ?? []);
+          _learnedInsights = List<String>.from(d['learned_insights'] ?? []);
           _lastGenerated  = d['_lastGenerated']?.toString();
           _loadingBacklog = false;
         });
@@ -309,6 +311,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         }
         _activatingIds.remove(idStr);
       });
+      await _trackProposalOutcome(idStr, 'proposal_activated');
     } catch (_) {
       if (!mounted) return;
       setState(() => _activatingIds.remove(idStr));
@@ -333,6 +336,21 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         }
         _proposalResponses.remove(idStr);
       });
+      await _trackProposalOutcome(idStr, 'user_reverted_change');
+    } catch (_) {}
+  }
+
+  Future<void> _trackProposalOutcome(String proposalId, String eventName, {int? valueSec}) async {
+    try {
+      await http.post(
+        Uri.parse('$_base/dashboard/backlog/proposals/$proposalId/outcome'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim(),
+          'eventName': eventName,
+          if (valueSec != null) 'valueSec': valueSec,
+        }),
+      ).timeout(const Duration(seconds: 6));
     } catch (_) {}
   }
 
@@ -712,8 +730,38 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           const SizedBox(height: 12),
           ...smartSuggestions.map((s) => _buildSmartSuggestionTile(s)).toList(),
           const SizedBox(height: 6),
+          _buildLearnedInsights(),
+          const SizedBox(height: 6),
           _buildSmartTelemetryPanel(),
           if (!_smartCompactMode) _buildSmartExplainPanel(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLearnedInsights() {
+    if (_learnedInsights.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: JC.bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: JC.border, width: 0.7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text('למדנו ש...',
+              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          for (final line in _learnedInsights.take(3))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('• $line',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5)),
+            ),
         ],
       ),
     );

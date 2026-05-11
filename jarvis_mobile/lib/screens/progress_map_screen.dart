@@ -271,7 +271,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
   String _proposalSensitivity(Map<String, dynamic> proposal) {
     final policyGate = Map<String, dynamic>.from(proposal['policyGate'] ?? {});
-    final sensitivity = policyGate['sensitivity']?.toString();
+    final sensitivity = policyGate['sensitivity']?.toString() ?? '';
     if (sensitivity == 'high' || sensitivity == 'medium' || sensitivity == 'low') return sensitivity;
     return 'low';
   }

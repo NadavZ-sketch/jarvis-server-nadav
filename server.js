@@ -1722,8 +1722,30 @@ app.get('/dashboard/features', (_req, res) => {
 
 app.get('/dashboard/backlog', (_req, res) => {
     const data = readBacklog();
+
+    // Normalize old proposals and ensure Stage-1 scoring exists for every item.
+    data.proposals = (data.proposals || []).map((p) => {
+        normalizeProposalForMvp(p);
+        if (!p.scores || typeof p.scores !== 'object') {
+            const scored = scoreProposalRuleBased(p);
+            p.scores = {
+                impact: scored.impact,
+                effort: scored.effort,
+                risk: scored.risk,
+                confidence: scored.confidence,
+                weighted_score: scored.weighted_score,
+            };
+            p.why_now = p.why_now || scored.why_now;
+        }
+        if (!p.why_now) {
+            const rescored = scoreProposalRuleBased(p);
+            p.why_now = rescored.why_now;
+        }
+        p.ranking_version = p.ranking_version || BACKLOG_RANKING_VERSION;
+        return p;
+    }).sort((a, b) => (b.scores?.weighted_score || 0) - (a.scores?.weighted_score || 0));
+
     const topInsights = (data.proposals || [])
-        .map(p => normalizeProposalForMvp(p))
         .sort((a, b) => (b.outcomes?.outcome_score || 0) - (a.outcomes?.outcome_score || 0))
         .slice(0, 3)
         .map((p) => {
@@ -1733,6 +1755,8 @@ app.get('/dashboard/backlog', (_req, res) => {
             const ttvText = Number.isFinite(ttv) ? `⏱️ זמן-ערך ממוצע: ${Math.round(ttv / 60)} דק׳` : '⏱️ זמן-ערך עדיין נלמד';
             return `למדנו ש־${p.title || 'הצעה'} נשמרה ${kept}/${Math.max(total, 1)} פעמים. ${ttvText}`;
         });
+
+    writeBacklog(data);
     res.json({ ...data, ranking_version: data.ranking_version || BACKLOG_RANKING_VERSION, learned_insights: topInsights });
 });
 

@@ -1514,15 +1514,89 @@ app.get('/upcoming-items', async (_req, res) => {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 const BACKLOG_PATH = () => path.join(__dirname, 'backlog.json');
+
+const BACKLOG_RANKING_VERSION = 'mvp-v1';
+const BACKLOG_RANKING_WEIGHTS = {
+    impact: 0.4,
+    effort: 0.2, // low effort should rank higher (inverted in score formula)
+    risk: 0.2,   // low risk should rank higher (inverted in score formula)
+    confidence: 0.2,
+};
+
+function clampScore(v) {
+    return Math.max(1, Math.min(5, Math.round(v)));
+}
+
+function includesAny(text, words = []) {
+    return words.some(w => text.includes(w));
+}
+
+function scoreProposalRuleBased(proposal = {}) {
+    const title = (proposal.title || '').toString().toLowerCase();
+    const plan = (proposal.plan || '').toString().toLowerCase();
+    const category = (proposal.category || '').toString().toLowerCase();
+    const text = `${title} ${plan} ${category}`;
+
+    // Impact: higher for critical user flow improvements.
+    let impact = 3;
+    if (includesAny(text, ['login', 'signup', 'onboarding', 'chat', 'task', 'reminder', 'payment', 'sync', 'notification', 'voice'])) impact = 5;
+    else if (includesAny(text, ['ux', 'ui', 'performance', 'search'])) impact = 4;
+
+    // Effort: lower number = easier change.
+    let effort = 3;
+    if (includesAny(text, ['refactor', 'migration', 'rewrite', 'architecture', 'cross-platform', 'infra'])) effort = 5;
+    else if (includesAny(text, ['small', 'quick', 'copy', 'text', 'label', 'single endpoint', 'נקודתי', 'קטן'])) effort = 1;
+    else if (includesAny(text, ['endpoint', 'screen', 'widget', 'field'])) effort = 2;
+
+    // Risk: higher when touching permissions/personal memory/security.
+    let risk = 2;
+    if (includesAny(text, ['permission', 'auth', 'security', 'token', 'secret', 'personal memory', 'memory', 'privacy', 'gdpr', 'rls', 'encryption'])) risk = 5;
+    else if (includesAny(text, ['database', 'schema', 'migration', 'billing'])) risk = 4;
+    else if (includesAny(text, ['ui', 'copy', 'style'])) risk = 1;
+
+    // Confidence: lower with broad/unclear scope.
+    let confidence = 3;
+    if (includesAny(text, ['unknown', 'research', 'investigate', 'maybe', 'experimental'])) confidence = 2;
+    if (includesAny(text, ['small', 'quick', 'mvp', 'נקודתי'])) confidence = 5;
+
+    impact = clampScore(impact);
+    effort = clampScore(effort);
+    risk = clampScore(risk);
+    confidence = clampScore(confidence);
+
+    const weightedRaw =
+        (impact * BACKLOG_RANKING_WEIGHTS.impact) +
+        ((6 - effort) * BACKLOG_RANKING_WEIGHTS.effort) +
+        ((6 - risk) * BACKLOG_RANKING_WEIGHTS.risk) +
+        (confidence * BACKLOG_RANKING_WEIGHTS.confidence);
+
+    const weighted_score = Number(weightedRaw.toFixed(2));
+    const why_now = impact >= 4
+        ? 'משפר זרימת משתמש קריטית עם יחס עלות-תועלת טוב כרגע.'
+        : risk >= 4
+            ? 'חשוב לטפל עכשיו כדי לצמצם סיכון בהרשאות/אבטחה/פרטיות.'
+            : 'מומלץ לקדם כעת כדי לייצר שיפור מהיר ובטוח לחוויית המשתמש.';
+
+    return { impact, effort, risk, confidence, weighted_score, why_now };
+}
+
 function readBacklog() {
     try {
         const data = JSON.parse(require('fs').readFileSync(BACKLOG_PATH(), 'utf8'));
         if (!data.items)     data.items     = [];
         if (!data.proposals) data.proposals = [];
+        if (!data.proposals_history) data.proposals_history = [];
+        if (!data.ranking_version) data.ranking_version = BACKLOG_RANKING_VERSION;
         if (!data._nextId)   data._nextId   = (data.items.length > 0 ? Math.max(...data.items.map(i => i.id)) + 1 : 1);
         return data;
     } catch {
-        return { items: [], proposals: [], _nextId: 1 };
+        return {
+            items: [],
+            proposals: [],
+            proposals_history: [],
+            ranking_version: BACKLOG_RANKING_VERSION,
+            _nextId: 1,
+        };
     }
 }
 function writeBacklog(data) {
@@ -1537,7 +1611,8 @@ app.get('/dashboard/features', (_req, res) => {
 });
 
 app.get('/dashboard/backlog', (_req, res) => {
-    res.json(readBacklog());
+    const data = readBacklog();
+    res.json({ ...data, ranking_version: data.ranking_version || BACKLOG_RANKING_VERSION });
 });
 
 app.post('/dashboard/backlog', (req, res) => {
@@ -1636,7 +1711,9 @@ Output format (copy exactly, replace the values):
         // Map both English and Hebrew field name variants
         const baseId = backlog._nextId;
         backlog._nextId += 6;
-        const proposals = parsed.slice(0, 6).map((p, i) => ({
+        const proposals = parsed.slice(0, 6).map((p, i) => {
+            const generated_at = new Date().toISOString().slice(0, 10);
+            const baseProposal = {
             id: baseId + i,
             title:    ((p.title    || p['כותרת']   || p['כותרת:'] || '').toString()).slice(0, 80),
             plan:     ((p.plan     || p['תוכנית']  || p['תכנית']  || p['תיאור'] || '').toString()),
@@ -1644,8 +1721,27 @@ Output format (copy exactly, replace the values):
                 ? (p.priority || p['עדיפות']) : 'medium',
             category: (p.category || p['קטגוריה'] || 'improvement').toString(),
             status: 'proposal',
-            generated_at: new Date().toISOString().slice(0, 10),
-        })).filter(p => p.title.trim() || p.plan.trim()); // drop truly empty items
+            generated_at,
+            ranking_version: BACKLOG_RANKING_VERSION,
+            scores: {
+                impact: 3, effort: 3, risk: 2, confidence: 3, weighted_score: 3.2,
+            },
+            why_now: '',
+            };
+            const scored = scoreProposalRuleBased(baseProposal);
+            return {
+                ...baseProposal,
+                scores: {
+                    impact: scored.impact,
+                    effort: scored.effort,
+                    risk: scored.risk,
+                    confidence: scored.confidence,
+                    weighted_score: scored.weighted_score,
+                },
+                why_now: scored.why_now,
+            };
+        }).filter(p => p.title.trim() || p.plan.trim()) // drop truly empty items
+            .sort((a, b) => b.scores.weighted_score - a.scores.weighted_score);
 
         if (proposals.length === 0) {
             console.error('backlog/generate: all proposals had empty title+plan. Raw:', raw.slice(0, 300));
@@ -1654,8 +1750,20 @@ Output format (copy exactly, replace the values):
 
         backlog.proposals      = proposals;
         backlog._lastGenerated = new Date().toISOString().slice(0, 10);
+        backlog.ranking_version = BACKLOG_RANKING_VERSION;
+        backlog.proposals_history.unshift({
+            snapshot_at: new Date().toISOString(),
+            ranking_version: BACKLOG_RANKING_VERSION,
+            proposals: proposals.map(p => ({
+                id: p.id,
+                title: p.title,
+                scores: p.scores,
+                why_now: p.why_now,
+            })),
+        });
+        backlog.proposals_history = backlog.proposals_history.slice(0, 100);
         writeBacklog(backlog);
-        res.json({ proposals, generated_at: backlog._lastGenerated });
+        res.json({ proposals, generated_at: backlog._lastGenerated, ranking_version: BACKLOG_RANKING_VERSION });
     } catch (e) {
         console.error('backlog/generate error:', e.message);
         res.status(500).json({ error: e.message });

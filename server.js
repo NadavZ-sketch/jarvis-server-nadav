@@ -1704,7 +1704,7 @@ function recomputeProposalOutcomeScore(proposal) {
 function canTransitionProposalStatus(from, to) {
     if (from === to) return true;
     const allowed = {
-        proposal: ['draft_plan'],
+        proposal: ['draft_plan', 'active'],
         draft_plan: ['active', 'proposal'],
         active: ['validation', 'draft_plan'],
         validation: ['done', 'active'],

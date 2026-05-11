@@ -60,6 +60,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   String _filterStatus   = 'all';
   String _filterPriority = 'all';
   bool   _showDoneProposals = false;
+  bool   _sortByScore = true;
+  bool   _quickWinsOnly = false;
   final Map<String, String> _proposalResponses = {};
   final Set<String>         _activatingIds     = {};
 
@@ -119,13 +121,31 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     if (_filterPriority != 'all') {
       list = list.where((p) => p['priority'] == _filterPriority).toList();
     }
-    const statusOrder = {'active': 0, 'validation': 1, 'draft_plan': 2, 'proposal': 3, 'done': 4};
-    list.sort((a, b) {
-      final aO = statusOrder[a['status']] ?? 9;
-      final bO = statusOrder[b['status']] ?? 9;
-      if (aO != bO) return aO - bO;
-      return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
-    });
+    if (_quickWinsOnly) {
+      list = list.where((p) {
+        final scores = Map<String, dynamic>.from(p['scores'] ?? {});
+        final impact = (scores['impact'] is num) ? (scores['impact'] as num).toDouble() : 0.0;
+        final effort = (scores['effort'] is num) ? (scores['effort'] as num).toDouble() : 999.0;
+        final risk   = (scores['risk'] is num) ? (scores['risk'] as num).toDouble() : 999.0;
+        return impact >= 4 && effort <= 2 && risk <= 3;
+      }).toList();
+    }
+    if (_sortByScore) {
+      list.sort((a, b) {
+        final aS = (Map<String, dynamic>.from(a['scores'] ?? {})['weighted_score'] as num?)?.toDouble() ?? -1;
+        final bS = (Map<String, dynamic>.from(b['scores'] ?? {})['weighted_score'] as num?)?.toDouble() ?? -1;
+        if (aS != bS) return bS.compareTo(aS);
+        return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
+      });
+    } else {
+      const statusOrder = {'active': 0, 'validation': 1, 'draft_plan': 2, 'proposal': 3, 'done': 4};
+      list.sort((a, b) {
+        final aO = statusOrder[a['status']] ?? 9;
+        final bO = statusOrder[b['status']] ?? 9;
+        if (aO != bO) return aO - bO;
+        return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
+      });
+    }
     return list;
   }
 
@@ -148,6 +168,60 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
   String _priorityFilterLabel(String p) =>
       const {'all': 'הכל', 'high': 'גבוה', 'medium': 'בינוני', 'low': 'נמוך'}[p] ?? p;
+
+  String _scoreSignalLabel(String key, num? value) {
+    if (value == null) return 'אין נתון';
+    switch (key) {
+      case 'impact':
+        return value >= 4 ? 'השפעה גבוהה על משתמשים' : value >= 3 ? 'השפעה בינונית' : 'השפעה נמוכה יחסית';
+      case 'effort':
+        return value <= 2 ? 'מאמץ נמוך (מהיר לביצוע)' : value <= 3 ? 'מאמץ בינוני' : 'מאמץ גבוה';
+      case 'risk':
+        return value >= 4 ? 'סיכון גבוה (דורש זהירות/אישור)' : value >= 3 ? 'סיכון בינוני' : 'סיכון נמוך';
+      case 'confidence':
+        return value >= 4 ? 'ביטחון גבוה בהצלחה' : value >= 3 ? 'ביטחון בינוני' : 'ביטחון נמוך';
+      default:
+        return 'אות דירוג';
+    }
+  }
+
+  void _showScoreExplainer(Map<String, dynamic> scores) {
+    final impact = (scores['impact'] as num?)?.toDouble();
+    final effort = (scores['effort'] as num?)?.toDouble();
+    final risk = (scores['risk'] as num?)?.toDouble();
+    final confidence = (scores['confidence'] as num?)?.toDouble();
+    final weighted = scores['weighted_score'];
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: JC.surface,
+        title: const Text('איך לקרוא את הציון', textDirection: TextDirection.rtl, style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 16, fontWeight: FontWeight.w700)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Impact: ${impact?.toStringAsFixed(0) ?? '—'}/5 — ${_scoreSignalLabel('impact', impact)}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+              const SizedBox(height: 6),
+              Text('Effort: ${effort?.toStringAsFixed(0) ?? '—'}/5 — ${_scoreSignalLabel('effort', effort)}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+              const SizedBox(height: 6),
+              Text('Risk: ${risk?.toStringAsFixed(0) ?? '—'}/5 — ${_scoreSignalLabel('risk', risk)}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+              const SizedBox(height: 6),
+              Text('Confidence: ${confidence?.toStringAsFixed(0) ?? '—'}/5 — ${_scoreSignalLabel('confidence', confidence)}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+              const SizedBox(height: 10),
+              Text('Weighted Score: ${weighted ?? '—'}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              const Text('פרטיות והרשאות: כאשר Risk גבוה, מומלץ לבצע בדיקת הרשאות, scope נתונים ואישור משתמש מפורש לפני הפעלה.',
+                  textDirection: TextDirection.rtl, style: TextStyle(color: Color(0xFFF59E0B), fontFamily: 'Heebo', fontSize: 12.5, height: 1.4)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('סגור', style: TextStyle(color: JC.blue400, fontFamily: 'Heebo'))),
+        ],
+      ),
+    );
+  }
 
   void _scheduleRetry() {
     _retryTimer?.cancel();
@@ -1287,6 +1361,18 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                     _showDoneProposals,
                     () => setState(() => _showDoneProposals = !_showDoneProposals),
                   ),
+                  const SizedBox(width: 8),
+                  _filterChip(
+                    'Quick Wins',
+                    _quickWinsOnly,
+                    () => setState(() => _quickWinsOnly = !_quickWinsOnly),
+                  ),
+                  const SizedBox(width: 8),
+                  _filterChip(
+                    _sortByScore ? 'מיון: ציון' : 'מיון: סטטוס',
+                    _sortByScore,
+                    () => setState(() => _sortByScore = !_sortByScore),
+                  ),
                 ],
               ),
             ),
@@ -1363,6 +1449,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final checklist = List<Map<String, dynamic>>.from(p['checklist'] ?? []);
     final blockers = List<dynamic>.from(p['blockers'] ?? []);
     final doneCount = checklist.where((c) => c['done'] == true).length;
+    final scores = Map<String, dynamic>.from(p['scores'] ?? {});
+    final whyNow = (p['why_now'] ?? '').toString().trim();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1421,6 +1509,53 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                               fontSize: 12, height: 1.45),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      if (scores.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () => _showScoreExplainer(scores),
+                              child: const Icon(Icons.info_outline_rounded, color: JC.textMuted, size: 16),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text('הסבר ציון',
+                                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _badge('Impact ${scores['impact'] ?? '—'}/5', const Color(0xFF22C55E)),
+                            _badge('Effort ${scores['effort'] ?? '—'}/5', const Color(0xFFF59E0B)),
+                            _badge('Risk ${scores['risk'] ?? '—'}/5', const Color(0xFFEF4444)),
+                            _badge('Conf ${scores['confidence'] ?? '—'}/5', JC.blue400),
+                            _badge('Score ${scores['weighted_score'] ?? '—'}', const Color(0xFFA78BFA)),
+                          ],
+                        ),
+                      ],
+                      if (whyNow.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: JC.blue500.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: JC.blue400.withValues(alpha: 0.22), width: 0.8),
+                          ),
+                          child: Text(
+                            'למה עכשיו: $whyNow',
+                            textDirection: TextDirection.rtl,
+                            style: const TextStyle(
+                              color: JC.textSecondary,
+                              fontFamily: 'Heebo',
+                              fontSize: 11.5,
+                              height: 1.4,
+                            ),
+                          ),
                         ),
                       ],
                       const SizedBox(height: 8),

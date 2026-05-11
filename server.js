@@ -1756,7 +1756,6 @@ app.get('/dashboard/backlog', (_req, res) => {
             return `למדנו ש־${p.title || 'הצעה'} נשמרה ${kept}/${Math.max(total, 1)} פעמים. ${ttvText}`;
         });
 
-    writeBacklog(data);
     res.json({ ...data, ranking_version: data.ranking_version || BACKLOG_RANKING_VERSION, learned_insights: topInsights });
 });
 

@@ -1529,6 +1529,39 @@ function writeBacklog(data) {
     require('fs').writeFileSync(BACKLOG_PATH(), JSON.stringify(data, null, 2));
 }
 
+const PROPOSAL_STATUSES = ['proposal', 'draft_plan', 'active', 'validation', 'done'];
+
+function normalizeProposalForMvp(p) {
+    if (!Array.isArray(p.auditTrail)) p.auditTrail = [];
+    if (!Array.isArray(p.checklist)) p.checklist = [];
+    if (!Array.isArray(p.blockers)) p.blockers = [];
+    if (!Array.isArray(p.acceptanceCriteria)) p.acceptanceCriteria = [];
+    if (!p.owner || !['agent', 'human'].includes(p.owner)) p.owner = 'agent';
+    if (!p.estimation || typeof p.estimation !== 'string') p.estimation = 'MVP';
+    if (!p.sprint || typeof p.sprint !== 'string') p.sprint = 'sprint-1';
+    if (!p.privacyChecklist || typeof p.privacyChecklist !== 'object') {
+        p.privacyChecklist = {
+            permissionScopeChecked: false,
+            piiExposureChecked: false,
+            memoryRetentionReviewed: false,
+        };
+    }
+    if (!PROPOSAL_STATUSES.includes(p.status)) p.status = 'proposal';
+    return p;
+}
+
+function canTransitionProposalStatus(from, to) {
+    if (from === to) return true;
+    const allowed = {
+        proposal: ['draft_plan'],
+        draft_plan: ['active', 'proposal'],
+        active: ['validation', 'draft_plan'],
+        validation: ['done', 'active'],
+        done: ['validation'],
+    };
+    return (allowed[from] || []).includes(to);
+}
+
 app.get('/dashboard/features', (_req, res) => {
     try {
         const data = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'features.json'), 'utf8'));
@@ -1560,10 +1593,87 @@ app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
         const data = readBacklog();
         const item = data.proposals.find(p => p.id === id);
         if (!item) return res.status(404).json({ error: 'not found' });
-        item.status = (req.body?.status) || ({ proposal: 'active', active: 'done', done: 'proposal' }[item.status] || 'active');
+
+        normalizeProposalForMvp(item);
+
+        const requestedStatus = (req.body?.status || '').toString();
+        const actor = (req.body?.actor || 'system').toString().slice(0, 40);
+        const reason = (req.body?.reason || '').toString().slice(0, 200);
+        const nextStatus = requestedStatus || item.status;
+
+        if (!PROPOSAL_STATUSES.includes(nextStatus)) {
+            return res.status(400).json({ error: 'invalid status' });
+        }
+        if (!canTransitionProposalStatus(item.status, nextStatus)) {
+            return res.status(400).json({ error: `invalid transition: ${item.status} -> ${nextStatus}` });
+        }
+        if (nextStatus === 'done' && item.status !== 'validation') {
+            return res.status(400).json({ error: 'cannot move to done before validation' });
+        }
+
+        const prev = item.status;
+        item.status = nextStatus;
+        item.auditTrail.unshift({
+            from: prev,
+            to: nextStatus,
+            by: actor,
+            reason: reason || 'status update',
+            at: new Date().toISOString(),
+        });
+        item.auditTrail = item.auditTrail.slice(0, 20);
         writeBacklog(data);
         res.json({ item });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/dashboard/backlog/proposals/:id/draft-plan', (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        const data = readBacklog();
+        const item = data.proposals.find(p => p.id === id);
+        if (!item) return res.status(404).json({ error: 'not found' });
+        normalizeProposalForMvp(item);
+
+        const body = req.body || {};
+        const steps = Array.isArray(body.steps) ? body.steps : [
+            'להגדיר API schema וסוגי סטטוסים',
+            'להטמיע ולידציה ו-audit trail',
+            'לעדכן UI למסכי ניהול התקדמות',
+            'בדיקות זרימה מקצה לקצה',
+        ];
+        const acceptanceCriteria = Array.isArray(body.acceptanceCriteria) ? body.acceptanceCriteria : [
+            'יש מעבר מלא proposal→draft_plan→active→validation→done',
+            'אי אפשר לעבור ל-done לפני validation',
+            'לכל מעבר סטטוס נשמר audit trail',
+        ];
+        item.checklist = steps.map((s, i) => ({ id: i + 1, text: String(s), done: false }));
+        item.owner = ['agent', 'human'].includes(body.owner) ? body.owner : 'agent';
+        item.estimation = (body.estimation || 'MVP / 1 sprint').toString();
+        item.sprint = 'sprint-1';
+        item.blockers = Array.isArray(body.blockers) ? body.blockers.map(String) : [];
+        item.acceptanceCriteria = acceptanceCriteria.map(String);
+        item.privacyChecklist = {
+            permissionScopeChecked: Boolean(body.privacyChecklist?.permissionScopeChecked),
+            piiExposureChecked: Boolean(body.privacyChecklist?.piiExposureChecked),
+            memoryRetentionReviewed: Boolean(body.privacyChecklist?.memoryRetentionReviewed),
+        };
+
+        const prev = item.status;
+        item.status = 'draft_plan';
+        item.auditTrail.unshift({
+            from: prev,
+            to: 'draft_plan',
+            by: (body.actor || 'system').toString().slice(0, 40),
+            reason: (body.reason || 'draft plan created').toString().slice(0, 200),
+            at: new Date().toISOString(),
+        });
+        item.auditTrail = item.auditTrail.slice(0, 20);
+
+        writeBacklog(data);
+        res.json({ item });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.delete('/dashboard/backlog/proposals/:id', (req, res) => {

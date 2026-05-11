@@ -316,27 +316,33 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     setState(() => _activatingIds.add(idStr));
 
     try {
-      final results = await Future.wait([
-        http.patch(
-          Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map', 'consent': consent}),
-        ).timeout(const Duration(seconds: 8)),
-        http.post(
-          Uri.parse('$_base/ask-jarvis'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'command':
-                'קבלת משימה חדשה מה-Backlog:\n\nכותרת: $title\n\nתוכנית: $plan\n\n'
-                'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
-          }),
-        ).timeout(const Duration(seconds: 30)),
-      ]);
+      final activateRes = await http.patch(
+        Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map', 'consent': consent}),
+      ).timeout(const Duration(seconds: 8));
+
+      if (!mounted) return;
+      if (activateRes.statusCode != 200) {
+        setState(() => _activatingIds.remove(idStr));
+        _showSnack('ההפעלה נחסמה לפי מדיניות פרטיות');
+        return;
+      }
+
+      final askJarvisRes = await http.post(
+        Uri.parse('$_base/ask-jarvis'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'command':
+              'קבלת משימה חדשה מה-Backlog:\n\nכותרת: $title\n\nתוכנית: $plan\n\n'
+              'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
+        }),
+      ).timeout(const Duration(seconds: 30));
 
       if (!mounted) return;
 
-      final jarvisAnswer = results[1].statusCode == 200
-          ? (jsonDecode(results[1].body) as Map<String, dynamic>)['answer']?.toString() ?? ''
+      final jarvisAnswer = askJarvisRes.statusCode == 200
+          ? (jsonDecode(askJarvisRes.body) as Map<String, dynamic>)['answer']?.toString() ?? ''
           : 'ג׳רביס לא הגיב';
 
       setState(() {
@@ -1449,7 +1455,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                       if (!isDone)
                         Align(
                           alignment: Alignment.centerRight,
-                          child: Text('נדרש אישור פרטיות', style: TextStyle(color: const Color(0xFFF59E0B), fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+                          child: const Text('נדרש אישור פרטיות', style: TextStyle(color: Color(0xFFF59E0B), fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
                         ),
                       if (!isDone) const SizedBox(height: 6),
                       Row(

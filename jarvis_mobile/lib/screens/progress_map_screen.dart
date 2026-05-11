@@ -70,6 +70,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   String? _generatedPrompt;
   bool _generatingPrompt = false;
   bool _promptCopied     = false;
+  bool _smartCompactMode = true;
 
   int    _featureTabIndex = 0;
   Timer? _retryTimer;
@@ -679,17 +680,27 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const Text('מעבדת התפתחות חכמה',
-              textAlign: TextAlign.right,
-              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 15)),
+          Row(children: [
+            Switch.adaptive(
+              value: _smartCompactMode,
+              onChanged: (v) => setState(() => _smartCompactMode = v),
+              activeColor: JC.blue400,
+            ),
+            const Text('MVP', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+            const Spacer(),
+            const Text('מעבדת התפתחות חכמה',
+                textAlign: TextAlign.right,
+                style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 15)),
+          ]),
           const SizedBox(height: 6),
-          const Text('מנוע תעדוף חי: מציג כיווני שיפור ועוזר להתחיל ביצוע עכשיו.',
+          const Text('מנוע תעדוף חי: מציג כיווני שיפור ועוזר להתחיל ביצוע עכשיו. מצב MVP פעיל כברירת מחדל.',
               textAlign: TextAlign.right,
               style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
           const SizedBox(height: 12),
           _build3DSignalCard(maturity, delivery, innovation, stability, scale),
           const SizedBox(height: 12),
           ...smartSuggestions.map((s) => _buildSmartSuggestionTile(s)).toList(),
+          if (!_smartCompactMode) _buildSmartExplainPanel(),
         ],
       ),
     );
@@ -712,7 +723,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       });
     }
     suggestions.add({
-      'title': 'לנסח ספרינט שיפורים',
+      'title': _smartCompactMode ? 'לנסח ספרינט MVP' : 'לנסח ספרינט שיפורים',
       'reason': 'ממפה שינויים, סוכנים ופיצ׳רים לפורמט אחד שניתן להריץ.',
       'action': 'sprint_prompt',
     });
@@ -799,11 +810,49 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             textAlign: TextAlign.right,
             style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
         trailing: TextButton(
-          onPressed: () => _runSmartAction(suggestion['action'] ?? ''),
+          onPressed: () => _confirmSmartAction(suggestion),
           child: const Text('הפעל', style: TextStyle(fontFamily: 'Heebo')),
         ),
       ),
     );
+  }
+
+  Widget _buildSmartExplainPanel() {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: JC.bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: JC.border, width: 0.7),
+      ),
+      child: const Text(
+        'פרטיות והרשאות: פעולות המעבדה משתמשות רק בנתונים שכבר נטענו למסך. מומלץ להוסיף בהמשך פרופיל הרשאות פר-משתמש לפני אוטומציה מלאה.',
+        textAlign: TextAlign.right,
+        style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+      ),
+    );
+  }
+
+  Future<void> _confirmSmartAction(Map<String, String> suggestion) async {
+    final action = suggestion['action'] ?? '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: JC.surface,
+        title: Text(suggestion['title'] ?? 'הפעלת פעולה',
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
+        content: const Text('לבצע עכשיו את הפעולה הזו?',
+            textAlign: TextAlign.right,
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ביטול')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('הפעל')),
+        ],
+      ),
+    );
+    if (ok == true) await _runSmartAction(action);
   }
 
   Future<void> _runSmartAction(String action) async {
@@ -819,8 +868,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     }
     if (action == 'sprint_prompt') {
       _promptCtrl.text =
-          'בנה ספרינט שבועי חכם למערכת Jarvis: שינויים בארכיטקטורה, שדרוג סוכנים, פיצ׳רים חדשים, '
-          'שיפורי UI/UX, פרטיות והרשאות. הוסף סדר עדיפויות + משימות MVP.';
+          _smartCompactMode
+              ? 'בנה ספרינט MVP לשבוע הקרוב במערכת Jarvis: 3 משימות בלבד, בסדר עדיפויות ברור, כולל פרטיות והרשאות.'
+              : 'בנה ספרינט שבועי חכם למערכת Jarvis: שינויים בארכיטקטורה, שדרוג סוכנים, פיצ׳רים חדשים, '
+                    'שיפורי UI/UX, פרטיות והרשאות. הוסף סדר עדיפויות + משימות MVP.';
       await _generatePrompt();
       return;
     }

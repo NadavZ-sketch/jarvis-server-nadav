@@ -1603,6 +1603,51 @@ function writeBacklog(data) {
     require('fs').writeFileSync(BACKLOG_PATH(), JSON.stringify(data, null, 2));
 }
 
+
+const PRIVACY_POLICY_VERSION = '2026-05-11.v1';
+const CONSENT_TTL_MS = 15 * 60 * 1000;
+
+function classifyProposalSensitivity(proposal = {}) {
+    const text = `${proposal.title || ''} ${proposal.plan || ''} ${proposal.category || ''}`.toLowerCase();
+    const highKeywords = ['pii', 'personal data', 'מידע אישי', 'פרטיות', 'privacy', 'payment', 'bank', 'email send', 'auto-send', 'auto run', 'autonomous', 'delete', 'erase'];
+    const mediumKeywords = ['memory', 'profile', 'contact', 'location', 'calendar', 'reminder', 'notification', 'sync', 'permission'];
+    if (includesAny(text, highKeywords)) return 'high';
+    if (includesAny(text, mediumKeywords)) return 'medium';
+    return 'low';
+}
+
+function normalizeConsentPolicy(p) {
+    if (!p.policyGate || typeof p.policyGate !== 'object') {
+        p.policyGate = {
+            sensitivity: classifyProposalSensitivity(p),
+            requiresPrivacyApproval: true,
+            consent: {
+                policyVersion: null,
+                approvedAt: null,
+                expiresAt: null,
+                doubleApprovedAt: null,
+                dataUsageExplanation: null,
+            },
+        };
+    }
+    p.policyGate.sensitivity = ['low', 'medium', 'high'].includes(p.policyGate.sensitivity)
+        ? p.policyGate.sensitivity
+        : classifyProposalSensitivity(p);
+    if (p.policyGate.requiresPrivacyApproval !== true) p.policyGate.requiresPrivacyApproval = true;
+    if (!p.policyGate.consent || typeof p.policyGate.consent !== 'object') p.policyGate.consent = {};
+    p.policyGate.consent.policyVersion = p.policyGate.consent.policyVersion || null;
+    p.policyGate.consent.approvedAt = p.policyGate.consent.approvedAt || null;
+    p.policyGate.consent.expiresAt = p.policyGate.consent.expiresAt || null;
+    p.policyGate.consent.doubleApprovedAt = p.policyGate.consent.doubleApprovedAt || null;
+    p.policyGate.consent.dataUsageExplanation = p.policyGate.consent.dataUsageExplanation || null;
+}
+
+function hasValidHighConsent(consent = {}) {
+    if (!consent.approvedAt || !consent.doubleApprovedAt || !consent.expiresAt) return false;
+    if (consent.policyVersion !== PRIVACY_POLICY_VERSION) return false;
+    return new Date(consent.expiresAt).getTime() > Date.now();
+}
+
 const PROPOSAL_STATUSES = ['proposal', 'draft_plan', 'active', 'validation', 'done'];
 const OUTCOME_EVENT_NAMES = new Set([
     'proposal_activated',
@@ -1628,6 +1673,7 @@ function normalizeProposalForMvp(p) {
         };
     }
     if (!PROPOSAL_STATUSES.includes(p.status)) p.status = 'proposal';
+    normalizeConsentPolicy(p);
     if (!p.outcomes || typeof p.outcomes !== 'object') {
         p.outcomes = {
             activated_count: 0,
@@ -1717,6 +1763,7 @@ app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
         const actor = (req.body?.actor || 'system').toString().slice(0, 40);
         const reason = (req.body?.reason || '').toString().slice(0, 200);
         const nextStatus = requestedStatus || item.status;
+        const consentInput = req.body?.consent || {};
 
         if (!PROPOSAL_STATUSES.includes(nextStatus)) {
             return res.status(400).json({ error: 'invalid status' });
@@ -1724,6 +1771,47 @@ app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
         if (!canTransitionProposalStatus(item.status, nextStatus)) {
             return res.status(400).json({ error: `invalid transition: ${item.status} -> ${nextStatus}` });
         }
+
+        if (nextStatus === 'active') {
+            const sensitivity = item.policyGate.sensitivity;
+            const consent = item.policyGate.consent;
+            if (sensitivity === 'medium') {
+                if (!consentInput.explicitApproval || !consentInput.dataUsageExplanation) {
+                    return res.status(400).json({ error: 'medium sensitivity requires explicit approval and data usage explanation' });
+                }
+                consent.approvedAt = new Date().toISOString();
+                consent.dataUsageExplanation = String(consentInput.dataUsageExplanation).slice(0, 500);
+                consent.policyVersion = PRIVACY_POLICY_VERSION;
+                consent.expiresAt = null;
+                consent.doubleApprovedAt = null;
+            }
+            if (sensitivity === 'high') {
+                if (!consentInput.explicitApproval || !consentInput.doubleApproval) {
+                    return res.status(400).json({ error: 'high sensitivity requires double approval' });
+                }
+                const ttlMinutes = Number(consentInput.ttlMinutes || 15);
+                const ttlMs = Math.min(CONSENT_TTL_MS, Math.max(60 * 1000, ttlMinutes * 60 * 1000));
+                const now = new Date();
+                consent.approvedAt = now.toISOString();
+                consent.doubleApprovedAt = now.toISOString();
+                consent.expiresAt = new Date(now.getTime() + ttlMs).toISOString();
+                consent.policyVersion = PRIVACY_POLICY_VERSION;
+                consent.dataUsageExplanation = String(consentInput.dataUsageExplanation || '').slice(0, 500) || null;
+                if (!hasValidHighConsent(consent)) {
+                    return res.status(400).json({ error: 'invalid high-sensitivity consent' });
+                }
+            }
+            if (sensitivity === 'low' && !consentInput.explicitApproval) {
+                return res.status(400).json({ error: 'low sensitivity requires approval' });
+            }
+            if (sensitivity === 'low') {
+                consent.approvedAt = new Date().toISOString();
+                consent.policyVersion = PRIVACY_POLICY_VERSION;
+                consent.doubleApprovedAt = null;
+                consent.expiresAt = null;
+            }
+        }
+
         if (nextStatus === 'done' && item.status !== 'validation') {
             return res.status(400).json({ error: 'cannot move to done before validation' });
         }
@@ -1950,6 +2038,17 @@ Output format (copy exactly, replace the values):
                     weighted_score: scored.weighted_score,
                 },
                 why_now: scored.why_now,
+                policyGate: {
+                    sensitivity: classifyProposalSensitivity(baseProposal),
+                    requiresPrivacyApproval: true,
+                    consent: {
+                        policyVersion: null,
+                        approvedAt: null,
+                        expiresAt: null,
+                        doubleApprovedAt: null,
+                        dataUsageExplanation: null,
+                    },
+                },
             };
         }).filter(p => p.title.trim() || p.plan.trim()) // drop truly empty items
             .sort((a, b) => b.scores.weighted_score - a.scores.weighted_score);

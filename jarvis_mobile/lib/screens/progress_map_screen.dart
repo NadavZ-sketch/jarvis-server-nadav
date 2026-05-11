@@ -268,6 +268,40 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     }
   }
 
+
+  String _proposalSensitivity(Map<String, dynamic> proposal) {
+    final policyGate = Map<String, dynamic>.from(proposal['policyGate'] ?? {});
+    final sensitivity = policyGate['sensitivity']?.toString();
+    if (sensitivity == 'high' || sensitivity == 'medium' || sensitivity == 'low') return sensitivity;
+    return 'low';
+  }
+
+  Future<Map<String, dynamic>?> _collectConsentForSensitivity(String sensitivity) async {
+    final ctrl = TextEditingController();
+    bool second = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          backgroundColor: JC.surface,
+          title: const Text('נדרש אישור פרטיות', textAlign: TextAlign.right, style: TextStyle(fontFamily: 'Heebo')),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (sensitivity != 'low') TextField(controller: ctrl, textAlign: TextAlign.right, decoration: const InputDecoration(hintText: 'הסבר קצר לשימוש בנתונים')),
+            if (sensitivity == 'high') CheckboxListTile(value: second, onChanged: (v)=>setLocal(()=>second=v??false), title: const Text('אני מאשר/ת שוב (אישור כפול)', style: TextStyle(fontSize: 13)), controlAffinity: ListTileControlAffinity.leading),
+          ]),
+          actions: [TextButton(onPressed: ()=>Navigator.pop(context,false), child: const Text('ביטול')), ElevatedButton(onPressed: ()=>Navigator.pop(context,true), child: const Text('אישור'))],
+        ),
+      ),
+    );
+    if (ok != true) return null;
+    return {
+      'explicitApproval': true,
+      if (sensitivity != 'low') 'dataUsageExplanation': ctrl.text.trim(),
+      if (sensitivity == 'high') 'doubleApproval': second,
+      if (sensitivity == 'high') 'ttlMinutes': 15,
+    };
+  }
+
   Future<void> _activateProposal(Map<String, dynamic> proposal) async {
     final idRaw = proposal['id'];
     final idStr = idRaw?.toString() ?? '';
@@ -275,6 +309,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
     final title = proposal['title']?.toString() ?? '';
     final plan  = proposal['plan']?.toString()  ?? '';
+    final sensitivity = _proposalSensitivity(proposal);
+    final consent = await _collectConsentForSensitivity(sensitivity);
+    if (consent == null) return;
 
     setState(() => _activatingIds.add(idStr));
 
@@ -283,7 +320,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         http.patch(
           Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map'}),
+          body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map', 'consent': consent}),
         ).timeout(const Duration(seconds: 8)),
         http.post(
           Uri.parse('$_base/ask-jarvis'),
@@ -1409,6 +1446,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                         const SizedBox(height: 8),
                       ],
                       // Badges + activate button
+                      if (!isDone)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Text('נדרש אישור פרטיות', style: TextStyle(color: const Color(0xFFF59E0B), fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+                        ),
+                      if (!isDone) const SizedBox(height: 6),
                       Row(
                         children: [
                           if (!isDone)

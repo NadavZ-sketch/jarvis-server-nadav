@@ -471,6 +471,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             const SizedBox(height: 14),
             _buildMetrics(),
             const SizedBox(height: 14),
+            _buildSmartRoadmapLab(),
+            const SizedBox(height: 14),
             if (!_loadingFeatures && _done.isNotEmpty) ...[
               _buildProgressBar(),
               const SizedBox(height: 20),
@@ -650,6 +652,179 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         ],
       ),
     );
+  }
+
+  // ── Smart lab (visual + actionable) ─────────────────────────────────────
+
+  Widget _buildSmartRoadmapLab() {
+    final doneCount = _done.length;
+    final buildingCount = _building.length;
+    final plannedCount = _planned.length;
+    final total = (doneCount + buildingCount + plannedCount).clamp(1, 99999);
+    final maturity = (doneCount / total).clamp(0.0, 1.0);
+    final delivery = ((doneCount + (buildingCount * 0.6)) / total).clamp(0.0, 1.0);
+    final innovation = ((_proposals.where((p) => p['status'] != _PS.done).length) / 8).clamp(0.2, 1.0);
+    final stability = ((_serverOk == true ? 0.9 : 0.55) - ((_latencyMs / 1000).clamp(0.0, 0.2))).clamp(0.2, 1.0);
+    final scale = ((_stats['memories']?['total'] ?? 0) / 80).clamp(0.2, 1.0);
+
+    final smartSuggestions = _buildSmartSuggestions();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text('מעבדת התפתחות חכמה',
+              textAlign: TextAlign.right,
+              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 15)),
+          const SizedBox(height: 6),
+          const Text('מנוע תעדוף חי: מציג כיווני שיפור ועוזר להתחיל ביצוע עכשיו.',
+              textAlign: TextAlign.right,
+              style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+          const SizedBox(height: 12),
+          _build3DSignalCard(maturity, delivery, innovation, stability, scale),
+          const SizedBox(height: 12),
+          ...smartSuggestions.map((s) => _buildSmartSuggestionTile(s)).toList(),
+        ],
+      ),
+    );
+  }
+
+  List<Map<String, String>> _buildSmartSuggestions() {
+    final suggestions = <Map<String, String>>[];
+    if (_proposals.where((p) => p['status'] == _PS.active).isEmpty) {
+      suggestions.add({
+        'title': 'להפעיל הצעה אחת עכשיו',
+        'reason': 'אין כרגע הצעה פעילה, לכן הלמידה בפועל תקועה.',
+        'action': 'start_first',
+      });
+    }
+    if ((_stats['memories']?['total'] ?? 0) < 10) {
+      suggestions.add({
+        'title': 'לחזק זיכרון אישי',
+        'reason': 'פחות מ-10 זיכרונות מורידים איכות פרסונליזציה.',
+        'action': 'memory_focus',
+      });
+    }
+    suggestions.add({
+      'title': 'לנסח ספרינט שיפורים',
+      'reason': 'ממפה שינויים, סוכנים ופיצ׳רים לפורמט אחד שניתן להריץ.',
+      'action': 'sprint_prompt',
+    });
+    return suggestions.take(3).toList();
+  }
+
+  Widget _build3DSignalCard(double m, double d, double i, double s, double sc) {
+    return Container(
+      height: 160,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1D4ED8), Color(0xFF0F172A)],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(
+        child: Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.001)
+            ..rotateX(0.2)
+            ..rotateY(-0.28),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _signalBar('בשלות', m),
+              _signalBar('מסירה', d),
+              _signalBar('חדשנות', i),
+              _signalBar('יציבות', s),
+              _signalBar('סקייל', sc),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _signalBar(String label, double value) {
+    final h = 24 + (90 * value);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text('${(value * 100).round()}%', style: const TextStyle(color: Colors.white70, fontSize: 10)),
+        const SizedBox(height: 4),
+        Container(
+          width: 22,
+          height: h,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(7),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF38BDF8), Color(0xFF22D3EE), Color(0xFF34D399)],
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+            ),
+            boxShadow: const [BoxShadow(color: Color(0x5538BDF8), blurRadius: 8, offset: Offset(0, 3))],
+          ),
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: 52,
+          child: Text(label, textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontFamily: 'Heebo', fontSize: 10)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSmartSuggestionTile(Map<String, String> suggestion) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: JC.bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: JC.border, width: 0.7),
+      ),
+      child: ListTile(
+        dense: true,
+        title: Text(suggestion['title'] ?? '',
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
+        subtitle: Text(suggestion['reason'] ?? '',
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+        trailing: TextButton(
+          onPressed: () => _runSmartAction(suggestion['action'] ?? ''),
+          child: const Text('הפעל', style: TextStyle(fontFamily: 'Heebo')),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _runSmartAction(String action) async {
+    if (action == 'start_first') {
+      final firstProposal = _proposals.firstWhere(
+        (p) => p['status'] == _PS.proposal,
+        orElse: () => <String, dynamic>{},
+      );
+      if (firstProposal.isNotEmpty) {
+        await _activateProposal(firstProposal);
+        return;
+      }
+    }
+    if (action == 'sprint_prompt') {
+      _promptCtrl.text =
+          'בנה ספרינט שבועי חכם למערכת Jarvis: שינויים בארכיטקטורה, שדרוג סוכנים, פיצ׳רים חדשים, '
+          'שיפורי UI/UX, פרטיות והרשאות. הוסף סדר עדיפויות + משימות MVP.';
+      await _generatePrompt();
+      return;
+    }
+    widget.onSwitchToChat?.call('בוא נבנה תכנית ממוקדת לשיפור זיכרון אישי ולמידת משתמש בצורה פרטית ובטוחה.');
   }
 
   Widget _dot(Color color, String label) => Row(

@@ -71,6 +71,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   bool _generatingPrompt = false;
   bool _promptCopied     = false;
   bool _smartCompactMode = true;
+  final Map<String, int> _smartTelemetry = {
+    'action_start_first': 0,
+    'action_sprint_prompt': 0,
+    'action_sprint_prompt_mvp': 0,
+    'action_sprint_prompt_full': 0,
+    'action_memory_focus': 0,
+    'confirm_yes': 0,
+    'confirm_no': 0,
+  };
 
   int    _featureTabIndex = 0;
   Timer? _retryTimer;
@@ -700,6 +709,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           _build3DSignalCard(maturity, delivery, innovation, stability, scale),
           const SizedBox(height: 12),
           ...smartSuggestions.map((s) => _buildSmartSuggestionTile(s)).toList(),
+          const SizedBox(height: 6),
+          _buildSmartTelemetryPanel(),
           if (!_smartCompactMode) _buildSmartExplainPanel(),
         ],
       ),
@@ -834,6 +845,34 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     );
   }
 
+  Widget _buildSmartTelemetryPanel() {
+    int v(String k) => _smartTelemetry[k] ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: JC.bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: JC.border, width: 0.7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text('מדדי שימוש (MVP מקומי)',
+              textAlign: TextAlign.right,
+              style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Text('אישורים: ${v('confirm_yes')} | ביטולים: ${v('confirm_no')}',
+              style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+          Text('הפעל הצעה: ${v('action_start_first')} | חיזוק זיכרון: ${v('action_memory_focus')}',
+              style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+          Text('Sprint MVP: ${v('action_sprint_prompt_mvp')} | Sprint מורחב: ${v('action_sprint_prompt_full')}',
+              style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
   Future<void> _confirmSmartAction(Map<String, String> suggestion) async {
     final action = suggestion['action'] ?? '';
     final ok = await showDialog<bool>(
@@ -852,11 +891,26 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         ],
       ),
     );
-    if (ok == true) await _runSmartAction(action);
+    if (ok == true) {
+      setState(() => _smartTelemetry['confirm_yes'] = (_smartTelemetry['confirm_yes'] ?? 0) + 1);
+      _trackSmartEvent('confirm_yes', metadata: {
+        'action': action,
+        'compactMode': _smartCompactMode,
+      });
+      await _runSmartAction(action);
+    } else {
+      setState(() => _smartTelemetry['confirm_no'] = (_smartTelemetry['confirm_no'] ?? 0) + 1);
+      _trackSmartEvent('confirm_no', metadata: {
+        'action': action,
+        'compactMode': _smartCompactMode,
+      });
+    }
   }
 
   Future<void> _runSmartAction(String action) async {
     if (action == 'start_first') {
+      setState(() => _smartTelemetry['action_start_first'] = (_smartTelemetry['action_start_first'] ?? 0) + 1);
+      _trackSmartEvent('action_start_first', metadata: {'compactMode': _smartCompactMode});
       final firstProposal = _proposals.firstWhere(
         (p) => p['status'] == _PS.proposal,
         orElse: () => <String, dynamic>{},
@@ -867,6 +921,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       }
     }
     if (action == 'sprint_prompt') {
+      setState(() => _smartTelemetry['action_sprint_prompt'] = (_smartTelemetry['action_sprint_prompt'] ?? 0) + 1);
+      setState(() {
+        final key = _smartCompactMode ? 'action_sprint_prompt_mvp' : 'action_sprint_prompt_full';
+        _smartTelemetry[key] = (_smartTelemetry[key] ?? 0) + 1;
+      });
+      _trackSmartEvent(
+        _smartCompactMode ? 'action_sprint_prompt_mvp' : 'action_sprint_prompt_full',
+        metadata: {'compactMode': _smartCompactMode},
+      );
       _promptCtrl.text =
           _smartCompactMode
               ? 'בנה ספרינט MVP לשבוע הקרוב במערכת Jarvis: 3 משימות בלבד, בסדר עדיפויות ברור, כולל פרטיות והרשאות.'
@@ -875,7 +938,26 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       await _generatePrompt();
       return;
     }
+    setState(() => _smartTelemetry['action_memory_focus'] = (_smartTelemetry['action_memory_focus'] ?? 0) + 1);
+    _trackSmartEvent('action_memory_focus', metadata: {'compactMode': _smartCompactMode});
     widget.onSwitchToChat?.call('בוא נבנה תכנית ממוקדת לשיפור זיכרון אישי ולמידת משתמש בצורה פרטית ובטוחה.');
+  }
+
+  Future<void> _trackSmartEvent(String eventName, {Map<String, dynamic>? metadata}) async {
+    try {
+      await http.post(
+        Uri.parse('$_base/dashboard/smart-telemetry'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim(),
+          'eventName': eventName,
+          'eventValue': 1,
+          'metadata': metadata ?? {},
+        }),
+      ).timeout(const Duration(seconds: 6));
+    } catch (_) {
+      // Telemetry must never block UX.
+    }
   }
 
   Widget _dot(Color color, String label) => Row(

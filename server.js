@@ -1695,6 +1695,54 @@ app.post('/dashboard/generate-prompt', async (req, res) => {
     }
 });
 
+// ─── Dashboard – Smart telemetry (MVP) ──────────────────────────────────────
+app.post('/dashboard/smart-telemetry', async (req, res) => {
+    try {
+        const { userId, eventName, eventValue, metadata } = req.body || {};
+        if (!userId || !String(userId).trim()) return res.status(400).json({ error: 'userId required' });
+        if (!eventName || !String(eventName).trim()) return res.status(400).json({ error: 'eventName required' });
+
+        const payload = {
+            user_id: String(userId).trim(),
+            event_name: String(eventName).trim(),
+            event_value: Number.isFinite(Number(eventValue)) ? Number(eventValue) : 1,
+            metadata: (metadata && typeof metadata === 'object') ? metadata : {},
+        };
+
+        const { error } = await supabase.from('smart_telemetry_events').insert(payload);
+        if (error) return res.status(500).json({ error: error.message });
+        res.json({ ok: true });
+    } catch (e) {
+        console.error('smart-telemetry POST error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/dashboard/smart-telemetry', async (req, res) => {
+    try {
+        const userId = String(req.query.userId || '').trim();
+        if (!userId) return res.status(400).json({ error: 'userId required' });
+
+        const { data, error } = await supabase
+            .from('smart_telemetry_events')
+            .select('event_name,event_value,created_at')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(300);
+
+        if (error) return res.status(500).json({ error: error.message });
+        const counters = {};
+        for (const row of (data || [])) {
+            const key = row.event_name || 'unknown';
+            counters[key] = (counters[key] || 0) + (Number(row.event_value) || 0);
+        }
+        res.json({ counters, events: data || [] });
+    } catch (e) {
+        console.error('smart-telemetry GET error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 module.exports = { app };

@@ -104,12 +104,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   // Proposals (AI backlog)
   List<Map<String, dynamic>> _proposals = [];
   String? _lastGenerated;
+  List<String> _learnedInsights = [];
   bool _generatingProposals = false;
 
   // Filter / inline-activation state
   String _filterStatus   = 'all';
   String _filterPriority = 'all';
   bool   _showDoneProposals = false;
+  bool   _sortByScore = true;
+  bool   _quickWinsOnly = false;
   final Map<String, String> _proposalResponses = {};
   final Set<String>         _activatingIds     = {};
 
@@ -170,13 +173,31 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     if (_filterPriority != 'all') {
       list = list.where((p) => p['priority'] == _filterPriority).toList();
     }
-    const statusOrder = {'active': 0, 'validation': 1, 'draft_plan': 2, 'proposal': 3, 'done': 4};
-    list.sort((a, b) {
-      final aO = statusOrder[a['status']] ?? 9;
-      final bO = statusOrder[b['status']] ?? 9;
-      if (aO != bO) return aO - bO;
-      return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
-    });
+    if (_quickWinsOnly) {
+      list = list.where((p) {
+        final scores = Map<String, dynamic>.from(p['scores'] ?? {});
+        final impact = (scores['impact'] is num) ? (scores['impact'] as num).toDouble() : 0.0;
+        final effort = (scores['effort'] is num) ? (scores['effort'] as num).toDouble() : 999.0;
+        final risk   = (scores['risk'] is num) ? (scores['risk'] as num).toDouble() : 999.0;
+        return impact >= 4 && effort <= 2 && risk <= 3;
+      }).toList();
+    }
+    if (_sortByScore) {
+      list.sort((a, b) {
+        final aS = (Map<String, dynamic>.from(a['scores'] ?? {})['weighted_score'] as num?)?.toDouble() ?? -1;
+        final bS = (Map<String, dynamic>.from(b['scores'] ?? {})['weighted_score'] as num?)?.toDouble() ?? -1;
+        if (aS != bS) return bS.compareTo(aS);
+        return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
+      });
+    } else {
+      const statusOrder = {'active': 0, 'validation': 1, 'draft_plan': 2, 'proposal': 3, 'done': 4};
+      list.sort((a, b) {
+        final aO = statusOrder[a['status']] ?? 9;
+        final bO = statusOrder[b['status']] ?? 9;
+        if (aO != bO) return aO - bO;
+        return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
+      });
+    }
     return list;
   }
 
@@ -199,6 +220,60 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
   String _priorityFilterLabel(String p) =>
       const {'all': 'הכל', 'high': 'גבוה', 'medium': 'בינוני', 'low': 'נמוך'}[p] ?? p;
+
+  String _scoreSignalLabel(String key, num? value) {
+    if (value == null) return 'אין נתון';
+    switch (key) {
+      case 'impact':
+        return value >= 4 ? 'השפעה גבוהה על משתמשים' : value >= 3 ? 'השפעה בינונית' : 'השפעה נמוכה יחסית';
+      case 'effort':
+        return value <= 2 ? 'מאמץ נמוך (מהיר לביצוע)' : value <= 3 ? 'מאמץ בינוני' : 'מאמץ גבוה';
+      case 'risk':
+        return value >= 4 ? 'סיכון גבוה (דורש זהירות/אישור)' : value >= 3 ? 'סיכון בינוני' : 'סיכון נמוך';
+      case 'confidence':
+        return value >= 4 ? 'ביטחון גבוה בהצלחה' : value >= 3 ? 'ביטחון בינוני' : 'ביטחון נמוך';
+      default:
+        return 'אות דירוג';
+    }
+  }
+
+  void _showScoreExplainer(Map<String, dynamic> scores) {
+    final impact = (scores['impact'] as num?)?.toDouble();
+    final effort = (scores['effort'] as num?)?.toDouble();
+    final risk = (scores['risk'] as num?)?.toDouble();
+    final confidence = (scores['confidence'] as num?)?.toDouble();
+    final weighted = scores['weighted_score'];
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: JC.surface,
+        title: const Text('איך לקרוא את הציון', textDirection: TextDirection.rtl, style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 16, fontWeight: FontWeight.w700)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Impact: ${impact?.toStringAsFixed(0) ?? '—'}/5 — ${_scoreSignalLabel('impact', impact)}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+              const SizedBox(height: 6),
+              Text('Effort: ${effort?.toStringAsFixed(0) ?? '—'}/5 — ${_scoreSignalLabel('effort', effort)}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+              const SizedBox(height: 6),
+              Text('Risk: ${risk?.toStringAsFixed(0) ?? '—'}/5 — ${_scoreSignalLabel('risk', risk)}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+              const SizedBox(height: 6),
+              Text('Confidence: ${confidence?.toStringAsFixed(0) ?? '—'}/5 — ${_scoreSignalLabel('confidence', confidence)}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+              const SizedBox(height: 10),
+              Text('Weighted Score: ${weighted ?? '—'}', textDirection: TextDirection.rtl, style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              const Text('פרטיות והרשאות: כאשר Risk גבוה, מומלץ לבצע בדיקת הרשאות, scope נתונים ואישור משתמש מפורש לפני הפעלה.',
+                  textDirection: TextDirection.rtl, style: TextStyle(color: Color(0xFFF59E0B), fontFamily: 'Heebo', fontSize: 12.5, height: 1.4)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('סגור', style: TextStyle(color: JC.blue400, fontFamily: 'Heebo'))),
+        ],
+      ),
+    );
+  }
 
   void _scheduleRetry() {
     _retryTimer?.cancel();
@@ -278,6 +353,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         setState(() {
           _proposals      = List<Map<String, dynamic>>.from(d['proposals'] ?? []);
           _items          = List<Map<String, dynamic>>.from(d['items']     ?? []);
+          _learnedInsights = List<String>.from(d['learned_insights'] ?? []);
           _lastGenerated  = d['_lastGenerated']?.toString();
           _loadingBacklog = false;
         });
@@ -318,6 +394,40 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     }
   }
 
+
+  String _proposalSensitivity(Map<String, dynamic> proposal) {
+    final policyGate = Map<String, dynamic>.from(proposal['policyGate'] ?? {});
+    final sensitivity = policyGate['sensitivity']?.toString() ?? '';
+    if (sensitivity == 'high' || sensitivity == 'medium' || sensitivity == 'low') return sensitivity;
+    return 'low';
+  }
+
+  Future<Map<String, dynamic>?> _collectConsentForSensitivity(String sensitivity) async {
+    final ctrl = TextEditingController();
+    bool second = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          backgroundColor: JC.surface,
+          title: const Text('נדרש אישור פרטיות', textAlign: TextAlign.right, style: TextStyle(fontFamily: 'Heebo')),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (sensitivity != 'low') TextField(controller: ctrl, textAlign: TextAlign.right, decoration: const InputDecoration(hintText: 'הסבר קצר לשימוש בנתונים')),
+            if (sensitivity == 'high') CheckboxListTile(value: second, onChanged: (v)=>setLocal(()=>second=v??false), title: const Text('אני מאשר/ת שוב (אישור כפול)', style: TextStyle(fontSize: 13)), controlAffinity: ListTileControlAffinity.leading),
+          ]),
+          actions: [TextButton(onPressed: ()=>Navigator.pop(context,false), child: const Text('ביטול')), ElevatedButton(onPressed: ()=>Navigator.pop(context,true), child: const Text('אישור'))],
+        ),
+      ),
+    );
+    if (ok != true) return null;
+    return {
+      'explicitApproval': true,
+      if (sensitivity != 'low') 'dataUsageExplanation': ctrl.text.trim(),
+      if (sensitivity == 'high') 'doubleApproval': second,
+      if (sensitivity == 'high') 'ttlMinutes': 15,
+    };
+  }
+
   Future<void> _activateProposal(Map<String, dynamic> proposal) async {
     final idRaw = proposal['id'];
     final idStr = idRaw?.toString() ?? '';
@@ -325,31 +435,40 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
     final title = proposal['title']?.toString() ?? '';
     final plan  = proposal['plan']?.toString()  ?? '';
+    final sensitivity = _proposalSensitivity(proposal);
+    final consent = await _collectConsentForSensitivity(sensitivity);
+    if (consent == null) return;
 
     setState(() => _activatingIds.add(idStr));
 
     try {
-      final results = await Future.wait([
-        http.patch(
-          Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map'}),
-        ).timeout(const Duration(seconds: 8)),
-        http.post(
-          Uri.parse('$_base/ask-jarvis'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'command':
-                'קבלת משימה חדשה מה-Backlog:\n\nכותרת: $title\n\nתוכנית: $plan\n\n'
-                'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
-          }),
-        ).timeout(const Duration(seconds: 30)),
-      ]);
+      final activateRes = await http.patch(
+        Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map', 'consent': consent}),
+      ).timeout(const Duration(seconds: 8));
+
+      if (!mounted) return;
+      if (activateRes.statusCode != 200) {
+        setState(() => _activatingIds.remove(idStr));
+        _showSnack('ההפעלה נחסמה לפי מדיניות פרטיות');
+        return;
+      }
+
+      final askJarvisRes = await http.post(
+        Uri.parse('$_base/ask-jarvis'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'command':
+              'קבלת משימה חדשה מה-Backlog:\n\nכותרת: $title\n\nתוכנית: $plan\n\n'
+              'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
+        }),
+      ).timeout(const Duration(seconds: 30));
 
       if (!mounted) return;
 
-      final jarvisAnswer = results[1].statusCode == 200
-          ? (jsonDecode(results[1].body) as Map<String, dynamic>)['answer']?.toString() ?? ''
+      final jarvisAnswer = askJarvisRes.statusCode == 200
+          ? (jsonDecode(askJarvisRes.body) as Map<String, dynamic>)['answer']?.toString() ?? ''
           : 'ג׳רביס לא הגיב';
 
       setState(() {
@@ -361,6 +480,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         }
         _activatingIds.remove(idStr);
       });
+      await _trackProposalOutcome(idStr, 'proposal_activated');
     } catch (_) {
       if (!mounted) return;
       setState(() => _activatingIds.remove(idStr));
@@ -385,6 +505,21 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         }
         _proposalResponses.remove(idStr);
       });
+      await _trackProposalOutcome(idStr, 'user_reverted_change');
+    } catch (_) {}
+  }
+
+  Future<void> _trackProposalOutcome(String proposalId, String eventName, {int? valueSec}) async {
+    try {
+      await http.post(
+        Uri.parse('$_base/dashboard/backlog/proposals/$proposalId/outcome'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim(),
+          'eventName': eventName,
+          if (valueSec != null) 'valueSec': valueSec,
+        }),
+      ).timeout(const Duration(seconds: 6));
     } catch (_) {}
   }
 
@@ -768,8 +903,38 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           const SizedBox(height: 12),
           ...smartSuggestions.map((s) => _buildSmartSuggestionTile(s)).toList(),
           const SizedBox(height: 6),
+          _buildLearnedInsights(),
+          const SizedBox(height: 6),
           _buildSmartTelemetryPanel(),
           if (!_smartCompactMode) _buildSmartExplainPanel(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLearnedInsights() {
+    if (_learnedInsights.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: JC.bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: JC.border, width: 0.7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text('למדנו ש...',
+              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          for (final line in _learnedInsights.take(3))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('• $line',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5)),
+            ),
         ],
       ),
     );
@@ -1427,6 +1592,18 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                     _showDoneProposals,
                     () => setState(() => _showDoneProposals = !_showDoneProposals),
                   ),
+                  const SizedBox(width: 8),
+                  _filterChip(
+                    'Quick Wins',
+                    _quickWinsOnly,
+                    () => setState(() => _quickWinsOnly = !_quickWinsOnly),
+                  ),
+                  const SizedBox(width: 8),
+                  _filterChip(
+                    _sortByScore ? 'מיון: ציון' : 'מיון: סטטוס',
+                    _sortByScore,
+                    () => setState(() => _sortByScore = !_sortByScore),
+                  ),
                 ],
               ),
             ),
@@ -1503,6 +1680,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final checklist = List<Map<String, dynamic>>.from(p['checklist'] ?? []);
     final blockers = List<dynamic>.from(p['blockers'] ?? []);
     final doneCount = checklist.where((c) => c['done'] == true).length;
+    final scores = Map<String, dynamic>.from(p['scores'] ?? {});
+    final whyNow = (p['why_now'] ?? '').toString().trim();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1563,6 +1742,53 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
+                      if (scores.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () => _showScoreExplainer(scores),
+                              child: const Icon(Icons.info_outline_rounded, color: JC.textMuted, size: 16),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text('הסבר ציון',
+                                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _badge('Impact ${scores['impact'] ?? '—'}/5', const Color(0xFF22C55E)),
+                            _badge('Effort ${scores['effort'] ?? '—'}/5', const Color(0xFFF59E0B)),
+                            _badge('Risk ${scores['risk'] ?? '—'}/5', const Color(0xFFEF4444)),
+                            _badge('Conf ${scores['confidence'] ?? '—'}/5', JC.blue400),
+                            _badge('Score ${scores['weighted_score'] ?? '—'}', const Color(0xFFA78BFA)),
+                          ],
+                        ),
+                      ],
+                      if (whyNow.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: JC.blue500.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: JC.blue400.withValues(alpha: 0.22), width: 0.8),
+                          ),
+                          child: Text(
+                            'למה עכשיו: $whyNow',
+                            textDirection: TextDirection.rtl,
+                            style: const TextStyle(
+                              color: JC.textSecondary,
+                              fontFamily: 'Heebo',
+                              fontSize: 11.5,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       if (isActive && checklist.isNotEmpty) ...[
                         Align(
@@ -1592,6 +1818,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                         const SizedBox(height: 8),
                       ],
                       // Badges + activate button
+                      if (!isDone)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: const Text('נדרש אישור פרטיות', style: TextStyle(color: Color(0xFFF59E0B), fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+                        ),
+                      if (!isDone) const SizedBox(height: 6),
                       Row(
                         children: [
                           if (!isDone)

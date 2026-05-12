@@ -1603,59 +1603,7 @@ function writeBacklog(data) {
     require('fs').writeFileSync(BACKLOG_PATH(), JSON.stringify(data, null, 2));
 }
 
-
-const PRIVACY_POLICY_VERSION = '2026-05-11.v1';
-const CONSENT_TTL_MS = 15 * 60 * 1000;
-
-function classifyProposalSensitivity(proposal = {}) {
-    const text = `${proposal.title || ''} ${proposal.plan || ''} ${proposal.category || ''}`.toLowerCase();
-    const highKeywords = ['pii', 'personal data', 'מידע אישי', 'פרטיות', 'privacy', 'payment', 'bank', 'email send', 'auto-send', 'auto run', 'autonomous', 'delete', 'erase'];
-    const mediumKeywords = ['memory', 'profile', 'contact', 'location', 'calendar', 'reminder', 'notification', 'sync', 'permission'];
-    if (includesAny(text, highKeywords)) return 'high';
-    if (includesAny(text, mediumKeywords)) return 'medium';
-    return 'low';
-}
-
-function normalizeConsentPolicy(p) {
-    if (!p.policyGate || typeof p.policyGate !== 'object') {
-        p.policyGate = {
-            sensitivity: classifyProposalSensitivity(p),
-            requiresPrivacyApproval: true,
-            consent: {
-                policyVersion: null,
-                approvedAt: null,
-                expiresAt: null,
-                doubleApprovedAt: null,
-                dataUsageExplanation: null,
-            },
-        };
-    }
-    p.policyGate.sensitivity = ['low', 'medium', 'high'].includes(p.policyGate.sensitivity)
-        ? p.policyGate.sensitivity
-        : classifyProposalSensitivity(p);
-    if (p.policyGate.requiresPrivacyApproval !== true) p.policyGate.requiresPrivacyApproval = true;
-    if (!p.policyGate.consent || typeof p.policyGate.consent !== 'object') p.policyGate.consent = {};
-    p.policyGate.consent.policyVersion = p.policyGate.consent.policyVersion || null;
-    p.policyGate.consent.approvedAt = p.policyGate.consent.approvedAt || null;
-    p.policyGate.consent.expiresAt = p.policyGate.consent.expiresAt || null;
-    p.policyGate.consent.doubleApprovedAt = p.policyGate.consent.doubleApprovedAt || null;
-    p.policyGate.consent.dataUsageExplanation = p.policyGate.consent.dataUsageExplanation || null;
-}
-
-function hasValidHighConsent(consent = {}) {
-    if (!consent.approvedAt || !consent.doubleApprovedAt || !consent.expiresAt) return false;
-    if (consent.policyVersion !== PRIVACY_POLICY_VERSION) return false;
-    return new Date(consent.expiresAt).getTime() > Date.now();
-}
-
 const PROPOSAL_STATUSES = ['proposal', 'draft_plan', 'active', 'validation', 'done'];
-const OUTCOME_EVENT_NAMES = new Set([
-    'proposal_activated',
-    'proposal_completed',
-    'user_kept_change',
-    'user_reverted_change',
-    'time_to_value',
-]);
 
 function normalizeProposalForMvp(p) {
     if (!Array.isArray(p.auditTrail)) p.auditTrail = [];
@@ -1673,38 +1621,13 @@ function normalizeProposalForMvp(p) {
         };
     }
     if (!PROPOSAL_STATUSES.includes(p.status)) p.status = 'proposal';
-    normalizeConsentPolicy(p);
-    if (!p.outcomes || typeof p.outcomes !== 'object') {
-        p.outcomes = {
-            activated_count: 0,
-            completed_count: 0,
-            kept_count: 0,
-            reverted_count: 0,
-            avg_time_to_value_sec: null,
-            outcome_score: 0,
-            last_rescored_at: null,
-            last_event_at: null,
-        };
-    }
     return p;
-}
-
-function recomputeProposalOutcomeScore(proposal) {
-    normalizeProposalForMvp(proposal);
-    const o = proposal.outcomes;
-    const keptRate = o.completed_count > 0 ? (o.kept_count / o.completed_count) : 0;
-    const revertPenalty = o.reverted_count * 0.25;
-    const speedBonus = Number.isFinite(o.avg_time_to_value_sec) && o.avg_time_to_value_sec > 0
-        ? Math.max(0, 1.5 - (o.avg_time_to_value_sec / 86400))
-        : 0.4;
-    o.outcome_score = Number((keptRate * 3 + speedBonus - revertPenalty).toFixed(2));
-    o.last_rescored_at = new Date().toISOString();
 }
 
 function canTransitionProposalStatus(from, to) {
     if (from === to) return true;
     const allowed = {
-        proposal: ['draft_plan', 'active'],
+        proposal: ['draft_plan'],
         draft_plan: ['active', 'proposal'],
         active: ['validation', 'draft_plan'],
         validation: ['done', 'active'],
@@ -1786,7 +1709,6 @@ app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
         const actor = (req.body?.actor || 'system').toString().slice(0, 40);
         const reason = (req.body?.reason || '').toString().slice(0, 200);
         const nextStatus = requestedStatus || item.status;
-        const consentInput = req.body?.consent || {};
 
         if (!PROPOSAL_STATUSES.includes(nextStatus)) {
             return res.status(400).json({ error: 'invalid status' });
@@ -1794,47 +1716,6 @@ app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
         if (!canTransitionProposalStatus(item.status, nextStatus)) {
             return res.status(400).json({ error: `invalid transition: ${item.status} -> ${nextStatus}` });
         }
-
-        if (nextStatus === 'active') {
-            const sensitivity = item.policyGate.sensitivity;
-            const consent = item.policyGate.consent;
-            if (sensitivity === 'medium') {
-                if (!consentInput.explicitApproval || !consentInput.dataUsageExplanation) {
-                    return res.status(400).json({ error: 'medium sensitivity requires explicit approval and data usage explanation' });
-                }
-                consent.approvedAt = new Date().toISOString();
-                consent.dataUsageExplanation = String(consentInput.dataUsageExplanation).slice(0, 500);
-                consent.policyVersion = PRIVACY_POLICY_VERSION;
-                consent.expiresAt = null;
-                consent.doubleApprovedAt = null;
-            }
-            if (sensitivity === 'high') {
-                if (!consentInput.explicitApproval || !consentInput.doubleApproval) {
-                    return res.status(400).json({ error: 'high sensitivity requires double approval' });
-                }
-                const ttlMinutes = Number(consentInput.ttlMinutes || 15);
-                const ttlMs = Math.min(CONSENT_TTL_MS, Math.max(60 * 1000, ttlMinutes * 60 * 1000));
-                const now = new Date();
-                consent.approvedAt = now.toISOString();
-                consent.doubleApprovedAt = now.toISOString();
-                consent.expiresAt = new Date(now.getTime() + ttlMs).toISOString();
-                consent.policyVersion = PRIVACY_POLICY_VERSION;
-                consent.dataUsageExplanation = String(consentInput.dataUsageExplanation || '').slice(0, 500) || null;
-                if (!hasValidHighConsent(consent)) {
-                    return res.status(400).json({ error: 'invalid high-sensitivity consent' });
-                }
-            }
-            if (sensitivity === 'low' && !consentInput.explicitApproval) {
-                return res.status(400).json({ error: 'low sensitivity requires approval' });
-            }
-            if (sensitivity === 'low') {
-                consent.approvedAt = new Date().toISOString();
-                consent.policyVersion = PRIVACY_POLICY_VERSION;
-                consent.doubleApprovedAt = null;
-                consent.expiresAt = null;
-            }
-        }
-
         if (nextStatus === 'done' && item.status !== 'validation') {
             return res.status(400).json({ error: 'cannot move to done before validation' });
         }
@@ -1854,65 +1735,6 @@ app.patch('/dashboard/backlog/proposals/:id', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/dashboard/backlog/proposals/:id/outcome', (req, res) => {
-    try {
-        const id = parseInt(req.params.id, 10);
-        const eventName = String(req.body?.eventName || '').trim();
-        if (!OUTCOME_EVENT_NAMES.has(eventName)) return res.status(400).json({ error: 'invalid eventName' });
-        const userId = String(req.body?.userId || '').trim();
-        if (!userId) return res.status(400).json({ error: 'userId required' });
-        const data = readBacklog();
-        const item = data.proposals.find(p => p.id === id);
-        if (!item) return res.status(404).json({ error: 'not found' });
-        normalizeProposalForMvp(item);
-        const outcome = item.outcomes;
-        if (eventName === 'proposal_activated') outcome.activated_count += 1;
-        if (eventName === 'proposal_completed') outcome.completed_count += 1;
-        if (eventName === 'user_kept_change') outcome.kept_count += 1;
-        if (eventName === 'user_reverted_change') outcome.reverted_count += 1;
-        if (eventName === 'time_to_value') {
-            const sec = Number(req.body?.valueSec);
-            if (Number.isFinite(sec) && sec > 0) {
-                const prevAvg = outcome.avg_time_to_value_sec;
-                const n = Math.max(1, outcome.completed_count || 1);
-                outcome.avg_time_to_value_sec = Number.isFinite(prevAvg)
-                    ? Number((((prevAvg * (n - 1)) + sec) / n).toFixed(1))
-                    : sec;
-            }
-        }
-        if (!Array.isArray(data.proposal_outcomes_history)) data.proposal_outcomes_history = [];
-        data.proposal_outcomes_history.unshift({
-            proposal_id: id,
-            user_id: userId,
-            event_name: eventName,
-            value_sec: Number(req.body?.valueSec) || null,
-            created_at: new Date().toISOString(),
-        });
-        data.proposal_outcomes_history = data.proposal_outcomes_history.slice(0, 5000);
-        outcome.last_event_at = new Date().toISOString();
-        recomputeProposalOutcomeScore(item);
-        writeBacklog(data);
-        res.json({ ok: true, outcomes: item.outcomes });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/dashboard/backlog/proposals/rescore', (req, res) => {
-    try {
-        const cadence = String(req.body?.cadence || 'daily');
-        if (!['daily', 'weekly'].includes(cadence)) return res.status(400).json({ error: 'invalid cadence' });
-        const data = readBacklog();
-        for (const p of (data.proposals || [])) {
-            normalizeProposalForMvp(p);
-            recomputeProposalOutcomeScore(p);
-            const modelRank = p.scores?.weighted_score || 0;
-            p.scores.weighted_score = Number((modelRank + (p.outcomes.outcome_score * 0.4)).toFixed(2));
-        }
-        data.proposals.sort((a, b) => (b.scores?.weighted_score || 0) - (a.scores?.weighted_score || 0));
-        writeBacklog(data);
-        res.json({ ok: true, cadence, rescored: data.proposals.length });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 app.post('/dashboard/backlog/proposals/:id/draft-plan', (req, res) => {
     try {
         const id = parseInt(req.params.id, 10);
@@ -1920,6 +1742,9 @@ app.post('/dashboard/backlog/proposals/:id/draft-plan', (req, res) => {
         const item = data.proposals.find(p => p.id === id);
         if (!item) return res.status(404).json({ error: 'not found' });
         normalizeProposalForMvp(item);
+        if (!canTransitionProposalStatus(item.status, 'draft_plan')) {
+            return res.status(400).json({ error: `invalid transition: ${item.status} -> draft_plan` });
+        }
 
         const body = req.body || {};
         const steps = Array.isArray(body.steps) ? body.steps : [

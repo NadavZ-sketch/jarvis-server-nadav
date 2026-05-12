@@ -173,31 +173,13 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     if (_filterPriority != 'all') {
       list = list.where((p) => p['priority'] == _filterPriority).toList();
     }
-    if (_quickWinsOnly) {
-      list = list.where((p) {
-        final scores = Map<String, dynamic>.from(p['scores'] ?? {});
-        final impact = (scores['impact'] is num) ? (scores['impact'] as num).toDouble() : 0.0;
-        final effort = (scores['effort'] is num) ? (scores['effort'] as num).toDouble() : 999.0;
-        final risk   = (scores['risk'] is num) ? (scores['risk'] as num).toDouble() : 999.0;
-        return impact >= 4 && effort <= 2 && risk <= 3;
-      }).toList();
-    }
-    if (_sortByScore) {
-      list.sort((a, b) {
-        final aS = (Map<String, dynamic>.from(a['scores'] ?? {})['weighted_score'] as num?)?.toDouble() ?? -1;
-        final bS = (Map<String, dynamic>.from(b['scores'] ?? {})['weighted_score'] as num?)?.toDouble() ?? -1;
-        if (aS != bS) return bS.compareTo(aS);
-        return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
-      });
-    } else {
-      const statusOrder = {'active': 0, 'validation': 1, 'draft_plan': 2, 'proposal': 3, 'done': 4};
-      list.sort((a, b) {
-        final aO = statusOrder[a['status']] ?? 9;
-        final bO = statusOrder[b['status']] ?? 9;
-        if (aO != bO) return aO - bO;
-        return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
-      });
-    }
+    const statusOrder = {'active': 0, 'validation': 1, 'draft_plan': 2, 'proposal': 3, 'done': 4};
+    list.sort((a, b) {
+      final aO = statusOrder[a['status']] ?? 9;
+      final bO = statusOrder[b['status']] ?? 9;
+      if (aO != bO) return aO - bO;
+      return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
+    });
     return list;
   }
 
@@ -442,28 +424,35 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     setState(() => _activatingIds.add(idStr));
 
     try {
-      final activateRes = await http.patch(
-        Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map', 'consent': consent}),
-      ).timeout(const Duration(seconds: 8));
+      final status = proposal['status']?.toString() ?? _PS.proposal;
+      final shouldCreateDraft = status == _PS.proposal;
+      final statusReq = shouldCreateDraft
+          ? http.post(
+              Uri.parse('$_base/dashboard/backlog/proposals/$idRaw/draft-plan'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'actor': 'mobile_user', 'reason': 'created draft plan from progress map'}),
+            )
+          : http.patch(
+              Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map'}),
+            );
 
-      if (!mounted) return;
-      if (activateRes.statusCode != 200) {
-        setState(() => _activatingIds.remove(idStr));
-        _showSnack('ההפעלה נחסמה לפי מדיניות פרטיות');
-        return;
+      final results = await Future.wait([
+        statusReq.timeout(const Duration(seconds: 8)),
+        http.post(
+          Uri.parse('$_base/ask-jarvis'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'command':
+                'קבלת משימה חדשה מה-Backlog:\n\nכותרת: $title\n\nתוכנית: $plan\n\n'
+                'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
+          }),
+        ).timeout(const Duration(seconds: 30)),
+      ]);
+      if (results[0].statusCode < 200 || results[0].statusCode >= 300) {
+        throw Exception('status update failed');
       }
-
-      final askJarvisRes = await http.post(
-        Uri.parse('$_base/ask-jarvis'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'command':
-              'קבלת משימה חדשה מה-Backlog:\n\nכותרת: $title\n\nתוכנית: $plan\n\n'
-              'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
-        }),
-      ).timeout(const Duration(seconds: 30));
 
       if (!mounted) return;
 
@@ -475,8 +464,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         _proposalResponses[idStr] = jarvisAnswer;
         final idx = _proposals.indexWhere((p) => p['id']?.toString() == idStr);
         if (idx != -1) {
-          _proposals[idx] = Map<String, dynamic>.from(_proposals[idx])
-            ..['status'] = _PS.active;
+          final updated = jsonDecode(results[0].body) as Map<String, dynamic>;
+          _proposals[idx] = Map<String, dynamic>.from(updated['item'] ?? _proposals[idx]);
         }
         _activatingIds.remove(idStr);
       });
@@ -491,36 +480,44 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   Future<void> _deactivateProposal(dynamic idRaw) async {
     final idStr = idRaw?.toString() ?? '';
     try {
-      await http.patch(
+      final current = _proposals.firstWhere((p) => p['id']?.toString() == idStr, orElse: () => {});
+      final status = current['status']?.toString() ?? _PS.proposal;
+      final prevStatus = status == _PS.active ? _PS.draftPlan : _PS.proposal;
+      final res = await http.patch(
         Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
         headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'status': _PS.proposal, 'actor': 'mobile_user', 'reason': 'deactivated from progress map'}),
+          body: jsonEncode({'status': prevStatus, 'actor': 'mobile_user', 'reason': 'deactivated from progress map'}),
       ).timeout(const Duration(seconds: 8));
+      if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('status update failed');
       if (!mounted) return;
       setState(() {
         final idx = _proposals.indexWhere((p) => p['id']?.toString() == idStr);
         if (idx != -1) {
           _proposals[idx] = Map<String, dynamic>.from(_proposals[idx])
-            ..['status'] = _PS.proposal;
+            ..['status'] = prevStatus;
         }
         _proposalResponses.remove(idStr);
       });
-      await _trackProposalOutcome(idStr, 'user_reverted_change');
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) _showSnack('לא ניתן להחזיר סטטוס בשלב זה');
+    }
   }
 
-  Future<void> _trackProposalOutcome(String proposalId, String eventName, {int? valueSec}) async {
+  Future<void> _advanceProposalStatus(dynamic idRaw, String nextStatus) async {
     try {
-      await http.post(
-        Uri.parse('$_base/dashboard/backlog/proposals/$proposalId/outcome'),
+      final res = await http.patch(
+        Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'userId': widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim(),
-          'eventName': eventName,
-          if (valueSec != null) 'valueSec': valueSec,
-        }),
-      ).timeout(const Duration(seconds: 6));
-    } catch (_) {}
+        body: jsonEncode({'status': nextStatus, 'actor': 'mobile_user', 'reason': 'advanced from progress map'}),
+      ).timeout(const Duration(seconds: 8));
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        if (mounted) _showSnack('מעבר סטטוס נכשל (בדוק סדר שלבים)');
+        return;
+      }
+      await _loadBacklog();
+    } catch (_) {
+      if (mounted) _showSnack('שגיאה בעדכון סטטוס');
+    }
   }
 
   Future<void> _deleteProposal(dynamic idRaw) async {
@@ -1652,6 +1649,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final status  = p['status']?.toString() ?? _PS.proposal;
     final priority = p['priority']?.toString() ?? 'medium';
     final isActive = status == _PS.active;
+    final isDraftPlan = status == _PS.draftPlan;
+    final isValidation = status == _PS.validation;
     final isDone   = status == _PS.done;
     final title    = p['title']?.toString() ?? '';
     final plan     = p['plan']?.toString()  ?? '';
@@ -1680,8 +1679,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final checklist = List<Map<String, dynamic>>.from(p['checklist'] ?? []);
     final blockers = List<dynamic>.from(p['blockers'] ?? []);
     final doneCount = checklist.where((c) => c['done'] == true).length;
-    final scores = Map<String, dynamic>.from(p['scores'] ?? {});
-    final whyNow = (p['why_now'] ?? '').toString().trim();
+    final auditTrail = List<Map<String, dynamic>>.from(p['auditTrail'] ?? []);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1817,6 +1815,20 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                           ),
                         const SizedBox(height: 8),
                       ],
+                      if (auditTrail.isNotEmpty && (isActive || isValidation || isDone)) ...[
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            'Audit: ${auditTrail.first['by'] ?? 'system'} · ${_relativeDate(auditTrail.first['at']?.toString())} · ${auditTrail.first['reason'] ?? ''}',
+                            style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
                       // Badges + activate button
                       if (!isDone)
                         Align(
@@ -1849,11 +1861,31 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                                         width: 13, height: 13,
                                         child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400),
                                       )
-                                    : Text(isActive ? '⏸ בטל' : '⚡ הפעל',
+                                    : Text(isActive ? '⏸ חזרה לתכנון' : isDraftPlan ? '⚡ התחל ביצוע' : isValidation ? '⚡ חזרה לביצוע' : '🧭 צור תכנית',
                                         style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
                                             fontWeight: FontWeight.w600, fontSize: 11)),
                               ),
                             ),
+                          if (!isDone && (isActive || isValidation)) ...[
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () async {
+                                final next = isActive ? _PS.validation : _PS.done;
+                                await _advanceProposalStatus(idRaw, next);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.35), width: 0.8),
+                                ),
+                                child: Text(isActive ? '🧪 לולידציה' : '✅ סיום',
+                                    style: const TextStyle(color: Color(0xFF22C55E), fontFamily: 'Heebo',
+                                        fontWeight: FontWeight.w600, fontSize: 11)),
+                              ),
+                            ),
+                          ],
                           const Spacer(),
                           _badge(statusLabel, statusColor),
                           if (catLabel.isNotEmpty) ...[

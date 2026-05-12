@@ -148,6 +148,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   String _priorityFilterLabel(String p) =>
       const {'all': 'הכל', 'high': 'גבוה', 'medium': 'בינוני', 'low': 'נמוך'}[p] ?? p;
 
+  // Kept as a tiny fallback getter because some CI branches still reference
+  // `$whyNow` inside legacy smart-prompt templates.
+  String get whyNow => 'כדי לייצר ערך מהיר למשתמש ולצמצם סיכון במימוש';
+
   void _scheduleRetry() {
     _retryTimer?.cancel();
     _retryTimer = Timer(const Duration(seconds: 25), () {

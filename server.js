@@ -1936,6 +1936,61 @@ app.post('/dashboard/smart-telemetry', async (req, res) => {
     }
 });
 
+// ─── Dashboard – Graph actions (MVP) ────────────────────────────────────────
+app.post('/dashboard/graph/action', (req, res) => {
+    try {
+        const { nodeId, nodeLabel, nodeType, action, source = 'unknown', actor = 'anonymous' } = req.body || {};
+        if (!action || !nodeType) {
+            return res.status(400).json({ error: 'action and nodeType are required' });
+        }
+        const allow = new Set(['activate', 'defer', 'split']);
+        if (!allow.has(action)) return res.status(400).json({ error: 'invalid action' });
+
+        const data = readBacklog();
+        let updated = null;
+
+        if (nodeType === 'proposal') {
+            const item = (data.proposals || []).find(p =>
+                (nodeId && String(p.id) === String(nodeId)) ||
+                (nodeLabel && (p.title || '').trim() === String(nodeLabel).trim())
+            );
+            if (!item) return res.status(404).json({ error: 'proposal not found' });
+
+            if (action === 'activate') item.status = 'active';
+            if (action === 'defer') item.status = 'draft_plan';
+            if (action === 'split') {
+                const baseId = data._nextId || 1000;
+                data._nextId = baseId + 1;
+                const splitItem = {
+                    ...item,
+                    id: baseId,
+                    title: `${item.title} · חלק ב׳`,
+                    status: 'proposal',
+                    createdAt: new Date().toISOString(),
+                };
+                data.proposals.push(splitItem);
+            }
+            updated = { id: item.id, title: item.title, status: item.status };
+            writeBacklog(data);
+        }
+
+        const event = {
+            ts: new Date().toISOString(),
+            actor,
+            source,
+            action,
+            nodeType,
+            nodeId: nodeId ?? null,
+            nodeLabel: nodeLabel ?? null,
+        };
+        console.log('[graph-action]', JSON.stringify(event));
+        return res.json({ ok: true, updated, audit: event });
+    } catch (e) {
+        console.error('graph/action error:', e.message);
+        return res.status(500).json({ error: 'graph action failed' });
+    }
+});
+
 app.get('/dashboard/smart-telemetry', async (req, res) => {
     try {
         const userId = String(req.query.userId || '').trim();

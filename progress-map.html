@@ -204,6 +204,23 @@ h1 span{color:var(--accent)}
 .panel-warn{margin-top:8px;font-size:.72rem;color:var(--amber)}
 
 .refresh-row{color:var(--muted);font-size:.72rem;text-align:center;margin-top:8px}
+
+/* innovation graph */
+.graph-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:18px;position:relative}
+#innovationGraph{height:360px;background:linear-gradient(180deg,rgba(15,23,42,.55),rgba(2,6,23,.75));border:1px solid var(--border);border-radius:10px;position:relative;overflow:hidden}
+#innovationGraph svg{width:100%;height:100%;display:block}
+.graph-legend{display:flex;gap:7px;flex-wrap:wrap;font-size:.72rem;color:var(--muted);margin:10px 0 8px}
+.legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-left:4px}
+.graph-tooltip{position:absolute;pointer-events:none;background:rgba(15,23,42,.95);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:.72rem;color:var(--text);display:none;z-index:5}
+.graph-sidepanel{position:absolute;top:14px;left:16px;width:210px;max-width:85%;background:rgba(15,23,42,.96);border:1px solid var(--border);border-radius:10px;padding:10px 11px;z-index:6;display:none}
+.graph-sidepanel h4{font-size:.85rem;margin-bottom:5px}
+.graph-sidepanel .meta{font-size:.72rem;color:var(--muted);margin-bottom:9px}
+.graph-actions{display:flex;gap:6px;flex-wrap:wrap}
+.graph-actions button{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 9px;font-size:.72rem;cursor:pointer}
+.graph-actions button:hover{border-color:var(--accent);color:var(--accent)}
+.graph-fallback{height:100%;padding:10px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.graph-fallback-item{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:.74rem}
+.graph-status{font-size:.72rem;color:var(--muted);margin-top:8px}
 </style>
 </head>
 <body>
@@ -236,7 +253,7 @@ h1 span{color:var(--accent)}
 <!-- PROJECT COCKPIT -->
 <div class="section-title">🧭 מרכז פרויקט</div>
 <div class="cockpit-grid">
-  <div class="panel">
+<div class="panel">
     <h3>תמונת מצב מהירה</h3>
     <div class="health-list" id="project-health">
       <div class="health-item"><div class="k">שלב נוכחי</div><div class="v" id="phaseNow">—</div></div>
@@ -255,6 +272,22 @@ h1 span{color:var(--accent)}
     <div class="panel-meta" id="changesUpdatedAt">עודכן: —</div>
     <div class="panel-warn" id="changesWarn" style="display:none"></div>
   </div>
+</div>
+
+<!-- INNOVATION GRAPH -->
+<div class="section-title">🧠 מפת חדשנות</div>
+<div class="graph-wrap">
+  <div class="graph-legend">
+    <span><i class="legend-dot" style="background:#a78bfa"></i>הצעות</span>
+    <span><i class="legend-dot" style="background:#38bdf8"></i>יכולות</span>
+    <span><i class="legend-dot" style="background:#34d399"></i>סוכנים</span>
+  </div>
+  <div id="innovationGraph">
+    <div class="empty-state"><span>🕸️</span>טוען גרף...</div>
+  </div>
+  <div class="graph-status" id="graphStatus">מכין ויזואליזציה...</div>
+  <div class="graph-tooltip" id="graphTooltip"></div>
+  <aside class="graph-sidepanel" id="graphPanel"></aside>
 </div>
 
 
@@ -367,6 +400,8 @@ function pill(f, status) {
 
 let _featureCtx = { done: [], building: [], planned: [] };
 let _proposalCtx = [];
+let _graph2DMode = false;
+let _graphAnimFrame = null;
 
 async function loadFeatures() {
   try {
@@ -384,6 +419,7 @@ async function loadFeatures() {
     document.getElementById('col-planned').innerHTML      = planned.map(f => pill(f,'planned')).join('');
     _featureCtx = { done, building, planned };
     renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });
+    renderInnovationGraph({ ..._featureCtx, proposals: _proposalCtx });
 
     document.getElementById('subtitle').textContent =
       `עוזר אישי AI · ${done.length} יכולות פעילות · עודכן: ${d.lastUpdated || '—'}`;
@@ -484,6 +520,7 @@ async function generateProposals() {
       _proposalCtx = d.proposals;
       renderProposals(_proposalCtx);
       renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });
+      renderInnovationGraph({ ..._featureCtx, proposals: _proposalCtx });
       document.getElementById('backlog-meta').textContent = `נוצר: ${d.generated_at || '—'}`;
     } else {
       document.getElementById('proposalsList').innerHTML =
@@ -584,6 +621,7 @@ async function loadBacklog() {
     _proposalCtx = d.proposals || [];
     renderProposals(_proposalCtx);
     renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });
+    renderInnovationGraph({ ..._featureCtx, proposals: _proposalCtx });
     if (d._lastGenerated) document.getElementById('backlog-meta').textContent = `נוצר: ${d._lastGenerated}`;
     renderManual(d.items || []);
   } catch {
@@ -700,6 +738,132 @@ function hideCockpitWarning(id) {
   if (!el) return;
   el.textContent = '';
   el.style.display = 'none';
+}
+
+function renderInnovationGraph(ctx) {
+  const root = document.getElementById('innovationGraph');
+  const statusEl = document.getElementById('graphStatus');
+  if (!root) return;
+  if (_graphAnimFrame) {
+    cancelAnimationFrame(_graphAnimFrame);
+    _graphAnimFrame = null;
+  }
+  const isWeakMobile = window.matchMedia('(max-width: 720px)').matches || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+  _graph2DMode = isWeakMobile;
+
+  const featureNodes = [...(ctx.done || []), ...(ctx.building || []), ...(ctx.planned || [])].map((f, i) => ({
+    id: `feature-${(f.name || 'f').replace(/\s+/g,'-')}-${i}`, type: 'feature', label: f.name, impact: Number(f.impact || 6), why_now: f.why_now || f.desc || 'משימה קריטית לשלב הנוכחי', score: Number(f.score || 72)
+  }));
+  const proposalNodes = (ctx.proposals || []).map(p => ({
+    id: `proposal-${p.id}`, type: 'proposal', label: p.title, impact: Number(p.impact || (p.priority === 'high' ? 10 : p.priority === 'medium' ? 7 : 5)), why_now: p.why_now || p.plan || 'הזדמנות לשיפור מיידי', score: Number(p.score || (p.status === 'active' ? 90 : 65))
+  }));
+  const agentNodes = [{ id: 'agent-jarvis', type: 'agent', label: 'Jarvis Core Agent', impact: 8, why_now: 'מתאם בין הצעות, פיצ\'רים והרשאות', score: 88 }];
+  const nodes = [...featureNodes, ...proposalNodes, ...agentNodes];
+  if (!nodes.length) {
+    root.innerHTML = `<div class="empty-state"><span>🧩</span>אין עדיין ישויות להצגה</div>`;
+    if (statusEl) statusEl.textContent = 'אין נתונים להצגת גרף כרגע';
+    return;
+  }
+
+  const pick = (arr, i) => arr[i % arr.length];
+  const edges = [];
+  proposalNodes.forEach((p, i) => featureNodes.length && edges.push({ source: p.id, target: pick(featureNodes, i).id, relation: 'improves' }));
+  featureNodes.forEach((f, i) => edges.push({ source: f.id, target: 'agent-jarvis', relation: i % 2 ? 'owned_by' : 'dependency' }));
+  proposalNodes.filter(p => p.status === 'proposal').forEach((p, i) => proposalNodes[i + 1] && edges.push({ source: p.id, target: proposalNodes[i + 1].id, relation: 'blocked_by' }));
+
+  if (_graph2DMode) {
+    root.innerHTML = `<div class="graph-fallback">${
+      nodes.map(n => `<div class="graph-fallback-item"><b>${escapeHtml(n.label)}</b><br><span class="muted">${n.type} · score ${n.score}</span></div>`).join('')
+    }</div>`;
+    if (statusEl) statusEl.textContent = `מצב 2D פשוט (${nodes.length} ישויות)`;
+    return;
+  }
+
+  root.innerHTML = '<svg viewBox="0 0 1000 520" preserveAspectRatio="none"></svg>';
+  if (statusEl) statusEl.textContent = `גרף חי (${nodes.length} ישויות, ${edges.length} קשרים)`;
+  const svg = root.querySelector('svg');
+  const colors = { proposal: '#a78bfa', feature: '#38bdf8', agent: '#34d399' };
+  const nodeMap = new Map(nodes.map((n, i) => [n.id, { ...n, x: 100 + ((i * 150) % 800), y: 70 + ((i * 90) % 380), z: (Math.random() * 2 - 1), vx: 0, vy: 0 }]));
+  const tooltip = document.getElementById('graphTooltip');
+  const panel = document.getElementById('graphPanel');
+
+  const showPanel = (n) => {
+    panel.innerHTML = `<h4>${escapeHtml(n.label)}</h4><div class="meta">score: ${n.score} · impact: ${n.impact}</div>
+      <div class="graph-actions">
+        <button onclick="graphAction('${n.id}','activate')">⚡ activate</button>
+        <button onclick="graphAction('${n.id}','defer')">🕒 defer</button>
+        <button onclick="graphAction('${n.id}','split')">✂️ split</button>
+      </div>`;
+    panel.style.display = 'block';
+  };
+
+  window.graphAction = (id, action) => {
+    const n = nodeMap.get(id);
+    if (!n) return;
+    n.why_now = `${n.why_now} · action: ${action}`;
+    panel.style.display = 'none';
+  };
+
+  let loopCount = 0;
+  const loop = () => {
+    nodes.forEach(a => {
+      const na = nodeMap.get(a.id);
+      nodes.forEach(b => {
+        if (a.id === b.id) return;
+        const nb = nodeMap.get(b.id);
+        const dx = nb.x - na.x, dy = nb.y - na.y;
+        const dist2 = (dx*dx + dy*dy) || 1;
+        na.vx -= (dx / dist2) * 45; na.vy -= (dy / dist2) * 45;
+      });
+    });
+    edges.forEach(e => {
+      const s = nodeMap.get(e.source), t = nodeMap.get(e.target);
+      if (!s || !t) return;
+      const dx = t.x - s.x, dy = t.y - s.y;
+      s.vx += dx * 0.0008; s.vy += dy * 0.0008;
+      t.vx -= dx * 0.0008; t.vy -= dy * 0.0008;
+    });
+
+    nodeMap.forEach(n => {
+      n.vx *= 0.9; n.vy *= 0.9;
+      n.x = Math.max(35, Math.min(965, n.x + n.vx));
+      n.y = Math.max(35, Math.min(485, n.y + n.vy));
+      n.z += (Math.random() - 0.5) * 0.03;
+      n.z = Math.max(-1, Math.min(1, n.z));
+    });
+
+    const edgeEls = edges.map(e => {
+      const s = nodeMap.get(e.source), t = nodeMap.get(e.target);
+      return `<line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="rgba(148,163,184,.52)" stroke-width="1.3"/>`;
+    }).join('');
+    const nodeEls = [...nodeMap.values()].sort((a,b)=>a.z-b.z).map(n => {
+      const r = 7 + n.impact + (n.z * 2.5);
+      const opacity = 0.45 + ((n.z + 1) / 2) * 0.55;
+      const shadow = 3 + ((n.z + 1) * 4);
+      return `<g data-id="${n.id}" class="g-node">
+        <circle cx="${n.x}" cy="${n.y}" r="${r}" fill="${colors[n.type]}" stroke="rgba(255,255,255,.65)" stroke-width="0.8" fill-opacity="${opacity}" style="filter:drop-shadow(0 0 ${shadow}px ${colors[n.type]})"></circle>
+        <text x="${n.x}" y="${n.y + r + 12}" text-anchor="middle" font-size="11" fill="#cbd5e1">${escapeHtml(n.label.slice(0,22))}</text>
+      </g>`;
+    }).join('');
+    svg.innerHTML = `${edgeEls}${nodeEls}`;
+
+    svg.querySelectorAll('.g-node').forEach(g => {
+      const n = nodeMap.get(g.getAttribute('data-id'));
+      g.onmousemove = (ev) => {
+        tooltip.style.display = 'block';
+        tooltip.style.right = `${Math.max(16, window.innerWidth - ev.clientX + 14)}px`;
+        tooltip.style.top = `${ev.clientY + 6}px`;
+        tooltip.textContent = `why_now: ${n.why_now} | score: ${n.score}`;
+      };
+      g.onmouseleave = () => tooltip.style.display = 'none';
+      g.onclick = () => showPanel(n);
+    });
+    loopCount += 1;
+    if (document.contains(root) && loopCount < 18000) {
+      _graphAnimFrame = window.requestAnimationFrame(loop);
+    }
+  };
+  loop();
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────

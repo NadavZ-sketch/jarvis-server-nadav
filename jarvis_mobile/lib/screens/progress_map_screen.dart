@@ -17,7 +17,9 @@ class ProgressMapScreen extends StatefulWidget {
 
 abstract final class _PS {
   static const proposal = 'proposal';
+  static const draftPlan = 'draft_plan';
   static const active   = 'active';
+  static const validation = 'validation';
   static const done     = 'done';
 }
 
@@ -116,7 +118,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     if (_filterPriority != 'all') {
       list = list.where((p) => p['priority'] == _filterPriority).toList();
     }
-    const statusOrder = {'active': 0, 'proposal': 1, 'done': 2};
+    const statusOrder = {'active': 0, 'validation': 1, 'draft_plan': 2, 'proposal': 3, 'done': 4};
     list.sort((a, b) {
       final aO = statusOrder[a['status']] ?? 9;
       final bO = statusOrder[b['status']] ?? 9;
@@ -141,7 +143,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   String _statusFilterLabel(String s) =>
-      const {'all': 'הכל', 'proposal': 'הצעה', 'active': 'פעיל', 'done': 'בוצע'}[s] ?? s;
+      const {'all': 'הכל', 'proposal': 'הצעה', 'draft_plan': 'תכנון', 'active': 'פעיל', 'validation': 'ולידציה', 'done': 'בוצע'}[s] ?? s;
 
   String _priorityFilterLabel(String p) =>
       const {'all': 'הכל', 'high': 'גבוה', 'medium': 'בינוני', 'low': 'נמוך'}[p] ?? p;
@@ -275,12 +277,22 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     setState(() => _activatingIds.add(idStr));
 
     try {
+      final status = proposal['status']?.toString() ?? _PS.proposal;
+      final shouldCreateDraft = status == _PS.proposal;
+      final statusReq = shouldCreateDraft
+          ? http.post(
+              Uri.parse('$_base/dashboard/backlog/proposals/$idRaw/draft-plan'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'actor': 'mobile_user', 'reason': 'created draft plan from progress map'}),
+            )
+          : http.patch(
+              Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map'}),
+            );
+
       final results = await Future.wait([
-        http.patch(
-          Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'status': _PS.active}),
-        ).timeout(const Duration(seconds: 8)),
+        statusReq.timeout(const Duration(seconds: 8)),
         http.post(
           Uri.parse('$_base/ask-jarvis'),
           headers: {'Content-Type': 'application/json'},
@@ -291,6 +303,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           }),
         ).timeout(const Duration(seconds: 30)),
       ]);
+      if (results[0].statusCode < 200 || results[0].statusCode >= 300) {
+        throw Exception('status update failed');
+      }
 
       if (!mounted) return;
 
@@ -302,8 +317,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         _proposalResponses[idStr] = jarvisAnswer;
         final idx = _proposals.indexWhere((p) => p['id']?.toString() == idStr);
         if (idx != -1) {
-          _proposals[idx] = Map<String, dynamic>.from(_proposals[idx])
-            ..['status'] = _PS.active;
+          final updated = jsonDecode(results[0].body) as Map<String, dynamic>;
+          _proposals[idx] = Map<String, dynamic>.from(updated['item'] ?? _proposals[idx]);
         }
         _activatingIds.remove(idStr);
       });
@@ -317,21 +332,44 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   Future<void> _deactivateProposal(dynamic idRaw) async {
     final idStr = idRaw?.toString() ?? '';
     try {
-      await http.patch(
+      final current = _proposals.firstWhere((p) => p['id']?.toString() == idStr, orElse: () => {});
+      final status = current['status']?.toString() ?? _PS.proposal;
+      final prevStatus = status == _PS.active ? _PS.draftPlan : _PS.proposal;
+      final res = await http.patch(
         Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': _PS.proposal}),
+          body: jsonEncode({'status': prevStatus, 'actor': 'mobile_user', 'reason': 'deactivated from progress map'}),
       ).timeout(const Duration(seconds: 8));
+      if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('status update failed');
       if (!mounted) return;
       setState(() {
         final idx = _proposals.indexWhere((p) => p['id']?.toString() == idStr);
         if (idx != -1) {
           _proposals[idx] = Map<String, dynamic>.from(_proposals[idx])
-            ..['status'] = _PS.proposal;
+            ..['status'] = prevStatus;
         }
         _proposalResponses.remove(idStr);
       });
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) _showSnack('לא ניתן להחזיר סטטוס בשלב זה');
+    }
+  }
+
+  Future<void> _advanceProposalStatus(dynamic idRaw, String nextStatus) async {
+    try {
+      final res = await http.patch(
+        Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'status': nextStatus, 'actor': 'mobile_user', 'reason': 'advanced from progress map'}),
+      ).timeout(const Duration(seconds: 8));
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        if (mounted) _showSnack('מעבר סטטוס נכשל (בדוק סדר שלבים)');
+        return;
+      }
+      await _loadBacklog();
+    } catch (_) {
+      if (mounted) _showSnack('שגיאה בעדכון סטטוס');
+    }
   }
 
   Future<void> _deleteProposal(dynamic idRaw) async {
@@ -1166,7 +1204,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               textDirection: TextDirection.rtl,
               child: Row(
                 children: [
-                  for (final s in ['all', _PS.proposal, _PS.active, _PS.done])
+                  for (final s in ['all', _PS.proposal, _PS.draftPlan, _PS.active, _PS.validation, _PS.done])
                     Padding(
                       padding: const EdgeInsets.only(left: 6),
                       child: _filterChip(
@@ -1242,6 +1280,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final status  = p['status']?.toString() ?? _PS.proposal;
     final priority = p['priority']?.toString() ?? 'medium';
     final isActive = status == _PS.active;
+    final isDraftPlan = status == _PS.draftPlan;
+    final isValidation = status == _PS.validation;
     final isDone   = status == _PS.done;
     final title    = p['title']?.toString() ?? '';
     final plan     = p['plan']?.toString()  ?? '';
@@ -1250,11 +1290,27 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final priorityColor = _priorityColor(priority);
     final priorityLbl   = _priorityLabel(priority);
     final catLabel      = _kCatMap[p['category']?.toString()] ?? (p['category']?.toString() ?? '');
-    final statusLabel   = isActive ? '⚡ עובד על זה' : isDone ? '✅ הושלם' : '💡 הצעה';
-    final statusColor   = isActive ? JC.blue400 : isDone ? const Color(0xFF22C55E) : JC.textMuted;
+    final statusLabel = status == _PS.proposal
+        ? '💡 הצעה'
+        : status == _PS.draftPlan
+            ? '🧭 תכנון'
+            : status == _PS.active
+                ? '⚡ בביצוע'
+                : status == _PS.validation
+                    ? '🧪 ולידציה'
+                    : '✅ הושלם';
+    final statusColor = status == _PS.active
+        ? JC.blue400
+        : status == _PS.validation
+            ? const Color(0xFFF59E0B)
+            : isDone ? const Color(0xFF22C55E) : JC.textMuted;
 
     final activating = _activatingIds.contains(idStr);
     final response   = _proposalResponses[idStr];
+    final checklist = List<Map<String, dynamic>>.from(p['checklist'] ?? []);
+    final blockers = List<dynamic>.from(p['blockers'] ?? []);
+    final doneCount = checklist.where((c) => c['done'] == true).length;
+    final auditTrail = List<Map<String, dynamic>>.from(p['auditTrail'] ?? []);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1316,6 +1372,47 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                         ),
                       ],
                       const SizedBox(height: 8),
+                      if (isActive && checklist.isNotEmpty) ...[
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Text('תתי-שלבים: $doneCount/${checklist.length}',
+                              style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11)),
+                        ),
+                        const SizedBox(height: 4),
+                        ...checklist.take(4).map((c) => Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: Row(
+                            children: [
+                              Icon(c['done'] == true ? Icons.check_circle : Icons.radio_button_unchecked,
+                                  size: 14, color: c['done'] == true ? const Color(0xFF22C55E) : JC.textMuted),
+                              const SizedBox(width: 6),
+                              Expanded(child: Text(c['text']?.toString() ?? '',
+                                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12))),
+                            ],
+                          ),
+                        )),
+                        if (blockers.isNotEmpty)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Text('חסימות: ${blockers.join(' | ')}',
+                                style: const TextStyle(color: Color(0xFFEF4444), fontFamily: 'Heebo', fontSize: 11)),
+                          ),
+                        const SizedBox(height: 8),
+                      ],
+                      if (auditTrail.isNotEmpty && (isActive || isValidation || isDone)) ...[
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            'Audit: ${auditTrail.first['by'] ?? 'system'} · ${_relativeDate(auditTrail.first['at']?.toString())} · ${auditTrail.first['reason'] ?? ''}',
+                            style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
                       // Badges + activate button
                       Row(
                         children: [
@@ -1342,11 +1439,31 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                                         width: 13, height: 13,
                                         child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400),
                                       )
-                                    : Text(isActive ? '⏸ בטל' : '⚡ הפעל',
+                                    : Text(isActive ? '⏸ חזרה לתכנון' : isDraftPlan ? '⚡ התחל ביצוע' : isValidation ? '⚡ חזרה לביצוע' : '🧭 צור תכנית',
                                         style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
                                             fontWeight: FontWeight.w600, fontSize: 11)),
                               ),
                             ),
+                          if (!isDone && (isActive || isValidation)) ...[
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () async {
+                                final next = isActive ? _PS.validation : _PS.done;
+                                await _advanceProposalStatus(idRaw, next);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.35), width: 0.8),
+                                ),
+                                child: Text(isActive ? '🧪 לולידציה' : '✅ סיום',
+                                    style: const TextStyle(color: Color(0xFF22C55E), fontFamily: 'Heebo',
+                                        fontWeight: FontWeight.w600, fontSize: 11)),
+                              ),
+                            ),
+                          ],
                           const Spacer(),
                           _badge(statusLabel, statusColor),
                           if (catLabel.isNotEmpty) ...[

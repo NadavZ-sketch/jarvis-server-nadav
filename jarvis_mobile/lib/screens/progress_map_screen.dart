@@ -15,6 +15,48 @@ class ProgressMapScreen extends StatefulWidget {
   State<ProgressMapScreen> createState() => _ProgressMapScreenState();
 }
 
+class _GraphNode {
+  final String label;
+  final String type;
+  final double impact;
+  final double score;
+  const _GraphNode({required this.label, required this.type, required this.impact, required this.score});
+}
+
+class _InnovationGraphPainter extends CustomPainter {
+  final List<_GraphNode> nodes;
+  final List<List<int>> edges;
+  final double width;
+  final double height;
+  const _InnovationGraphPainter({required this.nodes, required this.edges, required this.width, required this.height});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final points = <Offset>[];
+    for (var i = 0; i < nodes.length; i++) {
+      final x = 20 + (i * 47) % (width - 40);
+      final y = 30 + ((i * 67) % (height.toInt() - 60));
+      points.add(Offset(x.toDouble(), y.toDouble()));
+    }
+    final edgePaint = Paint()..color = const Color(0x8894A3B8)..strokeWidth = 1.2;
+    for (final e in edges) {
+      if (e[0] >= points.length || e[1] >= points.length) continue;
+      canvas.drawLine(points[e[0]], points[e[1]], edgePaint);
+    }
+    for (var i = 0; i < nodes.length; i++) {
+      final n = nodes[i];
+      final p = points[i];
+      final color = n.type == 'proposal' ? const Color(0xFFA78BFA) : n.type == 'agent' ? const Color(0xFF34D399) : const Color(0xFF38BDF8);
+      final r = 6 + (n.impact / 2.4);
+      canvas.drawCircle(p, r + 2, Paint()..color = color.withValues(alpha: 0.25));
+      canvas.drawCircle(p, r, Paint()..color = color);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _InnovationGraphPainter oldDelegate) => oldDelegate.nodes != nodes || oldDelegate.edges != edges;
+}
+
 abstract final class _PS {
   static const proposal = 'proposal';
   static const draftPlan = 'draft_plan';
@@ -485,6 +527,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             const SizedBox(height: 14),
             _buildSmartRoadmapLab(),
             const SizedBox(height: 14),
+            _sectionTitle('🧠 מפת חדשנות'),
+            const SizedBox(height: 8),
+            _buildInnovationGraphCard(),
+            const SizedBox(height: 14),
             if (!_loadingFeatures && _done.isNotEmpty) ...[
               _buildProgressBar(),
               const SizedBox(height: 20),
@@ -873,6 +919,69 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildInnovationGraphCard() {
+    final nodes = _buildGraphNodes();
+    final edges = _buildGraphEdges(nodes);
+    final weakMode = MediaQuery.of(context).size.width < 390;
+    if (weakMode) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text('מצב 2D פשוט · ${nodes.length} ישויות', style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+          const SizedBox(height: 8),
+          ...nodes.take(8).map((n) => Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: JC.bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: JC.border, width: .7)),
+            child: Text('${n.label} · ${n.type} · score ${n.score}', textAlign: TextAlign.right, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
+          )),
+        ]),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text('גרף חי · ${nodes.length} ישויות · ${edges.length} קשרים', style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 250,
+          child: LayoutBuilder(builder: (_, c) {
+            return CustomPaint(
+              painter: _InnovationGraphPainter(nodes: nodes, edges: edges, width: c.maxWidth, height: 250),
+              child: Container(),
+            );
+          }),
+        ),
+      ]),
+    );
+  }
+
+  List<_GraphNode> _buildGraphNodes() {
+    final out = <_GraphNode>[];
+    final features = [..._done, ..._building, ..._planned];
+    for (var i = 0; i < features.length; i++) {
+      final f = features[i];
+      out.add(_GraphNode(label: (f['name'] ?? 'Feature').toString(), type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble()));
+    }
+    for (final p in _proposals.take(12)) {
+      out.add(_GraphNode(label: (p['title'] ?? 'Proposal').toString(), type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble()));
+    }
+    out.add(const _GraphNode(label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88));
+    return out;
+  }
+
+  List<List<int>> _buildGraphEdges(List<_GraphNode> nodes) {
+    final edges = <List<int>>[];
+    if (nodes.length < 2) return edges;
+    for (var i = 0; i < nodes.length - 1; i++) {
+      edges.add([i, i + 1]);
+    }
+    return edges;
   }
 
   Future<void> _confirmSmartAction(Map<String, String> suggestion) async {

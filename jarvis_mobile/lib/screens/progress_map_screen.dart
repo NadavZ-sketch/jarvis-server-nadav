@@ -16,6 +16,7 @@ class ProgressMapScreen extends StatefulWidget {
 }
 
 class _GraphNode {
+  final String nodeId;
   final String label;
   final String type;
   final double impact;
@@ -23,6 +24,7 @@ class _GraphNode {
   final String whyNow;
   const _GraphNode({
     required this.label,
+    this.nodeId = '',
     required this.type,
     required this.impact,
     required this.score,
@@ -1218,7 +1220,32 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   void _runGraphAction(String action, _GraphNode node) {
     Navigator.pop(context);
     _trackSmartEvent('graph_action_$action', metadata: {'node': node.label, 'type': node.type});
-    _showSnack('בוצע: $action עבור ${node.label}');
+    _applyGraphAction(action, node);
+  }
+
+  Future<void> _applyGraphAction(String action, _GraphNode node) async {
+    try {
+      final resp = await http.post(
+        Uri.parse('$_base/dashboard/graph/action'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'nodeId': node.nodeId,
+          'nodeLabel': node.label,
+          'nodeType': node.type,
+          'action': action,
+          'source': 'mobile',
+          'actor': widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim(),
+        }),
+      ).timeout(const Duration(seconds: 6));
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        _showSnack('בוצע: $action עבור ${node.label}');
+        await _loadBacklog();
+      } else {
+        _showSnack('הפעולה נכשלה (${resp.statusCode})');
+      }
+    } catch (_) {
+      _showSnack('שגיאת רשת בזמן ביצוע פעולה');
+    }
   }
 
   List<_GraphNode> _buildGraphNodes() {
@@ -1226,12 +1253,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final features = [..._done, ..._building, ..._planned];
     for (var i = 0; i < features.length; i++) {
       final f = features[i];
-      out.add(_GraphNode(label: (f['name'] ?? 'Feature').toString(), type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
+      out.add(_GraphNode(nodeId: (f['id'] ?? '').toString(), label: (f['name'] ?? 'Feature').toString(), type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
     }
     for (final p in _proposals.take(12)) {
-      out.add(_GraphNode(label: (p['title'] ?? 'Proposal').toString(), type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble(), whyNow: (p['why_now'] ?? p['plan'] ?? 'הזדמנות שיפור קרובה').toString()));
+      out.add(_GraphNode(nodeId: (p['id'] ?? '').toString(), label: (p['title'] ?? 'Proposal').toString(), type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble(), whyNow: (p['why_now'] ?? p['plan'] ?? 'הזדמנות שיפור קרובה').toString()));
     }
-    out.add(const _GraphNode(label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88, whyNow: 'מרכז תיאום בין יכולות להצעות'));
+    out.add(const _GraphNode(nodeId: 'agent-jarvis', label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88, whyNow: 'מרכז תיאום בין יכולות להצעות'));
     return out;
   }
 

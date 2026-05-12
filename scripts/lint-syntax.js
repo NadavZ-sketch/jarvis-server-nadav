@@ -1,14 +1,34 @@
 'use strict';
 
-const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
 
-const files = execSync('rg --files -g "*.js"', { encoding: 'utf8' })
-  .trim()
-  .split(/\n+/)
-  .filter(Boolean);
+const ROOT = process.cwd();
+const IGNORE_DIRS = new Set(['node_modules', '.git', 'jarvis_mobile/build']);
 
+function collectJsFiles(dir, out = []) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    const rel = path.relative(ROOT, fullPath);
+
+    if (entry.isDirectory()) {
+      if (IGNORE_DIRS.has(rel) || IGNORE_DIRS.has(entry.name)) continue;
+      collectJsFiles(fullPath, out);
+      continue;
+    }
+
+    if (entry.isFile() && fullPath.endsWith('.js')) {
+      out.push(fullPath);
+    }
+  }
+  return out;
+}
+
+const files = collectJsFiles(ROOT);
 for (const file of files) {
-  execSync(`node --check "${file}"`, { stdio: 'pipe' });
+  execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' });
 }
 
 console.log(`lint: syntax ok for ${files.length} files`);

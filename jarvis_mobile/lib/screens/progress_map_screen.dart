@@ -20,7 +20,14 @@ class _GraphNode {
   final String type;
   final double impact;
   final double score;
-  const _GraphNode({required this.label, required this.type, required this.impact, required this.score});
+  final String whyNow;
+  const _GraphNode({
+    required this.label,
+    required this.type,
+    required this.impact,
+    required this.score,
+    this.whyNow = 'נבחר בגלל עדיפות נוכחית',
+  });
 }
 
 class _InnovationGraphPainter extends CustomPainter {
@@ -118,6 +125,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   bool _generatingPrompt = false;
   bool _promptCopied     = false;
   bool _smartCompactMode = true;
+  _GraphNode? _selectedGraphNode;
   final Map<String, int> _smartTelemetry = {
     'action_start_first': 0,
     'action_sprint_prompt': 0,
@@ -1116,14 +1124,101 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         SizedBox(
           height: 250,
           child: LayoutBuilder(builder: (_, c) {
-            return CustomPaint(
-              painter: _InnovationGraphPainter(nodes: nodes, edges: edges, width: c.maxWidth, height: 250),
-              child: Container(),
+            return GestureDetector(
+              onTapUp: (d) => _onGraphTap(d.localPosition, c.maxWidth, 250, nodes),
+              child: CustomPaint(
+                painter: _InnovationGraphPainter(nodes: nodes, edges: edges, width: c.maxWidth, height: 250),
+                child: Container(),
+              ),
             );
           }),
         ),
+        if (_selectedGraphNode != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'נבחר: ${_selectedGraphNode!.label}',
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+          ),
+        ]
       ]),
     );
+  }
+
+  void _onGraphTap(Offset tap, double width, double height, List<_GraphNode> nodes) {
+    final points = _graphPoints(nodes.length, width, height);
+    int nearest = -1;
+    double best = 999999;
+    for (var i = 0; i < points.length; i++) {
+      final d = (points[i] - tap).distance;
+      if (d < best) {
+        best = d;
+        nearest = i;
+      }
+    }
+    if (nearest < 0 || best > 26) return;
+    final node = nodes[nearest];
+    setState(() => _selectedGraphNode = node);
+    _showGraphNodeActions(node);
+  }
+
+  List<Offset> _graphPoints(int count, double width, double height) {
+    final points = <Offset>[];
+    for (var i = 0; i < count; i++) {
+      final x = 20 + (i * 47) % (width - 40);
+      final y = 30 + ((i * 67) % (height.toInt() - 60));
+      points.add(Offset(x.toDouble(), y.toDouble()));
+    }
+    return points;
+  }
+
+  Future<void> _showGraphNodeActions(_GraphNode node) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: JC.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(node.label, textAlign: TextAlign.right, style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 6),
+              Text(
+                'why_now: ${node.whyNow}\nscore: ${node.score.toStringAsFixed(0)} · impact: ${node.impact.toStringAsFixed(1)}',
+                textAlign: TextAlign.right,
+                style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
+                children: [
+                  _graphActionBtn('⚡ activate', () => _runGraphAction('activate', node)),
+                  _graphActionBtn('🕒 defer', () => _runGraphAction('defer', node)),
+                  _graphActionBtn('✂️ split', () => _runGraphAction('split', node)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _graphActionBtn(String label, VoidCallback onTap) => OutlinedButton(
+    onPressed: onTap,
+    style: OutlinedButton.styleFrom(side: const BorderSide(color: JC.border), foregroundColor: JC.textPrimary),
+    child: Text(label, style: const TextStyle(fontFamily: 'Heebo')),
+  );
+
+  void _runGraphAction(String action, _GraphNode node) {
+    Navigator.pop(context);
+    _trackSmartEvent('graph_action_$action', metadata: {'node': node.label, 'type': node.type});
+    _showSnack('בוצע: $action עבור ${node.label}');
   }
 
   List<_GraphNode> _buildGraphNodes() {
@@ -1131,12 +1226,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final features = [..._done, ..._building, ..._planned];
     for (var i = 0; i < features.length; i++) {
       final f = features[i];
-      out.add(_GraphNode(label: (f['name'] ?? 'Feature').toString(), type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble()));
+      out.add(_GraphNode(label: (f['name'] ?? 'Feature').toString(), type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
     }
     for (final p in _proposals.take(12)) {
-      out.add(_GraphNode(label: (p['title'] ?? 'Proposal').toString(), type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble()));
+      out.add(_GraphNode(label: (p['title'] ?? 'Proposal').toString(), type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble(), whyNow: (p['why_now'] ?? p['plan'] ?? 'הזדמנות שיפור קרובה').toString()));
     }
-    out.add(const _GraphNode(label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88));
+    out.add(const _GraphNode(label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88, whyNow: 'מרכז תיאום בין יכולות להצעות'));
     return out;
   }
 

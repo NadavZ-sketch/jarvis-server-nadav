@@ -531,113 +531,156 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     };
   }
 
-  Future<void> _activateProposal(Map<String, dynamic> proposal) async {
+
+  Future<void> _retryProposalAction(Map<String, dynamic> proposal, String actionType) async {
+    await _runProposalAction(proposal, actionType, allowRetry: false);
+  }
+
+  void _showProposalActionError(String message, Map<String, dynamic> proposal, String actionType) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          label: 'נסה שוב',
+          onPressed: () => _retryProposalAction(proposal, actionType),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _runProposalAction(Map<String, dynamic> proposal, String actionType, {bool allowRetry = true}) async {
     final idRaw = proposal['id'];
     final idStr = idRaw?.toString() ?? '';
     if (idStr.isEmpty || _activatingIds.contains(idStr)) return;
 
-    final title = proposal['title']?.toString() ?? '';
-    final plan  = proposal['plan']?.toString()  ?? '';
-    final sensitivity = _proposalSensitivity(proposal);
-    final consent = await _collectConsentForSensitivity(sensitivity);
-    if (consent == null) return;
+    final current = _proposals.firstWhere((p) => p['id']?.toString() == idStr, orElse: () => proposal);
+    final currentStatus = current['status']?.toString() ?? _PS.proposal;
+
+    if (actionType == 'activate') {
+      final sensitivity = _proposalSensitivity(current);
+      final consent = await _collectConsentForSensitivity(sensitivity);
+      if (consent == null) return;
+    }
 
     setState(() => _activatingIds.add(idStr));
 
     try {
-      final status = proposal['status']?.toString() ?? _PS.proposal;
-      final shouldCreateDraft = status == _PS.proposal;
-      final statusReq = shouldCreateDraft
-          ? http.post(
-              Uri.parse('$_base/dashboard/backlog/proposals/$idRaw/draft-plan'),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'actor': 'mobile_user', 'reason': 'created draft plan from progress map'}),
-            )
-          : http.patch(
-              Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map'}),
-            );
+      late http.Response statusRes;
+      String nextStatus = currentStatus;
+      String? jarvisAnswer;
 
-      final results = await Future.wait([
-        statusReq.timeout(const Duration(seconds: 8)),
-        http.post(
-          Uri.parse('$_base/ask-jarvis'),
+      if (actionType == 'activate') {
+        final shouldCreateDraft = currentStatus == _PS.proposal;
+        nextStatus = shouldCreateDraft ? _PS.draftPlan : _PS.active;
+        final title = current['title']?.toString() ?? '';
+        final plan = current['plan']?.toString() ?? '';
+
+        final statusReq = shouldCreateDraft
+            ? http.post(
+                Uri.parse('$_base/dashboard/backlog/proposals/$idRaw/draft-plan'),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({'actor': 'mobile_user', 'reason': 'created draft plan from progress map'}),
+              )
+            : http.patch(
+                Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({'status': _PS.active, 'actor': 'mobile_user', 'reason': 'activated from progress map'}),
+              );
+
+        final results = await Future.wait([
+          statusReq.timeout(const Duration(seconds: 8)),
+          http.post(
+            Uri.parse('$_base/ask-jarvis'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'command':
+                  'קבלת משימה חדשה מה-Backlog:
+
+כותרת: $title
+
+תוכנית: $plan
+
+'
+                  'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
+            }),
+          ).timeout(const Duration(seconds: 30)),
+        ]);
+        statusRes = results[0] as http.Response;
+        final askJarvisRes = results[1] as http.Response;
+        jarvisAnswer = askJarvisRes.statusCode == 200
+            ? (jsonDecode(askJarvisRes.body) as Map<String, dynamic>)['answer']?.toString() ?? ''
+            : 'ג׳רביס לא הגיב';
+      } else if (actionType == 'deactivate') {
+        nextStatus = currentStatus == _PS.active ? _PS.draftPlan : _PS.proposal;
+        statusRes = await http.patch(
+          Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'command':
-                'קבלת משימה חדשה מה-Backlog:\n\nכותרת: $title\n\nתוכנית: $plan\n\n'
-                'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
-          }),
-        ).timeout(const Duration(seconds: 30)),
-      ]);
-      if (results[0].statusCode < 200 || results[0].statusCode >= 300) {
+          body: jsonEncode({'status': nextStatus, 'actor': 'mobile_user', 'reason': 'deactivated from progress map'}),
+        ).timeout(const Duration(seconds: 8));
+      } else if (actionType == 'confirm') {
+        nextStatus = currentStatus == _PS.active ? _PS.validation : _PS.done;
+        statusRes = await http.patch(
+          Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'status': nextStatus, 'actor': 'mobile_user', 'reason': 'advanced from progress map'}),
+        ).timeout(const Duration(seconds: 8));
+      } else {
+        throw Exception('unknown action type: $actionType');
+      }
+
+      if (statusRes.statusCode < 200 || statusRes.statusCode >= 300) {
         throw Exception('status update failed');
       }
 
       if (!mounted) return;
-
-      final jarvisAnswer = askJarvisRes.statusCode == 200
-          ? (jsonDecode(askJarvisRes.body) as Map<String, dynamic>)['answer']?.toString() ?? ''
-          : 'ג׳רביס לא הגיב';
-
       setState(() {
-        _proposalResponses[idStr] = jarvisAnswer;
         final idx = _proposals.indexWhere((p) => p['id']?.toString() == idStr);
         if (idx != -1) {
-          final updated = jsonDecode(results[0].body) as Map<String, dynamic>;
-          _proposals[idx] = Map<String, dynamic>.from(updated['item'] ?? _proposals[idx]);
+          final payload = jsonDecode(statusRes.body) as Map<String, dynamic>;
+          final serverItem = payload['item'];
+          if (serverItem is Map<String, dynamic>) {
+            _proposals[idx] = Map<String, dynamic>.from(serverItem);
+          } else {
+            _proposals[idx] = Map<String, dynamic>.from(_proposals[idx])
+              ..['status'] = nextStatus;
+          }
+          _proposals[idx]['lastActionAt'] = DateTime.now().toIso8601String();
+          _proposals[idx]['response'] = jarvisAnswer ?? _proposalResponses[idStr] ?? '';
+        }
+
+        if (jarvisAnswer != null && jarvisAnswer!.isNotEmpty) {
+          _proposalResponses[idStr] = jarvisAnswer!;
+        }
+        if (actionType == 'deactivate') {
+          _proposalResponses.remove(idStr);
         }
         _activatingIds.remove(idStr);
       });
-      await _trackProposalOutcome(idStr, 'proposal_activated');
+
+      if (actionType == 'activate') {
+        await _trackProposalOutcome(idStr, 'proposal_activated');
+      }
+      _showSnack(actionType == 'activate'
+          ? 'ההצעה עודכנה בהצלחה'
+          : actionType == 'deactivate'
+              ? 'ההצעה הוחזרה לתכנון'
+              : nextStatus == _PS.done
+                  ? 'ההצעה סומנה כהושלמה'
+                  : 'ההצעה עברה לולידציה');
     } catch (_) {
       if (!mounted) return;
       setState(() => _activatingIds.remove(idStr));
-      _showSnack('שגיאה בהפעלת ההצעה');
-    }
-  }
-
-  Future<void> _deactivateProposal(dynamic idRaw) async {
-    final idStr = idRaw?.toString() ?? '';
-    try {
-      final current = _proposals.firstWhere((p) => p['id']?.toString() == idStr, orElse: () => {});
-      final status = current['status']?.toString() ?? _PS.proposal;
-      final prevStatus = status == _PS.active ? _PS.draftPlan : _PS.proposal;
-      final res = await http.patch(
-        Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
-        headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'status': prevStatus, 'actor': 'mobile_user', 'reason': 'deactivated from progress map'}),
-      ).timeout(const Duration(seconds: 8));
-      if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('status update failed');
-      if (!mounted) return;
-      setState(() {
-        final idx = _proposals.indexWhere((p) => p['id']?.toString() == idStr);
-        if (idx != -1) {
-          _proposals[idx] = Map<String, dynamic>.from(_proposals[idx])
-            ..['status'] = prevStatus;
-        }
-        _proposalResponses.remove(idStr);
-      });
-    } catch (_) {
-      if (mounted) _showSnack('לא ניתן להחזיר סטטוס בשלב זה');
-    }
-  }
-
-  Future<void> _advanceProposalStatus(dynamic idRaw, String nextStatus) async {
-    try {
-      final res = await http.patch(
-        Uri.parse('$_base/dashboard/backlog/proposals/$idRaw'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': nextStatus, 'actor': 'mobile_user', 'reason': 'advanced from progress map'}),
-      ).timeout(const Duration(seconds: 8));
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        if (mounted) _showSnack('מעבר סטטוס נכשל (בדוק סדר שלבים)');
-        return;
+      final message = actionType == 'activate'
+          ? 'שגיאה בהפעלת ההצעה'
+          : actionType == 'deactivate'
+              ? 'לא ניתן להחזיר סטטוס בשלב זה'
+              : 'שגיאה בעדכון סטטוס';
+      if (allowRetry) {
+        _showProposalActionError(message, proposal, actionType);
+      } else {
+        _showSnack(message);
       }
-      await _loadBacklog();
-    } catch (_) {
-      if (mounted) _showSnack('שגיאה בעדכון סטטוס');
     }
   }
 
@@ -1431,7 +1474,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         orElse: () => <String, dynamic>{},
       );
       if (firstProposal.isNotEmpty) {
-        await _activateProposal(firstProposal);
+        await _runProposalAction(firstProposal, 'activate');
         return;
       }
     }
@@ -1976,9 +2019,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                                   ? null
                                   : () {
                                       if (isActive) {
-                                        _deactivateProposal(idRaw);
+                                        _runProposalAction(p, 'deactivate');
                                       } else {
-                                        _activateProposal(p);
+                                        _runProposalAction(p, 'activate');
                                       }
                                     },
                               child: Container(
@@ -2002,8 +2045,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                             const SizedBox(width: 6),
                             GestureDetector(
                               onTap: () async {
-                                final next = isActive ? _PS.validation : _PS.done;
-                                await _advanceProposalStatus(idRaw, next);
+                                await _runProposalAction(p, 'confirm');
                               },
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

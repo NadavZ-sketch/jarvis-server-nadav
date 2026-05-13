@@ -1,10 +1,135 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../main.dart' show JC;
 import '../app_settings.dart';
+
+// ── Agent Galaxy Data ─────────────────────────────────────────────────────────
+
+class _AgentNode {
+  final String id;
+  final String nameHe;
+  final String icon;
+  final String category;
+  final List<String> connections;
+
+  const _AgentNode({
+    required this.id, required this.nameHe, required this.icon,
+    required this.category, this.connections = const [],
+  });
+
+  factory _AgentNode.fromJson(Map<String, dynamic> j) => _AgentNode(
+    id: j['id'] ?? '', nameHe: j['nameHe'] ?? j['name'] ?? '',
+    icon: j['icon'] ?? '⚡', category: j['category'] ?? 'core',
+    connections: List<String>.from(j['connections'] ?? []),
+  );
+
+  Color get color {
+    switch (category) {
+      case 'core':         return const Color(0xFF3B82F6);
+      case 'storage':      return const Color(0xFF8B5CF6);
+      case 'productivity': return const Color(0xFF22C55E);
+      case 'external':     return const Color(0xFFF59E0B);
+      case 'quality':      return const Color(0xFFEF4444);
+      case 'analytics':    return const Color(0xFF06B6D4);
+      case 'meta':         return const Color(0xFFA78BFA);
+      case 'custom':       return const Color(0xFFF97316);
+      default:             return const Color(0xFF94A3B8);
+    }
+  }
+}
+
+class _AgentGalaxyPainter extends CustomPainter {
+  final List<_AgentNode> agents;
+  final double animValue;
+
+  const _AgentGalaxyPainter({required this.agents, required this.animValue});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (agents.isEmpty) return;
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final positions = _positions(cx, cy, size);
+    _drawConnections(canvas, positions);
+    for (int i = 0; i < agents.length; i++) {
+      _drawNode(canvas, positions[i], agents[i], i == 0);
+    }
+  }
+
+  List<Offset> _positions(double cx, double cy, Size size) {
+    final n = agents.length;
+    final out = <Offset>[];
+    if (n == 0) return out;
+    out.add(Offset(cx, cy));
+    final rest = n - 1;
+    final innerCount = math.min(rest, 6);
+    final outerCount = rest - innerCount;
+    final r1 = size.width * 0.30;
+    final r2 = size.width * 0.46;
+    for (int j = 0; j < innerCount; j++) {
+      final a = 2 * math.pi * j / innerCount - math.pi / 2;
+      out.add(Offset(cx + r1 * math.cos(a), cy + r1 * math.sin(a)));
+    }
+    for (int j = 0; j < outerCount; j++) {
+      final a = 2 * math.pi * j / outerCount - math.pi / 2 + math.pi / outerCount;
+      out.add(Offset(cx + r2 * math.cos(a), cy + r2 * math.sin(a)));
+    }
+    return out;
+  }
+
+  void _drawConnections(Canvas canvas, List<Offset> pos) {
+    for (int i = 0; i < agents.length; i++) {
+      for (final connId in agents[i].connections) {
+        final j = agents.indexWhere((a) => a.id == connId);
+        if (j < 0 || j >= pos.length) continue;
+        final paint = Paint()
+          ..color = agents[i].color.withValues(alpha: 0.18)
+          ..strokeWidth = 1.2
+          ..style = PaintingStyle.stroke;
+        canvas.drawLine(pos[i], pos[j], paint);
+      }
+    }
+  }
+
+  void _drawNode(Canvas canvas, Offset pos, _AgentNode agent, bool isCenter) {
+    final pulse = 0.82 + 0.18 * math.sin(animValue * 2 * math.pi +
+        agent.id.codeUnits.fold(0, (a, b) => a + b) * 0.4);
+    final r = (isCenter ? 22.0 : 15.0) * pulse;
+    final color = agent.color;
+
+    final glowPaint = Paint()
+      ..color = color.withValues(alpha: 0.12 * pulse)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+    canvas.drawCircle(pos, r * 1.6, glowPaint);
+
+    final fillPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [color.withValues(alpha: 0.75), color.withValues(alpha: 0.25)],
+      ).createShader(Rect.fromCircle(center: pos, radius: r));
+    canvas.drawCircle(pos, r, fillPaint);
+
+    canvas.drawCircle(pos, r, Paint()
+      ..color = color.withValues(alpha: 0.7)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke);
+
+    final tp = TextPainter(
+      text: TextSpan(text: agent.icon, style: TextStyle(fontSize: isCenter ? 14 : 10)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, pos - Offset(tp.width / 2, tp.height / 2));
+  }
+
+  @override
+  bool shouldRepaint(_AgentGalaxyPainter old) =>
+      old.animValue != animValue || old.agents.length != agents.length;
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 class ProgressMapScreen extends StatefulWidget {
   final AppSettings settings;
@@ -28,7 +153,8 @@ Color _priorityColor(String p) => p == 'high'
 String _priorityLabel(String p) =>
     p == 'high' ? '🔴 גבוה' : p == 'low' ? '🟢 נמוך' : '🟡 בינוני';
 
-class _ProgressMapScreenState extends State<ProgressMapScreen> {
+class _ProgressMapScreenState extends State<ProgressMapScreen>
+    with TickerProviderStateMixin {
   static const _kCatMap = {
     'feature': "פיצ'ר", 'improvement': 'שיפור', 'bug': 'באג', 'ux': 'UX',
   };
@@ -76,16 +202,36 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   Timer? _copyTimer;
   bool   _isRefreshing = false;
 
+  // Intelligence
+  List<_AgentNode> _agents = [];
+  int              _systemHealth = 0;
+  List<String>     _strengths  = [];
+  List<String>     _gaps       = [];
+  List<Map<String, dynamic>> _nextActions = [];
+  String?          _analysis;
+  bool             _loadingIntelligence = true;
+  bool             _analyzingNow = false;
+
+  // Animation
+  late AnimationController _galaxyAnim;
+  late AnimationController _pulseAnim;
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    _galaxyAnim = AnimationController(
+      duration: const Duration(seconds: 4), vsync: this)..repeat();
+    _pulseAnim = AnimationController(
+      duration: const Duration(milliseconds: 1600), vsync: this)..repeat(reverse: true);
     _loadAll();
   }
 
   @override
   void dispose() {
+    _galaxyAnim.dispose();
+    _pulseAnim.dispose();
     _retryTimer?.cancel();
     _copyTimer?.cancel();
     _addCtrl.dispose();
@@ -151,7 +297,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     if (_isRefreshing) return;
     _isRefreshing = true;
     _retryTimer?.cancel();
-    await Future.wait([_checkHealth(), _loadStats(), _loadFeatures(), _loadBacklog()]);
+    await Future.wait([_checkHealth(), _loadStats(), _loadFeatures(), _loadBacklog(), _loadIntelligence()]);
     _isRefreshing = false;
     if (mounted && _serverOk != true) _scheduleRetry();
   }
@@ -222,6 +368,50 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       }
     } catch (_) {
       if (mounted) setState(() => _loadingBacklog = false);
+    }
+  }
+
+  Future<void> _loadIntelligence() async {
+    setState(() => _loadingIntelligence = true);
+    try {
+      final res = await http.get(Uri.parse('$_base/intelligence/snapshot'))
+          .timeout(const Duration(seconds: 20));
+      if (mounted && res.statusCode == 200) {
+        final d = jsonDecode(res.body) as Map<String, dynamic>;
+        setState(() {
+          _agents       = (d['agents'] as List? ?? []).map((a) => _AgentNode.fromJson(a as Map<String, dynamic>)).toList();
+          _systemHealth = (d['systemHealth'] as num?)?.toInt() ?? 0;
+          final ins     = d['insights'] as Map<String, dynamic>? ?? {};
+          _strengths    = List<String>.from(ins['strengths'] ?? []);
+          _gaps         = List<String>.from(ins['gaps']      ?? []);
+          _nextActions  = List<Map<String, dynamic>>.from(ins['nextActions'] ?? []);
+          _loadingIntelligence = false;
+        });
+      } else if (mounted) {
+        setState(() => _loadingIntelligence = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingIntelligence = false);
+    }
+  }
+
+  Future<void> _analyzeNow() async {
+    setState(() => _analyzingNow = true);
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/intelligence/analyze'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({}),
+      ).timeout(const Duration(seconds: 30));
+      if (mounted && res.statusCode == 200) {
+        final d = jsonDecode(res.body) as Map<String, dynamic>;
+        setState(() => _analysis = d['analysis']?.toString());
+        await _loadIntelligence();
+      }
+    } catch (_) {
+      if (mounted) _showSnack('שגיאה בניתוח');
+    } finally {
+      if (mounted) setState(() => _analyzingNow = false);
     }
   }
 
@@ -450,7 +640,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         centerTitle: true,
-        title: const Text('מפת התקדמות',
+        title: const Text('מרכז שליטה',
             style: TextStyle(color: JC.textPrimary, fontSize: 18,
                 fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
         actions: [
@@ -470,14 +660,30 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             _buildStatusBar(),
             const SizedBox(height: 14),
             _buildMetrics(),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
+            _sectionTitle('🌐 גלקסיית סוכנים'),
+            const SizedBox(height: 10),
+            _buildAgentGalaxy(),
+            const SizedBox(height: 16),
+            _sectionTitle('🧠 ניתוח חכם'),
+            const SizedBox(height: 8),
+            _buildIntelligencePanel(),
+            const SizedBox(height: 16),
+            _buildActivityTimeline(),
+            const SizedBox(height: 16),
             if (!_loadingFeatures && _done.isNotEmpty) ...[
               _buildProgressBar(),
               const SizedBox(height: 20),
             ],
             _sectionTitle('🗂️ סטטוס יכולות'),
             const SizedBox(height: 8),
-            _buildFeatureBoard(),
+            Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.0008)
+                ..rotateX(-0.018),
+              child: _buildFeatureBoard(),
+            ),
             const SizedBox(height: 24),
             _sectionTitle('🤖 Backlog AI'),
             const SizedBox(height: 8),
@@ -542,6 +748,338 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                       fontWeight: FontWeight.w600, fontSize: 12)),
             ),
         ],
+      ),
+    );
+  }
+
+  // ── Agent Galaxy ──────────────────────────────────────────────────────────
+
+  Widget _buildAgentGalaxy() {
+    if (_loadingIntelligence && _agents.isEmpty) {
+      return Container(
+        height: 220,
+        decoration: BoxDecoration(
+          color: JC.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: const Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
+      );
+    }
+    if (_agents.isEmpty) {
+      return Container(
+        height: 80,
+        decoration: BoxDecoration(
+          color: JC.surface, borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: const Center(child: Text('לא ניתן לטעון — בדוק חיבור לשרת',
+            style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JC.border.withValues(alpha: 0.6), width: 0.8),
+        boxShadow: [BoxShadow(color: JC.blue500.withValues(alpha: 0.05), blurRadius: 20, spreadRadius: 2)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+            child: Row(children: [
+              const Spacer(),
+              Text('${_agents.length} סוכנים פעילים',
+                  style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+              const SizedBox(width: 6),
+              _healthBadge(_systemHealth),
+            ]),
+          ),
+          AnimatedBuilder(
+            animation: _galaxyAnim,
+            builder: (_, __) => CustomPaint(
+              size: const Size(double.infinity, 230),
+              painter: _AgentGalaxyPainter(
+                agents: _agents, animValue: _galaxyAnim.value),
+            ),
+          ),
+          _buildCategoryLegend(),
+          const SizedBox(height: 10),
+        ],
+      ),
+    );
+  }
+
+  Widget _healthBadge(int score) {
+    final color = score >= 80
+        ? const Color(0xFF22C55E)
+        : score >= 60 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444);
+    return AnimatedBuilder(
+      animation: _pulseAnim,
+      builder: (_, __) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12 + _pulseAnim.value * 0.06),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.5)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 6, height: 6,
+            decoration: BoxDecoration(shape: BoxShape.circle,
+              color: color.withValues(alpha: 0.7 + _pulseAnim.value * 0.3))),
+          const SizedBox(width: 5),
+          Text('בריאות $score%',
+              style: TextStyle(color: color, fontFamily: 'Heebo',
+                  fontSize: 11, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildCategoryLegend() {
+    final categories = <String, Color>{
+      'core': const Color(0xFF3B82F6), 'storage': const Color(0xFF8B5CF6),
+      'productivity': const Color(0xFF22C55E), 'external': const Color(0xFFF59E0B),
+      'quality': const Color(0xFFEF4444), 'analytics': const Color(0xFF06B6D4),
+      'meta': const Color(0xFFA78BFA), 'custom': const Color(0xFFF97316),
+    };
+    final labels = <String, String>{
+      'core': 'ליבה', 'storage': 'אחסון', 'productivity': 'פרודוקטיביות',
+      'external': 'חיצוני', 'quality': 'איכות', 'analytics': 'ניתוח',
+      'meta': 'מטא', 'custom': 'מותאם',
+    };
+    final present = _agents.map((a) => a.category).toSet();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+      child: Wrap(
+        spacing: 8, runSpacing: 4,
+        alignment: WrapAlignment.center,
+        children: categories.entries
+          .where((e) => present.contains(e.key))
+          .map((e) => Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(width: 7, height: 7,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: e.value)),
+            const SizedBox(width: 4),
+            Text(labels[e.key] ?? e.key,
+                style: const TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
+          ]))
+          .toList(),
+      ),
+    );
+  }
+
+  // ── Intelligence Panel ────────────────────────────────────────────────────
+
+  Widget _buildIntelligencePanel() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JC.blue500.withValues(alpha: 0.2), width: 0.8),
+        gradient: LinearGradient(
+          begin: Alignment.topRight, end: Alignment.bottomLeft,
+          colors: [JC.blue500.withValues(alpha: 0.04), JC.surface],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            const Spacer(),
+            GestureDetector(
+              onTap: _analyzingNow ? null : _analyzeNow,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: JC.blue500.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: JC.blue400.withValues(alpha: 0.35)),
+                ),
+                child: _analyzingNow
+                    ? const SizedBox(width: 13, height: 13,
+                        child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400))
+                    : const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.refresh_rounded, size: 12, color: JC.blue400),
+                        SizedBox(width: 4),
+                        Text('נרענן', style: TextStyle(color: JC.blue400,
+                            fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+                      ]),
+              ),
+            ),
+          ]),
+
+          if (_loadingIntelligence && _strengths.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
+            )
+          else if (_strengths.isEmpty && _gaps.isEmpty && _nextActions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: Text('לחץ "נרענן" לקבלת ניתוח AI',
+                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
+            )
+          else ...[
+            if (_strengths.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _insightSection('💪 חוזקות', _strengths, const Color(0xFF22C55E)),
+            ],
+            if (_gaps.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _insightSection('🎯 הזדמנויות שיפור', _gaps, const Color(0xFFF59E0B)),
+            ],
+            if (_nextActions.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Text('⚡ פעולות מומלצות',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
+                      fontSize: 12, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              ..._nextActions.map(_buildNextActionCard),
+            ],
+          ],
+
+          if (_analysis != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: JC.blue500.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: JC.blue400.withValues(alpha: 0.15)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Text('🤖 ניתוח עדכני',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                        fontSize: 11, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Text(_analysis!, textDirection: TextDirection.rtl,
+                    style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
+                        fontSize: 13, height: 1.55)),
+              ]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _insightSection(String title, List<String> items, Color color) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(title, textAlign: TextAlign.right,
+          style: TextStyle(color: color, fontFamily: 'Heebo',
+              fontSize: 12, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 5),
+      ...items.map((s) => Padding(
+        padding: const EdgeInsets.only(bottom: 3),
+        child: Row(children: [
+          const Spacer(),
+          Flexible(child: Text(s, textDirection: TextDirection.rtl,
+              style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.4))),
+          const SizedBox(width: 6),
+          Container(width: 4, height: 4,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.6))),
+        ]),
+      )),
+    ]);
+  }
+
+  Widget _buildNextActionCard(Map<String, dynamic> action) {
+    final title    = action['title']?.toString() ?? '';
+    final prompt   = action['prompt']?.toString() ?? '';
+    final priority = action['priority']?.toString() ?? 'medium';
+    final prColor  = _priorityColor(priority);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: JC.surfaceAlt,
+          borderRadius: BorderRadius.circular(10),
+          border: Border(right: BorderSide(color: prColor, width: 2.5),
+            left: BorderSide(color: JC.border, width: 0.7),
+            top: BorderSide(color: JC.border, width: 0.7),
+            bottom: BorderSide(color: JC.border, width: 0.7)),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(title, textDirection: TextDirection.rtl,
+                  style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w600, fontSize: 13)),
+              if (prompt.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(prompt, textDirection: TextDirection.rtl,
+                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11)),
+              ],
+            ]),
+          ),
+          const SizedBox(width: 10),
+          if (widget.onSwitchToChat != null)
+            GestureDetector(
+              onTap: () {
+                final cmd = 'משימה חדשה מה-Intelligence Hub:\n\n**$title**\n\n$prompt\n\nבבקשה עזור לי לממש את זה צעד אחר צעד.';
+                WidgetsBinding.instance.addPostFrameCallback((_) => widget.onSwitchToChat!(cmd));
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: JC.blue500.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: JC.blue400.withValues(alpha: 0.4)),
+                ),
+                child: const Text('התחל →',
+                    style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w700, fontSize: 12)),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  // ── Activity Timeline ─────────────────────────────────────────────────────
+
+  Widget _buildActivityTimeline() {
+    if (_loadingStats && _stats.isEmpty) return const SizedBox.shrink();
+    final chatsToday  = _stats['chat']?['today']      ?? 0;
+    final tasksOpen   = (_stats['tasks']?['total']    ?? 0) - (_stats['tasks']?['done'] ?? 0);
+    final memories    = _stats['memories']?['total']  ?? 0;
+    final remindersAc = _stats['reminders']?['active'] ?? 0;
+
+    final events = <(String, String, Color)>[
+      ('💬', '$chatsToday שיחות היום',       const Color(0xFF3B82F6)),
+      ('✅', '$tasksOpen משימות פתוחות',     const Color(0xFF22C55E)),
+      if (remindersAc > 0)
+        ('⏰', '$remindersAc תזכורות פעילות', const Color(0xFFF59E0B)),
+      ('🧠', '$memories זיכרונות שמורים',    const Color(0xFF8B5CF6)),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: events.map((e) {
+          final (icon, label, color) = e;
+          return Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(icon, style: const TextStyle(fontSize: 14)),
+            const SizedBox(width: 5),
+            Text(label, style: TextStyle(color: color, fontFamily: 'Heebo',
+                fontSize: 11, fontWeight: FontWeight.w600)),
+          ]);
+        }).toList(),
       ),
     );
   }
@@ -1039,6 +1577,23 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                                             fontWeight: FontWeight.w600, fontSize: 11)),
                               ),
                             ),
+                          if (!isDone && widget.onSwitchToChat != null) ...[
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () => _switchToChatWithProposal(p),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.4), width: 0.8),
+                                ),
+                                child: const Text('עבוד עכשיו →',
+                                    style: TextStyle(color: Color(0xFF22C55E), fontFamily: 'Heebo',
+                                        fontWeight: FontWeight.w600, fontSize: 11)),
+                              ),
+                            ),
+                          ],
                           const Spacer(),
                           _badge(statusLabel, statusColor),
                           if (catLabel.isNotEmpty) ...[

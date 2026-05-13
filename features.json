@@ -22,7 +22,7 @@
     ],
     "building": [
       { "name": "ORB — טבעיות שיחה",   "desc": "תשובות מדוברות, pauseFor קצר, TTS חלק" },
-      { "name": "Dashboard חדש",        "desc": "פאנל ניהול מעודכן עם backlog וסטטוס חי" }
+      { "name": "מרכז שליטה — Mission Control", "desc": "גלקסיית סוכנים תלת-מימדית, ניתוח AI חכם, insights בזמן אמת" }
     ],
     "planned": [
       { "name": "Widget מסך הבית",      "desc": "ווידג'ט iOS/Android עם quick actions" },

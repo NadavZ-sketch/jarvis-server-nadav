@@ -1695,6 +1695,110 @@ app.post('/dashboard/generate-prompt', async (req, res) => {
     }
 });
 
+// ─── Intelligence ─────────────────────────────────────────────────────────────
+
+let _intelligenceCache = null;
+let _intelligenceCacheTime = 0;
+const INTELLIGENCE_CACHE_TTL = 10 * 60 * 1000;
+
+const BUILTIN_AGENTS = [
+    { id: 'router',   name: 'Router',    nameHe: 'ניתוב',       category: 'core',         icon: '🔀', connections: ['chat','task','reminder','memory','notes','shopping','weather','news','security','e2e','factory','insight'] },
+    { id: 'chat',     name: 'Chat',      nameHe: 'שיחה',        category: 'core',         icon: '💬', connections: ['memory','insight'] },
+    { id: 'memory',   name: 'Memory',    nameHe: 'זיכרון',      category: 'storage',      icon: '🧠', connections: ['chat'] },
+    { id: 'task',     name: 'Tasks',     nameHe: 'משימות',      category: 'productivity', icon: '✅', connections: [] },
+    { id: 'reminder', name: 'Reminders', nameHe: 'תזכורות',     category: 'productivity', icon: '⏰', connections: [] },
+    { id: 'notes',    name: 'Notes',     nameHe: 'פתקים',       category: 'productivity', icon: '📝', connections: [] },
+    { id: 'shopping', name: 'Shopping',  nameHe: 'קניות',       category: 'productivity', icon: '🛒', connections: [] },
+    { id: 'weather',  name: 'Weather',   nameHe: 'מזג אוויר',   category: 'external',     icon: '🌤', connections: [] },
+    { id: 'news',     name: 'News',      nameHe: 'חדשות',       category: 'external',     icon: '📰', connections: [] },
+    { id: 'security', name: 'Security',  nameHe: 'אבטחה',       category: 'quality',      icon: '🔒', connections: ['e2e'] },
+    { id: 'e2e',      name: 'E2E Tests', nameHe: 'בדיקות',      category: 'quality',      icon: '🧪', connections: ['security'] },
+    { id: 'factory',  name: 'Factory',   nameHe: 'מפעל סוכנים', category: 'meta',         icon: '🏭', connections: [] },
+    { id: 'insight',  name: 'Insight',   nameHe: 'תובנות',      category: 'analytics',    icon: '📊', connections: ['memory','chat'] },
+];
+
+app.get('/intelligence/snapshot', async (_req, res) => {
+    try {
+        const now = Date.now();
+        if (_intelligenceCache && (now - _intelligenceCacheTime) < INTELLIGENCE_CACHE_TTL) {
+            return res.json(_intelligenceCache);
+        }
+
+        const todayStart = new Date(); todayStart.setUTCHours(0, 0, 0, 0);
+        const [chatTotal, chatToday, tasksTotal, tasksDone, remindersActive, memoriesTotal] = await Promise.allSettled([
+            supabase.from('chat_history').select('*', { count: 'exact', head: true }),
+            supabase.from('chat_history').select('*', { count: 'exact', head: true }).gte('created_at', todayStart.toISOString()),
+            supabase.from('tasks').select('*', { count: 'exact', head: true }),
+            supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('done', true),
+            supabase.from('reminders').select('*', { count: 'exact', head: true }).eq('fired', false),
+            supabase.from('memories').select('*', { count: 'exact', head: true }),
+        ]);
+        const getCount = r => (r.status === 'fulfilled' && !r.value.error) ? (r.value.count ?? 0) : 0;
+        const stats = {
+            chatsTotal: getCount(chatTotal), chatsToday: getCount(chatToday),
+            tasksTotal: getCount(tasksTotal), tasksDone: getCount(tasksDone),
+            remindersActive: getCount(remindersActive), memoriesTotal: getCount(memoriesTotal),
+        };
+
+        let customAgents = [];
+        try {
+            const reg = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'agents/custom/registry.json'), 'utf8'));
+            customAgents = Object.entries(reg).map(([id, info]) => ({
+                id, name: info.name || id, nameHe: info.name || id,
+                category: 'custom', icon: '⚡', connections: [],
+            }));
+        } catch {}
+
+        const allAgents = [...BUILTIN_AGENTS, ...customAgents];
+
+        const tasksRate = stats.tasksTotal > 0 ? stats.tasksDone / stats.tasksTotal : 1;
+        const systemHealth = Math.min(100, Math.round(
+            45 + Math.min(stats.chatsToday * 4, 20) + tasksRate * 20 + Math.min(stats.memoriesTotal, 15)
+        ));
+
+        let featuresCtx = '';
+        try {
+            const fData = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'features.json'), 'utf8'));
+            featuresCtx = `הושלמו: ${fData.features.done.map(f => f.name).join(', ')}\nבבנייה: ${fData.features.building.map(f => f.name).join(', ')}\nמתוכנן: ${fData.features.planned.map(f => f.name).join(', ')}`;
+        } catch {}
+
+        let insights = { strengths: [], gaps: [], nextActions: [] };
+        try {
+            const prompt = `אתה מנתח טכנולוגי של מערכת Jarvis (עוזר AI אישי בעברית).
+מצב: שיחות=${stats.chatsTotal} (היום=${stats.chatsToday}), משימות=${stats.tasksTotal}/${stats.tasksDone} הושלמו, תזכורות פעילות=${stats.remindersActive}, זיכרונות=${stats.memoriesTotal}
+${featuresCtx}
+ענה אך ורק ב-JSON תקני ללא הסברים:
+{"strengths":["חוזקה קצרה 1","חוזקה קצרה 2","חוזקה קצרה 3"],"gaps":["פער 1","פער 2"],"nextActions":[{"title":"שם הפעולה","prompt":"הוראה קצרה","priority":"high"},{"title":"פעולה 2","prompt":"הוראה","priority":"medium"}]}`;
+            const raw = await callGemma4(prompt, false, 600);
+            const match = raw.match(/\{[\s\S]*\}/);
+            if (match) insights = JSON.parse(match[0]);
+        } catch (e) { console.error('intelligence insights:', e.message); }
+
+        const result = { agents: allAgents, systemHealth, activitySummary: stats, insights, generatedAt: new Date().toISOString() };
+        _intelligenceCache = result;
+        _intelligenceCacheTime = now;
+        res.json(result);
+    } catch (e) {
+        console.error('intelligence/snapshot:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/intelligence/analyze', async (req, res) => {
+    try {
+        const { focus } = req.body || {};
+        const backlog = readBacklog();
+        const open = backlog.proposals.filter(p => p.status !== 'done').slice(0, 5);
+        const prompt = `${focus ? `פוקוס: ${focus}\n` : ''}פריטים פתוחים: ${open.map(p => p.title).join(', ') || 'אין'}\nתן ניתוח קצר (3-4 משפטים) עם המלצה ברורה לצעד הבא החשוב ביותר. ענה בעברית.`;
+        const analysis = await callGemma4(prompt, false, 400);
+        _intelligenceCache = null;
+        res.json({ analysis, analyzedAt: new Date().toISOString() });
+    } catch (e) {
+        console.error('intelligence/analyze:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 module.exports = { app };

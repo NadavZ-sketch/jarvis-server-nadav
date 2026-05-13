@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/proposal_scoring.dart';
+import '../services/telemetry_policy.dart';
 
 class _CompatHttpRes {
   final String body;
@@ -332,22 +333,40 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     _showSnack('ציון איכות נוכחי: $score');
   }
 
+  bool get _hasTelemetryConsent => widget.settings.telemetryConsent;
+
+  String _pseudoUserId() {
+    final raw = widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim();
+    final hash = _stableHash(raw).toUnsigned(32).toRadixString(16).padLeft(8, '0');
+    return 'u-$hash';
+  }
+
+  Map<String, dynamic> _redactMetadata(Map<String, dynamic>? metadata) {
+    final source = metadata ?? const <String, dynamic>{};
+    final allowedActions = {'start_first', 'sprint_prompt', 'memory_focus'};
+    return {
+      if (source['compactMode'] is bool) 'compactMode': source['compactMode'],
+      if (allowedActions.contains(source['action'])) 'action': source['action'],
+    };
+  }
+
   // Compatibility shim for legacy telemetry calls in merge commits.
   Future<void> _trackProposalOutcome(String proposalId, String outcome) async {
+    if (!_hasTelemetryConsent) return;
     try {
       await http.post(
         Uri.parse('$_base/dashboard/smart-telemetry'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'userId': 'mobile-user',
+          'userId': _pseudoUserId(),
           'eventName': 'proposal_outcome',
-          'eventValue': outcome,
-          'metadata': {'proposalId': proposalId},
+          'eventValue': outcome == 'proposal_activated' ? 1 : 0,
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+          'ttl': TelemetryPolicy.ttlForEvent('proposal_outcome'),
+          'metadata': {'proposalOutcomeType': outcome},
         }),
       ).timeout(const Duration(seconds: 8));
-    } catch (_) {
-      // best-effort only
-    }
+    } catch (_) {}
   }
 
   // Compatibility shim for old snippets that still parse `askJarvisRes.body`.
@@ -481,7 +500,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   Future<Map<String, dynamic>?> _collectConsentForSensitivity(String sensitivity) async {
-    final ctrl = TextEditingController();
     bool second = false;
     final ok = await showDialog<bool>(
       context: context,
@@ -490,7 +508,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           backgroundColor: JC.surface,
           title: const Text('נדרש אישור פרטיות', textAlign: TextAlign.right, style: TextStyle(fontFamily: 'Heebo')),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (sensitivity != 'low') TextField(controller: ctrl, textAlign: TextAlign.right, decoration: const InputDecoration(hintText: 'הסבר קצר לשימוש בנתונים')),
+            if (sensitivity != 'low') const Text('תיעוד אנליטי מוגבל (ללא טקסט חופשי).', textAlign: TextAlign.right),
             if (sensitivity == 'high') CheckboxListTile(value: second, onChanged: (v)=>setLocal(()=>second=v??false), title: const Text('אני מאשר/ת שוב (אישור כפול)', style: TextStyle(fontSize: 13)), controlAffinity: ListTileControlAffinity.leading),
           ]),
           actions: [TextButton(onPressed: ()=>Navigator.pop(context,false), child: const Text('ביטול')), ElevatedButton(onPressed: ()=>Navigator.pop(context,true), child: const Text('אישור'))],
@@ -500,7 +518,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     if (ok != true) return null;
     return {
       'explicitApproval': true,
-      if (sensitivity != 'low') 'dataUsageExplanation': ctrl.text.trim(),
+      if (sensitivity != 'low') 'consentLevel': 'explicit',
       if (sensitivity == 'high') 'doubleApproval': second,
       if (sensitivity == 'high') 'ttlMinutes': 15,
     };
@@ -1434,15 +1452,18 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   Future<void> _trackSmartEvent(String eventName, {Map<String, dynamic>? metadata}) async {
+    if (!_hasTelemetryConsent) return;
     try {
       await http.post(
         Uri.parse('$_base/dashboard/smart-telemetry'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'userId': widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim(),
+          'userId': _pseudoUserId(),
           'eventName': eventName,
           'eventValue': 1,
-          'metadata': metadata ?? {},
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
+          'ttl': TelemetryPolicy.ttlForEvent(eventName),
+          'metadata': _redactMetadata(metadata),
         }),
       ).timeout(const Duration(seconds: 6));
     } catch (_) {

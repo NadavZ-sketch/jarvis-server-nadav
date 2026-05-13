@@ -58,6 +58,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       useLocalServer:   widget.settings.useLocalServer,
       localServerUrl:   widget.settings.localServerUrl,
       obsidianAutoSync: widget.settings.obsidianAutoSync,
+      telemetryConsent: widget.settings.telemetryConsent,
     );
     _assistantNameCtrl  = TextEditingController(text: _s.assistantName);
     _userNameCtrl       = TextEditingController(text: _s.userName);
@@ -163,6 +164,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+
+
+  Future<void> _resetTelemetry() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: JC.surface,
+        title: const Text('איפוס למידה / Telemetry', textAlign: TextAlign.right),
+        content: const Text('הפעולה תמחק אירועי Telemetry מהשרת ומהמכשיר (אם קיימים). לא ניתן לשחזר.', textAlign: TextAlign.right),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ביטול')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('איפוס')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await http.post(
+        Uri.parse('${_s.serverUrl}/dashboard/smart-telemetry/reset'),
+        headers: {'Content-Type': 'application/json'},
+        body: '{"scope":"user"}',
+      ).timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('בוצע איפוס Telemetry.')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('לא הצלחנו לאפס כרגע. נסה שוב.')));
+    }
+  }
   Future<void> _openProgressMap() async {
     final uri = Uri.parse('${_s.serverUrl}/progress-map');
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -864,6 +894,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.sync_lock_outlined,
                 value: _s.obsidianAutoSync,
                 onChanged: _setObsidianAutoSync,
+              ),
+            ]),
+
+
+
+            _sectionHeader('פרטיות ו-Telemetry', Icons.privacy_tip_outlined),
+            _card([
+              _rowSwitch(
+                label: 'איסוף Telemetry אנונימי',
+                subtitle: 'נאספים רק מונים/סטטוסים ללא טקסט חופשי',
+                icon: Icons.analytics_outlined,
+                value: _s.telemetryConsent,
+                onChanged: (val) => setState(() => _s.telemetryConsent = val),
+              ),
+              _divider(),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                leading: const Icon(Icons.delete_sweep_outlined, color: Color(0xFFEF4444), size: 20),
+                title: const Text('איפוס למידה / Telemetry', style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+                subtitle: const Text('מחיקת אירועים שנשמרו עבור המשתמש הזה', style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+                trailing: const Icon(Icons.chevron_right_rounded, color: JC.textMuted, size: 18),
+                onTap: _resetTelemetry,
               ),
             ]),
 

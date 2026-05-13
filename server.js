@@ -1603,6 +1603,54 @@ function writeBacklog(data) {
     require('fs').writeFileSync(BACKLOG_PATH(), JSON.stringify(data, null, 2));
 }
 
+
+const PROGRESS_MAP_SCHEMA_PATH = path.join(__dirname, 'progress_map_schema.json');
+const PROGRESS_MAP_CONFIG = {
+    statuses: ['proposal', 'draft_plan', 'active', 'validation', 'done'],
+    priorityLevels: ['high', 'medium', 'low'],
+    statusFilters: ['all', 'proposal', 'draft_plan', 'active', 'validation', 'done'],
+    priorityFilters: ['all', 'high', 'medium', 'low'],
+    labels: {
+        status: {
+            proposal: '💡 הצעה', draft_plan: '🧭 תכנון', active: '⚡ פעיל', validation: '🧪 ולידציה', done: '✅ הושלם', all: 'הכל',
+        },
+        priority: { high: '🔴 גבוה', medium: '🟡 בינוני', low: '🟢 נמוך', all: 'הכל' },
+    },
+};
+
+function buildRoadmapNodes(features = {}, proposals = []) {
+    return [
+        { id: 'done', title: `הושלם (${(features.done || []).length})`, description: 'יכולות בפרודקשן', status: 'done' },
+        { id: 'building', title: `בבנייה (${(features.building || []).length})`, description: 'יכולות בפיתוח', status: 'active' },
+        { id: 'planned', title: `מתוכנן (${(features.planned || []).length})`, description: `בקנה: ${proposals.filter((p) => p.status === 'proposal').length} הצעות`, status: 'proposal' },
+    ];
+}
+
+function buildProgressMetrics(features = {}, proposals = []) {
+    return {
+        done_features: (features.done || []).length,
+        building_features: (features.building || []).length,
+        planned_features: (features.planned || []).length,
+        proposal_count: proposals.filter((p) => p.status === 'proposal').length,
+        active_proposal_count: proposals.filter((p) => p.status === 'active').length,
+    };
+}
+
+function validateProgressMapPayload(payload) {
+    if (!payload || typeof payload !== 'object') return { ok: false, error: 'payload must be an object' };
+    if (!Array.isArray(payload.proposals)) return { ok: false, error: 'proposals must be an array' };
+    for (const p of payload.proposals) {
+        if (typeof p.id !== 'number') return { ok: false, error: 'proposal.id must be number' };
+        if (typeof p.title !== 'string') return { ok: false, error: 'proposal.title must be string' };
+        if (typeof p.plan !== 'string') return { ok: false, error: 'proposal.plan must be string' };
+        if (!PROGRESS_MAP_CONFIG.statuses.includes(p.status)) return { ok: false, error: `invalid proposal.status: ${p.status}` };
+        if (!PROGRESS_MAP_CONFIG.priorityLevels.includes(p.priority)) return { ok: false, error: `invalid proposal.priority: ${p.priority}` };
+    }
+    if (!Array.isArray(payload.roadmap_nodes)) return { ok: false, error: 'roadmap_nodes must be an array' };
+    if (!payload.metrics || typeof payload.metrics !== 'object') return { ok: false, error: 'metrics must be object' };
+    return { ok: true };
+}
+
 const PROPOSAL_STATUSES = ['proposal', 'draft_plan', 'active', 'validation', 'done'];
 
 function normalizeProposalForMvp(p) {
@@ -1643,6 +1691,19 @@ app.get('/dashboard/features', (_req, res) => {
     } catch { res.status(500).json({ error: 'features.json not found' }); }
 });
 
+app.get('/dashboard/backlog/config', (_req, res) => {
+    res.json(PROGRESS_MAP_CONFIG);
+});
+
+app.get('/dashboard/backlog/schema', (_req, res) => {
+    try {
+        const schema = JSON.parse(require('fs').readFileSync(PROGRESS_MAP_SCHEMA_PATH, 'utf8'));
+        res.json(schema);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/dashboard/backlog', (_req, res) => {
     const data = readBacklog();
 
@@ -1679,7 +1740,20 @@ app.get('/dashboard/backlog', (_req, res) => {
             return `למדנו ש־${p.title || 'הצעה'} נשמרה ${kept}/${Math.max(total, 1)} פעמים. ${ttvText}`;
         });
 
-    res.json({ ...data, ranking_version: data.ranking_version || BACKLOG_RANKING_VERSION, learned_insights: topInsights });
+    const featuresData = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'features.json'), 'utf8'));
+    const progressPayload = {
+        ...data,
+        ranking_version: data.ranking_version || BACKLOG_RANKING_VERSION,
+        learned_insights: topInsights,
+        roadmap_nodes: buildRoadmapNodes(featuresData.features || {}, data.proposals || []),
+        metrics: buildProgressMetrics(featuresData.features || {}, data.proposals || []),
+        config: PROGRESS_MAP_CONFIG,
+    };
+    const validation = validateProgressMapPayload(progressPayload);
+    if (!validation.ok) {
+        return res.status(500).json({ error: `progress payload validation failed: ${validation.error}` });
+    }
+    res.json(progressPayload);
 });
 
 app.post('/dashboard/backlog', (req, res) => {

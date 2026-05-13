@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Progress Map Payload",
+  "type": "object",
+  "required": ["proposals", "roadmap_nodes", "metrics", "config"],
+  "properties": {
+    "proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "plan", "status", "priority", "category"],
+        "properties": {
+          "id": {"type": "integer"},
+          "title": {"type": "string"},
+          "plan": {"type": "string"},
+          "status": {"type": "string", "enum": ["proposal", "draft_plan", "active", "validation", "done"]},
+          "priority": {"type": "string", "enum": ["high", "medium", "low"]},
+          "category": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "roadmap_nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "description", "status"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "status": {"type": "string", "enum": ["proposal", "active", "done"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["done_features", "building_features", "planned_features", "proposal_count", "active_proposal_count"],
+      "properties": {
+        "done_features": {"type": "integer"},
+        "building_features": {"type": "integer"},
+        "planned_features": {"type": "integer"},
+        "proposal_count": {"type": "integer"},
+        "active_proposal_count": {"type": "integer"}
+      },
+      "additionalProperties": false
+    },
+    "config": {"type": "object"}
+  },
+  "additionalProperties": true
+}

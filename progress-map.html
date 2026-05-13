@@ -446,10 +446,10 @@ async function loadFeatures() {
 }
 
 // ── Proposals ─────────────────────────────────────────────────────────────────
-const PRIORITY_LABELS = { high: '🔴 גבוה', medium: '🟡 בינוני', low: '🟢 נמוך' };
+let PRIORITY_LABELS = { high: '🔴 גבוה', medium: '🟡 בינוני', low: '🟢 נמוך', all:'הכל' };
 const PRIORITY_PILLS  = { high: 'pill-priority-high', medium: 'pill-priority-medium', low: 'pill-priority-low' };
-const STATUS_LABELS   = { proposal: '💡 הצעה', active: '⚡ פעיל', done: '✅ הושלם' };
-const STATUS_PILLS    = { proposal: 'pill-status-proposal', active: 'pill-status-active', done: 'pill-status-done' };
+let STATUS_LABELS   = { proposal: '💡 הצעה', draft_plan:'🧭 תכנון', active: '⚡ פעיל', validation:'🧪 ולידציה', done: '✅ הושלם', all:'הכל' };
+const STATUS_PILLS    = { proposal: 'pill-status-proposal', draft_plan:'pill-status-proposal', active: 'pill-status-active', validation:'pill-status-active', done: 'pill-status-done' };
 const CAT_LABELS      = { feature: 'פיצ\'ר', improvement: 'שיפור', bug: 'באג', ux: 'UX' };
 
 function renderProposals(proposals) {
@@ -618,6 +618,8 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadBacklog() {
   try {
     const d = await fetch('/dashboard/backlog').then(r => r.json());
+    if (d.config?.labels?.status) STATUS_LABELS = d.config.labels.status;
+    if (d.config?.labels?.priority) PRIORITY_LABELS = d.config.labels.priority;
     _proposalCtx = d.proposals || [];
     renderProposals(_proposalCtx);
     renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });

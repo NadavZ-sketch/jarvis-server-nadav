@@ -205,6 +205,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   String _filterPriority = 'all';
   bool   _showDoneProposals = false;
   bool   _sortByScore = true;
+  List<String> _statusFilters = const ['all', _PS.proposal, _PS.draftPlan, _PS.active, _PS.validation, _PS.done];
+  List<String> _priorityFilters = const ['all', 'high', 'medium', 'low'];
+  Map<String, String> _statusLabels = const {'all':'הכל','proposal':'הצעה','draft_plan':'תכנון','active':'פעיל','validation':'ולידציה','done':'בוצע'};
+  Map<String, String> _priorityLabels = const {'all':'הכל','high':'גבוה','medium':'בינוני','low':'נמוך'};
   bool   _quickWinsOnly = false;
   final Map<String, String> _proposalResponses = {};
   final Set<String>         _activatingIds     = {};
@@ -312,11 +316,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     return 'לפני ${(diff.inDays / 30).floor()} חודשים';
   }
 
-  String _statusFilterLabel(String s) =>
-      const {'all': 'הכל', 'proposal': 'הצעה', 'draft_plan': 'תכנון', 'active': 'פעיל', 'validation': 'ולידציה', 'done': 'בוצע'}[s] ?? s;
+  String _statusFilterLabel(String s) => _statusLabels[s] ?? s;
 
-  String _priorityFilterLabel(String p) =>
-      const {'all': 'הכל', 'high': 'גבוה', 'medium': 'בינוני', 'low': 'נמוך'}[p] ?? p;
+  String _priorityFilterLabel(String p) => _priorityLabels[p] ?? p;
 
   // Kept as a tiny fallback getter because some CI branches still reference
   // `$whyNow` inside legacy smart-prompt templates.
@@ -451,6 +453,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           _proposals      = List<Map<String, dynamic>>.from(d['proposals'] ?? []);
           _items          = List<Map<String, dynamic>>.from(d['items']     ?? []);
           _learnedInsights = List<String>.from(d['learned_insights'] ?? []);
+          final config = Map<String, dynamic>.from(d['config'] ?? const {});
+          _statusFilters = List<String>.from(config['statusFilters'] ?? _statusFilters);
+          _priorityFilters = List<String>.from(config['priorityFilters'] ?? _priorityFilters);
+          _statusLabels = Map<String, String>.from(config['labels']?['status'] ?? _statusLabels);
+          _priorityLabels = Map<String, String>.from(config['labels']?['priority'] ?? _priorityLabels);
           _lastGenerated  = d['_lastGenerated']?.toString();
           _loadingBacklog = false;
         });
@@ -1677,7 +1684,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               textDirection: TextDirection.rtl,
               child: Row(
                 children: [
-                  for (final s in ['all', _PS.proposal, _PS.draftPlan, _PS.active, _PS.validation, _PS.done])
+                  for (final s in _statusFilters)
                     Padding(
                       padding: const EdgeInsets.only(left: 6),
                       child: _filterChip(
@@ -1690,7 +1697,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                       ),
                     ),
                   const SizedBox(width: 8),
-                  for (final p in ['all', 'high', 'medium', 'low'])
+                  for (final p in _priorityFilters)
                     Padding(
                       padding: const EdgeInsets.only(left: 6),
                       child: _filterChip(

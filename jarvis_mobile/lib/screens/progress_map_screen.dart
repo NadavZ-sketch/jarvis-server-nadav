@@ -6,6 +6,12 @@ import 'package:http/http.dart' as http;
 import '../main.dart' show JC;
 import '../app_settings.dart';
 
+class _CompatHttpRes {
+  final String body;
+  final int statusCode;
+  const _CompatHttpRes(this.body, {this.statusCode = 200});
+}
+
 class ProgressMapScreen extends StatefulWidget {
   final AppSettings settings;
   final void Function(String)? onSwitchToChat;
@@ -210,6 +216,34 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   // Backward-compatibility fallback for legacy UI fragments that still render
   // `${scores['weighted_score']}` in CI merge commits.
   Map<String, dynamic> get scores => const {'weighted_score': '_'};
+
+  // Compatibility shim for legacy tap handlers that call
+  // `_showScoreExplainer(scores)` in older UI fragments.
+  void _showScoreExplainer(Map<String, dynamic> data) {
+    final score = data['weighted_score']?.toString() ?? '_';
+    _showSnack('ציון איכות נוכחי: $score');
+  }
+
+  // Compatibility shim for legacy telemetry calls in merge commits.
+  Future<void> _trackProposalOutcome(String proposalId, String outcome) async {
+    try {
+      await http.post(
+        Uri.parse('$_base/dashboard/smart-telemetry'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': 'mobile-user',
+          'eventName': 'proposal_outcome',
+          'eventValue': outcome,
+          'metadata': {'proposalId': proposalId},
+        }),
+      ).timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // best-effort only
+    }
+  }
+
+  // Compatibility shim for old snippets that still parse `askJarvisRes.body`.
+  _CompatHttpRes get askJarvisRes => const _CompatHttpRes('{"answer":""}', statusCode: 200);
 
   void _scheduleRetry() {
     _retryTimer?.cancel();

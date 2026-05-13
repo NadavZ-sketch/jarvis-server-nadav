@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -38,25 +39,99 @@ class _GraphNode {
   });
 }
 
+class _GraphEdge {
+  final int from;
+  final int to;
+  final String relationshipType; // dependency | similarity | user-goal
+  const _GraphEdge({
+    required this.from,
+    required this.to,
+    required this.relationshipType,
+  });
+}
+
+String _ensureStableNodeId({
+  required String rawNodeId,
+  required String label,
+  required String type,
+  required int fallbackIndex,
+}) {
+  final trimmed = rawNodeId.trim();
+  if (trimmed.isNotEmpty) return trimmed;
+  final seed = '${type.trim()}|${label.trim()}|$fallbackIndex';
+  return 'auto-${seed.hashCode.abs()}';
+}
+
+List<Offset> _buildStableGraphPoints({
+  required List<_GraphNode> nodes,
+  required double width,
+  required double height,
+}) {
+  if (nodes.isEmpty) return const <Offset>[];
+  final safeWidth = width < 120 ? 120.0 : width;
+  final safeHeight = height < 120 ? 120.0 : height;
+  const marginX = 24.0;
+  const marginY = 28.0;
+  final usableW = safeWidth - (marginX * 2);
+  final usableH = safeHeight - (marginY * 2);
+  final points = <Offset>[];
+
+  for (final node in nodes) {
+    final baseHash = node.nodeId.hashCode.abs();
+    final mixHash = '${node.nodeId}|${node.type}|${node.label}'.hashCode.abs();
+    final x = marginX + (baseHash % 10000) / 10000.0 * usableW;
+    final y = marginY + (mixHash % 10000) / 10000.0 * usableH;
+    points.add(Offset(x, y));
+  }
+
+  // Basic collision mitigation: small deterministic push when nodes are too close.
+  const minDistance = 30.0;
+  for (var i = 0; i < points.length; i++) {
+    for (var j = i + 1; j < points.length; j++) {
+      final delta = points[j] - points[i];
+      final distance = delta.distance;
+      if (distance >= minDistance) continue;
+      final angleSeed = '${nodes[i].nodeId}|${nodes[j].nodeId}'.hashCode.abs();
+      final angle = (angleSeed % 360) * 3.1415926535 / 180.0;
+      final shift = (minDistance - distance) / 2 + 2;
+      final push = Offset(shift * cos(angle), shift * sin(angle));
+      points[i] = _clampPoint(points[i] - push, marginX, safeWidth - marginX, marginY, safeHeight - marginY);
+      points[j] = _clampPoint(points[j] + push, marginX, safeWidth - marginX, marginY, safeHeight - marginY);
+    }
+  }
+  return points;
+}
+
+Offset _clampPoint(Offset p, double minX, double maxX, double minY, double maxY) {
+  return Offset(
+    p.dx.clamp(minX, maxX).toDouble(),
+    p.dy.clamp(minY, maxY).toDouble(),
+  );
+}
+
 class _InnovationGraphPainter extends CustomPainter {
   final List<_GraphNode> nodes;
-  final List<List<int>> edges;
+  final List<_GraphEdge> edges;
   final double width;
   final double height;
   const _InnovationGraphPainter({required this.nodes, required this.edges, required this.width, required this.height});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final points = <Offset>[];
-    for (var i = 0; i < nodes.length; i++) {
-      final x = 20 + (i * 47) % (width - 40);
-      final y = 30 + ((i * 67) % (height.toInt() - 60));
-      points.add(Offset(x.toDouble(), y.toDouble()));
-    }
-    final edgePaint = Paint()..color = const Color(0x8894A3B8)..strokeWidth = 1.2;
+    // Stable layout by nodeId improves long-term user learning:
+    // the same concept appears in (almost) the same visual area between sessions,
+    // so users build spatial memory and understand graph changes faster.
+    final points = _buildStableGraphPoints(nodes: nodes, width: width, height: height);
     for (final e in edges) {
-      if (e[0] >= points.length || e[1] >= points.length) continue;
-      canvas.drawLine(points[e[0]], points[e[1]], edgePaint);
+      if (e.from >= points.length || e.to >= points.length) continue;
+      final edgePaint = Paint()
+        ..color = switch (e.relationshipType) {
+          'dependency' => const Color(0x88F59E0B),
+          'user-goal' => const Color(0x8834D399),
+          _ => const Color(0x8894A3B8),
+        }
+        ..strokeWidth = e.relationshipType == 'dependency' ? 1.8 : 1.2;
+      canvas.drawLine(points[e.from], points[e.to], edgePaint);
     }
     for (var i = 0; i < nodes.length; i++) {
       final n = nodes[i];
@@ -1133,7 +1208,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   void _onGraphTap(Offset tap, double width, double height, List<_GraphNode> nodes) {
-    final points = _graphPoints(nodes.length, width, height);
+    final points = _buildStableGraphPoints(nodes: nodes, width: width, height: height);
     int nearest = -1;
     double best = 999999;
     for (var i = 0; i < points.length; i++) {
@@ -1147,16 +1222,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final node = nodes[nearest];
     setState(() => _selectedGraphNode = node);
     _showGraphNodeActions(node);
-  }
-
-  List<Offset> _graphPoints(int count, double width, double height) {
-    final points = <Offset>[];
-    for (var i = 0; i < count; i++) {
-      final x = 20 + (i * 47) % (width - 40);
-      final y = 30 + ((i * 67) % (height.toInt() - 60));
-      points.add(Offset(x.toDouble(), y.toDouble()));
-    }
-    return points;
   }
 
   Future<void> _showGraphNodeActions(_GraphNode node) async {
@@ -1238,20 +1303,25 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final features = [..._done, ..._building, ..._planned];
     for (var i = 0; i < features.length; i++) {
       final f = features[i];
-      out.add(_GraphNode(nodeId: (f['id'] ?? '').toString(), label: (f['name'] ?? 'Feature').toString(), type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
+      final label = (f['name'] ?? 'Feature').toString();
+      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (f['id'] ?? '').toString(), label: label, type: 'feature', fallbackIndex: i), label: label, type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
     }
-    for (final p in _proposals.take(12)) {
-      out.add(_GraphNode(nodeId: (p['id'] ?? '').toString(), label: (p['title'] ?? 'Proposal').toString(), type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble(), whyNow: (p['why_now'] ?? p['plan'] ?? 'הזדמנות שיפור קרובה').toString()));
+    final proposals = _proposals.take(12).toList();
+    for (var i = 0; i < proposals.length; i++) {
+      final p = proposals[i];
+      final label = (p['title'] ?? 'Proposal').toString();
+      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (p['id'] ?? '').toString(), label: label, type: 'proposal', fallbackIndex: i), label: label, type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble(), whyNow: (p['why_now'] ?? p['plan'] ?? 'הזדמנות שיפור קרובה').toString()));
     }
     out.add(const _GraphNode(nodeId: 'agent-jarvis', label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88, whyNow: 'מרכז תיאום בין יכולות להצעות'));
     return out;
   }
 
-  List<List<int>> _buildGraphEdges(List<_GraphNode> nodes) {
-    final edges = <List<int>>[];
+  List<_GraphEdge> _buildGraphEdges(List<_GraphNode> nodes) {
+    final edges = <_GraphEdge>[];
     if (nodes.length < 2) return edges;
     for (var i = 0; i < nodes.length - 1; i++) {
-      edges.add([i, i + 1]);
+      final type = i % 3 == 0 ? 'dependency' : i % 3 == 1 ? 'similarity' : 'user-goal';
+      edges.add(_GraphEdge(from: i, to: i + 1, relationshipType: type));
     }
     return edges;
   }

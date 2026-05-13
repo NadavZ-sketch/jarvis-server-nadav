@@ -7,7 +7,8 @@
     "test": "jest",
     "test:coverage": "jest --coverage",
     "e2e": "node tests/e2e/runE2E.js",
-    "e2e:local": "node tests/e2e/runE2E.js --local"
+    "e2e:local": "node tests/e2e/runE2E.js --local",
+    "lint": "node scripts/lint-syntax.js"
   },
   "jest": {
     "testEnvironment": "node",

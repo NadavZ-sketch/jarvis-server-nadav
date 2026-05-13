@@ -10,6 +10,7 @@ class AppSettings {
   bool useLocalServer;  // true = local server, false = Render cloud
   String localServerUrl;
   bool obsidianAutoSync;
+  bool telemetryConsent;
 
   static const String cloudServerUrl = 'https://jarvis-server-nadav.onrender.com';
 
@@ -25,6 +26,7 @@ class AppSettings {
     this.useLocalServer = false,
     this.localServerUrl = 'http://192.168.1.100:3000',
     this.obsidianAutoSync = true,
+    this.telemetryConsent = false,
   });
 
   static Future<AppSettings> load() async {
@@ -39,6 +41,7 @@ class AppSettings {
       useLocalServer:   prefs.getBool('useLocalServer')     ?? false,
       localServerUrl:   prefs.getString('localServerUrl')   ?? 'http://192.168.1.100:3000',
       obsidianAutoSync: prefs.getBool('obsidianAutoSync')   ?? true,
+      telemetryConsent: prefs.getBool('telemetryConsent') ?? false,
     );
   }
 
@@ -53,6 +56,7 @@ class AppSettings {
     await prefs.setBool('useLocalServer',   useLocalServer);
     await prefs.setString('localServerUrl', localServerUrl);
     await prefs.setBool('obsidianAutoSync', obsidianAutoSync);
+    await prefs.setBool('telemetryConsent', telemetryConsent);
   }
 
   Map<String, dynamic> toJson() => {
@@ -63,5 +67,6 @@ class AppSettings {
     'useLocalModel':  useLocalModel,
     'useLocalServer': useLocalServer,
     'ttsEnabled':     voiceEnabled,   // server checks settings.ttsEnabled
+    'telemetryConsent': telemetryConsent,
   };
 }

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../main.dart' show JC;
 import '../app_settings.dart';
+import '../services/proposal_scoring.dart';
 
 class _CompatHttpRes {
   final String body;
@@ -252,8 +253,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   // ── Computed ──────────────────────────────────────────────────────────────
+  UserContext get _userContext => UserContext(
+    memoryCount: ((_stats['memories']?['total'] ?? 0) as num).toInt(),
+    activeProposals: _proposals.where((p) => p['status'] == _PS.active).length,
+    pendingProposals: _proposals.where((p) => p['status'] == _PS.proposal).length,
+  );
+
+  ProposalScoreResult _scoreProposal(Map<String, dynamic> proposal, UserContext context) =>
+      scoreProposal(proposal, context);
 
   List<Map<String, dynamic>> get _filteredProposals {
+    final context = _userContext;
     var list = List<Map<String, dynamic>>.from(_proposals);
     if (_filterStatus != 'all') {
       list = list.where((p) => p['status'] == _filterStatus).toList();
@@ -264,11 +274,24 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     if (_filterPriority != 'all') {
       list = list.where((p) => p['priority'] == _filterPriority).toList();
     }
+    if (_quickWinsOnly) {
+      list = list.where((p) => isQuickWin(_scoreProposal(p, context))).toList();
+    }
     const statusOrder = {'active': 0, 'validation': 1, 'draft_plan': 2, 'proposal': 3, 'done': 4};
     list.sort((a, b) {
+      final aScore = _scoreProposal(a, context);
+      final bScore = _scoreProposal(b, context);
+      if (_sortByScore) {
+        final byScore = bScore.score.compareTo(aScore.score);
+        if (byScore != 0) return byScore;
+      }
       final aO = statusOrder[a['status']] ?? 9;
       final bO = statusOrder[b['status']] ?? 9;
       if (aO != bO) return aO - bO;
+      if (!_sortByScore) {
+        final byScore = bScore.score.compareTo(aScore.score);
+        if (byScore != 0) return byScore;
+      }
       return (b['createdAt'] ?? '').compareTo(a['createdAt'] ?? '');
     });
     return list;
@@ -1317,12 +1340,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       final fallbackSeed = (f['createdAt'] ?? f['updatedAt'] ?? i).toString();
       out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (f['id'] ?? '').toString(), label: label, type: 'feature', fallbackSeed: fallbackSeed), label: label, type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
     }
+    final context = _userContext;
     final proposals = _proposals.take(12).toList();
     for (var i = 0; i < proposals.length; i++) {
       final p = proposals[i];
+      final computed = _scoreProposal(p, context);
       final label = (p['title'] ?? 'Proposal').toString();
       final fallbackSeed = (p['createdAt'] ?? p['updatedAt'] ?? i).toString();
-      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (p['id'] ?? '').toString(), label: label, type: 'proposal', fallbackSeed: fallbackSeed), label: label, type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble(), whyNow: (p['why_now'] ?? p['plan'] ?? 'הזדמנות שיפור קרובה').toString()));
+      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (p['id'] ?? '').toString(), label: label, type: 'proposal', fallbackSeed: fallbackSeed), label: label, type: 'proposal', impact: computed.impact, score: computed.score, whyNow: computed.whyNow));
     }
     out.add(const _GraphNode(nodeId: 'agent-jarvis', label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88, whyNow: 'מרכז תיאום בין יכולות להצעות'));
     return out;
@@ -1714,6 +1739,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   }
 
   Widget _buildProposalCard(Map<String, dynamic> p) {
+    final computed = _scoreProposal(p, _userContext);
+    final scores = <String, dynamic>{
+      'impact': computed.impact.toStringAsFixed(1),
+      'effort': computed.effort.toStringAsFixed(1),
+      'risk': computed.privacyRisk.toStringAsFixed(1),
+      'confidence': computed.confidence.toStringAsFixed(1),
+      'weighted_score': computed.score.toStringAsFixed(0),
+    };
+    final whyNow = computed.whyNow;
     final idRaw   = p['id'];
     final idStr   = idRaw?.toString() ?? '';
     final status  = p['status']?.toString() ?? _PS.proposal;

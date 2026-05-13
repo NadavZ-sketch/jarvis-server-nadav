@@ -21,6 +21,57 @@ class ProgressMapScreen extends StatefulWidget {
   State<ProgressMapScreen> createState() => _ProgressMapScreenState();
 }
 
+class _GraphNode {
+  final String nodeId;
+  final String label;
+  final String type;
+  final double impact;
+  final double score;
+  final String whyNow;
+  const _GraphNode({
+    required this.label,
+    this.nodeId = '',
+    required this.type,
+    required this.impact,
+    required this.score,
+    this.whyNow = 'נבחר בגלל עדיפות נוכחית',
+  });
+}
+
+class _InnovationGraphPainter extends CustomPainter {
+  final List<_GraphNode> nodes;
+  final List<List<int>> edges;
+  final double width;
+  final double height;
+  const _InnovationGraphPainter({required this.nodes, required this.edges, required this.width, required this.height});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final points = <Offset>[];
+    for (var i = 0; i < nodes.length; i++) {
+      final x = 20 + (i * 47) % (width - 40);
+      final y = 30 + ((i * 67) % (height.toInt() - 60));
+      points.add(Offset(x.toDouble(), y.toDouble()));
+    }
+    final edgePaint = Paint()..color = const Color(0x8894A3B8)..strokeWidth = 1.2;
+    for (final e in edges) {
+      if (e[0] >= points.length || e[1] >= points.length) continue;
+      canvas.drawLine(points[e[0]], points[e[1]], edgePaint);
+    }
+    for (var i = 0; i < nodes.length; i++) {
+      final n = nodes[i];
+      final p = points[i];
+      final color = n.type == 'proposal' ? const Color(0xFFA78BFA) : n.type == 'agent' ? const Color(0xFF34D399) : const Color(0xFF38BDF8);
+      final r = 6 + (n.impact / 2.4);
+      canvas.drawCircle(p, r + 2, Paint()..color = color.withValues(alpha: 0.25));
+      canvas.drawCircle(p, r, Paint()..color = color);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _InnovationGraphPainter oldDelegate) => oldDelegate.nodes != nodes || oldDelegate.edges != edges;
+}
+
 abstract final class _PS {
   static const proposal = 'proposal';
   static const draftPlan = 'draft_plan';
@@ -59,12 +110,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   // Proposals (AI backlog)
   List<Map<String, dynamic>> _proposals = [];
   String? _lastGenerated;
+  List<String> _learnedInsights = [];
   bool _generatingProposals = false;
 
   // Filter / inline-activation state
   String _filterStatus   = 'all';
   String _filterPriority = 'all';
   bool   _showDoneProposals = false;
+  bool   _sortByScore = true;
+  bool   _quickWinsOnly = false;
   final Map<String, String> _proposalResponses = {};
   final Set<String>         _activatingIds     = {};
 
@@ -79,6 +133,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   bool _generatingPrompt = false;
   bool _promptCopied     = false;
   bool _smartCompactMode = true;
+  _GraphNode? _selectedGraphNode;
   final Map<String, int> _smartTelemetry = {
     'action_start_first': 0,
     'action_sprint_prompt': 0,
@@ -268,6 +323,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         setState(() {
           _proposals      = List<Map<String, dynamic>>.from(d['proposals'] ?? []);
           _items          = List<Map<String, dynamic>>.from(d['items']     ?? []);
+          _learnedInsights = List<String>.from(d['learned_insights'] ?? []);
           _lastGenerated  = d['_lastGenerated']?.toString();
           _loadingBacklog = false;
         });
@@ -308,6 +364,40 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     }
   }
 
+
+  String _proposalSensitivity(Map<String, dynamic> proposal) {
+    final policyGate = Map<String, dynamic>.from(proposal['policyGate'] ?? {});
+    final sensitivity = policyGate['sensitivity']?.toString() ?? '';
+    if (sensitivity == 'high' || sensitivity == 'medium' || sensitivity == 'low') return sensitivity;
+    return 'low';
+  }
+
+  Future<Map<String, dynamic>?> _collectConsentForSensitivity(String sensitivity) async {
+    final ctrl = TextEditingController();
+    bool second = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          backgroundColor: JC.surface,
+          title: const Text('נדרש אישור פרטיות', textAlign: TextAlign.right, style: TextStyle(fontFamily: 'Heebo')),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (sensitivity != 'low') TextField(controller: ctrl, textAlign: TextAlign.right, decoration: const InputDecoration(hintText: 'הסבר קצר לשימוש בנתונים')),
+            if (sensitivity == 'high') CheckboxListTile(value: second, onChanged: (v)=>setLocal(()=>second=v??false), title: const Text('אני מאשר/ת שוב (אישור כפול)', style: TextStyle(fontSize: 13)), controlAffinity: ListTileControlAffinity.leading),
+          ]),
+          actions: [TextButton(onPressed: ()=>Navigator.pop(context,false), child: const Text('ביטול')), ElevatedButton(onPressed: ()=>Navigator.pop(context,true), child: const Text('אישור'))],
+        ),
+      ),
+    );
+    if (ok != true) return null;
+    return {
+      'explicitApproval': true,
+      if (sensitivity != 'low') 'dataUsageExplanation': ctrl.text.trim(),
+      if (sensitivity == 'high') 'doubleApproval': second,
+      if (sensitivity == 'high') 'ttlMinutes': 15,
+    };
+  }
+
   Future<void> _activateProposal(Map<String, dynamic> proposal) async {
     final idRaw = proposal['id'];
     final idStr = idRaw?.toString() ?? '';
@@ -315,6 +405,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
     final title = proposal['title']?.toString() ?? '';
     final plan  = proposal['plan']?.toString()  ?? '';
+    final sensitivity = _proposalSensitivity(proposal);
+    final consent = await _collectConsentForSensitivity(sensitivity);
+    if (consent == null) return;
 
     setState(() => _activatingIds.add(idStr));
 
@@ -351,8 +444,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
       if (!mounted) return;
 
-      final jarvisAnswer = results[1].statusCode == 200
-          ? (jsonDecode(results[1].body) as Map<String, dynamic>)['answer']?.toString() ?? ''
+      final jarvisAnswer = askJarvisRes.statusCode == 200
+          ? (jsonDecode(askJarvisRes.body) as Map<String, dynamic>)['answer']?.toString() ?? ''
           : 'ג׳רביס לא הגיב';
 
       setState(() {
@@ -364,6 +457,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         }
         _activatingIds.remove(idStr);
       });
+      await _trackProposalOutcome(idStr, 'proposal_activated');
     } catch (_) {
       if (!mounted) return;
       setState(() => _activatingIds.remove(idStr));
@@ -562,6 +656,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             _buildMetrics(),
             const SizedBox(height: 14),
             _buildSmartRoadmapLab(),
+            const SizedBox(height: 14),
+            _sectionTitle('🧠 מפת חדשנות'),
+            const SizedBox(height: 8),
+            _buildInnovationGraphCard(),
             const SizedBox(height: 14),
             if (!_loadingFeatures && _done.isNotEmpty) ...[
               _buildProgressBar(),
@@ -790,8 +888,38 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           const SizedBox(height: 12),
           ...smartSuggestions.map((s) => _buildSmartSuggestionTile(s)).toList(),
           const SizedBox(height: 6),
+          _buildLearnedInsights(),
+          const SizedBox(height: 6),
           _buildSmartTelemetryPanel(),
           if (!_smartCompactMode) _buildSmartExplainPanel(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLearnedInsights() {
+    if (_learnedInsights.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: JC.bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: JC.border, width: 0.7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text('למדנו ש...',
+              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          for (final line in _learnedInsights.take(3))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('• $line',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5)),
+            ),
         ],
       ),
     );
@@ -951,6 +1079,181 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildInnovationGraphCard() {
+    final nodes = _buildGraphNodes();
+    final edges = _buildGraphEdges(nodes);
+    final weakMode = MediaQuery.of(context).size.width < 390;
+    if (weakMode) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text('מצב 2D פשוט · ${nodes.length} ישויות', style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+          const SizedBox(height: 8),
+          ...nodes.take(8).map((n) => Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: JC.bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: JC.border, width: .7)),
+            child: Text('${n.label} · ${n.type} · score ${n.score}', textAlign: TextAlign.right, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
+          )),
+        ]),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text('גרף חי · ${nodes.length} ישויות · ${edges.length} קשרים', style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 250,
+          child: LayoutBuilder(builder: (_, c) {
+            return GestureDetector(
+              onTapUp: (d) => _onGraphTap(d.localPosition, c.maxWidth, 250, nodes),
+              child: CustomPaint(
+                painter: _InnovationGraphPainter(nodes: nodes, edges: edges, width: c.maxWidth, height: 250),
+                child: Container(),
+              ),
+            );
+          }),
+        ),
+        if (_selectedGraphNode != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'נבחר: ${_selectedGraphNode!.label}',
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+          ),
+        ]
+      ]),
+    );
+  }
+
+  void _onGraphTap(Offset tap, double width, double height, List<_GraphNode> nodes) {
+    final points = _graphPoints(nodes.length, width, height);
+    int nearest = -1;
+    double best = 999999;
+    for (var i = 0; i < points.length; i++) {
+      final d = (points[i] - tap).distance;
+      if (d < best) {
+        best = d;
+        nearest = i;
+      }
+    }
+    if (nearest < 0 || best > 26) return;
+    final node = nodes[nearest];
+    setState(() => _selectedGraphNode = node);
+    _showGraphNodeActions(node);
+  }
+
+  List<Offset> _graphPoints(int count, double width, double height) {
+    final points = <Offset>[];
+    for (var i = 0; i < count; i++) {
+      final x = 20 + (i * 47) % (width - 40);
+      final y = 30 + ((i * 67) % (height.toInt() - 60));
+      points.add(Offset(x.toDouble(), y.toDouble()));
+    }
+    return points;
+  }
+
+  Future<void> _showGraphNodeActions(_GraphNode node) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: JC.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(node.label, textAlign: TextAlign.right, style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 6),
+              Text(
+                'why_now: ${node.whyNow}\nscore: ${node.score.toStringAsFixed(0)} · impact: ${node.impact.toStringAsFixed(1)}',
+                textAlign: TextAlign.right,
+                style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
+                children: [
+                  _graphActionBtn('⚡ activate', () => _runGraphAction('activate', node)),
+                  _graphActionBtn('🕒 defer', () => _runGraphAction('defer', node)),
+                  _graphActionBtn('✂️ split', () => _runGraphAction('split', node)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _graphActionBtn(String label, VoidCallback onTap) => OutlinedButton(
+    onPressed: onTap,
+    style: OutlinedButton.styleFrom(side: const BorderSide(color: JC.border), foregroundColor: JC.textPrimary),
+    child: Text(label, style: const TextStyle(fontFamily: 'Heebo')),
+  );
+
+  void _runGraphAction(String action, _GraphNode node) {
+    Navigator.pop(context);
+    _trackSmartEvent('graph_action_$action', metadata: {'node': node.label, 'type': node.type});
+    _applyGraphAction(action, node);
+  }
+
+  Future<void> _applyGraphAction(String action, _GraphNode node) async {
+    try {
+      final resp = await http.post(
+        Uri.parse('$_base/dashboard/graph/action'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'nodeId': node.nodeId,
+          'nodeLabel': node.label,
+          'nodeType': node.type,
+          'action': action,
+          'source': 'mobile',
+          'actor': widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim(),
+        }),
+      ).timeout(const Duration(seconds: 6));
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        _showSnack('בוצע: $action עבור ${node.label}');
+        await _loadBacklog();
+      } else {
+        _showSnack('הפעולה נכשלה (${resp.statusCode})');
+      }
+    } catch (_) {
+      _showSnack('שגיאת רשת בזמן ביצוע פעולה');
+    }
+  }
+
+  List<_GraphNode> _buildGraphNodes() {
+    final out = <_GraphNode>[];
+    final features = [..._done, ..._building, ..._planned];
+    for (var i = 0; i < features.length; i++) {
+      final f = features[i];
+      out.add(_GraphNode(nodeId: (f['id'] ?? '').toString(), label: (f['name'] ?? 'Feature').toString(), type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
+    }
+    for (final p in _proposals.take(12)) {
+      out.add(_GraphNode(nodeId: (p['id'] ?? '').toString(), label: (p['title'] ?? 'Proposal').toString(), type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble(), whyNow: (p['why_now'] ?? p['plan'] ?? 'הזדמנות שיפור קרובה').toString()));
+    }
+    out.add(const _GraphNode(nodeId: 'agent-jarvis', label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88, whyNow: 'מרכז תיאום בין יכולות להצעות'));
+    return out;
+  }
+
+  List<List<int>> _buildGraphEdges(List<_GraphNode> nodes) {
+    final edges = <List<int>>[];
+    if (nodes.length < 2) return edges;
+    for (var i = 0; i < nodes.length - 1; i++) {
+      edges.add([i, i + 1]);
+    }
+    return edges;
   }
 
   Future<void> _confirmSmartAction(Map<String, String> suggestion) async {
@@ -1274,6 +1577,18 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                     _showDoneProposals,
                     () => setState(() => _showDoneProposals = !_showDoneProposals),
                   ),
+                  const SizedBox(width: 8),
+                  _filterChip(
+                    'Quick Wins',
+                    _quickWinsOnly,
+                    () => setState(() => _quickWinsOnly = !_quickWinsOnly),
+                  ),
+                  const SizedBox(width: 8),
+                  _filterChip(
+                    _sortByScore ? 'מיון: ציון' : 'מיון: סטטוס',
+                    _sortByScore,
+                    () => setState(() => _sortByScore = !_sortByScore),
+                  ),
                 ],
               ),
             ),
@@ -1413,6 +1728,53 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
+                      if (scores.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () => _showScoreExplainer(scores),
+                              child: const Icon(Icons.info_outline_rounded, color: JC.textMuted, size: 16),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text('הסבר ציון',
+                                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _badge('Impact ${scores['impact'] ?? '—'}/5', const Color(0xFF22C55E)),
+                            _badge('Effort ${scores['effort'] ?? '—'}/5', const Color(0xFFF59E0B)),
+                            _badge('Risk ${scores['risk'] ?? '—'}/5', const Color(0xFFEF4444)),
+                            _badge('Conf ${scores['confidence'] ?? '—'}/5', JC.blue400),
+                            _badge('Score ${scores['weighted_score'] ?? '—'}', const Color(0xFFA78BFA)),
+                          ],
+                        ),
+                      ],
+                      if (whyNow.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: JC.blue500.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: JC.blue400.withValues(alpha: 0.22), width: 0.8),
+                          ),
+                          child: Text(
+                            'למה עכשיו: $whyNow',
+                            textDirection: TextDirection.rtl,
+                            style: const TextStyle(
+                              color: JC.textSecondary,
+                              fontFamily: 'Heebo',
+                              fontSize: 11.5,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       if (isActive && checklist.isNotEmpty) ...[
                         Align(
@@ -1456,6 +1818,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                       ],
 
                       // Badges + activate button
+                      if (!isDone)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: const Text('נדרש אישור פרטיות', style: TextStyle(color: Color(0xFFF59E0B), fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+                        ),
+                      if (!isDone) const SizedBox(height: 6),
                       Row(
                         children: [
                           if (!isDone)

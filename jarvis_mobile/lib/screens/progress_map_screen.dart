@@ -54,12 +54,22 @@ String _ensureStableNodeId({
   required String rawNodeId,
   required String label,
   required String type,
-  required int fallbackIndex,
+  required String fallbackSeed,
 }) {
   final trimmed = rawNodeId.trim();
   if (trimmed.isNotEmpty) return trimmed;
-  final seed = '${type.trim()}|${label.trim()}|$fallbackIndex';
-  return 'auto-${seed.hashCode.abs()}';
+  final seed = '${type.trim()}|${label.trim()}|${fallbackSeed.trim()}';
+  return 'auto-${_stableHash(seed)}';
+}
+
+int _stableHash(String input) {
+  // FNV-1a 32-bit hash: deterministic across app runs/devices.
+  var hash = 0x811C9DC5;
+  for (final codeUnit in input.codeUnits) {
+    hash ^= codeUnit;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+  }
+  return hash;
 }
 
 List<Offset> _buildStableGraphPoints({
@@ -77,8 +87,8 @@ List<Offset> _buildStableGraphPoints({
   final points = <Offset>[];
 
   for (final node in nodes) {
-    final baseHash = node.nodeId.hashCode.abs();
-    final mixHash = '${node.nodeId}|${node.type}|${node.label}'.hashCode.abs();
+    final baseHash = _stableHash(node.nodeId);
+    final mixHash = _stableHash('${node.nodeId}|${node.type}|${node.label}');
     final x = marginX + (baseHash % 10000) / 10000.0 * usableW;
     final y = marginY + (mixHash % 10000) / 10000.0 * usableH;
     points.add(Offset(x, y));
@@ -91,7 +101,7 @@ List<Offset> _buildStableGraphPoints({
       final delta = points[j] - points[i];
       final distance = delta.distance;
       if (distance >= minDistance) continue;
-      final angleSeed = '${nodes[i].nodeId}|${nodes[j].nodeId}'.hashCode.abs();
+      final angleSeed = _stableHash('${nodes[i].nodeId}|${nodes[j].nodeId}');
       final angle = (angleSeed % 360) * 3.1415926535 / 180.0;
       final shift = (minDistance - distance) / 2 + 2;
       final push = Offset(shift * cos(angle), shift * sin(angle));
@@ -1304,13 +1314,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     for (var i = 0; i < features.length; i++) {
       final f = features[i];
       final label = (f['name'] ?? 'Feature').toString();
-      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (f['id'] ?? '').toString(), label: label, type: 'feature', fallbackIndex: i), label: label, type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
+      final fallbackSeed = (f['createdAt'] ?? f['updatedAt'] ?? i).toString();
+      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (f['id'] ?? '').toString(), label: label, type: 'feature', fallbackSeed: fallbackSeed), label: label, type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
     }
     final proposals = _proposals.take(12).toList();
     for (var i = 0; i < proposals.length; i++) {
       final p = proposals[i];
       final label = (p['title'] ?? 'Proposal').toString();
-      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (p['id'] ?? '').toString(), label: label, type: 'proposal', fallbackIndex: i), label: label, type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble(), whyNow: (p['why_now'] ?? p['plan'] ?? 'הזדמנות שיפור קרובה').toString()));
+      final fallbackSeed = (p['createdAt'] ?? p['updatedAt'] ?? i).toString();
+      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (p['id'] ?? '').toString(), label: label, type: 'proposal', fallbackSeed: fallbackSeed), label: label, type: 'proposal', impact: ((p['impact'] ?? 8) as num).toDouble(), score: ((p['score'] ?? 70) as num).toDouble(), whyNow: (p['why_now'] ?? p['plan'] ?? 'הזדמנות שיפור קרובה').toString()));
     }
     out.add(const _GraphNode(nodeId: 'agent-jarvis', label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88, whyNow: 'מרכז תיאום בין יכולות להצעות'));
     return out;

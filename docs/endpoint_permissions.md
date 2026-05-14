@@ -18,6 +18,7 @@
 | `/contacts` | GET/POST/PUT/DELETE | ❌ | ✅ Own only | ✅ All | מידע רגיש |
 | `/shopping` | GET/POST/PUT/DELETE | ❌ | ✅ Own only | ✅ All | מידע אישי |
 | `/send-email` | POST | ❌ | ⚠️ Sensitive action | ✅ Allowed | נדרש אישור מפורש לפני שליחה |
+| `/api/proposals/:id/action` | POST | ❌ | ✅ Write own | ✅ Write all | `actionType` נתמך + בדיקת בעלות על proposal + audit trail |
 | `/admin/*` (אם קיים) | Any | ❌ | ❌ | ✅ Only | לגישה פנימית בלבד |
 
 ## Security Rules
@@ -26,3 +27,15 @@
 2. אפליקציית מובייל/ווב מקבלת לכל היותר **anon key** (`SUPABASE_ANON_KEY`) + JWT של המשתמש.
 3. כל טבלה אישית חייבת `user_id` + RLS פעיל.
 4. פעולות רגישות (email, מחיקה) דורשות אימות + אישור משתמש.
+
+## Supported `actionType` values for `/api/proposals/:id/action`
+
+כדי שהלקוח והשרת יהיו מסונכרנים, יש להשתמש רק בערכים הבאים:
+
+- `start_planning` → מעביר ל־`draft_plan`
+- `start_execution` → מעביר ל־`active`
+- `send_to_validation` → מעביר ל־`validation`
+- `mark_done` → מעביר ל־`done`
+- `rollback_to_active` → מחזיר ל־`active`
+
+> הערה: בשלב MVP ההרצה היא **stub execution** (אין אוטומציה עסקית מלאה), אבל כן נשמר שינוי סטטוס ולוג audit אמיתי.

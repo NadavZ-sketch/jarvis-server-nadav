@@ -1652,6 +1652,44 @@ function validateProgressMapPayload(payload) {
 }
 
 const PROPOSAL_STATUSES = ['proposal', 'draft_plan', 'active', 'validation', 'done'];
+const PROPOSAL_ACTIONS = Object.freeze({
+    startPlanning: {
+        actionType: 'start_planning',
+        targetStatus: 'draft_plan',
+        message: 'תוכנית עבודה ראשונית נפתחה.',
+    },
+    startExecution: {
+        actionType: 'start_execution',
+        targetStatus: 'active',
+        message: 'הצעה עברה לביצוע.',
+    },
+    sendToValidation: {
+        actionType: 'send_to_validation',
+        targetStatus: 'validation',
+        message: 'הצעה עברה לולידציה.',
+    },
+    markDone: {
+        actionType: 'mark_done',
+        targetStatus: 'done',
+        message: 'הצעה סומנה כהושלמה.',
+    },
+    rollbackToActive: {
+        actionType: 'rollback_to_active',
+        targetStatus: 'active',
+        message: 'הצעה הוחזרה לביצוע פעיל.',
+    },
+});
+const PROPOSAL_ACTION_TYPES = Object.values(PROPOSAL_ACTIONS).map((x) => x.actionType);
+
+function resolveProposalActor(req) {
+    const authHeader = String(req.headers.authorization || '');
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const sessionUserId = req.headers['x-session-user-id'] || req.headers['x-user-id'];
+    const tokenUserId = bearerToken.startsWith('demo-') ? bearerToken.slice(5).trim() : '';
+    const userId = String(tokenUserId || sessionUserId || '').trim();
+    if (!userId) return { ok: false, error: 'unauthorized' };
+    return { ok: true, userId, actor: `user:${userId}` };
+}
 
 function normalizeProposalForMvp(p) {
     if (!Array.isArray(p.auditTrail)) p.auditTrail = [];
@@ -1870,6 +1908,72 @@ app.delete('/dashboard/backlog/proposals/:id', (req, res) => {
         writeBacklog(data);
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/proposals/:id/action', (req, res) => {
+    try {
+        const auth = resolveProposalActor(req);
+        if (!auth.ok) return res.status(401).json({ ok: false, message: 'Unauthorized' });
+
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id)) return res.status(400).json({ ok: false, message: 'Invalid proposal id' });
+
+        const actionType = String(req.body?.actionType || '').trim();
+        if (!PROPOSAL_ACTION_TYPES.includes(actionType)) {
+            return res.status(400).json({
+                ok: false,
+                proposalId: id,
+                message: `Unsupported actionType. Supported: ${PROPOSAL_ACTION_TYPES.join(', ')}`,
+            });
+        }
+
+        const data = readBacklog();
+        const item = (data.proposals || []).find((p) => p.id === id);
+        if (!item) return res.status(404).json({ ok: false, proposalId: id, message: 'Proposal not found' });
+
+        normalizeProposalForMvp(item);
+        const proposalOwnerId = String(item.userId || item.ownerUserId || '').trim();
+        if (proposalOwnerId && proposalOwnerId !== auth.userId) {
+            return res.status(403).json({ ok: false, proposalId: id, message: 'Forbidden: proposal does not belong to this user' });
+        }
+
+        const actionConfig = Object.values(PROPOSAL_ACTIONS).find((a) => a.actionType === actionType);
+        const nextStatus = actionConfig.targetStatus;
+        if (!canTransitionProposalStatus(item.status, nextStatus)) {
+            return res.status(400).json({
+                ok: false,
+                proposalId: id,
+                newStatus: item.status,
+                message: `Invalid transition: ${item.status} -> ${nextStatus}`,
+            });
+        }
+
+        const previousStatus = item.status;
+        item.status = nextStatus;
+        const auditId = `audit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        item.auditTrail.unshift({
+            id: auditId,
+            from: previousStatus,
+            to: nextStatus,
+            by: auth.actor,
+            reason: `action:${actionType}`,
+            executionMode: 'stub',
+            at: new Date().toISOString(),
+        });
+        item.auditTrail = item.auditTrail.slice(0, 20);
+        if (!proposalOwnerId) item.ownerUserId = auth.userId;
+
+        writeBacklog(data);
+        return res.json({
+            ok: true,
+            proposalId: id,
+            newStatus: nextStatus,
+            message: `${actionConfig.message} (stub execution)`,
+            auditId,
+        });
+    } catch (e) {
+        return res.status(500).json({ ok: false, message: e.message });
+    }
 });
 
 app.patch('/dashboard/backlog/:id', (req, res) => {

@@ -11,6 +11,7 @@ class AppSettings {
   String localServerUrl;
   bool obsidianAutoSync;
   bool telemetryConsent;
+  bool bargeInEnabled;
 
   static const String cloudServerUrl = 'https://jarvis-server-nadav.onrender.com';
 
@@ -27,6 +28,7 @@ class AppSettings {
     this.localServerUrl = 'http://192.168.1.100:3000',
     this.obsidianAutoSync = true,
     this.telemetryConsent = false,
+    this.bargeInEnabled = true,
   });
 
   static Future<AppSettings> load() async {
@@ -42,6 +44,7 @@ class AppSettings {
       localServerUrl:   prefs.getString('localServerUrl')   ?? 'http://192.168.1.100:3000',
       obsidianAutoSync: prefs.getBool('obsidianAutoSync')   ?? true,
       telemetryConsent: prefs.getBool('telemetryConsent') ?? false,
+      bargeInEnabled:   prefs.getBool('bargeInEnabled')   ?? true,
     );
   }
 
@@ -57,6 +60,7 @@ class AppSettings {
     await prefs.setString('localServerUrl', localServerUrl);
     await prefs.setBool('obsidianAutoSync', obsidianAutoSync);
     await prefs.setBool('telemetryConsent', telemetryConsent);
+    await prefs.setBool('bargeInEnabled',   bargeInEnabled);
   }
 
   Map<String, dynamic> toJson() => {

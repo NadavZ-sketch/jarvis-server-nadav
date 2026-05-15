@@ -907,6 +907,68 @@ app.get('/stats', async (_req, res) => {
     });
 });
 
+// ─── Today Message — personalized AI morning/motivation card ──────────────────
+
+app.get('/today-message', async (_req, res) => {
+    try {
+        const now = new Date();
+        const todayStart     = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+
+        const [pendingRes, doneYesterdayRes, totalYesterdayRes, remindersRes] = await Promise.all([
+            supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', false),
+            supabase.from('tasks').select('id', { count: 'exact', head: true })
+                .eq('done', true)
+                .gte('created_at', yesterdayStart.toISOString())
+                .lt('created_at', todayStart.toISOString()),
+            supabase.from('tasks').select('id', { count: 'exact', head: true })
+                .gte('created_at', yesterdayStart.toISOString())
+                .lt('created_at', todayStart.toISOString()),
+            supabase.from('reminders').select('id', { count: 'exact', head: true }).eq('fired', false),
+        ]);
+
+        const pending        = pendingRes.count       ?? 0;
+        const doneYesterday  = doneYesterdayRes.count ?? 0;
+        const totalYesterday = totalYesterdayRes.count ?? 0;
+        const reminders      = remindersRes.count     ?? 0;
+        const yesterdayPct   = totalYesterday > 0 ? Math.round(doneYesterday / totalYesterday * 100) : null;
+
+        const hour = (now.getUTCHours() + 3) % 24; // Jerusalem time
+        const timeOfDay = hour >= 5 && hour < 12 ? 'בוקר טוב'
+                        : hour >= 12 && hour < 17 ? 'צהריים טובים'
+                        : hour >= 17 && hour < 21 ? 'ערב טוב'
+                        : 'לילה טוב';
+
+        const yesterdayNote = yesterdayPct !== null
+            ? ` אתמול השלמת ${yesterdayPct}% מהמשימות — ${yesterdayPct >= 70 ? 'כל הכבוד' : 'אל תתייאש'}!`
+            : '';
+
+        const prompt = `אתה ג'ארביס, עוזר אישי חם ומעודד. כתוב הודעה קצרה ואישית (2 משפטים) בעברית.
+זמן: ${timeOfDay}. יש ${pending} משימות ממתינות ו-${reminders} תזכורות פעילות.${yesterdayNote}
+החזר JSON בלבד: {"message":"הטקסט כאן","emoji":"אמוג'י אחד מתאים"}`;
+
+        const raw = await callGemma4(prompt, false, 200);
+
+        let message = `${timeOfDay}! יש לך ${pending} משימות ממתינות היום.`;
+        let emoji   = '☀️';
+
+        try {
+            const start = raw.indexOf('{');
+            const end   = raw.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                const parsed = JSON.parse(raw.substring(start, end + 1));
+                if (parsed.message) message = parsed.message;
+                if (parsed.emoji)   emoji   = parsed.emoji;
+            }
+        } catch (_) {}
+
+        res.json({ message, emoji });
+    } catch (err) {
+        console.error('GET /today-message error:', err.message);
+        res.json({ message: 'שלום! יש לך משימות ממתינות היום.', emoji: '☀️' });
+    }
+});
+
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
 
 // ─── Contacts REST ────────────────────────────────────────────────────────────
@@ -933,26 +995,6 @@ app.delete('/contacts/:id', requirePolicy('contacts.delete', { sensitive: true, 
     } catch (err) {
         console.error('DELETE /contacts/:id error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
-    }
-});
-
-// ─── PUT /tasks/:id — update task (done, due_date, content) ──────────────────
-app.put('/tasks/:id', async (req, res) => {
-    try {
-        const { done, due_date, content } = req.body;
-        const updates = {};
-        if (done      !== undefined) updates.done     = done;
-        if (due_date  !== undefined) updates.due_date = due_date;
-        if (content   !== undefined) updates.content  = content;
-        if (Object.keys(updates).length === 0)
-            return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await supabase
-            .from('tasks').update(updates).eq('id', req.params.id).select().single();
-        if (error) throw error;
-        res.json({ task: data });
-    } catch (err) {
-        console.error('PUT /tasks/:id error:', err.message);
-        res.status(500).json({ error: err.message });
     }
 });
 

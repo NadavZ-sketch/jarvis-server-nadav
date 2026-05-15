@@ -58,6 +58,10 @@ class JC {
   static const cancelRed = Color(0xFFEF4444);
   static const indigo500 = Color(0xFF6366F1);
   static const indigo300 = Color(0xFFA5B4FC);
+
+  // Priority colors
+  static const amber400 = Color(0xFFF59E0B);
+  static const green500 = Color(0xFF22C55E);
 }
 
 class JarvisApp extends StatelessWidget {

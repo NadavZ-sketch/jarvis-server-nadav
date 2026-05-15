@@ -67,6 +67,7 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 const policyAuditTrail = [];
+const consentLedger = new Map(); // userId:domain -> { approvedAt }
 
 function getActor(req) {
     return {
@@ -83,6 +84,21 @@ function auditPolicy({ userId, actionType, result }) {
     console.log('[audit]', entry);
 }
 
+function actionDomain(actionType) {
+    if (String(actionType).startsWith('contacts.')) return 'contacts';
+    if (String(actionType).startsWith('reminders.')) return 'reminders';
+    if (String(actionType).startsWith('messaging.')) return 'messaging';
+    return actionType;
+}
+
+function hasStoredConsent(userId, actionType) {
+    return consentLedger.has(`${userId}:${actionDomain(actionType)}`);
+}
+
+function storeConsent(userId, actionType) {
+    consentLedger.set(`${userId}:${actionDomain(actionType)}`, { approvedAt: new Date().toISOString() });
+}
+
 function requirePolicy(actionType, options = {}) {
     const { sensitive = false, irreversible = false } = options;
     return (req, res, next) => {
@@ -96,11 +112,13 @@ function requirePolicy(actionType, options = {}) {
             return res.status(403).json({ ok: false, code: 'INSUFFICIENT_PERMISSION', message: 'Your role/plan is not allowed to perform this action.' });
         }
         if (sensitive) {
-            const consent = req.body?.consent === true || String(req.headers['x-user-consent'] || '').toLowerCase() === 'true';
-            if (!consent) {
+            const explicitConsentNow = req.body?.consent === true || String(req.headers['x-user-consent'] || '').toLowerCase() === 'true';
+            const consentAlreadyGranted = hasStoredConsent(actor.userId, actionType);
+            if (!explicitConsentNow && !consentAlreadyGranted) {
                 auditPolicy({ userId: actor.userId, actionType, result: 'denied_no_consent' });
                 return res.status(403).json({ ok: false, code: 'CONSENT_REQUIRED', message: 'Explicit consent is required for sensitive actions.' });
             }
+            if (explicitConsentNow) storeConsent(actor.userId, actionType);
         }
         if (irreversible) {
             const confirmed = req.body?.confirm === true || String(req.headers['x-confirm-action'] || '').toLowerCase() === 'yes';
@@ -128,7 +146,7 @@ app.use(helmet({
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-User-Id', 'X-User-Role', 'X-User-Plan', 'X-User-Consent', 'X-Confirm-Action'],
 }));
 
 app.use(express.json({ limit: '10mb' }));

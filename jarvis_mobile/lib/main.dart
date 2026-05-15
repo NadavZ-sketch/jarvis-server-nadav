@@ -993,11 +993,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       },
       localeId:  'he_IL',
       listenFor: const Duration(seconds: 60),
-      pauseFor:  const Duration(seconds: 3),
+      pauseFor:  const Duration(milliseconds: 1600),
       onSoundLevelChange: (level) {
         if (!mounted || !_voiceConversationActive) return;
         if (level > 0 && _listeningText == 'מקשיב...') {
           setState(() => _listeningText = 'שומע...');
+        }
+        // Barge-in: if assistant is speaking and user starts talking, stop TTS
+        if (_settings.bargeInEnabled &&
+            level > 1.5 &&
+            _currentState == JarvisState.speaking) {
+          _flutterTts.stop();
+          _audioPlayer.stop();
+          _onTtsDone();
         }
       },
     );
@@ -1097,6 +1105,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       _base64Image = null;
     });
 
+    // Use streaming endpoint when there is no image (faster delivery + voice-ready)
+    if (imageToSend == null) {
+      await _sendCommandStreaming(text);
+      _scrollToBottom();
+      return;
+    }
+
+    // Image path: must use /ask-jarvis (streaming doesn't support images)
     final url = Uri.parse('${_settings.serverUrl}/ask-jarvis');
 
     try {
@@ -1174,6 +1190,81 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
 
     _scrollToBottom();
+  }
+
+  // ─── SSE streaming command (voice-mode optimised) ────────────────────────────
+  Future<void> _sendCommandStreaming(String text) async {
+    final client = http.Client();
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('${_settings.serverUrl}/stream-jarvis'),
+      );
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode({
+        'command':  text,
+        'chatId':   _chatId,
+        'settings': {
+          ..._settings.toJson(),
+          'voiceMode': _voiceConversationActive,
+        },
+      });
+
+      final sr = await client.send(request).timeout(const Duration(seconds: 35));
+      if (sr.statusCode != 200) throw Exception('server ${sr.statusCode}');
+
+      String accumulated = '';
+      String lineBuffer  = '';
+
+      await for (final raw in sr.stream.transform(utf8.decoder)) {
+        if (!mounted) break;
+        lineBuffer += raw;
+        while (lineBuffer.contains('\n')) {
+          final idx  = lineBuffer.indexOf('\n');
+          final line = lineBuffer.substring(0, idx).trim();
+          lineBuffer = lineBuffer.substring(idx + 1);
+          if (!line.startsWith('data: ')) continue;
+          try {
+            final data = jsonDecode(line.substring(6)) as Map<String, dynamic>;
+
+            if (data['error'] != null) throw Exception(data['error'].toString());
+            if (data['chatId'] is String) _chatId = data['chatId'] as String;
+
+            if (data['chunk'] is String) {
+              accumulated += data['chunk'] as String;
+            }
+
+            if (data['done'] == true) {
+              if (!mounted) return;
+              final answer = accumulated;
+              setState(() {
+                messages.add({'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()});
+              });
+              _persistMessages();
+              _checkForFinalPrompt(answer);
+              _agentCallCount++;
+              _checkSurveyEligibility();
+              _speakText(answer);
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final errStr = e.toString();
+      final isTimeout = errStr.contains('timeout') || errStr.contains('TimeoutException');
+      final msg = isTimeout
+          ? '⏱ זמן פג — נסה שוב'
+          : '⚠️ ${ApiService.friendlyError(e)}';
+      setState(() {
+        messages.add({'sender': 'jarvis', 'text': msg, 'time': _getCurrentTime()});
+        _currentState          = JarvisState.idle;
+        _voiceConversationMode = false;
+      });
+      if (_voiceConversationActive) _listenContinuous();
+    } finally {
+      client.close();
+    }
   }
 
   void _scrollToBottom() {

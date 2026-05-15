@@ -37,7 +37,8 @@ const { classifyIntent, classifyIntentWithLLM } = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory } = require('./agents/memoryAgent');
-const { runChatAgent, detectFollowUp, filterRelevantMemories } = require('./agents/chatAgent');
+const { runChatAgent, detectFollowUp, filterRelevantMemories, buildSystemPrompt } = require('./agents/chatAgent');
+const conversationSummary = require('./services/conversationSummary');
 const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
@@ -523,6 +524,10 @@ async function askJarvisHandler(req, res) {
             if (!pinecone.isReady()) {
                 longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
             }
+            // Inject rolling conversation summary so agent remembers context beyond 20 msgs
+            if (agentName === 'chat') {
+                settings.chatSummary = await conversationSummary.getSummary(chatId, supabase);
+            }
         } else {
             // All other agents get raw memories (TTL-cached — cheap)
             longTermMemories = await fetchLongTermMemories();
@@ -646,10 +651,14 @@ async function askJarvisHandler(req, res) {
         // Return chatId so client can use it for subsequent messages
         res.json({ answer, audio: audioBase64, action, chatId });
 
-        // ── Fire-and-forget: passive memory extraction (zero latency impact) ─
+        // ── Fire-and-forget: passive memory extraction + summary update ────────
         if (agentName === 'chat' && !imageBase64) {
             setImmediate(() => {
                 autoExtractMemory(userMessage, answer, supabase, settings).catch(() => {});
+                // Reload fresh history (cache was just invalidated) for summary
+                loadChatHistory(chatId).then(freshHistory => {
+                    conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, supabase, settings).catch(() => {});
+                }).catch(() => {});
             });
         }
 
@@ -1313,15 +1322,18 @@ async function streamJarvisHandler(req, res) {
             return res.end();
         }
 
-        // Chat streaming via Groq
-        const [chatHistory, longTermMemories] = await Promise.all([
-            loadChatHistory(chatId), fetchLongTermMemories()
+        // Chat streaming via Groq — same quality as /ask-jarvis
+        const [chatHistory, longTermMemories, chatSummary] = await Promise.all([
+            loadChatHistory(chatId),
+            fetchLongTermMemories(userMessage),
+            conversationSummary.getSummary(chatId, supabase),
         ]);
 
-        const systemPrompt = `אתה ג'רביס, עוזר אישי חכם שמדבר עברית. ענה תמיד בעברית טבעית ויעילה.
-זיכרונות ארוכי טווח:
-${longTermMemories}`;
+        settings.chatSummary = chatSummary;
+        const voiceMode = settings.voiceMode === true;
+        const maxTokens = voiceMode ? 200 : 800;
 
+        const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, null, userMessage);
         const msgs = [
             { role: 'system', content: systemPrompt },
             ...chatHistory.map(m => ({ role: m.role === 'jarvis' ? 'assistant' : 'user', content: m.text })),
@@ -1332,7 +1344,7 @@ ${longTermMemories}`;
         await callGemma4Stream(msgs, useLocal, (chunk) => {
             fullAnswer += chunk;
             send({ chunk });
-        }, controller.signal);
+        }, controller.signal, maxTokens);
 
         send({ done: true, chatId });
 
@@ -1341,6 +1353,14 @@ ${longTermMemories}`;
             saveChatMessage('jarvis', fullAnswer, chatId),
         ]);
         cacheInvalidate(`chatHistory:${chatId}`);
+
+        // Update rolling summary + passive memory extraction (fire-and-forget)
+        setImmediate(() => {
+            autoExtractMemory(userMessage, fullAnswer, supabase, settings).catch(() => {});
+            loadChatHistory(chatId).then(fresh => {
+                conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(() => {});
+            }).catch(() => {});
+        });
     } catch (err) {
         console.error('SSE error:', err.message);
         send({ error: 'שגיאת מערכת.' });
@@ -1466,6 +1486,29 @@ app.get('/sync/obsidian/status', (_req, res) => {
 if (!isTestEnv) cron.schedule('*/5 * * * *', () => {
     if (!obsidianAutoSync) return;
     obsidianSync.syncAll().catch(err => console.error('[ObsidianSync] cron:', err.message));
+});
+
+// Daily cleanup: remove ephemeral memories past their TTL.
+// 'session' scope: 7 days; 'recent' scope: 24 hours.
+if (!isTestEnv) cron.schedule('30 3 * * *', async () => {
+    try {
+        const now = new Date();
+        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const oneDayAgo    = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        const { count: c1 } = await supabase.from('memories')
+            .delete({ count: 'exact' })
+            .eq('scope', 'session')
+            .lt('created_at', sevenDaysAgo);
+        const { count: c2 } = await supabase.from('memories')
+            .delete({ count: 'exact' })
+            .eq('scope', 'recent')
+            .lt('created_at', oneDayAgo);
+        if ((c1 || 0) + (c2 || 0) > 0) {
+            console.log(`🧹 Memory cleanup: removed ${c1 || 0} session + ${c2 || 0} recent memories`);
+        }
+    } catch (err) {
+        console.error('Memory cleanup cron error:', err.message);
+    }
 });
 
 app.get('/chart.js', (_req, res) => {

@@ -60,11 +60,59 @@ const { createTasksRouter } = require('./routes/tasks');
 const { createRemindersRouter } = require('./routes/reminders');
 const { createRemindersController } = require('./controllers/remindersController');
 const { createChatRouter } = require('./routes/chat');
+const { isAllowedByRolePlan, isBlockedAction } = require('./services/policyEngine');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
+const policyAuditTrail = [];
+
+function getActor(req) {
+    return {
+        userId: String(req.headers['x-user-id'] || req.body?.userId || 'anonymous'),
+        role: String(req.headers['x-user-role'] || 'member').toLowerCase(),
+        plan: String(req.headers['x-user-plan'] || 'free').toLowerCase(),
+    };
+}
+
+function auditPolicy({ userId, actionType, result }) {
+    const entry = { userId, actionType, timestamp: new Date().toISOString(), result };
+    policyAuditTrail.push(entry);
+    if (policyAuditTrail.length > 500) policyAuditTrail.shift();
+    console.log('[audit]', entry);
+}
+
+function requirePolicy(actionType, options = {}) {
+    const { sensitive = false, irreversible = false } = options;
+    return (req, res, next) => {
+        const actor = getActor(req);
+        if (isBlockedAction(actionType)) {
+            auditPolicy({ userId: actor.userId, actionType, result: 'blocked' });
+            return res.status(403).json({ ok: false, code: 'ACTION_BLOCKED', message: 'This action is blocked by policy.' });
+        }
+        if (!isAllowedByRolePlan({ actionType, role: actor.role, plan: actor.plan })) {
+            auditPolicy({ userId: actor.userId, actionType, result: 'denied_not_allowed' });
+            return res.status(403).json({ ok: false, code: 'INSUFFICIENT_PERMISSION', message: 'Your role/plan is not allowed to perform this action.' });
+        }
+        if (sensitive) {
+            const consent = req.body?.consent === true || String(req.headers['x-user-consent'] || '').toLowerCase() === 'true';
+            if (!consent) {
+                auditPolicy({ userId: actor.userId, actionType, result: 'denied_no_consent' });
+                return res.status(403).json({ ok: false, code: 'CONSENT_REQUIRED', message: 'Explicit consent is required for sensitive actions.' });
+            }
+        }
+        if (irreversible) {
+            const confirmed = req.body?.confirm === true || String(req.headers['x-confirm-action'] || '').toLowerCase() === 'yes';
+            if (!confirmed) {
+                auditPolicy({ userId: actor.userId, actionType, result: 'denied_missing_confirmation' });
+                return res.status(409).json({ ok: false, code: 'CONFIRMATION_REQUIRED', message: 'Are you sure? confirmation is required for irreversible action.' });
+            }
+        }
+        auditPolicy({ userId: actor.userId, actionType, result: 'allowed' });
+        next();
+    };
+}
 app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     contentSecurityPolicy: {
@@ -112,7 +160,7 @@ const supabaseAdmin = (SUPABASE_SERVICE_ROLE_KEY === SUPABASE_ANON_KEY)
 const supabase = supabaseAdmin;
 
 app.use('/tasks', createTasksRouter({ supabase }));
-app.use('/reminders', createRemindersRouter({ supabase, pinecone }));
+app.use('/reminders', createRemindersRouter({ supabase, pinecone, requirePolicy }));
 app.use('/', createChatRouter({ supabase, askJarvisHandler, streamJarvisHandler }));
 const remindersController = createRemindersController({ supabase, pinecone });
 app.get('/check-reminders', remindersController.check);
@@ -594,7 +642,7 @@ async function askJarvisHandler(req, res) {
 
 // ─── Send Email (called after user confirms in Flutter) ───────────────────────
 
-app.post('/send-email', async (req, res) => {
+app.post('/send-email', requirePolicy('messaging.send', { sensitive: true, irreversible: true }), async (req, res) => {
     const { to, message } = req.body;
     if (!to || !message) return res.status(400).json({ ok: false, error: 'Missing to/message' });
     try {
@@ -835,7 +883,7 @@ app.get('/stats', async (_req, res) => {
 
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
-app.get('/contacts', async (_req, res) => {
+app.get('/contacts', requirePolicy('contacts.read', { sensitive: true }), async (_req, res) => {
     try {
         const { data, error } = await supabase
             .from('contacts')
@@ -849,7 +897,7 @@ app.get('/contacts', async (_req, res) => {
     }
 });
 
-app.delete('/contacts/:id', async (req, res) => {
+app.delete('/contacts/:id', requirePolicy('contacts.delete', { sensitive: true, irreversible: true }), async (req, res) => {
     try {
         const { error } = await supabase.from('contacts').delete().eq('id', req.params.id);
         if (error) throw error;
@@ -1140,7 +1188,7 @@ app.get('/scan/errors', _rl(5), async (_req, res) => {
 
 // ─── PUT /reminders/:id — update text and/or scheduled_time ──────────────────
 // ─── POST /contacts — add contact from app ───────────────────────────────────
-app.post('/contacts', async (req, res) => {
+app.post('/contacts', requirePolicy('contacts.create', { sensitive: true }), async (req, res) => {
     try {
         const { name, phone, email } = req.body;
         if (!name) return res.status(400).json({ error: 'name required' });
@@ -1158,7 +1206,7 @@ app.post('/contacts', async (req, res) => {
 });
 
 // ─── PUT /contacts/:id — update contact ───────────────────────────────────────
-app.put('/contacts/:id', async (req, res) => {
+app.put('/contacts/:id', requirePolicy('contacts.update', { sensitive: true }), async (req, res) => {
     try {
         const { name, phone, email } = req.body;
         const updates = {};

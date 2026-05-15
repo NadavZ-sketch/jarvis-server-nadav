@@ -10,6 +10,21 @@ import '../widgets/empty_state.dart';
 import '../widgets/jarvis_search_bar.dart';
 import '../widgets/loading_skeleton.dart';
 
+// ─── Encouragement messages shown after milestone completions ────────────────
+const _kEncouragements = [
+  '🎉 כל הכבוד! המשימה הושלמה!',
+  '✨ עוד אחת בשקית — מעולה!',
+  '💪 ג׳ארביס גאה בך!',
+  '🔥 אתה מכה אותם אחד אחד!',
+  '🌟 שלושה ברצף — ממש יפה!',
+  '🚀 חמישה השלמות — מדהים!',
+  '🏆 עשר משימות — אלוף!',
+];
+
+const _kMilestones = {3, 5, 10, 15, 20};
+
+// ─── TasksScreen ─────────────────────────────────────────────────────────────
+
 class TasksScreen extends StatefulWidget {
   final AppSettings settings;
   final ValueChanged<int>? onCountUpdate;
@@ -24,7 +39,11 @@ class _TasksScreenState extends State<TasksScreen> {
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   String? _error;
-  bool _showDone = false; // toggle: show completed tasks
+  bool _showDone     = false;
+  String _sortMode         = 'priority'; // 'priority' | 'due_date' | 'created'
+  String _filterPriority   = 'all';     // 'all' | 'high' | 'medium' | 'low'
+  int _doneThisSession = 0;
+
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
@@ -56,18 +75,41 @@ class _TasksScreenState extends State<TasksScreen> {
     widget.onCountUpdate?.call(active);
   }
 
-  /// Sorted: active items first (by due_date asc, then created_at), then done items
+  int _priorityOrder(String? p) => switch (p) {
+    'high'   => 0,
+    'medium' => 1,
+    'low'    => 2,
+    _        => 1,
+  };
+
   List<Map<String, dynamic>> get _sorted {
-    final active = _items.where((i) => i['done'] != true).toList();
-    final done   = _items.where((i) => i['done'] == true).toList();
+    var src = List<Map<String, dynamic>>.from(_items);
+
+    // Priority filter
+    if (_filterPriority != 'all') {
+      src = src.where((i) => i['priority'] == _filterPriority).toList();
+    }
+
+    final active = src.where((i) => i['done'] != true).toList();
+    final done   = src.where((i) => i['done'] == true).toList();
+
     active.sort((a, b) {
-      final aDate = a['due_date'] as String?;
-      final bDate = b['due_date'] as String?;
-      if (aDate != null && bDate != null) return aDate.compareTo(bDate);
-      if (aDate != null) return -1;
-      if (bDate != null) return 1;
-      return (b['created_at'] as String? ?? '').compareTo(a['created_at'] as String? ?? '');
+      if (_sortMode == 'priority') {
+        final pc = _priorityOrder(a['priority']?.toString())
+            .compareTo(_priorityOrder(b['priority']?.toString()));
+        if (pc != 0) return pc;
+      }
+      if (_sortMode == 'due_date' || _sortMode == 'priority') {
+        final aDate = a['due_date'] as String?;
+        final bDate = b['due_date'] as String?;
+        if (aDate != null && bDate != null) return aDate.compareTo(bDate);
+        if (aDate != null) return -1;
+        if (bDate != null) return 1;
+      }
+      return (b['created_at'] as String? ?? '')
+          .compareTo(a['created_at'] as String? ?? '');
     });
+
     return _showDone ? [...active, ...done] : active;
   }
 
@@ -92,10 +134,7 @@ class _TasksScreenState extends State<TasksScreen> {
       }
     } catch (e) {
       if (mounted && _items.isEmpty) {
-        setState(() {
-          _error = ApiService.friendlyError(e);
-          _loading = false;
-        });
+        setState(() { _error = ApiService.friendlyError(e); _loading = false; });
       }
     }
   }
@@ -106,11 +145,32 @@ class _TasksScreenState extends State<TasksScreen> {
     final newDone = item['done'] != true;
     setState(() => item['done'] = newDone);
     _updateCount();
+
+    if (newDone) {
+      _doneThisSession++;
+      if (_kMilestones.contains(_doneThisSession)) {
+        final msg = _doneThisSession >= 10
+            ? '🏆 ${_doneThisSession} משימות הושלמו — מדהים!'
+            : _doneThisSession >= 5
+                ? '🚀 ${_doneThisSession} משימות ברצף — מעולה!'
+                : '🎉 ${_doneThisSession} משימות הושלמו — כל הכבוד!';
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: const Color(0xFF0F1929),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            content: Text(msg,
+                style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
+            duration: const Duration(seconds: 3),
+          ));
+        }
+      }
+    }
+
     try {
       await ApiService(widget.settings).updateTask(id, done: newDone);
       CacheService.saveList('tasks', _items);
     } catch (_) {
-      // revert on error
       setState(() => item['done'] = !newDone);
       _updateCount();
     }
@@ -126,8 +186,7 @@ class _TasksScreenState extends State<TasksScreen> {
       context,
       message: 'המשימה הוסרה',
       onUndo: () {
-        setState(() =>
-            _items.insert(savedIndex.clamp(0, _items.length), item));
+        setState(() => _items.insert(savedIndex.clamp(0, _items.length), item));
         _updateCount();
       },
       onClosed: (wasUndone) {
@@ -141,6 +200,7 @@ class _TasksScreenState extends State<TasksScreen> {
   Future<void> _showAddSheet() async {
     final ctrl    = TextEditingController();
     DateTime? dueDate;
+    String selectedPriority = 'medium';
 
     await showModalBottomSheet(
       context: context,
@@ -168,7 +228,51 @@ class _TasksScreenState extends State<TasksScreen> {
                 autofocus: true,
                 style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
                 decoration: _fieldDecoration('תיאור המשימה...'),
-                onSubmitted: (_) => _submitAdd(ctrl.text, dueDate, ctx),
+                onSubmitted: (_) =>
+                    _submitAdd(ctrl.text, dueDate, selectedPriority, ctx),
+              ),
+              const SizedBox(height: 10),
+              // Priority picker
+              Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  for (final entry in [
+                    ('high',   '🔴 גבוה',   JC.cancelRed),
+                    ('medium', '🟡 בינוני', JC.amber400),
+                    ('low',    '🟢 נמוך',   JC.green500),
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: GestureDetector(
+                        onTap: () => setSheet(() => selectedPriority = entry.$1),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: selectedPriority == entry.$1
+                                ? entry.$3.withValues(alpha: 0.18)
+                                : JC.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: selectedPriority == entry.$1 ? entry.$3 : JC.border,
+                              width: selectedPriority == entry.$1 ? 1.2 : 0.8,
+                            ),
+                          ),
+                          child: Text(entry.$2,
+                              style: TextStyle(
+                                color: selectedPriority == entry.$1
+                                    ? entry.$3
+                                    : JC.textSecondary,
+                                fontSize: 12,
+                                fontFamily: 'Heebo',
+                                fontWeight: selectedPriority == entry.$1
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              )),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 10),
               // Due date row
@@ -206,8 +310,8 @@ class _TasksScreenState extends State<TasksScreen> {
                       Text(
                         dueDate == null
                             ? 'תאריך יעד (אופציונלי)'
-                            : '${dueDate!.day.toString().padLeft(2, '0')}/'
-                              '${dueDate!.month.toString().padLeft(2, '0')}/'
+                            : '${dueDate!.day.toString().padLeft(2,'0')}/'
+                              '${dueDate!.month.toString().padLeft(2,'0')}/'
                               '${dueDate!.year}',
                         style: TextStyle(
                             color: dueDate != null ? JC.textPrimary : JC.textMuted,
@@ -233,7 +337,8 @@ class _TasksScreenState extends State<TasksScreen> {
                       backgroundColor: JC.blue500,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12))),
-                  onPressed: () => _submitAdd(ctrl.text, dueDate, ctx),
+                  onPressed: () =>
+                      _submitAdd(ctrl.text, dueDate, selectedPriority, ctx),
                   child: const Text('הוסף',
                       style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
                 ),
@@ -245,30 +350,36 @@ class _TasksScreenState extends State<TasksScreen> {
     );
   }
 
-  Future<void> _submitAdd(String text, DateTime? dueDate, BuildContext sheetCtx) async {
+  Future<void> _submitAdd(String text, DateTime? dueDate, String priority,
+      BuildContext sheetCtx) async {
     final val = text.trim();
     if (val.isEmpty) return;
     Navigator.pop(sheetCtx);
     try {
-      final res = await ApiService(widget.settings).addTask(val);
-      Map<String, dynamic> newItem = res['task'] as Map<String, dynamic>? ?? {
-        'id': DateTime.now().toString(),
-        'content': val,
-        'done': false,
-        'created_at': DateTime.now().toIso8601String(),
-      };
+      final res = await ApiService(widget.settings).addTask(val, priority: priority);
+      Map<String, dynamic> newItem =
+          res['task'] as Map<String, dynamic>? ?? {
+            'id': DateTime.now().toString(),
+            'content': val,
+            'done': false,
+            'priority': priority,
+            'created_at': DateTime.now().toIso8601String(),
+          };
       if (dueDate != null) {
-        final isoDate = '${dueDate.toIso8601String().substring(0, 10)}T00:00:00.000Z';
+        final isoDate =
+            '${dueDate.toIso8601String().substring(0, 10)}T00:00:00.000Z';
         newItem = Map.from(newItem)..['due_date'] = isoDate;
-        ApiService(widget.settings).updateTask(
-            newItem['id'].toString(), dueDate: isoDate).catchError((_) {});
+        ApiService(widget.settings)
+            .updateTask(newItem['id'].toString(), dueDate: isoDate)
+            .catchError((_) {});
       }
       setState(() => _items.insert(0, newItem));
       _updateCount();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('שגיאה בהוספה', style: TextStyle(fontFamily: 'Heebo'))));
+            content: Text('שגיאה בהוספה',
+                style: TextStyle(fontFamily: 'Heebo'))));
       }
     }
   }
@@ -276,13 +387,13 @@ class _TasksScreenState extends State<TasksScreen> {
   String _formatDue(dynamic iso) {
     if (iso == null) return '';
     try {
-      final dt  = DateTime.parse(iso.toString()).toLocal();
-      final now = DateTime.now();
-      final day = DateTime(dt.year, dt.month, dt.day);
+      final dt    = DateTime.parse(iso.toString()).toLocal();
+      final now   = DateTime.now();
+      final day   = DateTime(dt.year, dt.month, dt.day);
       final today = DateTime(now.year, now.month, now.day);
       if (day == today) return 'היום';
       if (day == today.add(const Duration(days: 1))) return 'מחר';
-      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
+      return '${dt.day.toString().padLeft(2,'0')}/${dt.month.toString().padLeft(2,'0')}';
     } catch (_) { return ''; }
   }
 
@@ -291,8 +402,7 @@ class _TasksScreenState extends State<TasksScreen> {
     final iso = item['due_date'];
     if (iso == null) return false;
     try {
-      final dt = DateTime.parse(iso.toString()).toLocal();
-      return dt.isBefore(DateTime.now());
+      return DateTime.parse(iso.toString()).toLocal().isBefore(DateTime.now());
     } catch (_) { return false; }
   }
 
@@ -310,40 +420,42 @@ class _TasksScreenState extends State<TasksScreen> {
       body: _loading
           ? const LoadingSkeleton(itemCount: 6)
           : _error != null
-              ? EmptyState(icon: Icons.error_outline_rounded,
-                  title: 'שגיאת טעינה', subtitle: _error!)
+              ? EmptyState(
+                  icon: Icons.error_outline_rounded,
+                  title: 'שגיאת טעינה',
+                  subtitle: _error!)
               : Column(
                   children: [
                     if (_items.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: Semantics(
-                          label: 'חיפוש במשימות',
-                          textField: true,
-                          child: JarvisSearchBar(
-                              controller: _searchCtrl, hint: 'חיפוש במשימות...'),
-                        ),
+                        child: JarvisSearchBar(
+                            controller: _searchCtrl, hint: 'חיפוש במשימות...'),
+                      ),
+                    // Filter chips + sort menu
+                    if (_items.isNotEmpty)
+                      _FilterBar(
+                        filterPriority: _filterPriority,
+                        sortMode: _sortMode,
+                        onFilterChange: (v) =>
+                            setState(() => _filterPriority = v),
+                        onSortChange: (v) => setState(() => _sortMode = v),
                       ),
                     if (doneCount > 0)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                         child: Align(
                           alignment: Alignment.centerLeft,
-                          child: Semantics(
-                            button: true,
-                            label: _showDone ? 'הסתר משימות שבוצעו' : 'הצג משימות שבוצעו',
-                            child: TextButton(
-                              onPressed: () =>
-                                  setState(() => _showDone = !_showDone),
-                              child: Text(
-                                _showDone
-                                    ? 'הסתר בוצעו'
-                                    : 'הצג בוצעו ($doneCount)',
-                                style: const TextStyle(
-                                    color: JC.blue400,
-                                    fontFamily: 'Heebo',
-                                    fontSize: 13),
-                              ),
+                          child: TextButton(
+                            onPressed: () =>
+                                setState(() => _showDone = !_showDone),
+                            child: Text(
+                              _showDone
+                                  ? 'הסתר בוצעו'
+                                  : 'הצג בוצעו ($doneCount)',
+                              style: const TextStyle(
+                                  color: JC.blue400, fontFamily: 'Heebo',
+                                  fontSize: 13),
                             ),
                           ),
                         ),
@@ -382,7 +494,9 @@ class _TasksScreenState extends State<TasksScreen> {
                                         isDone: isDone,
                                         overdue: overdue,
                                         dueLabel: dueLabel,
+                                        settings: widget.settings,
                                         onToggle: () => _toggleDone(item),
+                                        onUpdated: () => setState(() {}),
                                       ),
                                     ),
                                   );
@@ -396,7 +510,152 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 }
 
-// ─── Task item widget (supports regular + proposal-prompt tasks) ─────────────
+// ─── Filter bar ───────────────────────────────────────────────────────────────
+
+class _FilterBar extends StatelessWidget {
+  final String filterPriority;
+  final String sortMode;
+  final ValueChanged<String> onFilterChange;
+  final ValueChanged<String> onSortChange;
+
+  const _FilterBar({
+    required this.filterPriority,
+    required this.sortMode,
+    required this.onFilterChange,
+    required this.onSortChange,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      reverse: true,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Row(
+        textDirection: TextDirection.rtl,
+        children: [
+          _PriorityChip(
+              label: 'הכל',
+              active: filterPriority == 'all',
+              color: JC.blue400,
+              onTap: () => onFilterChange('all')),
+          const SizedBox(width: 6),
+          _PriorityChip(
+              label: '🔴 גבוה',
+              active: filterPriority == 'high',
+              color: JC.cancelRed,
+              onTap: () => onFilterChange('high')),
+          const SizedBox(width: 6),
+          _PriorityChip(
+              label: '🟡 בינוני',
+              active: filterPriority == 'medium',
+              color: JC.amber400,
+              onTap: () => onFilterChange('medium')),
+          const SizedBox(width: 6),
+          _PriorityChip(
+              label: '🟢 נמוך',
+              active: filterPriority == 'low',
+              color: JC.green500,
+              onTap: () => onFilterChange('low')),
+          const SizedBox(width: 8),
+          PopupMenuButton<String>(
+            onSelected: onSortChange,
+            color: JC.surfaceAlt,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: JC.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: JC.border, width: 0.8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.sort_rounded, size: 14, color: JC.textSecondary),
+                  const SizedBox(width: 4),
+                  Text(_sortLabel(sortMode),
+                      style: const TextStyle(
+                          color: JC.textSecondary, fontSize: 12,
+                          fontFamily: 'Heebo')),
+                ],
+              ),
+            ),
+            itemBuilder: (_) => [
+              _menuItem('priority', 'לפי עדיפות', sortMode),
+              _menuItem('due_date', 'לפי תאריך',  sortMode),
+              _menuItem('created',  'לפי יצירה',  sortMode),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _sortLabel(String mode) => switch (mode) {
+    'due_date' => 'תאריך',
+    'created'  => 'יצירה',
+    _          => 'עדיפות',
+  };
+
+  PopupMenuItem<String> _menuItem(String value, String label, String current) =>
+      PopupMenuItem<String>(
+        value: value,
+        child: Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            if (current == value)
+              const Icon(Icons.check_rounded, size: 14, color: JC.blue400),
+            const SizedBox(width: 6),
+            Text(label,
+                style: const TextStyle(
+                    color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
+          ],
+        ),
+      );
+}
+
+class _PriorityChip extends StatelessWidget {
+  final String label;
+  final bool active;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _PriorityChip({
+    required this.label,
+    required this.active,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: active ? color.withValues(alpha: 0.15) : JC.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: active ? color : JC.border,
+              width: active ? 1.2 : 0.8),
+        ),
+        child: Text(label,
+            style: TextStyle(
+              color: active ? color : JC.textMuted,
+              fontSize: 12,
+              fontFamily: 'Heebo',
+              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+            )),
+      ),
+    );
+  }
+}
+
+// ─── Task item widget ─────────────────────────────────────────────────────────
+
 const _kPromptSep = '<<<AI_PROMPT>>>';
 
 class _TaskItem extends StatefulWidget {
@@ -404,14 +663,18 @@ class _TaskItem extends StatefulWidget {
   final bool isDone;
   final bool overdue;
   final String dueLabel;
+  final AppSettings settings;
   final VoidCallback onToggle;
+  final VoidCallback onUpdated;
 
   const _TaskItem({
     required this.item,
     required this.isDone,
     required this.overdue,
     required this.dueLabel,
+    required this.settings,
     required this.onToggle,
+    required this.onUpdated,
   });
 
   @override
@@ -421,214 +684,548 @@ class _TaskItem extends StatefulWidget {
 class _TaskItemState extends State<_TaskItem> {
   bool _promptExpanded = false;
 
-  @override
-  Widget build(BuildContext context) {
-    final raw     = widget.item['content']?.toString() ?? '';
-    final sepIdx  = raw.indexOf('\n$_kPromptSep\n');
-    final hasPrompt = sepIdx != -1;
-    final title   = hasPrompt ? raw.substring(0, sepIdx) : raw;
-    final prompt  = hasPrompt ? raw.substring(sepIdx + '\n$_kPromptSep\n'.length) : '';
+  Color get _priorityColor => switch (widget.item['priority']?.toString()) {
+    'high'   => JC.cancelRed,
+    'low'    => JC.green500,
+    _        => JC.amber400,
+  };
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: widget.isDone ? JC.surface.withValues(alpha: 0.6) : JC.surfaceAlt,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: hasPrompt
-              ? JC.indigo500.withValues(alpha: 0.5)
-              : widget.overdue
-                  ? JC.cancelRed.withValues(alpha: 0.4)
-                  : JC.border,
-          width: hasPrompt ? 1.2 : 0.8,
-        ),
-      ),
-      child: Column(
-        children: [
-          // ── Main row ──────────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                GestureDetector(
-                  onTap: widget.onToggle,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: Icon(
-                      widget.isDone
-                          ? Icons.check_circle_rounded
-                          : Icons.radio_button_unchecked_rounded,
-                      key: ValueKey(widget.isDone),
-                      color: widget.isDone
-                          ? JC.blue400.withValues(alpha: 0.6)
-                          : JC.blue500,
-                      size: 22,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        title,
-                        textDirection: TextDirection.rtl,
-                        style: TextStyle(
-                          color: widget.isDone ? JC.textMuted : JC.textPrimary,
-                          fontSize: 15,
-                          fontFamily: 'Heebo',
-                          decoration: widget.isDone ? TextDecoration.lineThrough : null,
-                        ),
-                      ),
-                      if (widget.dueLabel.isNotEmpty)
-                        Text(
-                          widget.dueLabel,
-                          style: TextStyle(
-                            color: widget.overdue ? JC.cancelRed : JC.textMuted,
-                            fontSize: 11,
-                            fontFamily: 'Heebo',
-                            fontWeight: widget.overdue ? FontWeight.w600 : FontWeight.normal,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                if (hasPrompt) ...[
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => setState(() => _promptExpanded = !_promptExpanded),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: JC.indigo500.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                            color: JC.indigo500.withValues(alpha: 0.4), width: 0.8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('🤖', style: TextStyle(fontSize: 11)),
-                          const SizedBox(width: 3),
-                          Text(
-                            _promptExpanded ? 'סגור' : 'פרומפט',
-                            style: const TextStyle(
-                              color: JC.indigo300,
-                              fontSize: 11,
-                              fontFamily: 'Heebo',
-                              fontWeight: FontWeight.w600,
+  void _showEditSheet() async {
+    final raw  = widget.item['content']?.toString() ?? '';
+    final sep  = raw.indexOf('\n$_kPromptSep\n');
+    final title = sep != -1 ? raw.substring(0, sep) : raw;
+
+    final ctrl = TextEditingController(text: title);
+    String currentPriority = widget.item['priority']?.toString() ?? 'medium';
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: JC.surfaceAlt,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(
+              left: 20, right: 20, top: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text('עריכת משימה',
+                  style: TextStyle(color: JC.textPrimary, fontSize: 16,
+                      fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
+                  textDirection: TextDirection.rtl),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                textDirection: TextDirection.rtl,
+                autofocus: true,
+                style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+                decoration: _fieldDecoration('תיאור המשימה...'),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  for (final entry in [
+                    ('high',   '🔴 גבוה',   JC.cancelRed),
+                    ('medium', '🟡 בינוני', JC.amber400),
+                    ('low',    '🟢 נמוך',   JC.green500),
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: GestureDetector(
+                        onTap: () => setSheet(() => currentPriority = entry.$1),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: currentPriority == entry.$1
+                                ? entry.$3.withValues(alpha: 0.18)
+                                : JC.surface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: currentPriority == entry.$1 ? entry.$3 : JC.border,
+                              width: currentPriority == entry.$1 ? 1.2 : 0.8,
                             ),
                           ),
-                          const SizedBox(width: 3),
-                          Icon(
-                            _promptExpanded
-                                ? Icons.keyboard_arrow_up_rounded
-                                : Icons.keyboard_arrow_down_rounded,
-                            color: JC.indigo300,
-                            size: 14,
+                          child: Text(entry.$2,
+                              style: TextStyle(
+                                color: currentPriority == entry.$1
+                                    ? entry.$3
+                                    : JC.textSecondary,
+                                fontSize: 12,
+                                fontFamily: 'Heebo',
+                                fontWeight: currentPriority == entry.$1
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              )),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: JC.blue500,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  onPressed: () async {
+                    final newText = ctrl.text.trim();
+                    if (newText.isEmpty) return;
+                    Navigator.pop(ctx);
+                    // Preserve AI prompt section if present
+                    final suffix = sep != -1 ? raw.substring(sep) : '';
+                    final newContent = newText + suffix;
+                    // Optimistic update
+                    final prevContent  = widget.item['content'];
+                    final prevPriority = widget.item['priority'];
+                    widget.item['content']  = newContent;
+                    widget.item['priority'] = currentPriority;
+                    widget.onUpdated();
+                    try {
+                      await ApiService(widget.settings).updateTask(
+                        widget.item['id'].toString(),
+                        content: newContent,
+                        priority: currentPriority,
+                      );
+                      await CacheService.saveList('tasks',
+                          [widget.item]); // partial — will be refreshed on next fetch
+                    } catch (_) {
+                      widget.item['content']  = prevContent;
+                      widget.item['priority'] = prevPriority;
+                      widget.onUpdated();
+                    }
+                  },
+                  child: const Text('שמור',
+                      style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAiSuggestions() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: JC.surfaceAlt,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => _AiSuggestionsSheet(
+        settings: widget.settings,
+        taskId: widget.item['id'].toString(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final raw      = widget.item['content']?.toString() ?? '';
+    final sepIdx   = raw.indexOf('\n$_kPromptSep\n');
+    final hasPrompt = sepIdx != -1;
+    final title    = hasPrompt ? raw.substring(0, sepIdx) : raw;
+    final prompt   = hasPrompt ? raw.substring(sepIdx + '\n$_kPromptSep\n'.length) : '';
+
+    return GestureDetector(
+      onLongPress: _showEditSheet,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: widget.isDone ? JC.surface.withValues(alpha: 0.6) : JC.surfaceAlt,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: hasPrompt
+                ? JC.indigo500.withValues(alpha: 0.5)
+                : widget.overdue
+                    ? JC.cancelRed.withValues(alpha: 0.4)
+                    : JC.border,
+            width: hasPrompt ? 1.2 : 0.8,
+          ),
+        ),
+        child: Column(
+          children: [
+            // ── Main row ───────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  GestureDetector(
+                    onTap: widget.onToggle,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        widget.isDone
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        key: ValueKey(widget.isDone),
+                        color: widget.isDone
+                            ? JC.blue400.withValues(alpha: 0.6)
+                            : JC.blue500,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          title,
+                          textDirection: TextDirection.rtl,
+                          style: TextStyle(
+                            color: widget.isDone ? JC.textMuted : JC.textPrimary,
+                            fontSize: 15,
+                            fontFamily: 'Heebo',
+                            decoration: widget.isDone
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
+                        if (widget.dueLabel.isNotEmpty)
+                          Text(
+                            widget.dueLabel,
+                            style: TextStyle(
+                              color: widget.overdue ? JC.cancelRed : JC.textMuted,
+                              fontSize: 11,
+                              fontFamily: 'Heebo',
+                              fontWeight: widget.overdue
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // AI suggest button (only on active tasks)
+                  if (!widget.isDone) ...[
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: _showAiSuggestions,
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: JC.indigo500.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.auto_awesome_rounded,
+                            size: 14, color: JC.indigo300),
+                      ),
+                    ),
+                  ],
+                  if (hasPrompt) ...[
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () =>
+                          setState(() => _promptExpanded = !_promptExpanded),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: JC.indigo500.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: JC.indigo500.withValues(alpha: 0.4),
+                              width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('🤖', style: TextStyle(fontSize: 11)),
+                            const SizedBox(width: 3),
+                            Text(
+                              _promptExpanded ? 'סגור' : 'פרומפט',
+                              style: const TextStyle(
+                                color: JC.indigo300, fontSize: 11,
+                                fontFamily: 'Heebo', fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(width: 3),
+                            Icon(
+                              _promptExpanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              color: JC.indigo300, size: 14,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  // Priority dot
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 8, height: 8,
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle, color: _priorityColor),
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Expanded prompt section ────────────────────────────────────
+            if (hasPrompt && _promptExpanded)
+              Container(
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF080F1A),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: JC.indigo500.withValues(alpha: 0.25), width: 0.8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                      child: Row(
+                        textDirection: TextDirection.rtl,
+                        children: [
+                          const Text('פרומפט AI לפיתוח',
+                              style: TextStyle(color: JC.indigo300,
+                                  fontFamily: 'Heebo', fontSize: 12,
+                                  fontWeight: FontWeight.w600)),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(text: prompt));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: const Color(0xFF0F1929),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10)),
+                                  content: const Text('הפרומפט הועתק ✓',
+                                      style: TextStyle(
+                                          color: Color(0xFFF1F5F9),
+                                          fontFamily: 'Heebo', fontSize: 13)),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1A2E4A),
+                                borderRadius: BorderRadius.circular(7),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.copy_rounded,
+                                      color: JC.textMuted, size: 12),
+                                  SizedBox(width: 4),
+                                  Text('העתק',
+                                      style: TextStyle(color: JC.textMuted,
+                                          fontFamily: 'Heebo', fontSize: 11)),
+                                ],
+                              ),
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // ── Expanded prompt section ────────────────────────────────────
-          if (hasPrompt && _promptExpanded)
-            Container(
-              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF080F1A),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: JC.indigo500.withValues(alpha: 0.25), width: 0.8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Header
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                    child: Row(
-                      textDirection: TextDirection.rtl,
-                      children: [
-                        const Text(
-                          'פרומפט AI לפיתוח',
-                          style: TextStyle(
-                            color: JC.indigo300,
-                            fontFamily: 'Heebo',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                        GestureDetector(
-                          onTap: () {
-                            Clipboard.setData(ClipboardData(text: prompt));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                backgroundColor: const Color(0xFF0F1929),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10)),
-                                content: const Text('הפרומפט הועתק ✓',
-                                    style: TextStyle(
-                                        color: Color(0xFFF1F5F9),
-                                        fontFamily: 'Heebo',
-                                        fontSize: 13)),
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1A2E4A),
-                              borderRadius: BorderRadius.circular(7),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.copy_rounded,
-                                    color: JC.textMuted, size: 12),
-                                SizedBox(width: 4),
-                                Text('העתק',
-                                    style: TextStyle(
-                                        color: JC.textMuted,
-                                        fontFamily: 'Heebo',
-                                        fontSize: 11)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                    Container(height: 0.5, color: const Color(0xFF1A2E4A)),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(prompt,
+                          textDirection: TextDirection.rtl,
+                          style: const TextStyle(
+                              color: Color(0xFFCBD5E1),
+                              fontFamily: 'Heebo', fontSize: 13, height: 1.7)),
                     ),
-                  ),
-                  // Divider
-                  Container(height: 0.5, color: const Color(0xFF1A2E4A)),
-                  // Prompt text
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(
-                      prompt,
-                      textDirection: TextDirection.rtl,
-                      style: const TextStyle(
-                        color: Color(0xFFCBD5E1),
-                        fontFamily: 'Heebo',
-                        fontSize: 13,
-                        height: 1.7,
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── AI Suggestions sheet ─────────────────────────────────────────────────────
+
+class _AiSuggestionsSheet extends StatefulWidget {
+  final AppSettings settings;
+  final String taskId;
+  const _AiSuggestionsSheet({required this.settings, required this.taskId});
+
+  @override
+  State<_AiSuggestionsSheet> createState() => _AiSuggestionsSheetState();
+}
+
+class _AiSuggestionsSheetState extends State<_AiSuggestionsSheet> {
+  List<Map<String, dynamic>> _suggestions = [];
+  bool _loading = true;
+  String? _error;
+  final Set<int> _added = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final list = await ApiService(widget.settings).getTaskSuggestions(widget.taskId);
+      if (mounted) setState(() { _suggestions = list; _loading = false; });
+    } catch (e) {
+      if (mounted) setState(() {
+        _error = ApiService.friendlyError(e);
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _addSuggestion(int idx) async {
+    if (_added.contains(idx)) return;
+    final text = _suggestions[idx]['text']?.toString() ?? '';
+    if (text.isEmpty) return;
+    setState(() => _added.add(idx));
+    try {
+      await ApiService(widget.settings).addTask(text);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: const Color(0xFF0F1929),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          content: const Text('המשימה נוספה ✓',
+              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
+          duration: const Duration(seconds: 2),
+        ));
+      }
+    } catch (_) {
+      if (mounted) setState(() => _added.remove(idx));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+          left: 20, right: 20, top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Row(
+            textDirection: TextDirection.rtl,
+            children: [
+              const Icon(Icons.auto_awesome_rounded, color: JC.indigo300, size: 16),
+              const SizedBox(width: 8),
+              const Text('הצעות ג׳ארביס',
+                  style: TextStyle(color: JC.textPrimary, fontSize: 16,
+                      fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
+                  textDirection: TextDirection.rtl),
+              const Spacer(),
+              if (_loading)
+                const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: JC.indigo300)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text('לחץ על הצעה להוספתה כמשימה',
+              textDirection: TextDirection.rtl,
+              style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+          const SizedBox(height: 14),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Column(
+                  children: [
+                    CircularProgressIndicator(strokeWidth: 2, color: JC.indigo300),
+                    SizedBox(height: 12),
+                    Text('ג׳ארביס מנתח את המשימה...',
+                        style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
+                  ],
+                ),
+              ),
+            )
+          else if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: Text(_error!,
+                  style: const TextStyle(color: JC.cancelRed, fontFamily: 'Heebo', fontSize: 13))),
+            )
+          else if (_suggestions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: Text('אין הצעות זמינות',
+                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
+            )
+          else
+            ..._suggestions.asMap().entries.map((e) {
+              final idx  = e.key;
+              final sugg = e.value;
+              final done = _added.contains(idx);
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(
+                  color: done
+                      ? JC.blue500.withValues(alpha: 0.1)
+                      : JC.surfaceAlt,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: done ? JC.blue400.withValues(alpha: 0.4) : JC.border,
+                      width: 0.8),
+                ),
+                child: Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(sugg['text']?.toString() ?? '',
+                              textDirection: TextDirection.rtl,
+                              style: TextStyle(
+                                  color: done ? JC.textSecondary : JC.textPrimary,
+                                  fontSize: 14, fontFamily: 'Heebo')),
+                          if ((sugg['reason']?.toString() ?? '').isNotEmpty)
+                            Text(sugg['reason'].toString(),
+                                textDirection: TextDirection.rtl,
+                                style: const TextStyle(
+                                    color: JC.textMuted, fontSize: 11,
+                                    fontFamily: 'Heebo')),
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: done ? null : () => _addSuggestion(idx),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: done ? JC.blue500.withValues(alpha: 0.2) : JC.blue500,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(done ? '✓' : 'הוסף',
+                            style: TextStyle(
+                                color: done ? JC.blue400 : Colors.white,
+                                fontSize: 12, fontFamily: 'Heebo',
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -642,7 +1239,8 @@ InputDecoration _fieldDecoration(String hint) => InputDecoration(
       hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
       filled: true,
       fillColor: JC.surface,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: JC.border)),
@@ -664,4 +1262,3 @@ Widget _dismissBg() => Container(
       ),
       child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
-

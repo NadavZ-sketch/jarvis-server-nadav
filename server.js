@@ -2432,6 +2432,31 @@ if (require.main === module) {
         pinecone.ensureInit().then(() => pinecone.syncFromSupabase(supabase)).catch(() => {});
     });
 
+    // ── Live talk WebSocket ─────────────────────────────────────────────────
+    const { WebSocketServer } = require('ws');
+    const { createWsHandler } = require('./routes/wsJarvis');
+    const wss = new WebSocketServer({ server, path: '/ws-jarvis' });
+    const wsHandler = createWsHandler({
+        classifyIntent,
+        loadChatHistory,
+        fetchLongTermMemories,
+        conversationSummary,
+        buildSystemPrompt,
+        callGemma4Stream,
+        runChatAgent,
+        runWeatherAgent,
+        runNewsAgent,
+        runStocksAgent,
+        runTranslationAgent,
+        saveChatMessage,
+        cacheInvalidate,
+        autoExtractMemory,
+        generateSpeech,
+        supabase,
+    });
+    wss.on('connection', wsHandler);
+    console.log(`🔊 Live talk WebSocket mounted at /ws-jarvis`);
+
     function shutdown(signal) {
         console.log(`\n${signal} received — shutting down gracefully...`);
         server.close(() => {

@@ -139,7 +139,7 @@ class AppDrawer extends StatelessWidget {
                   label: 'מרכז סוכנים',
                   onTap: () async {
                     Navigator.pop(context);
-                    final url = Uri.parse('${settings.serverUrl}/progress-map');
+                    final url = Uri.parse('${settings.serverUrl}/progress-map#agents');
                     if (await canLaunchUrl(url)) {
                       await launchUrl(url, mode: LaunchMode.externalApplication);
                     }

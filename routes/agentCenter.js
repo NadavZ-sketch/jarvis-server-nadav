@@ -44,8 +44,8 @@ function createAgentCenterRouter({ callGemma4 }) {
   const router = express.Router();
 
   router.get('/', (_req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'agent-center.html'),
-      err => { if (err && !res.headersSent) res.status(404).send('agent-center.html not found'); });
+    res.sendFile(path.join(__dirname, '..', 'progress-map.html'),
+      err => { if (err && !res.headersSent) res.status(404).send('progress-map.html not found'); });
   });
 
   router.get('/agents', (_req, res) => {

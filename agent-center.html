@@ -303,19 +303,24 @@ function selectAgent(id) {
 /* ── Main details ── */
 function renderDetails(a) {
   const panel = document.getElementById('detailsPanel');
-  panel.innerHTML = `
-    ${renderHeaderCard(a)}
-    <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab(this,'tab-main')">כרטיס ראשי</button>
-      <button class="tab-btn" onclick="switchTab(this,'tab-info')">מידע</button>
-      <button class="tab-btn" onclick="switchTab(this,'tab-conn')">חיבורים</button>
-      <button class="tab-btn" onclick="switchTab(this,'tab-dash')">דאשבורד</button>
-    </div>
-    <div id="tab-main" class="tab-panel active">${renderMainTab(a)}</div>
-    <div id="tab-info" class="tab-panel">${renderInfoTab(a)}</div>
-    <div id="tab-conn" class="tab-panel">${renderConnTab(a)}</div>
-    <div id="tab-dash" class="tab-panel">${renderDashTab(a)}</div>
-  `;
+  try {
+    panel.innerHTML = `
+      ${renderHeaderCard(a)}
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab(this,'tab-main')">כרטיס ראשי</button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-info')">מידע</button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-conn')">חיבורים</button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-dash')">דאשבורד</button>
+      </div>
+      <div id="tab-main" class="tab-panel active">${renderMainTab(a)}</div>
+      <div id="tab-info" class="tab-panel">${renderInfoTab(a)}</div>
+      <div id="tab-conn" class="tab-panel">${renderConnTab(a)}</div>
+      <div id="tab-dash" class="tab-panel">${renderDashTab(a)}</div>
+    `;
+    panel.scrollTop = 0;
+  } catch(e) {
+    panel.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><div style="color:var(--red)">${e.message}</div></div>`;
+  }
 }
 
 function switchTab(btn, tabId) {

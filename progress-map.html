@@ -208,6 +208,116 @@ h1 span{color:var(--accent)}
 
 .refresh-row{color:var(--muted);font-size:.72rem;text-align:center;margin-top:8px}
 
+/* ── Page tabs ── */
+.page-tabs{display:flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:3px;margin-bottom:18px}
+.page-tab-btn{flex:1;padding:8px 6px;background:none;border:none;color:var(--muted);font-size:.85rem;font-weight:600;cursor:pointer;border-radius:8px;transition:background .12s,color .12s;font-family:inherit}
+.page-tab-btn.active{background:var(--accent);color:#fff}
+.page-tab-panel{display:none}
+.page-tab-panel.active{display:block}
+
+/* ── Agent Center ── */
+.ac-layout{display:grid;grid-template-columns:260px 1fr;gap:0;min-height:72vh;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+@media(max-width:900px){.ac-layout{grid-template-columns:1fr}}
+.ac-sidebar{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;max-height:72vh;overflow:hidden}
+.ac-search{padding:10px 12px;border-bottom:1px solid var(--border)}
+.ac-search input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:.83rem;font-family:inherit;outline:none;direction:rtl}
+.ac-search input:focus{border-color:var(--accent)}
+.ac-list{overflow-y:auto;flex:1;padding:6px}
+.ac-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;cursor:pointer;border-right:3px solid transparent;margin-bottom:3px;transition:background .12s}
+.ac-item:hover{background:var(--card)}
+.ac-item.active{background:rgba(99,102,241,.12);border-right-color:var(--accent)}
+.ac-item.risk-high{border-right-color:var(--red)}
+.ac-item.risk-high.active{border-right-color:var(--accent)}
+.ac-item-name{font-size:.84rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-item-role{font-size:.71rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.ac-sdot.active{background:var(--green);box-shadow:0 0 5px var(--green)}
+.ac-sdot.custom{background:#a78bfa;box-shadow:0 0 5px #a78bfa}
+.ac-details{overflow-y:auto;max-height:72vh;padding:14px 16px;display:flex;flex-direction:column;gap:12px;background:var(--bg)}
+.ac-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);gap:8px;font-size:.9rem;min-height:300px;text-align:center}
+.ac-hcard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.ac-htop{display:flex;align-items:flex-start;gap:11px;margin-bottom:8px;flex-wrap:wrap}
+.ac-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0}
+.ac-hname{font-size:1.05rem;font-weight:700;margin-bottom:2px}
+.ac-hrole{color:var(--muted);font-size:.8rem}
+.ac-badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.ac-badge{display:inline-flex;align-items:center;font-size:.68rem;font-weight:700;border-radius:5px;padding:2px 7px;gap:3px}
+.ac-badge.rl{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.ac-badge.rm{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
+.ac-badge.rh{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.ac-badge.mode{background:rgba(99,102,241,.1);color:var(--accent);border:1px solid rgba(99,102,241,.2)}
+.ac-badge.auto{background:rgba(96,165,250,.1);color:var(--blue);border:1px solid rgba(96,165,250,.2)}
+.ac-badge.stat{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.15)}
+.ac-badge.cust{background:rgba(167,139,250,.1);color:#a78bfa;border:1px solid rgba(167,139,250,.2)}
+.ac-mission{color:var(--muted);font-size:.81rem;line-height:1.55;margin-top:8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ac-mission.exp{display:block;-webkit-line-clamp:unset}
+.ac-expbtn{background:none;border:none;color:var(--accent);font-size:.73rem;cursor:pointer;padding:2px 0;font-family:inherit;margin-top:3px}
+.ac-tabs{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:3px}
+.ac-tab-btn{flex:1;padding:6px 3px;background:none;border:none;color:var(--muted);font-size:.78rem;font-weight:600;cursor:pointer;border-radius:7px;transition:background .12s,color .12s;font-family:inherit}
+.ac-tab-btn.active{background:var(--accent);color:#fff}
+.ac-tab-panel{display:none;flex-direction:column;gap:10px}
+.ac-tab-panel.active{display:flex}
+.ac-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:600px){.ac-info-grid{grid-template-columns:1fr}}
+.ac-icard{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 13px}
+.ac-icard-title{font-size:.7rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px}
+.ac-tag-list{display:flex;flex-wrap:wrap;gap:4px}
+.ac-tag{background:var(--card);border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:.73rem}
+.ac-itext{font-size:.8rem;color:var(--muted);line-height:1.5}
+.ac-resp-list{list-style:none;display:flex;flex-direction:column;gap:5px}
+.ac-resp-list li{display:flex;align-items:flex-start;gap:6px;font-size:.82rem}
+.ac-resp-list li::before{content:'▸';color:var(--accent);font-size:.68rem;margin-top:3px;flex-shrink:0}
+.ac-conn-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 13px;display:flex;flex-direction:column;gap:5px}
+.ac-conn-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.ac-dir{font-size:.68rem;font-weight:700;padding:2px 6px;border-radius:5px}
+.ac-dir.out{background:rgba(99,102,241,.12);color:var(--accent);border:1px solid rgba(99,102,241,.2)}
+.ac-dir.inn{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.ac-conn-name{font-weight:600;font-size:.83rem}
+.ac-conn-meta{color:var(--muted);font-size:.76rem;line-height:1.4}
+.ac-no-conn{color:var(--muted);font-size:.82rem;text-align:center;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:9px}
+.ac-flow{background:var(--card);border-radius:7px;padding:8px 12px;font-size:.78rem;color:var(--muted);overflow-x:auto;white-space:nowrap}
+.ac-dash-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+@media(max-width:640px){.ac-dash-grid{grid-template-columns:repeat(2,1fr)}}
+.ac-metric{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px;text-align:center}
+.ac-metric .n{font-size:1.2rem;font-weight:700;color:var(--blue);line-height:1;margin-bottom:3px}
+.ac-metric .n.na{color:var(--muted);font-size:.95rem}
+.ac-metric .l{font-size:.68rem;color:var(--muted);font-weight:600}
+.ac-act-empty{color:var(--muted);font-size:.8rem;text-align:center;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:9px}
+.ac-builder{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:14px}
+.ac-builder-title{font-size:.88rem;font-weight:700;margin-bottom:9px}
+.ac-textarea{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:.82rem;font-family:inherit;resize:vertical;min-height:72px;direction:rtl;outline:none}
+.ac-textarea:focus{border-color:var(--accent)}
+.ac-textarea::placeholder{color:var(--muted)}
+.ac-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .15s;margin-top:7px}
+.ac-btn:hover{opacity:.87}
+.ac-btn:disabled{opacity:.45;cursor:not-allowed}
+.ac-btn.sec{background:var(--surface);color:var(--accent);border:1px solid var(--accent)}
+.ac-btn.cp{background:var(--card);color:var(--green);border:1px solid rgba(34,197,94,.3)}
+.ac-spin{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none}
+.ac-btn-row{display:flex;gap:7px;flex-wrap:wrap}
+.ac-analysis{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:11px 13px;margin-top:9px;display:none}
+.ac-analysis.show{display:block}
+.ac-cat-chip{padding:2px 9px;border-radius:5px;font-size:.72rem;font-weight:700;background:rgba(99,102,241,.15);color:var(--accent);border:1px solid rgba(99,102,241,.25)}
+.ac-conf-track{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:4px}
+.ac-conf-fill{height:100%;background:linear-gradient(90deg,var(--accent),#a78bfa);border-radius:2px}
+.ac-risk-chips{display:flex;flex-wrap:wrap;gap:4px;margin:7px 0}
+.ac-risk-chip{padding:2px 8px;border-radius:5px;font-size:.68rem;font-weight:700;background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.ac-qblock{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.ac-qlabel{font-size:.82rem;font-weight:600;margin-bottom:5px}
+.ac-opt-row{display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:4px}
+.ac-opt-row input{accent-color:var(--accent)}
+.ac-opt-row label{font-size:.8rem;cursor:pointer}
+.ac-other{margin-top:5px;display:none}
+.ac-other input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:5px 9px;color:var(--text);font-size:.78rem;font-family:inherit;outline:none;direction:rtl}
+.ac-review{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:12px 14px;margin-top:9px;display:none}
+.ac-review.show{display:block}
+.ac-review-title{font-size:.8rem;font-weight:700;color:var(--accent);margin-bottom:7px}
+.ac-review-text{font-size:.8rem;color:var(--text);line-height:1.6;white-space:pre-line}
+.ac-pre{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:11px;font-size:.73rem;color:var(--muted);white-space:pre-wrap;word-break:break-word;direction:ltr;text-align:left;margin-top:8px;display:none;max-height:260px;overflow-y:auto}
+.ac-pre.show{display:block}
+.ac-svg-wrap{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:10px;overflow:hidden}
+@media(max-width:640px){.ac-svg-wrap{display:none}}
+
 /* innovation graph */
 .graph-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:18px;position:relative}
 #innovationGraph{height:360px;background:linear-gradient(180deg,rgba(15,23,42,.55),rgba(2,6,23,.75));border:1px solid var(--border);border-radius:10px;position:relative;overflow:hidden}
@@ -230,6 +340,13 @@ h1 span{color:var(--accent)}
 <div class="container">
 
 <h1>🤖 <span>Jarvis</span> — לוח ניהול</h1>
+
+<div class="page-tabs">
+  <button class="page-tab-btn active" onclick="switchPageTab('dashboard',this)">📊 לוח ניהול</button>
+  <button class="page-tab-btn" onclick="switchPageTab('agents',this)">🤖 מרכז סוכנים</button>
+</div>
+
+<div id="page-tab-dashboard" class="page-tab-panel active">
 <p class="subtitle" id="subtitle">טוען...</p>
 
 <!-- SERVER STATUS -->
@@ -355,9 +472,33 @@ h1 span{color:var(--accent)}
   <div id="backlogList"><div class="empty-state"><span>📋</span>אין פריטים ידניים</div></div>
 </div>
 
+</div><!-- /page-tab-dashboard -->
+
+<!-- ── Agent Center Tab ── -->
+<div id="page-tab-agents" class="page-tab-panel">
+  <div class="ac-layout">
+    <aside class="ac-sidebar">
+      <div class="ac-search"><input id="acSearch" type="text" placeholder="חפש סוכן..." oninput="acFilter(this.value)"/></div>
+      <div class="ac-list" id="acList"></div>
+    </aside>
+    <div class="ac-details" id="acDetails">
+      <div class="ac-empty"><div style="font-size:2rem">🤖</div><div>בחר סוכן כדי לצפות בפרטיו</div></div>
+    </div>
+  </div>
+</div>
+
 </div>
 
 <script>
+// ── Page Tab Switch ────────────────────────────────────────────────────────────
+function switchPageTab(name, btn) {
+  document.querySelectorAll('.page-tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.page-tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('page-tab-' + name).classList.add('active');
+  if (name === 'agents' && !acInitDone) acInit();
+}
+
 // ── Health ─────────────────────────────────────────────────────────────────────
 async function checkHealth() {
   try {
@@ -888,6 +1029,269 @@ loadStats();
 loadFeatures();
 loadBacklog();
 setInterval(() => { checkHealth(); loadStats(); }, 30000);
+
+if (location.hash === '#agents') {
+  const btn = document.querySelector('.page-tab-btn:nth-child(2)');
+  if (btn) switchPageTab('agents', btn);
+}
+
+// ── Agent Center ───────────────────────────────────────────────────────────────
+let acAgents = [], acCurrent = null, acInitDone = false;
+const AC_ICONS = {router:'🔀',chatAgent:'💬',taskAgent:'✅',reminderAgent:'⏰',memoryAgent:'🧠',weatherAgent:'🌤',newsAgent:'📰',stocksAgent:'📈',translationAgent:'🌐',sportsAgent:'⚽',shoppingAgent:'🛒',notesAgent:'📝',musicAgent:'🎵',messagingAgent:'📨',draftAgent:'✍️',insightAgent:'💡',securityAgent:'🛡',codeErrorAgent:'🐛',e2eAgent:'🧪',agentFactoryAgent:'🏭',surveyAgent:'📋'};
+const AC_IBGS = {low:'rgba(34,197,94,.12)',medium:'rgba(245,158,11,.12)',high:'rgba(239,68,68,.12)'};
+
+async function acInit() {
+  acInitDone = true;
+  acAgents = AC_STATIC;
+  acRenderList(acAgents);
+  try {
+    const r = await fetch('/progress-map/agents');
+    if (r.ok) {
+      const d = await r.json();
+      if (Array.isArray(d.agents) && d.agents.length) {
+        acAgents = d.agents;
+        acRenderList(acAgents);
+      }
+    }
+  } catch(_) {}
+}
+
+function acFilter(q) {
+  acRenderList(acAgents.filter(a => !q || a.nameHe.includes(q) || a.name.toLowerCase().includes(q.toLowerCase()) || a.role.includes(q)));
+}
+
+function acRenderList(list) {
+  document.getElementById('acList').innerHTML = list.map(a =>
+    `<div class="ac-item ${acCurrent?.id===a.id?'active':''} ${a.risk==='high'&&acCurrent?.id!==a.id?'risk-high':''}" onclick="acSelect('${a.id}')">
+      <div class="ac-sdot ${a.status==='custom'?'custom':'active'}"></div>
+      <div style="flex:1;min-width:0"><div class="ac-item-name">${AC_ICONS[a.id]||'🤖'} ${a.nameHe}</div><div class="ac-item-role">${a.role}</div></div>
+    </div>`).join('');
+}
+
+function acSelect(id) {
+  acCurrent = acAgents.find(a => a.id === id);
+  if (!acCurrent) return;
+  acRenderList(acAgents.filter(a => { const q = document.getElementById('acSearch').value; return !q||a.nameHe.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()); }));
+  acRenderDetails(acCurrent);
+}
+
+function acRenderDetails(a) {
+  const p = document.getElementById('acDetails');
+  try {
+    p.innerHTML = acHeaderCard(a) + acTabsHtml(a) +
+      `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(a)}</div>` +
+      `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(a)}</div>` +
+      `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(a)}</div>` +
+      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(a)}</div>`;
+    p.scrollTop = 0;
+  } catch(e) {
+    p.innerHTML = `<div class="ac-empty"><div style="font-size:2rem">⚠️</div><div style="color:var(--red)">${e.message}</div></div>`;
+  }
+}
+
+function acHeaderCard(a) {
+  const rCls = {low:'rl',medium:'rm',high:'rh'}[a.risk]||'rm';
+  const aprLabel = {none:'אין',medium:'בינוני',high:'גבוה'}[a.approval]||a.approval;
+  return `<div class="ac-hcard">
+    <div class="ac-htop">
+      <div class="ac-icon" style="background:${AC_IBGS[a.risk]||AC_IBGS.medium}">${AC_ICONS[a.id]||'🤖'}</div>
+      <div style="flex:1;min-width:0">
+        <div class="ac-hname">${a.nameHe} <span style="color:var(--muted);font-size:.78rem;font-weight:400">${a.name}</span></div>
+        <div class="ac-hrole">${a.role}</div>
+        <div class="ac-badges">
+          <span class="ac-badge ${rCls}">⚡ ${a.risk}</span>
+          <span class="ac-badge mode">⚙️ ${a.mode}</span>
+          <span class="ac-badge rm">🔒 ${aprLabel}</span>
+          <span class="ac-badge auto">🎯 ${a.autonomy}%</span>
+          <span class="ac-badge ${a.status==='custom'?'cust':'stat'}">${a.status==='custom'?'✨ מותאם':'● פעיל'}</span>
+        </div>
+      </div>
+    </div>
+    <div class="ac-mission" id="acm-${a.id}">${a.mission}</div>
+    <button class="ac-expbtn" onclick="acTogMission('${a.id}')">הצג עוד ▾</button>
+  </div>`;
+}
+
+function acTogMission(id) {
+  const el = document.getElementById('acm-' + id);
+  const btn = el.nextElementSibling;
+  el.classList.toggle('exp');
+  btn.textContent = el.classList.contains('exp') ? 'הצג פחות ▴' : 'הצג עוד ▾';
+}
+
+function acTabsHtml(a) {
+  return `<div class="ac-tabs">
+    <button class="ac-tab-btn active" onclick="acSwitchTab(this,'ac-t-main')">כרטיס</button>
+    <button class="ac-tab-btn" onclick="acSwitchTab(this,'ac-t-info')">מידע</button>
+    <button class="ac-tab-btn" onclick="acSwitchTab(this,'ac-t-conn')">חיבורים</button>
+    <button class="ac-tab-btn" onclick="acSwitchTab(this,'ac-t-dash')">דאשבורד</button>
+  </div>`;
+}
+
+function acSwitchTab(btn, tabId) {
+  const wrap = document.getElementById('acDetails');
+  wrap.querySelectorAll('.ac-tab-btn').forEach(b => b.classList.remove('active'));
+  wrap.querySelectorAll('.ac-tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+  if (tabId === 'ac-t-conn') setTimeout(() => acRenderSVG(acCurrent), 40);
+}
+
+function acMainTab(a) {
+  const resp = (a.responsibilities||[]).slice(0,3);
+  return `<div class="ac-icard"><div class="ac-icard-title">תחומי אחריות עיקריים</div>
+    <ul class="ac-resp-list">${resp.map(r=>`<li>${r}</li>`).join('')||'<li style="color:var(--muted)">לא מוגדר</li>'}</ul></div>
+    <div class="ac-icard"><div class="ac-icard-title">תצוגת פרומפט</div>
+    <div style="font-size:.79rem;color:var(--muted);line-height:1.5">${a.prompt||'לא זמין'}</div></div>
+    ${acBuilderHtml(a)}`;
+}
+
+function acInfoTab(a) {
+  const items = [
+    {t:'קלטים',items:a.inputs},{t:'פלטים',items:a.outputs},{t:'כלים',items:a.tools},
+    {t:'הרשאות',items:a.permissions},{t:'גישת זיכרון',text:a.memoryAccess},{t:'מגבלות',items:a.restrictions}
+  ];
+  return `<div class="ac-info-grid">${items.map(i=>`<div class="ac-icard"><div class="ac-icard-title">${i.t}</div>
+    ${i.text!==undefined?`<div class="ac-itext">${i.text||'—'}</div>`:`<div class="ac-tag-list">${(i.items||[]).length?(i.items||[]).map(t=>`<span class="ac-tag">${t}</span>`).join(''):'<span style="color:var(--muted);font-size:.76rem">לא מוגדר</span>'}</div>`}
+  </div>`).join('')}</div>`;
+}
+
+function acConnTab(a) {
+  const cs = a.connections||[];
+  const flow = cs.length ? [a.nameHe,...cs.map(c=>c.nameHe)].join(' → ') : a.nameHe+' (ללא חיבורים)';
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap">
+    <div class="ac-icard" style="flex:1;min-width:120px;text-align:center"><div style="font-size:1.1rem;font-weight:700;color:var(--accent)">${cs.length}</div><div style="font-size:.72rem;color:var(--muted)">חיבורים</div></div>
+    <div class="ac-icard" style="flex:1;min-width:120px;text-align:center"><div style="font-size:1.1rem;font-weight:700;color:var(--amber)">${cs.filter(c=>c.requiresApproval).length}</div><div style="font-size:.72rem;color:var(--muted)">דורשים אישור</div></div>
+  </div>
+  <div class="ac-svg-wrap"><svg id="acSvg" width="540" height="240"></svg></div>
+  ${cs.length ? cs.map(c=>`<div class="ac-conn-card">
+    <div class="ac-conn-top">
+      <span class="ac-dir ${c.direction==='incoming'?'inn':'out'}">${c.direction==='incoming'?'← נכנס':'→ יוצא'}</span>
+      <span class="ac-conn-name">${c.nameHe||c.name}</span>
+      ${c.requiresApproval?'<span style="font-size:.7rem;color:var(--amber)">🔒 דורש אישור</span>':''}
+      ${c.confidence==='inferred'?'<span style="font-size:.68rem;color:var(--amber)">⚠ משוער</span>':''}
+    </div>
+    <div class="ac-conn-meta"><b>${c.type}</b> · ${c.payload}</div>
+    <div class="ac-conn-meta">⏱ ${c.trigger}</div>
+  </div>`).join('') : `<div class="ac-no-conn">אין חיבורים מוגדרים</div>`}
+  <div class="ac-flow">${flow}</div>`;
+}
+
+function acRenderSVG(a) {
+  const svg = document.getElementById('acSvg');
+  if (!svg) return;
+  const cs = (a.connections||[]).slice(0,8);
+  const W=540,H=240,cx=W/2,cy=H/2;
+  let h = '';
+  cs.forEach((c,i)=>{
+    const ang=(2*Math.PI/Math.max(cs.length,1))*i-Math.PI/2;
+    const nx=cx+150*Math.cos(ang), ny=cy+90*Math.sin(ang);
+    const col=c.requiresApproval?'#f59e0b':'#6366f1';
+    const da=c.requiresApproval?'stroke-dasharray="5 3"':'';
+    h+=`<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${col}" stroke-width="1.5" ${da} opacity=".7"/>`;
+    h+=`<circle cx="${nx}" cy="${ny}" r="20" fill="#273449" stroke="${col}" stroke-width="1.5"/>`;
+    h+=`<text x="${nx}" y="${ny+5}" text-anchor="middle" font-size="13">${AC_ICONS[c.agentId]||'🤖'}</text>`;
+    h+=`<text x="${nx}" y="${ny+32}" text-anchor="middle" fill="#94a3b8" font-size="9">${(c.nameHe||c.name).slice(0,10)}</text>`;
+  });
+  h+=`<circle cx="${cx}" cy="${cy}" r="26" fill="#1e293b" stroke="#6366f1" stroke-width="2"/>`;
+  h+=`<text x="${cx}" y="${cy+7}" text-anchor="middle" font-size="16">${AC_ICONS[a.id]||'🤖'}</text>`;
+  svg.innerHTML = h;
+}
+
+function acDashTab(a) {
+  const d = a.dashboard||{};
+  const ms = [{n:d.tasksHandled,l:'פניות'},{n:d.failures,l:'שגיאות'},{n:d.avgLatency,l:'זמן תגובה'},{n:d.confidence,l:'ביטחון'},{n:d.lastActive,l:'פעיל'}];
+  return `<div class="ac-dash-grid">${ms.map(m=>`<div class="ac-metric"><div class="n ${m.n==='unknown'?'na':''}">${m.n==='unknown'?'—':m.n}</div><div class="l">${m.l}</div></div>`).join('')}</div>
+    <div class="ac-act-empty">אין נתוני פעילות — נדרשת אינסטרומנטציה</div>`;
+}
+
+function acBuilderHtml(a) {
+  return `<div class="ac-builder" id="acb-${a.id}">
+    <div class="ac-builder-title">🔧 Prompt Builder</div>
+    <textarea class="ac-textarea" id="acreq-${a.id}" placeholder="תאר שינוי לסוכן זה..."></textarea>
+    <div><button class="ac-btn" onclick="acAnalyze('${a.id}')"><span class="ac-spin" id="acspin-a-${a.id}"></span>נתח עם Jarvis</button></div>
+    <div class="ac-analysis" id="acan-${a.id}"></div>
+    <div id="acqs-${a.id}" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>
+    <div id="acafter-${a.id}" style="display:none;margin-top:8px">
+      <textarea class="ac-textarea" id="acnotes-${a.id}" placeholder="הערות נוספות (אופציונלי)..." style="min-height:50px"></textarea>
+      <div><button class="ac-btn" onclick="acBuild('${a.id}')"><span class="ac-spin" id="acspin-b-${a.id}"></span>צור פרומפט</button></div>
+    </div>
+    <div class="ac-review" id="acrev-${a.id}"></div>
+  </div>`;
+}
+
+async function acAnalyze(aid) {
+  const req = document.getElementById('acreq-'+aid)?.value?.trim();
+  if (!req) return;
+  const spin = document.getElementById('acspin-a-'+aid);
+  const btn = spin?.closest('.ac-btn');
+  if (btn) btn.disabled=true; if (spin) spin.style.display='inline-block';
+  try {
+    const d = await fetch('/progress-map/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agentId:aid,changeRequest:req})}).then(r=>r.json());
+    const card = document.getElementById('acan-'+aid);
+    const pct = Math.round((d.confidence||.75)*100);
+    const sigs = (d.riskSignals||[]).map(s=>`<span class="ac-risk-chip">${s.label}</span>`).join('');
+    card.innerHTML=`<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:7px"><span class="ac-cat-chip">${d.categoryLabel||d.category}</span><span style="font-size:.79rem;color:var(--muted);flex:1">${d.intent||''}</span></div>
+      ${sigs?`<div class="ac-risk-chips">${sigs}</div>`:''}
+      <div style="font-size:.7rem;color:var(--muted);display:flex;justify-content:space-between"><span>ביטחון</span><span>${pct}%</span></div>
+      <div class="ac-conf-track"><div class="ac-conf-fill" style="width:${pct}%"></div></div>`;
+    card.classList.add('show');
+    const qw = document.getElementById('acqs-'+aid);
+    const aw = document.getElementById('acafter-'+aid);
+    if ((d.questions||[]).length) {
+      qw.innerHTML = d.questions.map((q,qi)=>`<div class="ac-qblock"><div class="ac-qlabel">${q.label}</div>
+        ${(q.options||[]).map(o=>`<label class="ac-opt-row"><input type="radio" name="acq-${aid}-${qi}" value="${o.value}" onchange="acOptChg('${aid}',${qi},'${o.value}')"/><span>${o.label}</span></label>`).join('')}
+        <div class="ac-other" id="aco-${aid}-${qi}"><input type="text" placeholder="פרט..."/></div>
+      </div>`).join('');
+    }
+    aw.style.display = 'block';
+  } catch(e) { document.getElementById('acan-'+aid).innerHTML=`<div style="color:var(--red);font-size:.78rem">שגיאה: ${e.message}</div>`; document.getElementById('acan-'+aid).classList.add('show'); }
+  finally { if(btn)btn.disabled=false; if(spin)spin.style.display='none'; }
+}
+
+function acOptChg(aid,qi,val) {
+  const o=document.getElementById(`aco-${aid}-${qi}`);
+  if(o) o.style.display = val==='other'?'block':'none';
+}
+
+async function acBuild(aid) {
+  const req = document.getElementById('acreq-'+aid)?.value?.trim();
+  const notes = document.getElementById('acnotes-'+aid)?.value?.trim();
+  const answers = {};
+  document.getElementById('acqs-'+aid)?.querySelectorAll('.ac-qblock').forEach((b,qi)=>{
+    const lbl=b.querySelector('.ac-qlabel')?.textContent||`שאלה ${qi+1}`;
+    const chk=b.querySelector('input[type=radio]:checked');
+    if(chk){const v=chk.value==='other'?(b.querySelector('.ac-other input')?.value||'אחר'):chk.nextElementSibling?.textContent||chk.value; answers[lbl]=v;}
+  });
+  const spin=document.getElementById('acspin-b-'+aid);
+  const btn=spin?.closest('.ac-btn');
+  if(btn)btn.disabled=true; if(spin)spin.style.display='inline-block';
+  try {
+    const d=await fetch('/progress-map/build-prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agentId:aid,changeRequest:req,answers,notes})}).then(r=>r.json());
+    const rev=document.getElementById('acrev-'+aid);
+    rev.innerHTML=`<div class="ac-review-title">📋 סיכום Jarvis</div>
+      <div class="ac-review-text">${d.reviewText||'—'}</div>
+      ${d.prompt?`<div class="ac-btn-row" style="margin-top:9px">
+        <button class="ac-btn sec" onclick="acTogPre('${aid}')">הצג פרומפט מלא</button>
+        <button class="ac-btn cp" onclick="acCopy('${aid}')">📋 העתק</button>
+      </div>
+      <pre class="ac-pre" id="acpre-${aid}">${escapeHtml(d.prompt)}</pre>`:''}`;
+    rev.classList.add('show');
+    rev.scrollIntoView({behavior:'smooth',block:'nearest'});
+  } catch(e){const rev=document.getElementById('acrev-'+aid);rev.innerHTML=`<div style="color:var(--red);font-size:.78rem">שגיאה: ${e.message}</div>`;rev.classList.add('show');}
+  finally{if(btn)btn.disabled=false;if(spin)spin.style.display='none';}
+}
+
+function acTogPre(aid){document.getElementById('acpre-'+aid)?.classList.toggle('show');}
+function acCopy(aid){
+  const t=document.getElementById('acpre-'+aid)?.textContent||'';
+  navigator.clipboard.writeText(t).then(()=>{
+    const btn=document.querySelector(`#acrev-${aid} .cp`);
+    if(btn){const o=btn.textContent;btn.textContent='✅ הועתק!';setTimeout(()=>btn.textContent=o,1500);}
+  });
+}
+
+const AC_STATIC=[{"id":"router","name":"Router","nameHe":"ראוטר","role":"מסווג כוונות","mission":"מנתח כל הודעת משתמש ומכוון לסוכן הנכון.","prompt":"סווג כוונות.","responsibilities":["סיווג intent","fallback LLM"],"inputs":["הודעת משתמש"],"outputs":["intent"],"tools":["regex","Groq"],"permissions":["קריאה בלבד"],"memoryAccess":"אין","restrictions":["לא שומר"],"risk":"medium","mode":"guard","approval":"none","autonomy":70,"status":"active","connections":[{"agentId":"chatAgent","name":"Chat Agent","nameHe":"סוכן שיחה","direction":"outgoing","type":"dispatch","payload":"intent","trigger":"כל הודעה","risk":"low","requiresApproval":false,"confidence":"inferred"}],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"chatAgent","name":"Chat Agent","nameHe":"סוכן שיחה","role":"עוזר שיחה ראשי","mission":"שיחות חופשיות עם זיכרון והיסטוריה.","prompt":"אתה ג׳רביס.","responsibilities":["שיחה","זיכרונות","voiceMode"],"inputs":["הודעה","היסטוריה","זיכרונות"],"outputs":["תשובה","TTS"],"tools":["callGemma4","TTS"],"permissions":["קריאת היסטוריה"],"memoryAccess":"קריאה","restrictions":[],"risk":"medium","mode":"assistant","approval":"none","autonomy":40,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"taskAgent","name":"Task Agent","nameHe":"סוכן משימות","role":"ניהול משימות","mission":"יוצר ומנהל משימות ב-Supabase.","prompt":"נהל משימות.","responsibilities":["יצירה","עדכון","מחיקה"],"inputs":["הודעה"],"outputs":["{ answer, action }"],"tools":["Supabase tasks","callGemma4"],"permissions":["קריאה/כתיבה tasks"],"memoryAccess":"אין","restrictions":[],"risk":"medium","mode":"operator","approval":"medium","autonomy":50,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"memoryAgent","name":"Memory Agent","nameHe":"סוכן זיכרון","role":"זיכרון אישי","mission":"שמירה ואחזור עובדות אישיות + autoExtract.","prompt":"שמור ואחזר זיכרון.","responsibilities":["שמירה","חיפוש","autoExtract"],"inputs":["הודעה"],"outputs":["{ answer, action }"],"tools":["Supabase memories","Pinecone","callGemma4"],"permissions":["קריאה/כתיבה memories"],"memoryAccess":"מלאה","restrictions":[],"risk":"medium","mode":"operator","approval":"medium","autonomy":40,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"reminderAgent","name":"Reminder Agent","nameHe":"סוכן תזכורות","role":"תזכורות","mission":"מנהל תזכורות עם recurrence.","prompt":"נהל תזכורות.","responsibilities":["יצירה","recurrence","מחיקה"],"inputs":["הודעה"],"outputs":["{ answer, action }"],"tools":["Supabase reminders","callGemma4"],"permissions":["קריאה/כתיבה reminders"],"memoryAccess":"אין","restrictions":[],"risk":"medium","mode":"operator","approval":"medium","autonomy":50,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"weatherAgent","name":"Weather Agent","nameHe":"סוכן מזג אוויר","role":"מזג אוויר","mission":"תחזית מזג אוויר.","prompt":"ספק תחזית.","responsibilities":["תחזית"],"inputs":["מיקום"],"outputs":["תשובה"],"tools":["callGeminiWithSearch"],"permissions":["רשת"],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"observer","approval":"none","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"newsAgent","name":"News Agent","nameHe":"סוכן חדשות","role":"חדשות","mission":"חדשות עדכניות.","prompt":"ספק חדשות.","responsibilities":["חיפוש","תקציר"],"inputs":["נושא"],"outputs":["ידיעות"],"tools":["callGeminiWithSearch"],"permissions":["רשת"],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"observer","approval":"none","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"insightAgent","name":"Insight Agent","nameHe":"סוכן תובנות","role":"תובנות","mission":"ניתוח נתונים אישיים.","prompt":"נתח נתונים.","responsibilities":["ניתוח","המלצות"],"inputs":["tasks,memories,notes"],"outputs":["תובנות"],"tools":["Supabase","callGemma4"],"permissions":["קריאה tables"],"memoryAccess":"קריאה","restrictions":["לא כותב"],"risk":"medium","mode":"assistant","approval":"none","autonomy":30,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"securityAgent","name":"Security Agent","nameHe":"סוכן אבטחה","role":"אבטחה","mission":"סריקת קוד לחולשות.","prompt":"סרוק.","responsibilities":["סריקה","דוחות"],"inputs":["קוד"],"outputs":["דוח"],"tools":["fs","Supabase","callGemma4"],"permissions":["קריאת קבצים","כתיבה e2e_reports"],"memoryAccess":"אין","restrictions":["background"],"risk":"high","mode":"guard","approval":"high","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"agentFactoryAgent","name":"Agent Factory","nameHe":"מפעל סוכנים","role":"יצירת סוכנים","mission":"יוצר סוכנים דינמיים.","prompt":"צור סוכן.","responsibilities":["כתיבת JS","registry","hot-load"],"inputs":["תיאור"],"outputs":["JS + registry"],"tools":["fs","callGemma4"],"permissions":["כתיבה agents/custom"],"memoryAccess":"אין","restrictions":[],"risk":"high","mode":"autonomous","approval":"high","autonomy":60,"status":"active","connections":[{"agentId":"router","name":"Router","nameHe":"ראוטר","direction":"outgoing","type":"רישום keywords","payload":"registry → router","trigger":"אחרי יצירה","risk":"high","requiresApproval":true,"confidence":"inferred"}],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}}];
 </script>
 </body>
 </html>

@@ -17,6 +17,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'app_settings.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
+import 'live_talk_screen.dart';
 import 'transitions/slide_fade_route.dart';
 import 'screens/splash_screen.dart';
 import 'screens/survey_screen.dart';
@@ -457,10 +458,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   JarvisState _currentState = JarvisState.idle;
   String      _listeningText = '';
-  bool        _voiceConversationMode   = false;
-  bool        _voiceConversationActive = false;
+  bool        _voiceConversationMode = false; // one-shot mic dictation toggle
 
-  Timer? _hardCapTimer;
   Timer? _ttsTimeoutTimer;
   String? _lastTtsPath;
 
@@ -532,7 +531,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       }
       if (!mounted) return;
       setState(() => _currentState = JarvisState.idle);
-      if (_voiceConversationActive) _listenContinuous();
     });
     NotificationService.init().catchError((_) {});
 
@@ -740,9 +738,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _voiceConversationActive = false;
     _bgPollTimer?.cancel();
-    _hardCapTimer?.cancel();
     _ttsTimeoutTimer?.cancel();
     _orbBreathController.dispose();
     _controller.dispose();
@@ -769,21 +765,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _ttsTimeoutTimer = null;
     if (!mounted) return;
     setState(() => _currentState = JarvisState.idle);
-    if (_voiceConversationActive) {
-      // Android needs ~1s to release TTS audio focus before mic can open cleanly
-      Future.delayed(const Duration(milliseconds: 1000), () {
-        if (mounted && _voiceConversationActive) _listenContinuous();
-      });
-    } else if (_voiceConversationMode) {
-      _listen();
-    }
+    if (_voiceConversationMode) _listen();
   }
 
   Future<void> _speakText(String text) async {
     if (!_settings.voiceEnabled) {
       setState(() => _currentState = JarvisState.idle);
-      if (_voiceConversationActive) _listenContinuous();
-      else if (_voiceConversationMode) _listen();
+      if (_voiceConversationMode) _listen();
       return;
     }
     setState(() => _currentState = JarvisState.speaking);
@@ -808,8 +796,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   Future<void> _playAudio(String base64String) async {
     if (!_settings.voiceEnabled) {
       setState(() => _currentState = JarvisState.idle);
-      // Continue conversation cycle even without TTS
-      if (_voiceConversationActive) _listenContinuous();
       return;
     }
     try {
@@ -828,8 +814,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _lastTtsPath = null;
       }
       setState(() => _currentState = JarvisState.idle);
-      // Resume conversation cycle even if audio fails
-      if (_voiceConversationActive) _listenContinuous();
     }
   }
 
@@ -851,13 +835,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void _listen() async {
     HapticFeedback.selectionClick();
 
-    if (_voiceConversationMode || _voiceConversationActive) {
-      _stopVoiceConversation();
-      return;
-    }
-
-    if (_currentState == JarvisState.listening) {
+    if (_currentState == JarvisState.listening || _voiceConversationMode) {
       setState(() {
+        _voiceConversationMode = false;
         _currentState  = JarvisState.idle;
         _listeningText = '';
       });
@@ -910,116 +890,27 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
-  // ─── Voice Conversation Mode ──────────────────────────────────────────────────
-  void _startVoiceConversation() {
-    if (_voiceConversationActive) return;
+  // ─── Live Talk launcher ──────────────────────────────────────────────────────
+  Future<void> _openLiveTalk() async {
     HapticFeedback.mediumImpact();
-    setState(() => _voiceConversationActive = true);
-    _listenContinuous();
-  }
-
-  void _stopVoiceConversation() {
-    _hardCapTimer?.cancel();
-    _hardCapTimer = null;
-    _ttsTimeoutTimer?.cancel();
-    _ttsTimeoutTimer = null;
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _voiceConversationActive  = false;
-      _voiceConversationMode    = false;
-      _currentState             = JarvisState.idle;
-      _listeningText            = '';
-    });
+    // Make sure no STT/TTS from the chat screen is running before pushing.
     _speech.stop();
-    _audioPlayer.stop();
     _flutterTts.stop();
-  }
-
-  // ─── SpeechToText-based continuous listening (same engine as mic button) ────────
-  void _listenContinuous() async {
-    if (!_voiceConversationActive || !mounted) return;
-
-    setState(() {
-      _currentState  = JarvisState.listening;
-      _listeningText = 'מקשיב...';
-    });
-
-    _hardCapTimer?.cancel();
-    _hardCapTimer = null;
-    if (_speech.isListening) {
-      await _speech.stop();
-      await Future.delayed(const Duration(milliseconds: 200));
-    }
-
-    bool available = await _speech.initialize(
-      onError: (val) {
-        if (mounted && _voiceConversationActive &&
-            _currentState == JarvisState.listening) {
-          Future.delayed(const Duration(seconds: 1), () {
-            if (mounted && _voiceConversationActive &&
-                _currentState == JarvisState.listening) {
-              _listenContinuous();
-            }
-          });
-        }
-      },
+    _audioPlayer.stop();
+    if (_chatId.isEmpty) await _loadChatHistory();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LiveTalkScreen(
+          chatId: _chatId,
+          settings: _settings,
+        ),
+      ),
     );
-
-    if (!available) {
-      if (!mounted) return;
-      setState(() {
-        _voiceConversationActive = false;
-        _currentState            = JarvisState.idle;
-        messages.add({
-          'sender': 'jarvis',
-          'text': '🎤 זיהוי הקול אינו זמין. נסה לאפשר הרשאת מיקרופון.',
-          'time': _getCurrentTime(),
-        });
-      });
-      return;
-    }
-
-    if (!mounted || !_voiceConversationActive) return;
-
-    _speech.listen(
-      onResult: (val) {
-        if (!mounted || !_voiceConversationActive) return;
-        if (!val.finalResult) {
-          // Show interim text while user speaks
-          if (val.recognizedWords.isNotEmpty) {
-            setState(() => _listeningText = val.recognizedWords);
-          }
-          return;
-        }
-        final text = val.recognizedWords.trim();
-        if (text.isNotEmpty) sendCommand(text);
-        // Empty final result (silence): hardCapTimer handles the restart
-      },
-      localeId:  'he_IL',
-      listenFor: const Duration(seconds: 60),
-      pauseFor:  const Duration(milliseconds: 2500),
-      onSoundLevelChange: (level) {
-        if (!mounted || !_voiceConversationActive) return;
-        if (level > 0 && _listeningText == 'מקשיב...') {
-          setState(() => _listeningText = 'שומע...');
-        }
-        // Barge-in: if assistant is speaking and user starts talking, stop TTS
-        if (_settings.bargeInEnabled &&
-            level > 1.5 &&
-            _currentState == JarvisState.speaking) {
-          _flutterTts.stop();
-          _audioPlayer.stop();
-          _onTtsDone();
-        }
-      },
-    );
-
-    // Safety restart: if no speech is detected in 15 s, restart the cycle
-    _hardCapTimer = Timer(const Duration(seconds: 15), () {
-      if (_voiceConversationActive && _currentState == JarvisState.listening) {
-        _listenContinuous();
-      }
-    });
+    if (!mounted) return;
+    // The live session may have appended messages on the server — refresh.
+    await _loadChatHistory();
+    _scrollToBottom();
   }
 
   // ─── Quick commands (/task, /note, /remind) ───────────────────────────────────
@@ -1065,14 +956,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         messages.add({'sender': 'jarvis', 'text': reply, 'time': _getCurrentTime()});
         _currentState = JarvisState.idle;
       });
-      if (_voiceConversationActive) _listenContinuous();
     } catch (e) {
       setState(() {
         messages.add({'sender': 'jarvis', 'text': '⚠️ לא הצלחתי לשמור. נסה שוב.',
             'time': _getCurrentTime()});
         _currentState = JarvisState.idle;
       });
-      if (_voiceConversationActive) _listenContinuous();
     }
     _scrollToBottom();
     return true;
@@ -1088,8 +977,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     HapticFeedback.lightImpact();
     _speech.stop();
-    _hardCapTimer?.cancel();
-    _hardCapTimer = null;
 
     setState(() {
       String display = text;
@@ -1127,10 +1014,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           'command':  text,
           'image':    imageToSend,
           'chatId':   _chatId,
-          'settings': {
-            ..._settings.toJson(),
-            'voiceMode': _voiceConversationActive,
-          },
+          'settings': _settings.toJson(),
         }),
       ).timeout(
         const Duration(seconds: 20),
@@ -1164,7 +1048,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           messages.add({'sender': 'jarvis', 'text': 'שגיאה מהשרת: קוד ${response.statusCode}', 'time': _getCurrentTime()});
           _currentState = JarvisState.idle;
         });
-        if (_voiceConversationActive) _listenContinuous();
       }
     } catch (e) {
       final errStr     = e.toString();
@@ -1190,7 +1073,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _currentState          = JarvisState.idle;
         _voiceConversationMode = false;
       });
-      if (_voiceConversationActive) _listenContinuous();
     }
 
     _scrollToBottom();
@@ -1208,10 +1090,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       request.body = jsonEncode({
         'command':  text,
         'chatId':   _chatId,
-        'settings': {
-          ..._settings.toJson(),
-          'voiceMode': _voiceConversationActive,
-        },
+        'settings': _settings.toJson(),
       });
 
       final sr = await client.send(request).timeout(const Duration(seconds: 35));
@@ -1265,7 +1144,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _currentState          = JarvisState.idle;
         _voiceConversationMode = false;
       });
-      if (_voiceConversationActive) _listenContinuous();
     } finally {
       client.close();
     }
@@ -1435,8 +1313,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     await prefs.setString('current_chat_id', _chatId);
     await prefs.remove('current_messages');
 
+    _speech.stop();
+    _flutterTts.stop();
+    _audioPlayer.stop();
     setState(() {
-      _stopVoiceConversation();
+      _voiceConversationMode = false;
+      _currentState = JarvisState.idle;
+      _listeningText = '';
       messages = [
         {'sender': 'jarvis', 'text': 'שיחה חדשה! מוכן לעזור, ${_settings.userName}.', 'time': _getCurrentTime()},
       ];
@@ -1473,22 +1356,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   String get _orbHint {
-    if (_voiceConversationActive) {
-      switch (_currentState) {
-        case JarvisState.listening:
-          return _listeningText.isEmpty ? 'מקשיב...' : _listeningText;
-        case JarvisState.thinking: return 'חושב...';
-        case JarvisState.speaking: return 'מדבר...';
-        default:                   return 'שיחה פעילה...';
-      }
-    }
     switch (_currentState) {
       case JarvisState.listening:
         return _listeningText.isEmpty ? 'מקשיב...' : _listeningText;
       case JarvisState.thinking: return 'חושב...';
       case JarvisState.speaking: return 'מדבר...';
       default:
-        return _voiceConversationMode ? 'לחץ לעצירה' : 'לחץ לדיבור';
+        return _voiceConversationMode ? 'לחץ לעצירה' : 'לחץ לשיחה קולית';
     }
   }
 
@@ -1591,7 +1465,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 child: Padding(
                   padding: const EdgeInsets.only(top: 96, bottom: 4),
                   child: GestureDetector(
-                    onTap: _voiceConversationActive ? null : _startVoiceConversation,
+                    onTap: _openLiveTalk,
                     onLongPress: null,
                     child: Column(
                       children: [
@@ -1673,32 +1547,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 ),
               ),
 
-
-              // ── Voice Conversation Stop Button ────────────────────────────
-              if (_voiceConversationActive)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4), width: 1),
-                    ),
-                    child: TextButton.icon(
-                      icon: const Icon(Icons.stop_rounded, color: Colors.redAccent, size: 18),
-                      label: const Text(
-                        'עצור שיחה',
-                        style: TextStyle(color: Colors.redAccent, fontFamily: 'Heebo', fontWeight: FontWeight.w600),
-                      ),
-                      onPressed: _stopVoiceConversation,
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                    ),
-                  ),
-                ),
 
               // ── Image preview ─────────────────────────────────────────────────
               if (_imageBytes != null)

@@ -1641,9 +1641,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final display = name.isNotEmpty ? name : '—';
     final key     = 'feature_${name.hashCode}';
 
-    // Track expanded state per feature
-    _expandedFeatures ??= {};
-    final isExpanded = _expandedFeatures![key] ?? false;
+    // Get expanded state safely
+    final isExpanded = _expandedFeatures[key] ?? false;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),

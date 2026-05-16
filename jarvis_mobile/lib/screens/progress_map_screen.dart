@@ -595,13 +595,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'command':
-                  'קבלת משימה חדשה מה-Backlog:
-
-כותרת: $title
-
-תוכנית: $plan
-
-'
+                  'קבלת משימה חדשה מה-Backlog:\n\nכותרת: $title\n\nתוכנית: $plan\n\n'
                   'אנא הגיב בקצרה: מה הצעד הראשון הקונקרטי שתעשה כדי להתחיל לממש את זה?',
             }),
           ).timeout(const Duration(seconds: 30)),
@@ -646,7 +640,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               ..['status'] = nextStatus;
           }
           _proposals[idx]['lastActionAt'] = DateTime.now().toIso8601String();
-          _proposals[idx]['response'] = jarvisAnswer ?? _proposalResponses[idStr] ?? '';
+          if (actionType == 'deactivate') {
+            _proposals[idx]['response'] = '';
+          } else {
+            _proposals[idx]['response'] = jarvisAnswer ?? _proposalResponses[idStr] ?? '';
+          }
         }
 
         if (jarvisAnswer != null && jarvisAnswer!.isNotEmpty) {
@@ -660,6 +658,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
       if (actionType == 'activate') {
         await _trackProposalOutcome(idStr, 'proposal_activated');
+      } else if (actionType == 'confirm') {
+        await _loadBacklog();
       }
       _showSnack(actionType == 'activate'
           ? 'ההצעה עודכנה בהצלחה'

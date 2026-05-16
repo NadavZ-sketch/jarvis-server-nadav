@@ -899,18 +899,22 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _audioPlayer.stop();
     if (_chatId.isEmpty) await _loadChatHistory();
     if (!mounted) return;
-    await Navigator.of(context).push(
+    final returned = await Navigator.of(context).push<List<Map<String, String>>>(
       MaterialPageRoute(
         builder: (_) => LiveTalkScreen(
           chatId: _chatId,
           settings: _settings,
+          initialMessages: List.from(messages),
         ),
       ),
     );
     if (!mounted) return;
-    // The live session may have appended messages on the server — refresh.
-    await _loadChatHistory();
+    // Immediately show the messages from the live session, then background-sync.
+    if (returned != null && returned.length > messages.length) {
+      setState(() => messages = returned);
+    }
     _scrollToBottom();
+    _loadChatHistory(); // background sync — no await
   }
 
   // ─── Quick commands (/task, /note, /remind) ───────────────────────────────────

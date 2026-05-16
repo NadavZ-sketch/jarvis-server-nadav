@@ -156,7 +156,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
       _ws!.sink.add(jsonEncode({
         'type': 'hello',
         'chatId': widget.chatId,
-        'settings': widget.settings.toJson(),
+        'settings': widget.settings.toJson(), // no voiceMode — full quality responses
       }));
       // If no ack within 5s, fall back to SSE mode.
       _wsAckTimer = Timer(const Duration(seconds: 5), () {
@@ -359,7 +359,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
       request.body = jsonEncode({
         'command': text,
         'chatId': widget.chatId,
-        'settings': {...widget.settings.toJson(), 'voiceMode': true},
+        'settings': widget.settings.toJson(),
       });
 
       final sr = await client.send(request).timeout(const Duration(seconds: 35));
@@ -438,8 +438,20 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
     }
   }
 
+  String _stripMarkdown(String text) => text
+      .replaceAll(RegExp(r'\*\*([^*]+)\*\*'), r'$1')
+      .replaceAll(RegExp(r'\*([^*]+)\*'), r'$1')
+      .replaceAll(RegExp(r'`[^`]+`'), '')
+      .replaceAll(RegExp(r'#{1,6}\s+'), '')
+      .replaceAll(RegExp(r'\[([^\]]+)\]\([^)]+\)'), r'$1')
+      .replaceAll(RegExp(r'^[-•*]\s+', multiLine: true), '')
+      .replaceAll(RegExp(r'\n{2,}'), '. ')
+      .replaceAll('\n', ' ')
+      .trim();
+
   Future<void> _speakText(String text) async {
     setState(() => _state = JarvisState.speaking);
+    text = _stripMarkdown(text);
     _ttsTimeoutTimer?.cancel();
     _ttsTimeoutTimer = Timer(const Duration(seconds: 15), () {
       if (_state == JarvisState.speaking) _onTtsDone();

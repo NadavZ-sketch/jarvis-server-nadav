@@ -1342,6 +1342,34 @@ async function streamJarvisHandler(req, res) {
 
         const agentName = await classifyIntent(userMessage);
 
+        // Background agents: respond immediately and run in background via setImmediate
+        const backgroundAgents = { e2e: runE2EAgent, code_error: runCodeErrorAgent, security: runSecurityAgent };
+        if (backgroundAgents[agentName]) {
+            const placeholder = agentName === 'e2e'
+                ? '🧪 מתחיל בדיקות קצה ברקע — התוצאה תופיע בשיחה בעוד כמה דקות.'
+                : agentName === 'code_error'
+                    ? '🔍 סורק שגיאות קוד ברקע — התוצאה תופיע בשיחה בקרוב.'
+                    : '🔒 סורק אבטחה ברקע — התוצאה תופיע בשיחה בקרוב.';
+            send({ chunk: placeholder, done: true, chatId });
+            await Promise.all([
+                saveChatMessage('user', userMessage, chatId),
+                saveChatMessage('jarvis', placeholder, chatId),
+            ]);
+            res.end();
+            const bgChatId = chatId;
+            setImmediate(async () => {
+                try {
+                    const r = await backgroundAgents[agentName](userMessage, supabase, useLocal, settings);
+                    await saveChatMessage('jarvis', r.answer, bgChatId);
+                    cacheInvalidate(`chatHistory:${bgChatId}`);
+                } catch (err) {
+                    await saveChatMessage('jarvis', `❌ ${err.message}`, bgChatId).catch(() => {});
+                    cacheInvalidate(`chatHistory:${bgChatId}`);
+                }
+            });
+            return;
+        }
+
         // Only chat/draft agents support streaming — others fall back to regular
         if (!['chat', 'draft'].includes(agentName)) {
             let result;
@@ -1349,6 +1377,8 @@ async function streamJarvisHandler(req, res) {
             else if (agentName === 'news') result = await runNewsAgent(userMessage);
             else if (agentName === 'stocks') result = await runStocksAgent(userMessage);
             else if (agentName === 'translate') result = await runTranslationAgent(userMessage, supabase, useLocal);
+            else if (agentName === 'factory') result = await runAgentFactoryAgent(userMessage, supabase, useLocal, settings);
+            else if (agentName === 'insight') result = await runInsightAgent(userMessage, supabase, useLocal, settings);
             else {
                 const [chatHistory, longTermMemories] = await Promise.all([
                     loadChatHistory(chatId), fetchLongTermMemories()

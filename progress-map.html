@@ -121,6 +121,9 @@ h1 span{color:var(--accent)}
 .btn-del{background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;
   padding:3px 7px;border-radius:4px;margin-right:auto;transition:color .12s}
 .btn-del:hover{color:var(--red)}
+.btn-gen-prompt-inline{background:none;border:1px solid var(--accent);color:var(--accent);font-size:.75rem;
+  cursor:pointer;padding:3px 8px;border-radius:6px;transition:background .12s,color .12s}
+.btn-gen-prompt-inline:hover{background:var(--accent);color:#fff}
 
 /* manual items */
 .manual-section{margin-top:24px}
@@ -474,6 +477,7 @@ function renderProposals(proposals) {
       <div class="proposal-actions">
         <button class="btn-del" onclick="deleteProposal(${p.id})">✕ הסר</button>
         <button class="btn-expand" onclick="togglePlan(${p.id})">▼ תוכנית מלאה</button>
+        <button class="btn-gen-prompt-inline" onclick="useProposalAsPrompt(${p.id})">✨ נסח פרומפט</button>
         ${statusBtn}
       </div>
     </div>`;
@@ -503,6 +507,16 @@ async function deleteProposal(id) {
     await fetch(`/dashboard/backlog/proposals/${id}`, { method: 'DELETE' });
     await loadBacklog();
   } catch {}
+}
+
+function useProposalAsPrompt(id) {
+  const proposal = _proposalCtx.find(p => p.id === id);
+  if (!proposal) return;
+  const input = document.getElementById('promptInput');
+  input.value = `${proposal.title}: ${proposal.plan}`;
+  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  input.focus();
+  generateFeaturePrompt();
 }
 
 async function generateProposals() {

@@ -512,16 +512,24 @@ h1 span{color:var(--accent)}
 // ── Toast Notifications ────────────────────────────────────────────────────────
 function showToast(message, type = 'error', duration = 4000) {
   const container = document.getElementById('toast-container');
+  if (!container) {
+    console.warn('Toast container not found - creating one');
+    const newContainer = document.createElement('div');
+    newContainer.id = 'toast-container';
+    newContainer.className = 'toast-container';
+    document.body.appendChild(newContainer);
+  }
   const icons = { error: '❌', success: '✅', warning: '⚠️' };
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
+  const messageStr = message ? message.toString() : '(no message)';
   toast.innerHTML = `
     <span class="icon">${icons[type]}</span>
-    <span class="msg">${message}</span>
+    <span class="msg">${messageStr}</span>
     <button class="close" onclick="this.parentElement.remove()">✕</button>
   `;
   container.appendChild(toast);
-  if (duration > 0) setTimeout(() => toast.remove(), duration);
+  if (duration > 0) setTimeout(() => { try { toast.remove(); } catch(e) {} }, duration);
   return toast;
 }
 

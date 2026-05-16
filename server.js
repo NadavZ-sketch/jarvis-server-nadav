@@ -1588,10 +1588,9 @@ app.get('/chart.js', (_req, res) => {
         err => { if (err && !res.headersSent) res.status(404).send('Not found'); });
 });
 
-app.get('/progress-map', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'progress-map.html'),
-        err => { if (err && !res.headersSent) res.status(404).send('Not found'); });
-});
+const { createAgentCenterRouter } = require('./routes/agentCenter');
+app.use('/progress-map', createAgentCenterRouter({ callGemma4 }));
+app.get('/agent-center', (_req, res) => res.redirect(301, '/progress-map'));
 
 app.get('/notes.json', (_req, res) => {
     res.sendFile(path.join(__dirname, 'notes.json'),

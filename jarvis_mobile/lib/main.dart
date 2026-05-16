@@ -993,7 +993,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       },
       localeId:  'he_IL',
       listenFor: const Duration(seconds: 60),
-      pauseFor:  const Duration(milliseconds: 1600),
+      pauseFor:  const Duration(milliseconds: 2500),
       onSoundLevelChange: (level) {
         if (!mounted || !_voiceConversationActive) return;
         if (level > 0 && _listeningText == 'מקשיב...') {

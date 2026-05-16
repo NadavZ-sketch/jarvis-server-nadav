@@ -1,9 +1,11 @@
 {
   "proposals": [],
+  "proposals_history": [],
   "items": [
-    { "id": 1, "text": "בדוק שהאורב ממשיך להקשיב אחרי תשובה", "done": false, "added": "2026-05-01" },
-    { "id": 2, "text": "וודא שמהירות הדיבור נשמעת טבעית", "done": false, "added": "2026-05-01" }
+    { "id": 1, "text": "בדוק שהאורב ממשיך להקשיב אחרי תשובה", "done": false, "added": "2026-05-01", "priority": "high" },
+    { "id": 2, "text": "וודא שמהירות הדיבור נשמעת טבעית", "done": false, "added": "2026-05-01", "priority": "high" }
   ],
+  "ranking_version": "mvp-v1",
   "_nextId": 3,
   "_lastGenerated": null
 }

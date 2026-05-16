@@ -18,11 +18,13 @@ import 'main.dart' show JC, JarvisState;
 class LiveTalkScreen extends StatefulWidget {
   final String chatId;
   final AppSettings settings;
+  final List<Map<String, String>>? initialMessages;
 
   const LiveTalkScreen({
     super.key,
     required this.chatId,
     required this.settings,
+    this.initialMessages,
   });
 
   @override
@@ -81,7 +83,14 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
   }
 
   Future<void> _bootstrap() async {
-    await _loadHistory();
+    // Seed from caller's in-memory list for instant display, then sync from server.
+    if (widget.initialMessages != null && widget.initialMessages!.isNotEmpty) {
+      setState(() => _messages = List.from(widget.initialMessages!));
+      _scrollToBottom(animated: false);
+      _loadHistory(); // background refresh — no await
+    } else {
+      await _loadHistory();
+    }
     final granted = await _ensureMicPermission();
     if (!granted) {
       if (mounted) {
@@ -480,7 +489,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
 
   Future<void> _endCall() async {
     HapticFeedback.mediumImpact();
-    if (mounted) Navigator.of(context).pop(true);
+    if (mounted) Navigator.of(context).pop(List<Map<String, String>>.from(_messages));
   }
 
   @override

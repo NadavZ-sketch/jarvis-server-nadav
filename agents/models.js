@@ -146,7 +146,7 @@ function parseSSEStream(stream, onChunk) {
 
 // ─── Streaming variant: Groq → DeepSeek → Gemini (non-stream fallback) ────────
 
-async function callGemma4Stream(messages, useLocal = true, onChunk, signal = null) {
+async function callGemma4Stream(messages, useLocal = true, onChunk, signal = null, maxTokens = 800) {
     const msgs = typeof messages === 'string'
         ? [{ role: 'user', content: messages }]
         : messages;
@@ -170,7 +170,7 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
     // ── 2. Groq streaming ──
     try {
         const response = await axios.post(GROQ_URL, {
-            model: GROQ_MODEL, messages: msgs, max_tokens: 800, stream: true
+            model: GROQ_MODEL, messages: msgs, max_tokens: maxTokens, stream: true
         }, streamOpts({
             'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
             'Content-Type': 'application/json'
@@ -187,7 +187,7 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
     // ── 3. DeepSeek streaming fallback ──
     try {
         const response = await axios.post(DEEPSEEK_URL, {
-            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: 800, stream: true
+            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: maxTokens, stream: true
         }, streamOpts({
             'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
             'Content-Type': 'application/json'

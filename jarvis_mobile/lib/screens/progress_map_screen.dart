@@ -9,11 +9,6 @@ import '../app_settings.dart';
 import '../services/proposal_scoring.dart';
 import '../services/telemetry_policy.dart';
 
-class _CompatHttpRes {
-  final String body;
-  final int statusCode;
-  const _CompatHttpRes(this.body, {this.statusCode = 200});
-}
 
 class ProgressMapScreen extends StatefulWidget {
   final AppSettings settings;
@@ -320,19 +315,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
   String _priorityFilterLabel(String p) => _priorityLabels[p] ?? p;
 
-  // Kept as a tiny fallback getter because some CI branches still reference
-  // `$whyNow` inside legacy smart-prompt templates.
-  String get whyNow => 'כדי לייצר ערך מהיר למשתמש ולצמצם סיכון במימוש';
-
-  // Backward-compatibility fallback for legacy UI fragments that still render
-  // `${scores['weighted_score']}` in CI merge commits.
-  Map<String, dynamic> get scores => const {'weighted_score': '_'};
-
-  // Compatibility shim for legacy tap handlers that call
-  // `_showScoreExplainer(scores)` in older UI fragments.
   void _showScoreExplainer(Map<String, dynamic> data) {
-    final score = data['weighted_score']?.toString() ?? '_';
-    _showSnack('ציון איכות נוכחי: $score');
+    final score = data['weighted_score']?.toString() ?? '—';
+    final impact = data['impact']?.toString() ?? '—';
+    final effort = data['effort']?.toString() ?? '—';
+    final risk   = data['risk']?.toString()   ?? '—';
+    _showSnack('Score $score | Impact $impact | Effort $effort | Risk $risk');
   }
 
   bool get _hasTelemetryConsent => widget.settings.telemetryConsent;
@@ -370,9 +358,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       ).timeout(const Duration(seconds: 8));
     } catch (_) {}
   }
-
-  // Compatibility shim for old snippets that still parse `askJarvisRes.body`.
-  _CompatHttpRes get askJarvisRes => const _CompatHttpRes('{"answer":""}', statusCode: 200);
 
   void _scheduleRetry() {
     _retryTimer?.cancel();

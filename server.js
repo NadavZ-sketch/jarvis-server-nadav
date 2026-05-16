@@ -37,7 +37,8 @@ const { classifyIntent, classifyIntentWithLLM } = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory } = require('./agents/memoryAgent');
-const { runChatAgent, detectFollowUp, filterRelevantMemories } = require('./agents/chatAgent');
+const { runChatAgent, detectFollowUp, filterRelevantMemories, buildSystemPrompt } = require('./agents/chatAgent');
+const conversationSummary = require('./services/conversationSummary');
 const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
@@ -60,11 +61,78 @@ const { createTasksRouter } = require('./routes/tasks');
 const { createRemindersRouter } = require('./routes/reminders');
 const { createRemindersController } = require('./controllers/remindersController');
 const { createChatRouter } = require('./routes/chat');
+const { isAllowedByRolePlan, isBlockedAction } = require('./services/policyEngine');
 
 const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
+const policyAuditTrail = [];
+const consentLedger = new Map(); // userId:domain -> { approvedAt }
+
+function getActor(req) {
+    return {
+        userId: String(req.headers['x-user-id'] || req.body?.userId || 'anonymous'),
+        role: String(req.headers['x-user-role'] || 'member').toLowerCase(),
+        plan: String(req.headers['x-user-plan'] || 'free').toLowerCase(),
+    };
+}
+
+function auditPolicy({ userId, actionType, result }) {
+    const entry = { userId, actionType, timestamp: new Date().toISOString(), result };
+    policyAuditTrail.push(entry);
+    if (policyAuditTrail.length > 500) policyAuditTrail.shift();
+    console.log('[audit]', entry);
+}
+
+function actionDomain(actionType) {
+    if (String(actionType).startsWith('contacts.')) return 'contacts';
+    if (String(actionType).startsWith('reminders.')) return 'reminders';
+    if (String(actionType).startsWith('messaging.')) return 'messaging';
+    return actionType;
+}
+
+function hasStoredConsent(userId, actionType) {
+    return consentLedger.has(`${userId}:${actionDomain(actionType)}`);
+}
+
+function storeConsent(userId, actionType) {
+    consentLedger.set(`${userId}:${actionDomain(actionType)}`, { approvedAt: new Date().toISOString() });
+}
+
+function requirePolicy(actionType, options = {}) {
+    const { sensitive = false, irreversible = false } = options;
+    return (req, res, next) => {
+        if (process.env.NODE_ENV === 'test') return next();
+        const actor = getActor(req);
+        if (isBlockedAction(actionType)) {
+            auditPolicy({ userId: actor.userId, actionType, result: 'blocked' });
+            return res.status(403).json({ ok: false, code: 'ACTION_BLOCKED', message: 'This action is blocked by policy.' });
+        }
+        if (!isAllowedByRolePlan({ actionType, role: actor.role, plan: actor.plan })) {
+            auditPolicy({ userId: actor.userId, actionType, result: 'denied_not_allowed' });
+            return res.status(403).json({ ok: false, code: 'INSUFFICIENT_PERMISSION', message: 'Your role/plan is not allowed to perform this action.' });
+        }
+        if (sensitive) {
+            const explicitConsentNow = req.body?.consent === true || String(req.headers['x-user-consent'] || '').toLowerCase() === 'true';
+            const consentAlreadyGranted = hasStoredConsent(actor.userId, actionType);
+            if (!explicitConsentNow && !consentAlreadyGranted) {
+                auditPolicy({ userId: actor.userId, actionType, result: 'denied_no_consent' });
+                return res.status(403).json({ ok: false, code: 'CONSENT_REQUIRED', message: 'Explicit consent is required for sensitive actions.' });
+            }
+            if (explicitConsentNow) storeConsent(actor.userId, actionType);
+        }
+        if (irreversible) {
+            const confirmed = req.body?.confirm === true || String(req.headers['x-confirm-action'] || '').toLowerCase() === 'yes';
+            if (!confirmed) {
+                auditPolicy({ userId: actor.userId, actionType, result: 'denied_missing_confirmation' });
+                return res.status(409).json({ ok: false, code: 'CONFIRMATION_REQUIRED', message: 'Are you sure? confirmation is required for irreversible action.' });
+            }
+        }
+        auditPolicy({ userId: actor.userId, actionType, result: 'allowed' });
+        next();
+    };
+}
 app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     contentSecurityPolicy: {
@@ -80,7 +148,7 @@ app.use(helmet({
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-User-Id', 'X-User-Role', 'X-User-Plan', 'X-User-Consent', 'X-Confirm-Action'],
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -112,7 +180,7 @@ const supabaseAdmin = (SUPABASE_SERVICE_ROLE_KEY === SUPABASE_ANON_KEY)
 const supabase = supabaseAdmin;
 
 app.use('/tasks', createTasksRouter({ supabase }));
-app.use('/reminders', createRemindersRouter({ supabase, pinecone }));
+app.use('/reminders', createRemindersRouter({ supabase, pinecone, requirePolicy }));
 app.use('/', createChatRouter({ supabase, askJarvisHandler, streamJarvisHandler }));
 const remindersController = createRemindersController({ supabase, pinecone });
 app.get('/check-reminders', remindersController.check);
@@ -456,6 +524,10 @@ async function askJarvisHandler(req, res) {
             if (!pinecone.isReady()) {
                 longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
             }
+            // Inject rolling conversation summary so agent remembers context beyond 20 msgs
+            if (agentName === 'chat') {
+                settings.chatSummary = await conversationSummary.getSummary(chatId, supabase);
+            }
         } else {
             // All other agents get raw memories (TTL-cached — cheap)
             longTermMemories = await fetchLongTermMemories();
@@ -579,10 +651,14 @@ async function askJarvisHandler(req, res) {
         // Return chatId so client can use it for subsequent messages
         res.json({ answer, audio: audioBase64, action, chatId });
 
-        // ── Fire-and-forget: passive memory extraction (zero latency impact) ─
+        // ── Fire-and-forget: passive memory extraction + summary update ────────
         if (agentName === 'chat' && !imageBase64) {
             setImmediate(() => {
                 autoExtractMemory(userMessage, answer, supabase, settings).catch(() => {});
+                // Reload fresh history (cache was just invalidated) for summary
+                loadChatHistory(chatId).then(freshHistory => {
+                    conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, supabase, settings).catch(() => {});
+                }).catch(() => {});
             });
         }
 
@@ -594,7 +670,7 @@ async function askJarvisHandler(req, res) {
 
 // ─── Send Email (called after user confirms in Flutter) ───────────────────────
 
-app.post('/send-email', async (req, res) => {
+app.post('/send-email', requirePolicy('messaging.send', { sensitive: true, irreversible: true }), async (req, res) => {
     const { to, message } = req.body;
     if (!to || !message) return res.status(400).json({ ok: false, error: 'Missing to/message' });
     try {
@@ -831,11 +907,73 @@ app.get('/stats', async (_req, res) => {
     });
 });
 
+// ─── Today Message — personalized AI morning/motivation card ──────────────────
+
+app.get('/today-message', async (_req, res) => {
+    try {
+        const now = new Date();
+        const todayStart     = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+
+        const [pendingRes, doneYesterdayRes, totalYesterdayRes, remindersRes] = await Promise.all([
+            supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', false),
+            supabase.from('tasks').select('id', { count: 'exact', head: true })
+                .eq('done', true)
+                .gte('created_at', yesterdayStart.toISOString())
+                .lt('created_at', todayStart.toISOString()),
+            supabase.from('tasks').select('id', { count: 'exact', head: true })
+                .gte('created_at', yesterdayStart.toISOString())
+                .lt('created_at', todayStart.toISOString()),
+            supabase.from('reminders').select('id', { count: 'exact', head: true }).eq('fired', false),
+        ]);
+
+        const pending        = pendingRes.count       ?? 0;
+        const doneYesterday  = doneYesterdayRes.count ?? 0;
+        const totalYesterday = totalYesterdayRes.count ?? 0;
+        const reminders      = remindersRes.count     ?? 0;
+        const yesterdayPct   = totalYesterday > 0 ? Math.round(doneYesterday / totalYesterday * 100) : null;
+
+        const hour = (now.getUTCHours() + 3) % 24; // Jerusalem time
+        const timeOfDay = hour >= 5 && hour < 12 ? 'בוקר טוב'
+                        : hour >= 12 && hour < 17 ? 'צהריים טובים'
+                        : hour >= 17 && hour < 21 ? 'ערב טוב'
+                        : 'לילה טוב';
+
+        const yesterdayNote = yesterdayPct !== null
+            ? ` אתמול השלמת ${yesterdayPct}% מהמשימות — ${yesterdayPct >= 70 ? 'כל הכבוד' : 'אל תתייאש'}!`
+            : '';
+
+        const prompt = `אתה ג'ארביס, עוזר אישי חם ומעודד. כתוב הודעה קצרה ואישית (2 משפטים) בעברית.
+זמן: ${timeOfDay}. יש ${pending} משימות ממתינות ו-${reminders} תזכורות פעילות.${yesterdayNote}
+החזר JSON בלבד: {"message":"הטקסט כאן","emoji":"אמוג'י אחד מתאים"}`;
+
+        const raw = await callGemma4(prompt, false, 200);
+
+        let message = `${timeOfDay}! יש לך ${pending} משימות ממתינות היום.`;
+        let emoji   = '☀️';
+
+        try {
+            const start = raw.indexOf('{');
+            const end   = raw.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                const parsed = JSON.parse(raw.substring(start, end + 1));
+                if (parsed.message) message = parsed.message;
+                if (parsed.emoji)   emoji   = parsed.emoji;
+            }
+        } catch (_) {}
+
+        res.json({ message, emoji });
+    } catch (err) {
+        console.error('GET /today-message error:', err.message);
+        res.json({ message: 'שלום! יש לך משימות ממתינות היום.', emoji: '☀️' });
+    }
+});
+
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
 
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
-app.get('/contacts', async (_req, res) => {
+app.get('/contacts', requirePolicy('contacts.read', { sensitive: true }), async (_req, res) => {
     try {
         const { data, error } = await supabase
             .from('contacts')
@@ -849,7 +987,7 @@ app.get('/contacts', async (_req, res) => {
     }
 });
 
-app.delete('/contacts/:id', async (req, res) => {
+app.delete('/contacts/:id', requirePolicy('contacts.delete', { sensitive: true, irreversible: true }), async (req, res) => {
     try {
         const { error } = await supabase.from('contacts').delete().eq('id', req.params.id);
         if (error) throw error;
@@ -857,26 +995,6 @@ app.delete('/contacts/:id', async (req, res) => {
     } catch (err) {
         console.error('DELETE /contacts/:id error:', err.message);
         res.status(500).json({ ok: false, error: err.message });
-    }
-});
-
-// ─── PUT /tasks/:id — update task (done, due_date, content) ──────────────────
-app.put('/tasks/:id', async (req, res) => {
-    try {
-        const { done, due_date, content } = req.body;
-        const updates = {};
-        if (done      !== undefined) updates.done     = done;
-        if (due_date  !== undefined) updates.due_date = due_date;
-        if (content   !== undefined) updates.content  = content;
-        if (Object.keys(updates).length === 0)
-            return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await supabase
-            .from('tasks').update(updates).eq('id', req.params.id).select().single();
-        if (error) throw error;
-        res.json({ task: data });
-    } catch (err) {
-        console.error('PUT /tasks/:id error:', err.message);
-        res.status(500).json({ error: err.message });
     }
 });
 
@@ -1140,7 +1258,7 @@ app.get('/scan/errors', _rl(5), async (_req, res) => {
 
 // ─── PUT /reminders/:id — update text and/or scheduled_time ──────────────────
 // ─── POST /contacts — add contact from app ───────────────────────────────────
-app.post('/contacts', async (req, res) => {
+app.post('/contacts', requirePolicy('contacts.create', { sensitive: true }), async (req, res) => {
     try {
         const { name, phone, email } = req.body;
         if (!name) return res.status(400).json({ error: 'name required' });
@@ -1158,7 +1276,7 @@ app.post('/contacts', async (req, res) => {
 });
 
 // ─── PUT /contacts/:id — update contact ───────────────────────────────────────
-app.put('/contacts/:id', async (req, res) => {
+app.put('/contacts/:id', requirePolicy('contacts.update', { sensitive: true }), async (req, res) => {
     try {
         const { name, phone, email } = req.body;
         const updates = {};
@@ -1246,15 +1364,18 @@ async function streamJarvisHandler(req, res) {
             return res.end();
         }
 
-        // Chat streaming via Groq
-        const [chatHistory, longTermMemories] = await Promise.all([
-            loadChatHistory(chatId), fetchLongTermMemories()
+        // Chat streaming via Groq — same quality as /ask-jarvis
+        const [chatHistory, longTermMemories, chatSummary] = await Promise.all([
+            loadChatHistory(chatId),
+            fetchLongTermMemories(userMessage),
+            conversationSummary.getSummary(chatId, supabase),
         ]);
 
-        const systemPrompt = `אתה ג'רביס, עוזר אישי חכם שמדבר עברית. ענה תמיד בעברית טבעית ויעילה.
-זיכרונות ארוכי טווח:
-${longTermMemories}`;
+        settings.chatSummary = chatSummary;
+        const voiceMode = settings.voiceMode === true;
+        const maxTokens = voiceMode ? 200 : 800;
 
+        const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, null, userMessage);
         const msgs = [
             { role: 'system', content: systemPrompt },
             ...chatHistory.map(m => ({ role: m.role === 'jarvis' ? 'assistant' : 'user', content: m.text })),
@@ -1265,7 +1386,7 @@ ${longTermMemories}`;
         await callGemma4Stream(msgs, useLocal, (chunk) => {
             fullAnswer += chunk;
             send({ chunk });
-        }, controller.signal);
+        }, controller.signal, maxTokens);
 
         send({ done: true, chatId });
 
@@ -1274,6 +1395,14 @@ ${longTermMemories}`;
             saveChatMessage('jarvis', fullAnswer, chatId),
         ]);
         cacheInvalidate(`chatHistory:${chatId}`);
+
+        // Update rolling summary + passive memory extraction (fire-and-forget)
+        setImmediate(() => {
+            autoExtractMemory(userMessage, fullAnswer, supabase, settings).catch(() => {});
+            loadChatHistory(chatId).then(fresh => {
+                conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(() => {});
+            }).catch(() => {});
+        });
     } catch (err) {
         console.error('SSE error:', err.message);
         send({ error: 'שגיאת מערכת.' });
@@ -1399,6 +1528,29 @@ app.get('/sync/obsidian/status', (_req, res) => {
 if (!isTestEnv) cron.schedule('*/5 * * * *', () => {
     if (!obsidianAutoSync) return;
     obsidianSync.syncAll().catch(err => console.error('[ObsidianSync] cron:', err.message));
+});
+
+// Daily cleanup: remove ephemeral memories past their TTL.
+// 'session' scope: 7 days; 'recent' scope: 24 hours.
+if (!isTestEnv) cron.schedule('30 3 * * *', async () => {
+    try {
+        const now = new Date();
+        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const oneDayAgo    = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        const { count: c1 } = await supabase.from('memories')
+            .delete({ count: 'exact' })
+            .eq('scope', 'session')
+            .lt('created_at', sevenDaysAgo);
+        const { count: c2 } = await supabase.from('memories')
+            .delete({ count: 'exact' })
+            .eq('scope', 'recent')
+            .lt('created_at', oneDayAgo);
+        if ((c1 || 0) + (c2 || 0) > 0) {
+            console.log(`🧹 Memory cleanup: removed ${c1 || 0} session + ${c2 || 0} recent memories`);
+        }
+    } catch (err) {
+        console.error('Memory cleanup cron error:', err.message);
+    }
 });
 
 app.get('/chart.js', (_req, res) => {
@@ -1652,6 +1804,44 @@ function validateProgressMapPayload(payload) {
 }
 
 const PROPOSAL_STATUSES = ['proposal', 'draft_plan', 'active', 'validation', 'done'];
+const PROPOSAL_ACTIONS = Object.freeze({
+    startPlanning: {
+        actionType: 'start_planning',
+        targetStatus: 'draft_plan',
+        message: 'תוכנית עבודה ראשונית נפתחה.',
+    },
+    startExecution: {
+        actionType: 'start_execution',
+        targetStatus: 'active',
+        message: 'הצעה עברה לביצוע.',
+    },
+    sendToValidation: {
+        actionType: 'send_to_validation',
+        targetStatus: 'validation',
+        message: 'הצעה עברה לולידציה.',
+    },
+    markDone: {
+        actionType: 'mark_done',
+        targetStatus: 'done',
+        message: 'הצעה סומנה כהושלמה.',
+    },
+    rollbackToActive: {
+        actionType: 'rollback_to_active',
+        targetStatus: 'active',
+        message: 'הצעה הוחזרה לביצוע פעיל.',
+    },
+});
+const PROPOSAL_ACTION_TYPES = Object.values(PROPOSAL_ACTIONS).map((x) => x.actionType);
+
+function resolveProposalActor(req) {
+    const authHeader = String(req.headers.authorization || '');
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const sessionUserId = req.headers['x-session-user-id'] || req.headers['x-user-id'];
+    const tokenUserId = bearerToken.startsWith('demo-') ? bearerToken.slice(5).trim() : '';
+    const userId = String(tokenUserId || sessionUserId || '').trim();
+    if (!userId) return { ok: false, error: 'unauthorized' };
+    return { ok: true, userId, actor: `user:${userId}` };
+}
 
 function normalizeProposalForMvp(p) {
     if (!Array.isArray(p.auditTrail)) p.auditTrail = [];
@@ -1870,6 +2060,72 @@ app.delete('/dashboard/backlog/proposals/:id', (req, res) => {
         writeBacklog(data);
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/proposals/:id/action', (req, res) => {
+    try {
+        const auth = resolveProposalActor(req);
+        if (!auth.ok) return res.status(401).json({ ok: false, message: 'Unauthorized' });
+
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id)) return res.status(400).json({ ok: false, message: 'Invalid proposal id' });
+
+        const actionType = String(req.body?.actionType || '').trim();
+        if (!PROPOSAL_ACTION_TYPES.includes(actionType)) {
+            return res.status(400).json({
+                ok: false,
+                proposalId: id,
+                message: `Unsupported actionType. Supported: ${PROPOSAL_ACTION_TYPES.join(', ')}`,
+            });
+        }
+
+        const data = readBacklog();
+        const item = (data.proposals || []).find((p) => p.id === id);
+        if (!item) return res.status(404).json({ ok: false, proposalId: id, message: 'Proposal not found' });
+
+        normalizeProposalForMvp(item);
+        const proposalOwnerId = String(item.userId || item.ownerUserId || '').trim();
+        if (proposalOwnerId && proposalOwnerId !== auth.userId) {
+            return res.status(403).json({ ok: false, proposalId: id, message: 'Forbidden: proposal does not belong to this user' });
+        }
+
+        const actionConfig = Object.values(PROPOSAL_ACTIONS).find((a) => a.actionType === actionType);
+        const nextStatus = actionConfig.targetStatus;
+        if (!canTransitionProposalStatus(item.status, nextStatus)) {
+            return res.status(400).json({
+                ok: false,
+                proposalId: id,
+                newStatus: item.status,
+                message: `Invalid transition: ${item.status} -> ${nextStatus}`,
+            });
+        }
+
+        const previousStatus = item.status;
+        item.status = nextStatus;
+        const auditId = `audit-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        item.auditTrail.unshift({
+            id: auditId,
+            from: previousStatus,
+            to: nextStatus,
+            by: auth.actor,
+            reason: `action:${actionType}`,
+            executionMode: 'stub',
+            at: new Date().toISOString(),
+        });
+        item.auditTrail = item.auditTrail.slice(0, 20);
+        if (!proposalOwnerId) item.ownerUserId = auth.userId;
+
+        writeBacklog(data);
+        return res.json({
+            ok: true,
+            proposalId: id,
+            newStatus: nextStatus,
+            message: `${actionConfig.message} (stub execution)`,
+            auditId,
+        });
+    } catch (e) {
+        return res.status(500).json({ ok: false, message: e.message });
+    }
 });
 
 app.patch('/dashboard/backlog/:id', (req, res) => {

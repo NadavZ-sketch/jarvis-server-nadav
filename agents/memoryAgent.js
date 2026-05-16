@@ -28,21 +28,25 @@ async function checkDuplicate(rawContent, supabase) {
 // ─── Passive auto-extraction (fire-and-forget) ────────────────────────────────
 
 const AUTO_EXTRACT_PROMPT = `You are a memory extractor for a Hebrew personal assistant.
-Given a user message and assistant reply, decide if the user revealed a personal fact worth remembering.
-Personal facts worth saving: allergies, medical conditions, residence, family members,
-job/occupation, hobbies, preferences, dislikes, goals, regular schedules.
-NOT worth saving: questions, commands, greetings, weather queries, sports questions,
-or anything that is NOT about the user personally.
+Given a user message and assistant reply, extract personal facts worth remembering.
+
+Save facts in these categories:
+- long_term: stable personal facts (health/allergy, family, location, job, hobby, preference, schedule)
+- session: active goals, current tasks, decisions made this session, names of people/places just mentioned
+- Do NOT save: questions, commands, greetings, weather queries, sports questions, or general non-personal content.
+
 Return ONLY JSON (no explanation):
-{"memoryContent": ""} — if nothing worth saving
-{"memoryContent": "[tag] fact in Hebrew"} — if there is a personal fact
-Tags: health, location, family, work, hobby, preference, goal, schedule, other
+{"items": []} — if nothing worth saving
+{"items": [{"content": "[tag] fact in Hebrew", "scope": "long_term|session"}]} — up to 3 items
+
+Tags: health, location, family, work, hobby, preference, goal, decision, context, schedule, other
+Scope: "long_term" for stable facts, "session" for current goals/tasks/decisions.
+
 User message: `;
 
 async function autoExtractMemory(userMessage, assistantAnswer, supabase, settings = {}) {
     try {
         if (!userMessage || userMessage.trim().length < 8) return;
-        // Skip memory-recall and memory-delete questions — nothing personal to extract
         if (/מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת|מחק זיכרון|הסר זיכרון|שכח ש/i.test(userMessage)) return;
 
         const prompt = AUTO_EXTRACT_PROMPT + userMessage
@@ -50,29 +54,37 @@ async function autoExtractMemory(userMessage, assistantAnswer, supabase, setting
 
         const aiText = await callGemma4(
             [{ role: 'user', content: prompt }],
-            settings.useLocalModel === true
+            settings.useLocalModel === true,
+            300,
         );
 
-        const lastOpen  = aiText.lastIndexOf('{');
-        const lastClose = aiText.lastIndexOf('}');
-        if (lastOpen === -1 || lastClose === -1) return;
+        // Parse the first complete JSON object from the response.
+        const firstOpen  = aiText.indexOf('{');
+        const lastClose  = aiText.lastIndexOf('}');
+        if (firstOpen === -1 || lastClose === -1) return;
 
         let parsed;
-        try { parsed = JSON.parse(aiText.substring(lastOpen, lastClose + 1)); } catch { return; }
+        try { parsed = JSON.parse(aiText.substring(firstOpen, lastClose + 1)); } catch { return; }
 
-        const content = (parsed.memoryContent || '').trim();
-        if (!content) return;
+        const items = Array.isArray(parsed.items) ? parsed.items : [];
+        if (items.length === 0) return;
 
-        if (await checkDuplicate(content, supabase)) {
-            console.log('🧠 AutoExtract: duplicate skipped:', content);
-            return;
+        for (const item of items.slice(0, 3)) {
+            const content = (item.content || '').trim();
+            const scope   = item.scope === 'session' ? 'session' : 'long_term';
+            if (!content) continue;
+
+            if (await checkDuplicate(content, supabase)) {
+                console.log('🧠 AutoExtract: duplicate skipped:', content);
+                continue;
+            }
+
+            const { data: inserted } = await supabase
+                .from('memories').insert([{ content, scope }]).select('id').limit(1);
+            obsidianSync.dbToVault('memories', { content, scope });
+            if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
+            console.log(`🧠 AutoExtract saved [${scope}]:`, content);
         }
-
-        const { data: inserted } = await supabase
-            .from('memories').insert([{ content }]).select('id').limit(1);
-        obsidianSync.dbToVault('memories', { content });
-        if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
-        console.log('🧠 AutoExtract saved:', content);
     } catch (err) {
         console.error('AutoExtract error (suppressed):', err.message);
     }

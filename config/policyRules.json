@@ -1,0 +1,30 @@
+{
+  "blocklist": [
+    "admin.reset_system",
+    "contacts.export_all"
+  ],
+  "allowlist": {
+    "free": {
+      "member": [
+        "chat.ask",
+        "contacts.read",
+        "contacts.create",
+        "contacts.update",
+        "contacts.delete",
+        "reminders.read",
+        "reminders.create",
+        "reminders.update",
+        "reminders.delete",
+        "messaging.send"
+      ]
+    },
+    "pro": {
+      "member": [
+        "*"
+      ],
+      "admin": [
+        "*"
+      ]
+    }
+  }
+}

@@ -17,6 +17,14 @@ const PERSONALITY_DESC = {
     humorous: (_) => `ידידותי עם חוש הומור קל ואותנטי — ציניות עדינה, אירוניה חכמה.
 שמור תמיד על עזרה אמיתית לצד הנוחות.
 אל תגזים בהומור — הוא צריך להרגיש טבעי, לא מאולץ.`,
+
+    coach: (name) => `מאמן תומך ומניע. אתה עוזר ל-${name} להתקדם ולא עושה את העבודה במקומו.
+שאל שאלה מנחה אחת כדי לפתוח חשיבה, ואז הצע כיוון קונקרטי.
+הכר בהצלחות, שמור על טון מעודד ומאמין.`,
+
+    casual: (name) => `שפת דיבור יום-יומית וחברית מאוד. מדבר עם ${name} כמו חבר ישן.
+משפטים קצרים, ישירים, לפעמים בסלנג ישראלי טבעי. לא פורמלי בכלל.
+אל תתחיל ב"בסדר" או "הנה" — קפוץ ישר לעניין.`,
 };
 
 // ─── Follow-up detection ──────────────────────────────────────────────────────
@@ -46,6 +54,23 @@ function detectFollowUp(userMessage, chatHistory) {
     if (msg.length <= 6 && chatHistory.length >= 2) return true;
 
     return false;
+}
+
+// ─── User style analysis ─────────────────────────────────────────────────────
+
+const CASUAL_MARKERS = new Set([
+    'אחי','יאללה','בסדר גמור','קלאסי','לגמרי','ממש','וואו','סבבה','נו',
+    'אח שלי','חבר','תראה','שמע','מה קורה','מה נשמע',
+]);
+
+function analyzeUserStyle(userMessage) {
+    const words = userMessage.trim().split(/\s+/);
+    const len = words.length;
+    const lower = userMessage.toLowerCase();
+    const casualCount = words.filter(w => CASUAL_MARKERS.has(w.replace(/[.,!?]/g, ''))).length;
+    const register = casualCount >= 1 || len <= 4 ? 'casual' : 'neutral';
+    const length = len <= 5 ? 'short' : len <= 20 ? 'medium' : 'long';
+    return { length, register };
 }
 
 // ─── Relevance-based memory filtering ────────────────────────────────────────
@@ -81,7 +106,7 @@ function filterRelevantMemories(memoriesText, userMessage) {
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
-function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followUpContext = null) {
+function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followUpContext = null, userMessage = '') {
     const now = new Date();
     const currentDate = now.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' });
     const currentDay  = now.toLocaleDateString('he-IL', { weekday: 'long', timeZone: 'Asia/Jerusalem' });
@@ -124,12 +149,13 @@ function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followU
 
     const voiceModeBlock = voiceMode ? `
 --- מצב שיחה קולית ---
-אנחנו בשיחה קולית. כללים חשובים:
-- ענה בקצרה — 1 עד 3 משפטים מדוברים לכל היותר, אלא אם נשאלת שאלה שדורשת הרחבה ממשית.
-- שפה מדוברת ונזילה — כאילו אתה מדבר, לא כותב.
-- ללא markdown: ללא *, **, #, -, bullets, קוד בלוקים או סמלים מיוחדים.
-- ללא רשימות ממוספרות — שלב הכל בזרימה טבעית של דיבור.
-- אם השאלה פשוטה — משפט אחד מספיק.
+אנחנו בשיחה קולית. כללים קשיחים:
+- ענה ב-1 עד 2 משפטים מדוברים בלבד (עד 25 מילים), אלא אם נשאלת שאלה מורכבת שדורשת הרחבה.
+- שפה מדוברת לחלוטין — כאילו אתה מדבר, לא כותב. זרימה טבעית של דיבור.
+- ללא markdown בכלל: ללא *, **, #, -, bullets, קוד בלוקים, מספרים, סמלים מיוחדים.
+- אל תפתח ב-"בסדר", "הנה", "בטח", "כמובן" — קפוץ ישר לתשובה.
+- אל תשאל שאלה בחזרה אלא אם חיוני להבנת הבקשה.
+- אם נתת תשובה מלאה — תפסיק. אל תוסיף "יש לך עוד שאלות?" ואל תסכם.
 -----------------------------------` : '';
 
     const profile = settings.userProfile || null;
@@ -142,15 +168,26 @@ function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followU
 השתמש במידע הזה כדי להתאים את הסגנון ולהציע צעדים הבאים רלוונטיים.
 -----------------------------------` : '';
 
+    const chatSummary = (settings.chatSummary || '').trim();
+    const summaryBlock = chatSummary ? `
+--- סיכום השיחה עד כה ---
+${chatSummary}
+-----------------------------------` : '';
+
+    const styleHint = userMessage && !voiceMode ? (() => {
+        const { length, register } = analyzeUserStyle(userMessage);
+        return `\nStyle hint: mirror length=${length}, register=${register}.`;
+    })() : '';
+
     return `You are ${name}, a personal AI assistant for ${userName}. Respond in Hebrew only.
 ${genderInstr}
 Personality: ${personalityDesc}
-CRITICAL: Mirror ${userName}'s own writing style, vocabulary and tone in every response.
+CRITICAL: Mirror ${userName}'s own writing style, vocabulary and tone in every response.${styleHint}
 ${voiceModeBlock}
 ${emotionalIntelligenceBlock}
 ${clarificationBlock}
 ${profileBlock}
-${followUpBlock}
+${followUpBlock}${summaryBlock}
 --- Permanent Memories About ${userName} ---
 ${longTermMemories}
 --------------------------------------
@@ -168,7 +205,7 @@ Current message from ${userName}: `;
 // Uses proper system role + alternating user/assistant pairs.
 // Shorter prompt — local models have limited context and degrade with long inputs.
 
-function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings = {}, followUpContext = null) {
+function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings = {}, followUpContext = null, chatSummary = '') {
     const now = new Date();
     const currentDate = now.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem' });
     const currentTime = now.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
@@ -192,6 +229,7 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
         : '';
 
     const followUp = followUpContext ? `\nהקשר: ${followUpContext}` : '';
+    const summaryHint = chatSummary ? `\nסיכום שיחה: ${chatSummary.slice(0, 300)}` : '';
     const profile = settings.userProfile || null;
     const profileShort = profile
         ? `פרופיל משתמש: טון=${profile.speaking_tone || 'friendly'}; תחומי עניין=${(profile.interests || []).slice(0, 5).join(', ') || 'לא הוגדר'}; משימות חוזרות=${(profile.recurring_tasks || []).slice(0, 5).join(', ') || 'לא הוגדר'}`
@@ -204,6 +242,7 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
         `תאריך ושעה: ${currentDate} ${currentTime}.`,
         memoriesShort,
         profileShort,
+        summaryHint,
         followUp,
     ].filter(Boolean).join('\n');
 
@@ -229,14 +268,16 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
 
 async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings = {}) {
     try {
-        const useLocal = settings.useLocalModel === true;
+        const useLocal  = settings.useLocalModel === true;
+        const voiceMode = settings.voiceMode === true;
+        const maxTokens = voiceMode ? 200 : 800;
+        const chatSummary = (settings.chatSummary || '').trim();
         let followUpContext = null;
 
         if (!imageBase64 && detectFollowUp(userMessage, chatHistory)) {
             const lastJarvis = [...chatHistory].reverse().find(m => m.role === 'jarvis');
             if (lastJarvis) {
                 const topicHint = lastJarvis.text.slice(0, 120);
-                const userName = settings.userName || 'נדב';
                 followUpContext = `המשתמש ממשיך את השיחה הקודמת. ההודעה האחרונה שלך הייתה: "${topicHint}..."
 המשך את אותו הנושא — אל תתחיל נושא חדש.`;
                 console.log(`💬 Follow-up detected: "${userMessage.slice(0, 40)}"`);
@@ -247,18 +288,18 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
 
         if (imageBase64) {
             // Vision always uses Gemini cloud
-            const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, followUpContext);
+            const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, followUpContext, userMessage);
             answer = await callGeminiVision(systemPrompt + userMessage, imageBase64);
 
         } else if (useLocal) {
             // Local: proper system+history message array → Ollama (falls back to Groq)
-            const msgs = buildLocalMessages(userMessage, chatHistory, longTermMemories, settings, followUpContext);
-            answer = await callGemma4(msgs, true);
+            const msgs = buildLocalMessages(userMessage, chatHistory, longTermMemories, settings, followUpContext, chatSummary);
+            answer = await callGemma4(msgs, true, maxTokens);
 
         } else {
             // Cloud: rich single-prompt format → Groq/DeepSeek/Gemini
-            const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, followUpContext);
-            answer = await callGemma4([{ role: 'user', content: systemPrompt + userMessage }], false);
+            const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, followUpContext, userMessage);
+            answer = await callGemma4([{ role: 'user', content: systemPrompt + userMessage }], false, maxTokens);
         }
 
         return { answer: answer || 'לא הצלחתי לגבש תשובה.' };
@@ -270,4 +311,4 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
     return { answer: 'סליחה, נתקלתי בבעיה. נסה שוב.' };
 }
 
-module.exports = { runChatAgent, detectFollowUp, filterRelevantMemories };
+module.exports = { runChatAgent, detectFollowUp, filterRelevantMemories, analyzeUserStyle, buildSystemPrompt };

@@ -12,9 +12,11 @@ function createTasksController({ supabase }) {
     },
     async create(req, res) {
       try {
-        const { content } = req.body;
+        const { content, priority } = req.body;
         if (!content) return res.status(400).json({ error: 'content required' });
-        const { data, error } = await supabase.from('tasks').insert([{ content }]).select().single();
+        const row = { content };
+        if (priority && ['high', 'medium', 'low'].includes(priority)) row.priority = priority;
+        const { data, error } = await supabase.from('tasks').insert([row]).select().single();
         if (error) throw error;
         res.json({ task: data });
       } catch (err) {
@@ -24,11 +26,13 @@ function createTasksController({ supabase }) {
     },
     async update(req, res) {
       try {
-        const { done, due_date, content } = req.body;
+        const { done, due_date, content, priority } = req.body;
         const updates = {};
-        if (done !== undefined) updates.done = done;
+        if (done     !== undefined) updates.done     = done;
         if (due_date !== undefined) updates.due_date = due_date;
-        if (content !== undefined) updates.content = content;
+        if (content  !== undefined) updates.content  = content;
+        if (priority !== undefined && ['high', 'medium', 'low'].includes(priority))
+          updates.priority = priority;
         if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'no fields to update' });
         const { data, error } = await supabase.from('tasks').update(updates).eq('id', req.params.id).select().single();
         if (error) throw error;

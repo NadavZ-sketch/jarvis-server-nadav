@@ -90,7 +90,7 @@ h1 span{color:var(--accent)}
 .toast.error .icon{color:var(--red);font-weight:bold}
 .toast.success .icon{color:var(--green);font-weight:bold}
 .toast.warning .icon{color:var(--amber);font-weight:bold}
-.toast .msg{flex:1;line-height:1.4}
+.toast .msg{flex:1;line-height:1.4;color:var(--text);font-weight:500}
 .toast .close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:0;opacity:.6;transition:opacity .2s}
 .toast .close:hover{opacity:1}
 @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
@@ -649,13 +649,13 @@ function renderProposals(proposals) {
   el.innerHTML = proposals.map(p => {
     let statusBtn = '';
     if (p.status === 'proposal') {
-      statusBtn = `<button class="btn-activate" onclick="patchProposal(${p.id},'draft_plan')">→ התכנון</button>`;
+      statusBtn = `<button class="btn-activate" title="שלח הצעה לתכנון מפורט" onclick="patchProposal(${p.id},'draft_plan')">🧭 שלח לתכנון</button>`;
     } else if (p.status === 'draft_plan') {
-      statusBtn = `<button class="btn-activate" onclick="patchProposal(${p.id},'active')">⚡ הפעל</button>`;
+      statusBtn = `<button class="btn-activate" title="התחל ביצוע של הצעה זו" onclick="patchProposal(${p.id},'active')">⚡ התחל ביצוע</button>`;
     } else if (p.status === 'active') {
-      statusBtn = `<button class="btn-activate" onclick="patchProposal(${p.id},'validation')">🧪 ולידציה</button>`;
+      statusBtn = `<button class="btn-activate" title="בדוק את ההצעה לפני סיום" onclick="patchProposal(${p.id},'validation')">🧪 בדוק ואחזה</button>`;
     } else if (p.status === 'validation') {
-      statusBtn = `<button class="btn-activate" onclick="patchProposal(${p.id},'done')">✅ סיים</button>`;
+      statusBtn = `<button class="btn-activate" title="סמן הצעה זו כמושלמת" onclick="patchProposal(${p.id},'done')">✅ סיים</button>`;
     } else if (p.status === 'done') {
       statusBtn = '';
     }

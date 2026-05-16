@@ -1584,22 +1584,25 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
                       );
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                       decoration: BoxDecoration(
-                        color: selected ? color.withValues(alpha: 0.1) : Colors.transparent,
+                        color: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: selected ? color.withValues(alpha: 0.5) : JC.border,
-                          width: selected ? 1.0 : 0.5,
+                          color: selected ? color.withValues(alpha: 0.6) : JC.border,
+                          width: selected ? 1.2 : 0.5,
                         ),
                       ),
                       child: Text(labels[i],
                           textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: selected ? color : JC.textMuted,
+                            color: selected ? color : JC.textSecondary,
                             fontFamily: 'Heebo',
-                            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                            fontSize: 11,
+                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                            fontSize: 12,
+                            height: 1.2,
                           )),
                     ),
                   ),

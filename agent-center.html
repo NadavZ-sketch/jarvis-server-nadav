@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Jarvis — מרכז סוכנים</title>
+<style>
+:root{
+  --bg:#0f172a;--surface:#1e293b;--card:#273449;--border:#334155;
+  --text:#e2e8f0;--muted:#94a3b8;--accent:#6366f1;
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--blue:#60a5fa;
+  --violet:#a78bfa;--pink:#f472b6;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* ── Header ── */
+.header{display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;gap:8px}
+.header h1{font-size:1.15rem;font-weight:700;letter-spacing:-.3px;display:flex;align-items:center;gap:7px}
+.header h1 span{color:var(--accent)}
+.header-right{display:flex;align-items:center;gap:10px;margin-right:auto}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite;flex-shrink:0}
+.status-dot.offline{background:var(--red);box-shadow:0 0 6px var(--red);animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.nav-link{color:var(--muted);font-size:.8rem;text-decoration:none;padding:5px 10px;border:1px solid var(--border);border-radius:7px;transition:color .15s,border-color .15s}
+.nav-link:hover{color:var(--text);border-color:var(--accent)}
+
+/* ── Layout ── */
+.layout{display:grid;grid-template-columns:272px 1fr;flex:1;min-height:0}
+@media(max-width:900px){.layout{grid-template-columns:1fr;overflow:visible}}
+
+/* ── Sidebar ── */
+.sidebar{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sidebar-search{padding:10px 12px;border-bottom:1px solid var(--border)}
+.sidebar-search input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:.83rem;font-family:inherit;outline:none;direction:rtl}
+.sidebar-search input:focus{border-color:var(--accent)}
+.sidebar-list{overflow-y:auto;flex:1;padding:6px}
+.agent-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;cursor:pointer;border-right:3px solid transparent;margin-bottom:3px;transition:background .12s,border-color .12s}
+.agent-item:hover{background:var(--card)}
+.agent-item.active{background:rgba(99,102,241,.12);border-right-color:var(--accent)}
+.agent-item.risk-high{border-right-color:var(--red)}
+.agent-item.risk-high.active{border-right-color:var(--accent)}
+.agent-item-info{flex:1;min-width:0}
+.agent-item-name{font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agent-item-role{font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agent-status-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.agent-status-dot.active{background:var(--green);box-shadow:0 0 5px var(--green)}
+.agent-status-dot.custom{background:var(--violet);box-shadow:0 0 5px var(--violet)}
+.agent-status-dot.inactive{background:var(--muted)}
+
+/* Mobile chip row */
+.mobile-chips{display:none;overflow-x:auto;padding:8px 12px;gap:7px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-overflow-scrolling:touch}
+.mobile-chips::-webkit-scrollbar{display:none}
+@media(max-width:900px){.mobile-chips{display:flex}.sidebar{display:none}}
+.chip-btn{flex-shrink:0;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:.78rem;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .12s,color .12s,border-color .12s}
+.chip-btn.active{background:rgba(99,102,241,.15);border-color:var(--accent);color:var(--accent)}
+
+/* ── Main details ── */
+.details{overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);gap:8px;font-size:.9rem;text-align:center}
+.empty-state .icon{font-size:2.5rem}
+
+/* Agent header card */
+.agent-header-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
+.agent-header-top{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.agent-icon{width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0}
+.agent-header-info{flex:1;min-width:0}
+.agent-header-name{font-size:1.1rem;font-weight:700;margin-bottom:3px}
+.agent-header-role{color:var(--muted);font-size:.82rem}
+.badge-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.badge{display:inline-flex;align-items:center;font-size:.7rem;font-weight:700;border-radius:6px;padding:3px 8px;letter-spacing:.3px;gap:4px}
+.badge.risk-low{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.badge.risk-medium{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
+.badge.risk-high{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.badge.mode{background:rgba(99,102,241,.1);color:var(--accent);border:1px solid rgba(99,102,241,.2)}
+.badge.approval-none{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.15)}
+.badge.approval-medium{background:rgba(245,158,11,.08);color:var(--amber);border:1px solid rgba(245,158,11,.15)}
+.badge.approval-high{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.15)}
+.badge.status-active{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.15)}
+.badge.status-custom{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.2)}
+.badge.autonomy{background:rgba(96,165,250,.1);color:var(--blue);border:1px solid rgba(96,165,250,.2)}
+.agent-mission{color:var(--muted);font-size:.82rem;line-height:1.55;margin-top:10px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.agent-mission.expanded{display:block;-webkit-line-clamp:unset}
+.expand-btn{background:none;border:none;color:var(--accent);font-size:.75rem;cursor:pointer;padding:2px 0;font-family:inherit;margin-top:4px}
+
+/* Tabs */
+.tabs{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:3px}
+.tab-btn{flex:1;padding:7px 4px;background:none;border:none;color:var(--muted);font-size:.8rem;font-weight:600;cursor:pointer;border-radius:8px;transition:background .12s,color .12s;font-family:inherit}
+.tab-btn.active{background:var(--accent);color:#fff}
+.tab-panel{display:none}
+.tab-panel.active{display:flex;flex-direction:column;gap:12px}
+
+/* Info section */
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:600px){.info-grid{grid-template-columns:1fr}}
+.info-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.info-card-title{font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.tag-list{display:flex;flex-wrap:wrap;gap:5px}
+.tag{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:.75rem;color:var(--text)}
+.info-text{font-size:.82rem;color:var(--muted);line-height:1.5}
+
+/* Responsibilities */
+.resp-list{list-style:none;display:flex;flex-direction:column;gap:6px}
+.resp-list li{display:flex;align-items:flex-start;gap:7px;font-size:.83rem;color:var(--text)}
+.resp-list li::before{content:'▸';color:var(--accent);font-size:.7rem;margin-top:3px;flex-shrink:0}
+
+/* Connections tab */
+.conn-header-row{display:flex;gap:8px;flex-wrap:wrap}
+.conn-badge{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:.8rem;display:flex;align-items:center;gap:6px}
+.conn-badge .num{font-size:1.1rem;font-weight:700;color:var(--accent)}
+.conn-badge .num.amber{color:var(--amber)}
+
+/* SVG map */
+.conn-map-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;overflow:hidden;position:relative}
+.conn-map-wrap svg{display:block;margin:0 auto}
+@media(max-width:640px){.conn-map-wrap{display:none}}
+.svg-tooltip{position:absolute;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 11px;font-size:.75rem;pointer-events:none;max-width:220px;z-index:10;display:none;line-height:1.5}
+
+.conn-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.conn-card-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.conn-dir{font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:5px;flex-shrink:0}
+.conn-dir.outgoing{background:rgba(99,102,241,.12);color:var(--accent);border:1px solid rgba(99,102,241,.2)}
+.conn-dir.incoming{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.conn-dir.bidirectional{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.2)}
+.conn-name{font-weight:600;font-size:.85rem}
+.conn-meta{color:var(--muted);font-size:.78rem;line-height:1.4}
+.conn-risk-badge{font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:5px}
+.conn-risk-badge.low{background:rgba(34,197,94,.08);color:var(--green);border:1px solid rgba(34,197,94,.15)}
+.conn-risk-badge.high{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.15)}
+.conn-risk-badge.inferred{background:rgba(245,158,11,.08);color:var(--amber);border:1px solid rgba(245,158,11,.15)}
+.conn-approval{display:flex;align-items:center;gap:4px;font-size:.72rem;color:var(--amber)}
+.flow-diagram{background:var(--card);border-radius:8px;padding:10px 14px;font-size:.8rem;color:var(--muted);overflow-x:auto;white-space:nowrap}
+
+/* Dashboard tab */
+.metrics-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+@media(max-width:700px){.metrics-grid{grid-template-columns:repeat(2,1fr)}}
+.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 12px;text-align:center}
+.metric-card .num{font-size:1.3rem;font-weight:700;color:var(--blue);line-height:1;margin-bottom:4px}
+.metric-card .num.na{color:var(--muted);font-size:1rem}
+.metric-card .lbl{font-size:.7rem;color:var(--muted);font-weight:600}
+.activity-empty{color:var(--muted);font-size:.82rem;text-align:center;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:10px}
+
+/* Prompt Builder */
+.builder-section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
+.builder-title{font-size:.9rem;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.builder-title .icon{font-size:1rem}
+textarea.builder-input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:.83rem;font-family:inherit;resize:vertical;min-height:80px;direction:rtl;outline:none;transition:border-color .15s}
+textarea.builder-input:focus{border-color:var(--accent)}
+textarea.builder-input::placeholder{color:var(--muted)}
+.builder-btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .15s}
+.builder-btn:hover{opacity:.88}
+.builder-btn:disabled{opacity:.45;cursor:not-allowed}
+.builder-btn.secondary{background:var(--surface);color:var(--accent);border:1px solid var(--accent)}
+.builder-btn.secondary:hover{background:rgba(99,102,241,.1)}
+.builder-btn.copy{background:var(--card);color:var(--green);border:1px solid rgba(34,197,94,.3)}
+.spinner-inline{width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+
+/* Analysis card */
+.analysis-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-top:10px;display:none}
+.analysis-card.show{display:block}
+.analysis-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.cat-chip{padding:3px 10px;border-radius:6px;font-size:.75rem;font-weight:700;background:rgba(99,102,241,.15);color:var(--accent);border:1px solid rgba(99,102,241,.25)}
+.intent-text{font-size:.82rem;color:var(--muted);flex:1}
+.confidence-bar-wrap{margin-bottom:10px}
+.confidence-label{font-size:.72rem;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between}
+.confidence-track{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.confidence-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--violet));border-radius:3px;transition:width .4s}
+.risk-signals{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.risk-chip{padding:3px 9px;border-radius:6px;font-size:.7rem;font-weight:700;background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+
+/* Questions */
+.questions-section{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+.question-block{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:11px 13px}
+.question-label{font-size:.83rem;font-weight:600;margin-bottom:6px}
+.options-list{display:flex;flex-direction:column;gap:5px}
+.option-row{display:flex;align-items:center;gap:7px;cursor:pointer}
+.option-row input[type=radio]{accent-color:var(--accent)}
+.option-row label{font-size:.82rem;cursor:pointer}
+.other-input{margin-top:6px;display:none}
+.other-input input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:6px 10px;color:var(--text);font-size:.8rem;font-family:inherit;outline:none;direction:rtl}
+.other-input input:focus{border-color:var(--accent)}
+
+/* Review panel */
+.review-panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px 15px;margin-top:10px;display:none}
+.review-panel.show{display:block}
+.review-title{font-size:.82rem;font-weight:700;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.review-text{font-size:.82rem;color:var(--text);line-height:1.6;white-space:pre-line}
+.prompt-pre{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:.75rem;color:var(--muted);white-space:pre-wrap;word-break:break-word;direction:ltr;text-align:left;margin-top:10px;display:none;max-height:300px;overflow-y:auto}
+.prompt-pre.show{display:block}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <h1>🤖 <span>מרכז</span> סוכנים</h1>
+  <div class="header-right">
+    <div class="status-dot" id="statusDot" title="מצב שרת"></div>
+    <span id="agentCount" style="color:var(--muted);font-size:.8rem">טוען...</span>
+  </div>
+</header>
+
+<!-- Mobile chips -->
+<div class="mobile-chips" id="mobileChips"></div>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-search">
+      <input type="text" id="searchInput" placeholder="חפש סוכן..." oninput="filterAgents(this.value)"/>
+    </div>
+    <div class="sidebar-list" id="sidebarList"></div>
+  </aside>
+
+  <!-- Details -->
+  <main class="details" id="detailsPanel">
+    <div class="empty-state" id="emptyState">
+      <div class="icon">🤖</div>
+      <div>בחר סוכן כדי לצפות בפרטיו</div>
+    </div>
+  </main>
+</div>
+
+<!-- SVG tooltip -->
+<div class="svg-tooltip" id="svgTooltip"></div>
+
+<script>
+const BASE = '';
+let allAgents = [];
+let currentAgent = null;
+
+const AGENT_ICONS = {
+  router:'🔀',chatAgent:'💬',taskAgent:'✅',reminderAgent:'⏰',memoryAgent:'🧠',
+  weatherAgent:'🌤',newsAgent:'📰',stocksAgent:'📈',translationAgent:'🌐',
+  sportsAgent:'⚽',shoppingAgent:'🛒',notesAgent:'📝',musicAgent:'🎵',
+  messagingAgent:'📨',draftAgent:'✍️',insightAgent:'💡',securityAgent:'🛡',
+  codeErrorAgent:'🐛',e2eAgent:'🧪',agentFactoryAgent:'🏭',surveyAgent:'📋',
+};
+const ICON_BG = {
+  low:'rgba(34,197,94,.12)',medium:'rgba(245,158,11,.12)',high:'rgba(239,68,68,.12)',
+};
+
+/* ── Bootstrap ── */
+async function init() {
+  try {
+    const r = await fetch(BASE + '/progress-map/agents');
+    if (r.ok) {
+      const d = await r.json();
+      allAgents = d.agents || AGENTS;
+    } else { allAgents = AGENTS; }
+    document.getElementById('statusDot').classList.remove('offline');
+  } catch(_) {
+    allAgents = AGENTS;
+    document.getElementById('statusDot').classList.add('offline');
+  }
+  document.getElementById('agentCount').textContent = allAgents.length + ' סוכנים';
+  renderSidebar(allAgents);
+  renderMobileChips(allAgents);
+}
+
+/* ── Sidebar ── */
+function renderSidebar(agents) {
+  const list = document.getElementById('sidebarList');
+  list.innerHTML = agents.map(a => `
+    <div class="agent-item ${a.status==='custom'?'':'risk-'+a.risk} ${currentAgent?.id===a.id?'active':''}" onclick="selectAgent('${a.id}')">
+      <div class="agent-status-dot ${a.status==='custom'?'custom':a.status==='active'?'active':'inactive'}"></div>
+      <div class="agent-item-info">
+        <div class="agent-item-name">${AGENT_ICONS[a.id]||'🤖'} ${a.nameHe}</div>
+        <div class="agent-item-role">${a.role}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderMobileChips(agents) {
+  const wrap = document.getElementById('mobileChips');
+  wrap.innerHTML = agents.map(a => `
+    <button class="chip-btn ${currentAgent?.id===a.id?'active':''}" onclick="selectAgent('${a.id}')">${AGENT_ICONS[a.id]||'🤖'} ${a.nameHe}</button>
+  `).join('');
+}
+
+function filterAgents(q) {
+  const filtered = allAgents.filter(a =>
+    a.nameHe.includes(q) || a.name.toLowerCase().includes(q.toLowerCase()) || a.role.includes(q)
+  );
+  renderSidebar(filtered);
+}
+
+/* ── Select agent ── */
+function selectAgent(id) {
+  currentAgent = allAgents.find(a => a.id === id);
+  if (!currentAgent) return;
+  renderSidebar(allAgents.filter(a => {
+    const q = document.getElementById('searchInput').value;
+    return !q || a.nameHe.includes(q) || a.name.toLowerCase().includes(q.toLowerCase());
+  }));
+  renderMobileChips(allAgents);
+  renderDetails(currentAgent);
+}
+
+/* ── Main details ── */
+function renderDetails(a) {
+  const panel = document.getElementById('detailsPanel');
+  panel.innerHTML = `
+    ${renderHeaderCard(a)}
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab(this,'tab-main')">כרטיס ראשי</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-info')">מידע</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-conn')">חיבורים</button>
+      <button class="tab-btn" onclick="switchTab(this,'tab-dash')">דאשבורד</button>
+    </div>
+    <div id="tab-main" class="tab-panel active">${renderMainTab(a)}</div>
+    <div id="tab-info" class="tab-panel">${renderInfoTab(a)}</div>
+    <div id="tab-conn" class="tab-panel">${renderConnTab(a)}</div>
+    <div id="tab-dash" class="tab-panel">${renderDashTab(a)}</div>
+  `;
+}
+
+function switchTab(btn, tabId) {
+  btn.closest('.details').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.closest('.details').querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+  if (tabId === 'tab-conn') setTimeout(() => renderConnSVG(currentAgent), 50);
+}
+
+/* ── Header card ── */
+function renderHeaderCard(a) {
+  return `<div class="agent-header-card">
+    <div class="agent-header-top">
+      <div class="agent-icon" style="background:${ICON_BG[a.risk]||ICON_BG.medium}">${AGENT_ICONS[a.id]||'🤖'}</div>
+      <div class="agent-header-info">
+        <div class="agent-header-name">${a.nameHe} <span style="color:var(--muted);font-size:.8rem;font-weight:400">${a.name}</span></div>
+        <div class="agent-header-role">${a.role}</div>
+        <div class="badge-row">
+          <span class="badge risk-${a.risk}">⚡ סיכון: ${riskLabel(a.risk)}</span>
+          <span class="badge mode">⚙️ מצב: ${a.mode}</span>
+          <span class="badge approval-${a.approval}">🔒 אישור: ${approvalLabel(a.approval)}</span>
+          <span class="badge autonomy">🎯 אוטונומיה: ${a.autonomy}%</span>
+          <span class="badge status-${a.status}">${a.status==='custom'?'✨ מותאם':'● פעיל'}</span>
+        </div>
+      </div>
+    </div>
+    <div class="agent-mission" id="mission-${a.id}">${a.mission}</div>
+    <button class="expand-btn" onclick="toggleMission('${a.id}')">הצג עוד ▾</button>
+  </div>`;
+}
+
+function toggleMission(id) {
+  const el = document.getElementById('mission-' + id);
+  const btn = el.nextElementSibling;
+  el.classList.toggle('expanded');
+  btn.textContent = el.classList.contains('expanded') ? 'הצג פחות ▴' : 'הצג עוד ▾';
+}
+
+/* ── Main tab ── */
+function renderMainTab(a) {
+  const topResp = (a.responsibilities || []).slice(0, 3);
+  return `
+    <div class="info-card">
+      <div class="info-card-title">תחומי אחריות עיקריים</div>
+      <ul class="resp-list">
+        ${topResp.map(r => `<li>${r}</li>`).join('') || '<li style="color:var(--muted)">לא מוגדר</li>'}
+      </ul>
+    </div>
+    <div class="info-card">
+      <div class="info-card-title">תצוגה מקדימה של פרומפט</div>
+      <div class="agent-mission" id="prompt-prev-${a.id}" style="-webkit-line-clamp:3">${a.prompt || 'לא זמין'}</div>
+      <button class="expand-btn" onclick="togglePromptPrev('${a.id}')">הצג עוד ▾</button>
+    </div>
+    ${renderPromptBuilder(a)}
+  `;
+}
+
+function togglePromptPrev(id) {
+  const el = document.getElementById('prompt-prev-' + id);
+  const btn = el.nextElementSibling;
+  if (el.style['-webkit-line-clamp'] === '3' || el.style.webkitLineClamp === '3') {
+    el.style['-webkit-line-clamp'] = 'unset';
+    el.style.webkitLineClamp = 'unset';
+    el.style.display = 'block';
+    btn.textContent = 'הצג פחות ▴';
+  } else {
+    el.style['-webkit-line-clamp'] = '3';
+    el.style.webkitLineClamp = '3';
+    el.style.display = '-webkit-box';
+    btn.textContent = 'הצג עוד ▾';
+  }
+}
+
+/* ── Info tab ── */
+function renderInfoTab(a) {
+  const infoItems = [
+    { title: 'קלטים', items: a.inputs },
+    { title: 'פלטים', items: a.outputs },
+    { title: 'כלים', items: a.tools },
+    { title: 'הרשאות', items: a.permissions },
+    { title: 'גישת זיכרון', text: a.memoryAccess },
+    { title: 'מגבלות', items: a.restrictions },
+  ];
+  return `<div class="info-grid">${infoItems.map(item => `
+    <div class="info-card">
+      <div class="info-card-title">${item.title}</div>
+      ${item.text !== undefined
+        ? `<div class="info-text">${item.text || '—'}</div>`
+        : `<div class="tag-list">${(item.items||[]).length
+            ? item.items.map(t => `<span class="tag">${t}</span>`).join('')
+            : '<span style="color:var(--muted);font-size:.78rem">לא מוגדר</span>'
+          }</div>`
+      }
+    </div>
+  `).join('')}</div>`;
+}
+
+/* ── Connections tab ── */
+function renderConnTab(a) {
+  const conns = a.connections || [];
+  const needsApproval = conns.filter(c => c.requiresApproval).length;
+  const flow = conns.length
+    ? [a.nameHe, ...conns.map(c => c.nameHe)].join(' → ')
+    : a.nameHe + ' (ללא חיבורים)';
+
+  return `
+    <div class="conn-header-row">
+      <div class="conn-badge"><span class="num">${conns.length}</span> חיבורים</div>
+      <div class="conn-badge"><span class="num amber">${needsApproval}</span> דורשים אישור</div>
+    </div>
+    <div class="conn-map-wrap" id="connMapWrap"><svg id="connSvg" width="580" height="280"></svg></div>
+    ${conns.length ? conns.map(c => renderConnCard(c)).join('') : '<div class="activity-empty">אין חיבורים מוגדרים לסוכן זה</div>'}
+    <div class="flow-diagram">${flow}</div>
+  `;
+}
+
+function renderConnCard(c) {
+  return `<div class="conn-card">
+    <div class="conn-card-top">
+      <span class="conn-dir ${c.direction}">${dirLabel(c.direction)}</span>
+      <span class="conn-name">${c.nameHe || c.name}</span>
+      <span class="conn-risk-badge ${c.risk}">${c.risk}</span>
+      ${c.confidence === 'inferred' ? '<span class="conn-risk-badge inferred">⚠ משוער</span>' : ''}
+      ${c.requiresApproval ? '<span class="conn-approval">🔒 דורש אישור</span>' : ''}
+    </div>
+    <div class="conn-meta"><strong>${c.type}</strong> · ${c.payload}</div>
+    <div class="conn-meta">⏱ ${c.trigger}</div>
+  </div>`;
+}
+
+function renderConnSVG(a) {
+  const svg = document.getElementById('connSvg');
+  if (!svg) return;
+  const conns = (a.connections || []).slice(0, 10);
+  const W = 580, H = 280, cx = W/2, cy = H/2, R = 100;
+  let html = '';
+
+  conns.forEach((c, i) => {
+    const angle = (2 * Math.PI / Math.max(conns.length, 1)) * i - Math.PI / 2;
+    const nx = cx + R * 1.6 * Math.cos(angle);
+    const ny = cy + R * 1.1 * Math.sin(angle);
+    const stroke = c.requiresApproval ? '#f59e0b' : '#6366f1';
+    const dash = c.requiresApproval ? 'stroke-dasharray="6 3"' : '';
+    html += `<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${stroke}" stroke-width="1.5" ${dash} opacity=".7"/>`;
+    const icon = AGENT_ICONS[c.agentId] || '🤖';
+    html += `<circle cx="${nx}" cy="${ny}" r="22" fill="#273449" stroke="${stroke}" stroke-width="1.5"/>`;
+    html += `<text x="${nx}" y="${ny+5}" text-anchor="middle" font-size="14">${icon}</text>`;
+    const lx = nx + (nx < cx ? -28 : nx > cx ? 28 : 0);
+    const ly = ny + (ny < cy ? -28 : 28);
+    html += `<text x="${nx}" y="${ly}" text-anchor="middle" fill="#94a3b8" font-size="9">${c.nameHe||c.name}</text>`;
+  });
+
+  html += `<circle cx="${cx}" cy="${cy}" r="30" fill="#1e293b" stroke="#6366f1" stroke-width="2" filter="url(#glow)"/>`;
+  html += `<text x="${cx}" y="${cy+6}" text-anchor="middle" font-size="18">${AGENT_ICONS[a.id]||'🤖'}</text>`;
+
+  svg.innerHTML = `<defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>${html}`;
+}
+
+/* ── Dashboard tab ── */
+function renderDashTab(a) {
+  const d = a.dashboard || {};
+  const metrics = [
+    { num: d.tasksHandled, lbl: 'פניות טופלו' },
+    { num: d.failures, lbl: 'שגיאות' },
+    { num: d.avgLatency, lbl: 'זמן תגובה' },
+    { num: d.confidence, lbl: 'ביטחון' },
+    { num: d.lastActive, lbl: 'פעיל לאחרונה' },
+  ];
+  return `
+    <div class="metrics-grid">
+      ${metrics.map(m => `<div class="metric-card">
+        <div class="num ${m.num==='unknown'?'na':''}">${m.num==='unknown'?'—':m.num}</div>
+        <div class="lbl">${m.lbl}</div>
+      </div>`).join('')}
+    </div>
+    <div class="activity-empty">אין נתוני פעילות — נדרשת אינסטרומנטציה</div>
+  `;
+}
+
+/* ── Prompt Builder ── */
+function renderPromptBuilder(a) {
+  return `<div class="builder-section" id="builder-${a.id}">
+    <div class="builder-title"><span class="icon">🔧</span> Prompt Builder — בנה שינוי לסוכן</div>
+    <textarea class="builder-input" id="changeReq-${a.id}" placeholder="תאר את השינוי שברצונך לבצע בסוכן זה..."></textarea>
+    <div class="btn-row">
+      <button class="builder-btn" onclick="analyzeChange('${a.id}')">
+        <span class="spinner-inline" id="spin-analyze-${a.id}"></span>
+        נתח עם Jarvis
+      </button>
+    </div>
+    <div class="analysis-card" id="analysis-${a.id}"></div>
+    <div class="questions-section" id="questions-${a.id}"></div>
+    <div id="after-questions-${a.id}" style="display:none">
+      <div style="margin-top:10px">
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:5px">הערות נוספות (אופציונלי):</div>
+        <textarea class="builder-input" id="notes-${a.id}" placeholder="תוספת אנושית חופשית..." style="min-height:55px"></textarea>
+      </div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="builder-btn" onclick="buildPrompt('${a.id}')">
+          <span class="spinner-inline" id="spin-build-${a.id}"></span>
+          צור פרומפט
+        </button>
+      </div>
+    </div>
+    <div class="review-panel" id="review-${a.id}"></div>
+  </div>`;
+}
+
+async function analyzeChange(agentId) {
+  const req = document.getElementById('changeReq-' + agentId)?.value?.trim();
+  if (!req) { alert('נא להזין בקשת שינוי'); return; }
+  const btn = document.querySelector(`#builder-${agentId} .builder-btn`);
+  const spin = document.getElementById('spin-analyze-' + agentId);
+  btn.disabled = true; spin.style.display = 'inline-block';
+  try {
+    const r = await fetch(BASE + '/progress-map/analyze', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ agentId, changeRequest: req }),
+    });
+    const d = await r.json();
+    renderAnalysis(agentId, d);
+    renderQuestions(agentId, d.questions || []);
+  } catch(e) {
+    const card = document.getElementById('analysis-' + agentId);
+    card.innerHTML = `<div style="color:var(--red);font-size:.8rem">שגיאה: ${e.message}</div>`;
+    card.classList.add('show');
+  } finally {
+    btn.disabled = false; spin.style.display = 'none';
+  }
+}
+
+function renderAnalysis(agentId, d) {
+  const card = document.getElementById('analysis-' + agentId);
+  const pct = Math.round((d.confidence || 0.75) * 100);
+  const signals = (d.riskSignals || []).map(s => `<span class="risk-chip">${s.label}</span>`).join('');
+  card.innerHTML = `
+    <div class="analysis-row">
+      <span class="cat-chip">${d.categoryLabel || d.category}</span>
+      <span class="intent-text">${d.intent || ''}</span>
+    </div>
+    ${signals ? `<div class="risk-signals">${signals}</div>` : ''}
+    <div class="confidence-bar-wrap">
+      <div class="confidence-label"><span>רמת ביטחון בניתוח</span><span>${pct}%</span></div>
+      <div class="confidence-track"><div class="confidence-fill" style="width:${pct}%"></div></div>
+    </div>
+  `;
+  card.classList.add('show');
+}
+
+function renderQuestions(agentId, questions) {
+  const wrap = document.getElementById('questions-' + agentId);
+  const afterWrap = document.getElementById('after-questions-' + agentId);
+  if (!questions.length) { afterWrap.style.display = 'block'; return; }
+  wrap.innerHTML = questions.map((q, qi) => `
+    <div class="question-block">
+      <div class="question-label">${q.label}</div>
+      ${q.reason ? `<div style="font-size:.74rem;color:var(--muted);margin-bottom:7px">${q.reason}</div>` : ''}
+      <div class="options-list">
+        ${(q.options || []).map(opt => `
+          <label class="option-row">
+            <input type="radio" name="q-${agentId}-${qi}" value="${opt.value}" onchange="onOptionChange('${agentId}',${qi},'${opt.value}')"/>
+            <span>${opt.label}</span>
+          </label>
+        `).join('')}
+      </div>
+      <div class="other-input" id="other-${agentId}-${qi}">
+        <input type="text" placeholder="פרט..."/>
+      </div>
+    </div>
+  `).join('');
+  afterWrap.style.display = 'block';
+}
+
+function onOptionChange(agentId, qi, value) {
+  const otherWrap = document.getElementById(`other-${agentId}-${qi}`);
+  if (otherWrap) otherWrap.style.display = value === 'other' ? 'block' : 'none';
+}
+
+async function buildPrompt(agentId) {
+  const changeRequest = document.getElementById('changeReq-' + agentId)?.value?.trim();
+  const notes = document.getElementById('notes-' + agentId)?.value?.trim();
+  const analysisCard = document.getElementById('analysis-' + agentId);
+  const questionsWrap = document.getElementById('questions-' + agentId);
+
+  const answers = {};
+  if (questionsWrap) {
+    questionsWrap.querySelectorAll('.question-block').forEach((block, qi) => {
+      const label = block.querySelector('.question-label')?.textContent || `שאלה ${qi+1}`;
+      const checked = block.querySelector('input[type=radio]:checked');
+      if (checked) {
+        const val = checked.value === 'other'
+          ? (block.querySelector('.other-input input')?.value || 'אחר')
+          : checked.nextElementSibling?.textContent || checked.value;
+        answers[label] = val;
+      }
+    });
+  }
+
+  const btn = document.querySelector(`#after-questions-${agentId} .builder-btn`);
+  const spin = document.getElementById('spin-build-' + agentId);
+  btn.disabled = true; spin.style.display = 'inline-block';
+
+  try {
+    const r = await fetch(BASE + '/progress-map/build-prompt', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ agentId, changeRequest, analysis: null, answers, notes }),
+    });
+    const d = await r.json();
+    renderReview(agentId, d.reviewText, d.prompt);
+  } catch(e) {
+    renderReview(agentId, `שגיאה: ${e.message}`, '');
+  } finally {
+    btn.disabled = false; spin.style.display = 'none';
+  }
+}
+
+function renderReview(agentId, reviewText, fullPrompt) {
+  const panel = document.getElementById('review-' + agentId);
+  panel.innerHTML = `
+    <div class="review-title">📋 סיכום Jarvis</div>
+    <div class="review-text">${reviewText || '—'}</div>
+    ${fullPrompt ? `
+      <div class="btn-row" style="margin-top:10px">
+        <button class="builder-btn secondary" onclick="toggleFullPrompt('${agentId}')">הצג פרומפט מלא</button>
+        <button class="builder-btn copy" onclick="copyPrompt('${agentId}')">📋 העתק פרומפט</button>
+      </div>
+      <pre class="prompt-pre" id="prompt-pre-${agentId}">${escHtml(fullPrompt)}</pre>
+    ` : ''}
+  `;
+  panel.classList.add('show');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function toggleFullPrompt(agentId) {
+  const pre = document.getElementById('prompt-pre-' + agentId);
+  pre.classList.toggle('show');
+}
+
+function copyPrompt(agentId) {
+  const pre = document.getElementById('prompt-pre-' + agentId);
+  const text = pre?.textContent || '';
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = pre?.previousElementSibling?.querySelector('.copy');
+    if (btn) { const orig = btn.textContent; btn.textContent = '✅ הועתק!'; setTimeout(() => btn.textContent = orig, 1500); }
+  }).catch(() => alert('לא ניתן להעתיק'));
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ── Helpers ── */
+function riskLabel(r) { return {low:'נמוך',medium:'בינוני',high:'גבוה'}[r]||r; }
+function approvalLabel(a) { return {none:'אין',medium:'בינוני',high:'גבוה'}[a]||a; }
+function dirLabel(d) { return {outgoing:'→ יוצא',incoming:'← נכנס',bidirectional:'↔ דו-כיווני'}[d]||d; }
+
+/* ── Static AGENTS fallback ── */
+const AGENTS = [{"id":"router","name":"Router","nameHe":"ראוטר","role":"מסווג כוונות","mission":"מנתח כל הודעת משתמש ומכוון אותה לסוכן הנכון. משתמש בהתאמת מילות מפתח ואם אין התאמה — קורא ל-LLM.","prompt":"אתה מסווג כוונות. קבל הודעה וסווג אותה לאחד מה-intents הבאים.","responsibilities":["סיווג intent בלבד","fallback ל-LLM לקצרים מ-12 תווים","תמיד מחזיר intent תקין"],"inputs":["הודעת משתמש"],"outputs":["intent string"],"tools":["regex keyword matching","Groq llama-3.3-70b-versatile (fallback)"],"permissions":["קריאה בלבד"],"memoryAccess":"אין","restrictions":["לא שומר כלום","לא מחזיר תשובה למשתמש"],"risk":"medium","mode":"guard","approval":"none","autonomy":70,"status":"active","connections":[{"agentId":"chatAgent","name":"Chat Agent","nameHe":"סוכן שיחה","direction":"outgoing","type":"dispatch","payload":"intent=chat","trigger":"כל הודעה","risk":"low","requiresApproval":false,"confidence":"inferred"}],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"chatAgent","name":"Chat Agent","nameHe":"סוכן שיחה","role":"עוזר שיחה ראשי","mission":"הסוכן הראשי לשיחות חופשיות. בונה פרומפט מערכת עשיר הכולל אישיות, מגדר, זיכרונות, היסטוריה ותאריך/שעה.","prompt":"אתה ג׳רביס, עוזר אישי חכם בעברית.","responsibilities":["שיחה חופשית בעברית","הטמעת זיכרונות והיסטוריה","תמיכה ב-voiceMode"],"inputs":["הודעת משתמש","היסטוריה","זיכרונות","settings"],"outputs":["תשובה טקסטואלית","audio TTS"],"tools":["callGemma4","Google TTS"],"permissions":["קריאת היסטוריה","קריאת זיכרונות"],"memoryAccess":"קריאה","restrictions":[],"risk":"medium","mode":"assistant","approval":"none","autonomy":40,"status":"active","connections":[{"agentId":"memoryAgent","name":"Memory Agent","nameHe":"סוכן זיכרון","direction":"outgoing","type":"חילוץ זיכרון","payload":"הודעה → עובדות","trigger":"אחרי כל שיחה","risk":"low","requiresApproval":false,"confidence":"inferred"}],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"taskAgent","name":"Task Agent","nameHe":"סוכן משימות","role":"ניהול משימות","mission":"יוצר, מעדכן, מסמן כסיים ומוחק משימות ב-Supabase.","prompt":"נהל את רשימת המשימות של המשתמש.","responsibilities":["יצירת משימות","עדכון משימות","סימון כסיים"],"inputs":["הודעת משתמש","רשימת משימות"],"outputs":["{ answer, action }"],"tools":["Supabase tasks","callGemma4"],"permissions":["קריאה/כתיבה/מחיקה ב-tasks"],"memoryAccess":"אין","restrictions":[],"risk":"medium","mode":"operator","approval":"medium","autonomy":50,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"reminderAgent","name":"Reminder Agent","nameHe":"סוכן תזכורות","role":"ניהול תזכורות","mission":"יוצר, מעדכן ומוחק תזכורות ב-Supabase עם תמיכה ב-cron חוזר.","prompt":"נהל תזכורות. הבן תאריכים ושעות.","responsibilities":["יצירת תזכורות","תמיכה ב-recurrence","מחיקה/עדכון"],"inputs":["הודעת משתמש","תזכורות קיימות"],"outputs":["{ answer, action }"],"tools":["Supabase reminders","callGemma4"],"permissions":["קריאה/כתיבה ב-reminders"],"memoryAccess":"אין","restrictions":[],"risk":"medium","mode":"operator","approval":"medium","autonomy":50,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"memoryAgent","name":"Memory Agent","nameHe":"סוכן זיכרון","role":"שמירת ואחזור זיכרונות","mission":"שומר, מאחזר ומוחק עובדות אישיות. autoExtractMemory — חילוץ פסיבי אחרי כל שיחה.","prompt":"שמור ואחזר מידע אישי.","responsibilities":["שמירת זיכרונות","חיפוש סמנטי","autoExtractMemory"],"inputs":["הודעת משתמש","היסטוריית שיחה"],"outputs":["{ answer, action }"],"tools":["Supabase memories","Pinecone (optional)","callGemma4"],"permissions":["קריאה/כתיבה ב-memories","Pinecone"],"memoryAccess":"קריאה + כתיבה מלאה","restrictions":[],"risk":"medium","mode":"operator","approval":"medium","autonomy":40,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"weatherAgent","name":"Weather Agent","nameHe":"סוכן מזג אוויר","role":"מידע מזג אוויר","mission":"מושך נתוני מזג אוויר עם Google Search grounding דרך Gemini.","prompt":"ספק מידע על מזג אוויר נוכחי ותחזית.","responsibilities":["תחזית מזג אוויר","טמפרטורה נוכחית"],"inputs":["מיקום, זמן"],"outputs":["תשובה טקסטואלית"],"tools":["callGeminiWithSearch"],"permissions":["גישת רשת"],"memoryAccess":"אין","restrictions":["לא שומר"],"risk":"low","mode":"observer","approval":"none","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"newsAgent","name":"News Agent","nameHe":"סוכן חדשות","role":"חדשות עדכניות","mission":"מחפש חדשות עדכניות עם Google Search grounding.","prompt":"ספק חדשות עדכניות על הנושא המבוקש.","responsibilities":["חיפוש חדשות","תקציר ידיעות"],"inputs":["נושא"],"outputs":["ידיעות"],"tools":["callGeminiWithSearch"],"permissions":["גישת רשת"],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"observer","approval":"none","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"stocksAgent","name":"Stocks Agent","nameHe":"סוכן מניות","role":"מידע פיננסי","mission":"מחזיר מחירי מניות ונתוני שוק.","prompt":"ספק מידע על מניות ומדדים.","responsibilities":["מחירי מניות","נתוני מדדים"],"inputs":["שם מניה"],"outputs":["מחיר ונתונים"],"tools":["callGeminiWithSearch"],"permissions":["גישת רשת"],"memoryAccess":"אין","restrictions":["אינו ייעוץ פיננסי"],"risk":"low","mode":"observer","approval":"none","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"translationAgent","name":"Translation Agent","nameHe":"סוכן תרגום","role":"תרגום טקסט","mission":"מתרגם טקסטים בין שפות שונות.","prompt":"תרגם את הטקסט. זהה שפת מקור אוטומטית.","responsibilities":["תרגום בין שפות","זיהוי שפת מקור"],"inputs":["טקסט","שפת יעד"],"outputs":["טקסט מתורגם"],"tools":["callGemma4"],"permissions":[],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"observer","approval":"none","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"sportsAgent","name":"Sports Agent","nameHe":"סוכן ספורט","role":"מידע ספורט","mission":"תוצאות משחקים, טבלאות ליגות עם Google Search.","prompt":"ספק מידע ספורטיבי עדכני.","responsibilities":["תוצאות משחקים","טבלאות"],"inputs":["שאלה ספורטיבית"],"outputs":["תשובה"],"tools":["callGeminiWithSearch"],"permissions":["גישת רשת"],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"observer","approval":"none","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"shoppingAgent","name":"Shopping Agent","nameHe":"סוכן קניות","role":"ניהול רשימת קניות","mission":"מנהל רשימת קניות ב-Supabase.","prompt":"נהל את רשימת הקניות.","responsibilities":["הוספת פריטים","הסרת פריטים","הצגת הרשימה"],"inputs":["הודעת משתמש"],"outputs":["{ answer, action }"],"tools":["Supabase shopping_items","callGemma4"],"permissions":["קריאה/כתיבה ב-shopping_items"],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"operator","approval":"none","autonomy":40,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"notesAgent","name":"Notes Agent","nameHe":"סוכן פתקים","role":"ניהול פתקים","mission":"יוצר ומנהל פתקים ב-Supabase ובקובץ notes.json מקומי.","prompt":"נהל פתקים: צור, ערוך, הצג, מחק.","responsibilities":["יצירת פתקים","עריכה/מחיקה","Obsidian sync"],"inputs":["הודעת משתמש"],"outputs":["{ answer, action }"],"tools":["Supabase notes","notes.json","obsidianSync"],"permissions":["קריאה/כתיבה ב-notes","גישה לקבצים"],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"operator","approval":"none","autonomy":40,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"musicAgent","name":"Music Agent","nameHe":"סוכן מוזיקה","role":"שליטה במוזיקה","mission":"שולט בנגן מוזיקה (Spotify / YouTube).","prompt":"שלוט במוזיקה: נגן, עצור, דלג.","responsibilities":["ניגון שירים","שליטה בנגן"],"inputs":["פקודת מוזיקה"],"outputs":["{ answer, action }"],"tools":["Spotify API"],"permissions":["שליטה בנגן"],"memoryAccess":"אין","restrictions":[],"risk":"medium","mode":"operator","approval":"none","autonomy":40,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"messagingAgent","name":"Messaging Agent","nameHe":"סוכן הודעות","role":"שליחת הודעות","mission":"שולח WhatsApp, אימייל ו-SMS.","prompt":"שלח הודעות. צור action לשליחה.","responsibilities":["שליחת WhatsApp","שליחת אימייל","ניהול אנשי קשר"],"inputs":["הודעת משתמש","contacts"],"outputs":["{ answer, action }"],"tools":["Supabase contacts","Gmail API","WhatsApp"],"permissions":["קריאת contacts","גישה ל-Gmail"],"memoryAccess":"אין","restrictions":["דורש אישור משתמש"],"risk":"high","mode":"operator","approval":"high","autonomy":30,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"draftAgent","name":"Draft Agent","nameHe":"סוכן טיוטות","role":"כתיבת טיוטות","mission":"כותב טיוטות אימייל, מסמכים, הודעות.","prompt":"כתוב טיוטה.","responsibilities":["כתיבת אימיילים","כתיבת הודעות"],"inputs":["בקשת טיוטה"],"outputs":["טיוטה"],"tools":["callGemma4"],"permissions":[],"memoryAccess":"אין","restrictions":["לא שולח — מחזיר טיוטה בלבד"],"risk":"medium","mode":"assistant","approval":"none","autonomy":40,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"insightAgent","name":"Insight Agent","nameHe":"סוכן תובנות","role":"ניתוח נתונים אישיים","mission":"מנתח נתוני משתמש מ-Supabase ומחזיר תובנות ודפוסים.","prompt":"נתח נתונים אישיים ותן תובנות.","responsibilities":["ניתוח דפוסים","סיכום פעילות","המלצות שיפור"],"inputs":["tasks, reminders, memories, notes"],"outputs":["תובנות ודפוסים"],"tools":["Supabase (multiple tables)","callGemma4"],"permissions":["קריאה מ-tables מרובות"],"memoryAccess":"קריאה בלבד","restrictions":["לא כותב ל-DB"],"risk":"medium","mode":"assistant","approval":"none","autonomy":30,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"securityAgent","name":"Security Agent","nameHe":"סוכן אבטחה","role":"סריקת אבטחה","mission":"סורק קוד מקור לאיתור חולשות אבטחה. שומר ממצאים ב-Supabase.","prompt":"סרוק קבצי קוד לחולשות אבטחה.","responsibilities":["סריקת קוד","שמירת דוחות","המלצות תיקון"],"inputs":["קבצי קוד מקור"],"outputs":["דוח אבטחה"],"tools":["fs","Supabase e2e_reports","callGemma4"],"permissions":["קריאת קבצים","כתיבה ל-e2e_reports"],"memoryAccess":"אין","restrictions":["פועל ב-background"],"risk":"high","mode":"guard","approval":"high","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"codeErrorAgent","name":"Code Error Agent","nameHe":"סוכן שגיאות קוד","role":"ניפוי שגיאות קוד","mission":"מזהה, מסביר ומציע תיקונים לשגיאות קוד.","prompt":"נתח את השגיאה והצע תיקון.","responsibilities":["זיהוי שגיאות","הסבר stack trace","הצעת תיקונים"],"inputs":["שגיאה / stack trace"],"outputs":["הסבר + תיקון"],"tools":["callGemma4","Supabase e2e_reports"],"permissions":["קריאת קבצים","כתיבה ל-e2e_reports"],"memoryAccess":"אין","restrictions":["פועל ב-background"],"risk":"high","mode":"guard","approval":"high","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"e2eAgent","name":"E2E Agent","nameHe":"סוכן בדיקות","role":"בדיקות end-to-end","mission":"מריץ בדיקות E2E על כל הסוכנים ושומר דוחות.","prompt":"הרץ בדיקות E2E.","responsibilities":["הרצת בדיקות","בדיקת endpoints","דוחות"],"inputs":["פקודת הפעלה"],"outputs":["דוח בדיקות"],"tools":["HTTP client","Supabase e2e_reports","callGemma4"],"permissions":["גישת רשת","כתיבה ל-e2e_reports"],"memoryAccess":"אין","restrictions":["פועל ב-background"],"risk":"high","mode":"guard","approval":"high","autonomy":10,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"agentFactoryAgent","name":"Agent Factory","nameHe":"מפעל סוכנים","role":"יצירת סוכנים דינמיים","mission":"יוצר סוכנים מותאמים אישית בזמן ריצה. כותב קבצי JS ל-agents/custom/ ומעדכן registry.json.","prompt":"צור סוכן חדש לפי הדרישות.","responsibilities":["יצירת קבצי JS","עדכון registry.json","hot-loading"],"inputs":["תיאור סוכן"],"outputs":["קובץ JS + registry"],"tools":["fs","callGemma4"],"permissions":["כתיבה ל-agents/custom/","עדכון registry.json"],"memoryAccess":"אין","restrictions":["לא מוחק סוכנים"],"risk":"high","mode":"autonomous","approval":"high","autonomy":60,"status":"active","connections":[{"agentId":"router","name":"Router","nameHe":"ראוטר","direction":"outgoing","type":"רישום keywords","payload":"registry → keywords","trigger":"אחרי יצירת סוכן","risk":"high","requiresApproval":true,"confidence":"inferred"}],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"surveyAgent","name":"Survey Agent","nameHe":"סוכן סקרים","role":"ניהול סקרים","mission":"יוצר ומנהל סקרים. שומר תשובות ב-Supabase.","prompt":"נהל סקרים.","responsibilities":["יצירת סקרים","איסוף תשובות"],"inputs":["הודעת משתמש"],"outputs":["{ answer, action }"],"tools":["Supabase user_surveys","callGemma4"],"permissions":["קריאה/כתיבה ב-user_surveys"],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"operator","approval":"none","autonomy":30,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}}];
+
+init();
+</script>
+</body>
+</html>

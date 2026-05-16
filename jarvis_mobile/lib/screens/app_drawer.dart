@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../settings_screen.dart';
@@ -131,6 +132,17 @@ class AppDrawer extends StatelessWidget {
                       context,
                       SlideFadeRoute(page: UserProfileScreen(settings: settings)),
                     );
+                  },
+                ),
+                _DrawerTile(
+                  icon: Icons.smart_toy_outlined,
+                  label: 'מרכז סוכנים',
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final url = Uri.parse('${settings.serverUrl}/progress-map');
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(url, mode: LaunchMode.externalApplication);
+                    }
                   },
                 ),
                 _DrawerTile(

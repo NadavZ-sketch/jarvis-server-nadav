@@ -670,29 +670,44 @@ function togglePlan(id) {
 
 async function patchProposal(id, status) {
   try {
-    await fetch(`/dashboard/backlog/proposals/${id}`, {
+    const r = await fetch(`/dashboard/backlog/proposals/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     });
+    if (r.ok) {
+      const labels = { proposal: 'הצעה', draft_plan: 'תכנון', active: 'הפעלה', validation: 'ולידציה', done: 'סיום' };
+      showToast(`הצעה שודרגה ל: ${labels[status] || status}`, 'success');
+    }
     await loadBacklog();
-  } catch {}
+  } catch (e) {
+    showToast('שגיאה בעדכון הצעה: ' + e.message);
+  }
 }
 
 async function deleteProposal(id) {
   try {
-    await fetch(`/dashboard/backlog/proposals/${id}`, { method: 'DELETE' });
+    const r = await fetch(`/dashboard/backlog/proposals/${id}`, { method: 'DELETE' });
+    if (r.ok) {
+      showToast('הצעה הוסרה בהצלחה', 'success');
+    }
     await loadBacklog();
-  } catch {}
+  } catch (e) {
+    showToast('שגיאה בהסרת הצעה: ' + e.message);
+  }
 }
 
 function useProposalAsPrompt(id) {
   const proposal = _proposalCtx.find(p => p.id === id);
-  if (!proposal) return;
+  if (!proposal) {
+    showToast('הצעה לא נמצאה', 'error');
+    return;
+  }
   const input = document.getElementById('promptInput');
   input.value = `${proposal.title}: ${proposal.plan}`;
   input.scrollIntoView({ behavior: 'smooth', block: 'center' });
   input.focus();
+  showToast('הצעה נטענה — יוצר פרומפט...', 'success');
   generateFeaturePrompt();
 }
 

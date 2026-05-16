@@ -1030,6 +1030,11 @@ loadFeatures();
 loadBacklog();
 setInterval(() => { checkHealth(); loadStats(); }, 30000);
 
+if (location.hash === '#agents') {
+  const btn = document.querySelector('.page-tab-btn:nth-child(2)');
+  if (btn) switchPageTab('agents', btn);
+}
+
 // ── Agent Center ───────────────────────────────────────────────────────────────
 let acAgents = [], acCurrent = null, acInitDone = false;
 const AC_ICONS = {router:'🔀',chatAgent:'💬',taskAgent:'✅',reminderAgent:'⏰',memoryAgent:'🧠',weatherAgent:'🌤',newsAgent:'📰',stocksAgent:'📈',translationAgent:'🌐',sportsAgent:'⚽',shoppingAgent:'🛒',notesAgent:'📝',musicAgent:'🎵',messagingAgent:'📨',draftAgent:'✍️',insightAgent:'💡',securityAgent:'🛡',codeErrorAgent:'🐛',e2eAgent:'🧪',agentFactoryAgent:'🏭',surveyAgent:'📋'};
@@ -1037,11 +1042,18 @@ const AC_IBGS = {low:'rgba(34,197,94,.12)',medium:'rgba(245,158,11,.12)',high:'r
 
 async function acInit() {
   acInitDone = true;
+  acAgents = AC_STATIC;
+  acRenderList(acAgents);
   try {
     const r = await fetch('/progress-map/agents');
-    acAgents = r.ok ? (await r.json()).agents : AC_STATIC;
-  } catch(_) { acAgents = AC_STATIC; }
-  acRenderList(acAgents);
+    if (r.ok) {
+      const d = await r.json();
+      if (Array.isArray(d.agents) && d.agents.length) {
+        acAgents = d.agents;
+        acRenderList(acAgents);
+      }
+    }
+  } catch(_) {}
 }
 
 function acFilter(q) {
@@ -1065,11 +1077,16 @@ function acSelect(id) {
 
 function acRenderDetails(a) {
   const p = document.getElementById('acDetails');
-  p.innerHTML = acHeaderCard(a) + acTabsHtml(a) +
-    `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(a)}</div>` +
-    `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(a)}</div>` +
-    `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(a)}</div>` +
-    `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(a)}</div>`;
+  try {
+    p.innerHTML = acHeaderCard(a) + acTabsHtml(a) +
+      `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(a)}</div>` +
+      `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(a)}</div>` +
+      `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(a)}</div>` +
+      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(a)}</div>`;
+    p.scrollTop = 0;
+  } catch(e) {
+    p.innerHTML = `<div class="ac-empty"><div style="font-size:2rem">⚠️</div><div style="color:var(--red)">${e.message}</div></div>`;
+  }
 }
 
 function acHeaderCard(a) {

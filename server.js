@@ -1712,6 +1712,17 @@ function includesAny(text, words = []) {
     return words.some(w => text.includes(w));
 }
 
+function classifyProposalSensitivity(proposal = {}) {
+    const text = `${(proposal.title || '').toLowerCase()} ${(proposal.plan || '').toLowerCase()} ${(proposal.category || '').toLowerCase()}`;
+    if (includesAny(text, ['auth', 'security', 'permission', 'token', 'secret', 'encryption', 'privacy', 'gdpr', 'memory', 'contact', 'personal', 'user data'])) {
+        return 'high';
+    }
+    if (includesAny(text, ['database', 'schema', 'api', 'integration'])) {
+        return 'medium';
+    }
+    return 'low';
+}
+
 function scoreProposalRuleBased(proposal = {}) {
     const title = (proposal.title || '').toString().toLowerCase();
     const plan = (proposal.plan || '').toString().toLowerCase();

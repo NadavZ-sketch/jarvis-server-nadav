@@ -64,11 +64,13 @@ h1 span{color:var(--accent)}
 .col-header.building{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
 .col-header.planned{background:rgba(107,114,128,.1);color:var(--muted);border:1px solid rgba(107,114,128,.2)}
 .feature-pill{background:var(--card);border:1px solid var(--border);border-radius:8px;
-  padding:8px 11px;font-size:.81rem;margin-bottom:5px;cursor:default;
-  transition:transform .12s,box-shadow .12s}
-.feature-pill:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.35)}
-.feature-pill .fname{font-weight:600}
-.feature-pill .fdesc{color:var(--muted);font-size:.7rem;margin-top:2px;line-height:1.4}
+  padding:8px 11px;font-size:.81rem;margin-bottom:5px;cursor:pointer;
+  transition:transform .12s,box-shadow .12s,background .12s;position:relative}
+.feature-pill:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.35);background:var(--surface)}
+.feature-pill .fname{font-weight:600;display:flex;align-items:center;gap:4px}
+.feature-pill .fdesc{color:var(--muted);font-size:.7rem;margin-top:2px;line-height:1.4;max-height:0;overflow:hidden;transition:max-height .2s}
+.feature-pill.expanded .fdesc{max-height:100px}
+.feature-pill .toggle{font-size:.65rem;opacity:.6}
 .badge{display:inline-block;font-size:.63rem;font-weight:700;border-radius:4px;
   padding:2px 6px;letter-spacing:.3px;margin-bottom:4px}
 .badge.done{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25)}
@@ -535,9 +537,10 @@ async function loadStats() {
 // ── Features + progress bar ────────────────────────────────────────────────────
 function pill(f, status) {
   const labels = { done: '✅ הושלם', building: '🔨 בבנייה', planned: '📋 מתוכנן' };
-  return `<div class="feature-pill">
+  const uid = `fp-${Math.random().toString(36).substr(2, 9)}`;
+  return `<div class="feature-pill" id="${uid}" onclick="document.getElementById('${uid}').classList.toggle('expanded'); event.stopPropagation();">
     <span class="badge ${status}">${labels[status]}</span>
-    <div class="fname">${f.name}</div>
+    <div class="fname">${f.name} <span class="toggle">▸</span></div>
     <div class="fdesc">${f.desc}</div>
   </div>`;
 }

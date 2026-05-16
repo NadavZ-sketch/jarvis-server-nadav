@@ -639,10 +639,18 @@ function renderProposals(proposals) {
     return;
   }
   el.innerHTML = proposals.map(p => {
-    const statusBtn = p.status === 'active'
-      ? `<button class="btn-activate deactivate" onclick="patchProposal(${p.id},'proposal')">⏸ בטל הפעלה</button>`
-      : p.status === 'done' ? ''
-      : `<button class="btn-activate" onclick="patchProposal(${p.id},'active')">⚡ הפעל</button>`;
+    let statusBtn = '';
+    if (p.status === 'proposal') {
+      statusBtn = `<button class="btn-activate" onclick="patchProposal(${p.id},'draft_plan')">→ התכנון</button>`;
+    } else if (p.status === 'draft_plan') {
+      statusBtn = `<button class="btn-activate" onclick="patchProposal(${p.id},'active')">⚡ הפעל</button>`;
+    } else if (p.status === 'active') {
+      statusBtn = `<button class="btn-activate" onclick="patchProposal(${p.id},'validation')">🧪 ולידציה</button>`;
+    } else if (p.status === 'validation') {
+      statusBtn = `<button class="btn-activate" onclick="patchProposal(${p.id},'done')">✅ סיים</button>`;
+    } else if (p.status === 'done') {
+      statusBtn = '';
+    }
     return `<div class="proposal priority-${p.priority} status-${p.status}" id="pr-${p.id}">
       <div class="proposal-top">
         <span class="proposal-title">${escapeHtml(p.title || '')}</span>
@@ -676,12 +684,15 @@ async function patchProposal(id, status) {
       body: JSON.stringify({ status }),
     });
     if (r.ok) {
-      const labels = { proposal: 'הצעה', draft_plan: 'תכנון', active: 'הפעלה', validation: 'ולידציה', done: 'סיום' };
-      showToast(`הצעה שודרגה ל: ${labels[status] || status}`, 'success');
+      const labels = { proposal: '💡 הצעה', draft_plan: '🧭 תכנון', active: '⚡ הפעל', validation: '🧪 ולידציה', done: '✅ סיים' };
+      showToast(`הצעה עברה ל: ${labels[status] || status}`, 'success');
+    } else {
+      const err = await r.json();
+      showToast('שגיאה: ' + (err.error || 'transition לא מותר'), 'error');
     }
     await loadBacklog();
   } catch (e) {
-    showToast('שגיאה בעדכון הצעה: ' + e.message);
+    showToast('שגיאה בעדכון הצעה: ' + e.message, 'error');
   }
 }
 

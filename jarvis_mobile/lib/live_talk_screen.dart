@@ -39,6 +39,8 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
   bool _wsConnected = false;
+  bool _sseMode = false; // SSE fallback when WS unavailable
+  Timer? _wsAckTimer;
 
   List<Map<String, String>> _messages = [];
   String _partialUser = '';     // STT in-flight
@@ -156,15 +158,29 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
         'chatId': widget.chatId,
         'settings': widget.settings.toJson(),
       }));
+      // If no ack within 5s, fall back to SSE mode.
+      _wsAckTimer = Timer(const Duration(seconds: 5), () {
+        if (!_wsConnected && !_disposed && mounted) {
+          _switchToSse();
+        }
+      });
     } catch (_) {
       _handleWsDown();
     }
   }
 
   void _handleWsDown() {
+    _wsAckTimer?.cancel();
     if (!mounted || _disposed) return;
+    _switchToSse();
+  }
+
+  void _switchToSse() {
     _wsConnected = false;
-    setState(() => _hint = '⚠️ נותק מהשרת');
+    _sseMode = true;
+    try { _wsSub?.cancel(); } catch (_) {}
+    try { _ws?.sink.close(); } catch (_) {}
+    if (mounted) setState(() => _hint = 'דבר אליי');
   }
 
   void _onWsMessage(dynamic raw) {
@@ -176,7 +192,9 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
     }
     final type = data['type'];
     if (type == 'ack') {
+      _wsAckTimer?.cancel();
       _wsConnected = true;
+      _sseMode = false;
       if (mounted) setState(() => _hint = 'דבר אליי');
       return;
     }
@@ -320,7 +338,84 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
       _hint = 'חושב...';
     });
     _scrollToBottom();
-    _sendWs({'type': 'user_text', 'text': text});
+    if (_wsConnected) {
+      _sendWs({'type': 'user_text', 'text': text});
+    } else {
+      // WS unavailable — fall back to SSE streaming.
+      _sseMode = true;
+      _sendViaSSE(text);
+    }
+  }
+
+  // ─── SSE fallback (mirrors /stream-jarvis, used when WS is unavailable) ──
+  Future<void> _sendViaSSE(String text) async {
+    final client = http.Client();
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('${widget.settings.serverUrl}/stream-jarvis'),
+      );
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode({
+        'command': text,
+        'chatId': widget.chatId,
+        'settings': {...widget.settings.toJson(), 'voiceMode': true},
+      });
+
+      final sr = await client.send(request).timeout(const Duration(seconds: 35));
+      if (sr.statusCode != 200) throw Exception('server ${sr.statusCode}');
+
+      String accumulated = '';
+      String lineBuffer = '';
+
+      await for (final raw in sr.stream.transform(utf8.decoder)) {
+        if (!mounted || _disposed) break;
+        lineBuffer += raw;
+        while (lineBuffer.contains('\n')) {
+          final idx = lineBuffer.indexOf('\n');
+          final line = lineBuffer.substring(0, idx).trim();
+          lineBuffer = lineBuffer.substring(idx + 1);
+          if (!line.startsWith('data: ')) continue;
+          try {
+            final data =
+                jsonDecode(line.substring(6)) as Map<String, dynamic>;
+            if (data['error'] != null) throw Exception(data['error']);
+            if (data['chunk'] is String) {
+              accumulated += data['chunk'] as String;
+              if (mounted) setState(() => _streamingReply = accumulated);
+            }
+            if (data['done'] == true) {
+              final answer = accumulated.trim();
+              if (mounted) {
+                setState(() {
+                  if (answer.isNotEmpty) {
+                    _messages.add({'sender': 'jarvis', 'text': answer});
+                  }
+                  _streamingReply = '';
+                });
+              }
+              _scrollToBottom();
+              if (answer.isNotEmpty && widget.settings.voiceEnabled) {
+                _speakText(answer);
+              } else {
+                _onTtsDone();
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().contains('timeout') ? '⏱ זמן פג' : '⚠️ שגיאת חיבור';
+      setState(() {
+        _hint = msg;
+        _streamingReply = '';
+        _state = JarvisState.idle;
+      });
+      _listen();
+    } finally {
+      client.close();
+    }
   }
 
   // ─── Playback ────────────────────────────────────────────────────────────
@@ -381,6 +476,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
     _disposed = true;
     _hardCapTimer?.cancel();
     _ttsTimeoutTimer?.cancel();
+    _wsAckTimer?.cancel();
     _waveController.dispose();
     _speech.stop();
     _flutterTts.stop();

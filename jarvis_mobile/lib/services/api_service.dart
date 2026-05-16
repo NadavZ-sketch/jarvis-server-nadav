@@ -69,11 +69,12 @@ class ApiService {
     return List<Map<String, dynamic>>.from(data['tasks'] ?? []);
   }
 
-  Future<Map<String, dynamic>> addTask(String content) async {
+  Future<Map<String, dynamic>> addTask(String content,
+      {String priority = 'medium'}) async {
     final res = await _client.post(
       _uri('/tasks'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'content': content}),
+      body: jsonEncode({'content': content, 'priority': priority}),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
@@ -83,16 +84,43 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> updateTask(String id,
-      {bool? done, String? dueDate, String? content}) async {
+      {bool? done, String? dueDate, String? content, String? priority}) async {
     final body = <String, dynamic>{};
-    if (done    != null) body['done']     = done;
-    if (dueDate != null) body['due_date'] = dueDate;
-    if (content != null) body['content']  = content;
+    if (done     != null) body['done']     = done;
+    if (dueDate  != null) body['due_date'] = dueDate;
+    if (content  != null) body['content']  = content;
+    if (priority != null) body['priority'] = priority;
     final res = await _client.put(
       _uri('/tasks/$id'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
     ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getStats() async {
+    final res = await _client.get(_uri('/stats')).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getTodayItems() async {
+    final res = await _client.get(_uri('/tasks/today')).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['items'] ?? []);
+  }
+
+  Future<List<Map<String, dynamic>>> getTaskSuggestions(String taskId) async {
+    final res = await _client.post(
+      _uri('/tasks/$taskId/suggest'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({}),
+    ).timeout(const Duration(seconds: 25));
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['suggestions'] ?? []);
+  }
+
+  Future<Map<String, dynamic>> getTodayMessage() async {
+    final res = await _client.get(_uri('/today-message')).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 

@@ -235,8 +235,9 @@ h1 span{color:var(--accent)}
 
 /* ── Agent Center ── */
 .ac-layout{display:grid;grid-template-columns:260px 1fr;gap:0;min-height:72vh;border:1px solid var(--border);border-radius:12px;overflow:hidden}
-@media(max-width:900px){.ac-layout{grid-template-columns:1fr}}
+@media(max-width:900px){.ac-layout{grid-template-columns:1fr;overflow:visible;border-radius:12px}}
 .ac-sidebar{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;max-height:72vh;overflow:hidden}
+@media(max-width:900px){.ac-sidebar{max-height:40vh;border-left:none;border-bottom:1px solid var(--border)}}
 .ac-search{padding:10px 12px;border-bottom:1px solid var(--border)}
 .ac-search input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:.83rem;font-family:inherit;outline:none;direction:rtl}
 .ac-search input:focus{border-color:var(--accent)}
@@ -1150,6 +1151,9 @@ function acSelect(id) {
   if (!acCurrent) return;
   acRenderList(acAgents.filter(a => { const q = document.getElementById('acSearch').value; return !q||a.nameHe.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()); }));
   acRenderDetails(acCurrent);
+  if (window.innerWidth <= 900) {
+    setTimeout(() => document.getElementById('acDetails').scrollIntoView({behavior:'smooth',block:'start'}), 80);
+  }
 }
 
 function acRenderDetails(a) {

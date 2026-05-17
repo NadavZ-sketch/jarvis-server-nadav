@@ -719,8 +719,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         }
       }
       final cleanCmd = cmd;
-      widget.onCommandConsumed?.call();
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onCommandConsumed?.call();
         if (mounted) sendCommand(cleanCmd);
       });
     }

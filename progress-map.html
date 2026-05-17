@@ -511,6 +511,12 @@ h1 span{color:var(--accent)}
   </div>
 </div>
 
+<!-- Mobile agent detail overlay -->
+<div class="ac-overlay" id="acOverlay">
+  <button class="ac-overlay-back" onclick="acCloseOverlay()">← חזרה לרשימה</button>
+  <div id="acOverlayContent"></div>
+</div>
+
 </div>
 
 <script>
@@ -1159,6 +1165,28 @@ function acSelect(id) {
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
+function acRenderOverlay(a) {
+  const content = document.getElementById('acOverlayContent');
+  try {
+    content.innerHTML = acHeaderCard(a) + acTabsHtml(a) +
+      `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(a)}</div>` +
+      `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(a)}</div>` +
+      `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(a)}</div>` +
+      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(a)}</div>`;
+  } catch(e) {
+    content.innerHTML = `<div class="ac-empty"><div style="font-size:2rem">⚠️</div><div style="color:var(--red)">${e.message}</div></div>`;
+  }
+  const overlay = document.getElementById('acOverlay');
+  overlay.classList.add('open');
+  overlay.scrollTop = 0;
+}
+
+function acCloseOverlay() {
+  document.getElementById('acOverlay').classList.remove('open');
+  acCurrent = null;
+  acRenderList(acAgents);
+}
+
 function acBack() {
   document.querySelector('.ac-sidebar').classList.remove('hidden');
   document.getElementById('acDetails').classList.remove('fullscreen');
@@ -1221,7 +1249,7 @@ function acTabsHtml(a) {
 }
 
 function acSwitchTab(btn, tabId) {
-  const wrap = document.getElementById('acDetails');
+  const wrap = btn.closest('#acDetails, #acOverlayContent') || document.getElementById('acDetails');
   wrap.querySelectorAll('.ac-tab-btn').forEach(b => b.classList.remove('active'));
   wrap.querySelectorAll('.ac-tab-panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');

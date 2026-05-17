@@ -238,11 +238,11 @@ h1 span{color:var(--accent)}
 @media(max-width:900px){.ac-layout{grid-template-columns:1fr;overflow:visible;border-radius:12px}}
 .ac-sidebar{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;max-height:72vh;overflow:hidden}
 @media(max-width:900px){.ac-sidebar{max-height:45vh;border-left:none;border-bottom:1px solid var(--border)}}
-.ac-mobile-panel{display:none;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;overflow-y:auto;max-height:55vh}
-@media(max-width:900px){.ac-mobile-panel.visible{display:block}}
-.ac-mobile-back{background:none;border:none;color:var(--accent);font-size:.88rem;cursor:pointer;padding:0 0 12px;font-family:inherit;font-weight:600;display:block}
-.ac-mobile-hint{display:none;text-align:center;color:var(--muted);font-size:.8rem;padding:10px 0 4px}
-@media(max-width:900px){.ac-mobile-hint.hidden{display:none}.ac-mobile-hint{display:block}}
+.ac-top-panel{display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;overflow-y:auto;max-height:60vh}
+.ac-top-panel.visible{display:block}
+.ac-top-back{background:none;border:none;color:var(--accent);font-size:.88rem;cursor:pointer;padding:0 0 12px;font-family:inherit;font-weight:600;display:block}
+.ac-list-hint{text-align:center;color:var(--muted);font-size:.8rem;padding:8px 0 4px}
+.ac-list-hint.hidden{display:none}
 .ac-search{padding:10px 12px;border-bottom:1px solid var(--border)}
 .ac-search input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:.83rem;font-family:inherit;outline:none;direction:rtl}
 .ac-search input:focus{border-color:var(--accent)}
@@ -501,12 +501,12 @@ h1 span{color:var(--accent)}
 
 <!-- ── Agent Center Tab ── -->
 <div id="page-tab-agents" class="page-tab-panel">
-  <!-- Mobile-only detail panel (above the list) -->
-  <div class="ac-mobile-panel" id="acMobilePanel">
-    <button class="ac-mobile-back" onclick="acMobileBack()">← חזרה לרשימה</button>
-    <div id="acMobilePanelContent"></div>
+  <!-- Agent detail panel (above the list, all screen sizes) -->
+  <div class="ac-top-panel" id="acTopPanel">
+    <button class="ac-top-back" onclick="acTopBack()">← חזרה לרשימה</button>
+    <div id="acTopContent"></div>
   </div>
-  <div class="ac-mobile-hint" id="acMobileHint">👇 בחר סוכן מהרשימה למטה</div>
+  <div class="ac-list-hint" id="acListHint">👇 בחר סוכן מהרשימה למטה</div>
   <div class="ac-layout">
     <aside class="ac-sidebar">
       <div class="ac-search"><input id="acSearch" type="text" placeholder="חפש סוכן..." oninput="acFilter(this.value)"/></div>
@@ -1167,35 +1167,27 @@ function acSelect(id) {
   acCurrent = acAgents.find(a => a.id === id);
   if (!acCurrent) return;
   acRenderList(acAgents.filter(a => { const q = document.getElementById('acSearch').value; return !q||a.nameHe.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()); }));
-  const isMobile = window.innerWidth <= 900;
-  if (isMobile) {
-    // Render into the dedicated mobile panel above the list
-    const content = document.getElementById('acMobilePanelContent');
-    const panel = document.getElementById('acMobilePanel');
-    const hint = document.getElementById('acMobileHint');
-    try {
-      content.innerHTML = acHeaderCard(acCurrent) + acTabsHtml(acCurrent) +
-        `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(acCurrent)}</div>` +
-        `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(acCurrent)}</div>` +
-        `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(acCurrent)}</div>` +
-        `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(acCurrent)}</div>`;
-    } catch(e) {
-      content.innerHTML = `<div style="color:var(--red);padding:12px">⚠️ ${e.message}</div>`;
-    }
-    panel.classList.add('visible');
-    hint.classList.add('hidden');
-    panel.scrollTop = 0;
-    window.scrollTo({top: 0, behavior: 'smooth'});
-  } else {
-    acRenderDetails(acCurrent);
+  const content = document.getElementById('acTopContent');
+  const panel = document.getElementById('acTopPanel');
+  const hint = document.getElementById('acListHint');
+  try {
+    content.innerHTML = acHeaderCard(acCurrent) + acTabsHtml(acCurrent) +
+      `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(acCurrent)}</div>` +
+      `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(acCurrent)}</div>` +
+      `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(acCurrent)}</div>` +
+      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(acCurrent)}</div>`;
+  } catch(e) {
+    content.innerHTML = `<div style="color:var(--red);padding:12px">⚠️ ${e.message}</div>`;
   }
+  panel.classList.add('visible');
+  hint.classList.add('hidden');
+  panel.scrollTop = 0;
+  window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
-function acMobileBack() {
-  const panel = document.getElementById('acMobilePanel');
-  const hint = document.getElementById('acMobileHint');
-  panel.classList.remove('visible');
-  hint.classList.remove('hidden');
+function acTopBack() {
+  document.getElementById('acTopPanel').classList.remove('visible');
+  document.getElementById('acListHint').classList.remove('hidden');
   acCurrent = null;
   acRenderList(acAgents);
 }
@@ -1284,7 +1276,7 @@ function acTabsHtml(a) {
 }
 
 function acSwitchTab(btn, tabId) {
-  const wrap = btn.closest('#acMobilePanelContent, #acDetails') || document.getElementById('acDetails');
+  const wrap = btn.closest('#acTopContent, #acDetails') || document.getElementById('acTopContent') || document.getElementById('acDetails');
   wrap.querySelectorAll('.ac-tab-btn').forEach(b => b.classList.remove('active'));
   wrap.querySelectorAll('.ac-tab-panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');

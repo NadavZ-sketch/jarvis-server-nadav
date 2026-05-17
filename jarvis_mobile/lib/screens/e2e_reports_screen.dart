@@ -17,10 +17,20 @@ const _catHe     = {'API':'ממשק API','Flutter UI':'Flutter','Static':'קוד
 
 class E2eReportsScreen extends StatefulWidget {
   final AppSettings settings;
-  const E2eReportsScreen({super.key, required this.settings});
+  final bool embedded;
+  const E2eReportsScreen({super.key, required this.settings, this.embedded = false});
 
   @override
   State<E2eReportsScreen> createState() => _E2eReportsScreenState();
+}
+
+class E2eReportsPanel extends StatelessWidget {
+  final AppSettings settings;
+  const E2eReportsPanel({super.key, required this.settings});
+
+  @override
+  Widget build(BuildContext context) =>
+      E2eReportsScreen(settings: settings, embedded: true);
 }
 
 class _E2eReportsScreenState extends State<E2eReportsScreen> {
@@ -93,6 +103,12 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return Directionality(
+        textDirection: TextDirection.rtl,
+        child: _buildBody(),
+      );
+    }
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(

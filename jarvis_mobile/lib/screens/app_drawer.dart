@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../settings_screen.dart';
 import '../history_screen.dart';
 import '../transitions/slide_fade_route.dart';
-import 'e2e_reports_screen.dart';
-import 'progress_map_screen.dart';
-import 'user_profile_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final AppSettings settings;
@@ -26,6 +24,30 @@ class AppDrawer extends StatelessWidget {
       'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
     ];
     return 'יום ${days[now.weekday % 7]}, ${now.day} ב${months[now.month - 1]}';
+  }
+
+  Future<void> _confirmExit(BuildContext context) async {
+    Navigator.pop(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: const Text('יציאה מהאפליקציה', style: TextStyle(fontFamily: 'Heebo')),
+          content: const Text('האם לצאת מהאפליקציה?', style: TextStyle(fontFamily: 'Heebo')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('ביטול')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('יציאה', style: TextStyle(color: JC.cancelRed)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      SystemNavigator.pop();
+    }
   }
 
   @override
@@ -111,46 +133,6 @@ class AppDrawer extends StatelessWidget {
                   },
                 ),
                 _DrawerTile(
-                  icon: Icons.fact_check_outlined,
-                  label: 'דוחות בדיקות',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      SlideFadeRoute(
-                        page: E2eReportsScreen(settings: settings),
-                      ),
-                    );
-                  },
-                ),
-                _DrawerTile(
-                  icon: Icons.psychology_alt_outlined,
-                  label: 'מה למדנו עליך',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      SlideFadeRoute(page: UserProfileScreen(settings: settings)),
-                    );
-                  },
-                ),
-                _DrawerTile(
-                  icon: Icons.smart_toy_outlined,
-                  label: 'מרכז סוכנים',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      SlideFadeRoute(
-                        page: ProgressMapScreen(
-                          settings: settings,
-                          scrollToAgents: true,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                _DrawerTile(
                   icon: Icons.settings_outlined,
                   label: 'הגדרות',
                   onTap: () {
@@ -168,6 +150,11 @@ class AppDrawer extends StatelessWidget {
                       ),
                     );
                   },
+                ),
+                _DrawerTile(
+                  icon: Icons.logout_rounded,
+                  label: 'יציאה',
+                  onTap: () => _confirmExit(context),
                 ),
               ],
             ),

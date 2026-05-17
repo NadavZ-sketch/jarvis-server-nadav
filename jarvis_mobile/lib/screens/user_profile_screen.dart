@@ -3,15 +3,31 @@ import '../app_settings.dart';
 import '../main.dart' show JC;
 import '../services/api_service.dart';
 
-class UserProfileScreen extends StatefulWidget {
+class UserProfileScreen extends StatelessWidget {
   final AppSettings settings;
   const UserProfileScreen({super.key, required this.settings});
 
   @override
-  State<UserProfileScreen> createState() => _UserProfileScreenState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('מה למדנו עליך')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: UserProfilePanel(settings: settings),
+      ),
+    );
+  }
 }
 
-class _UserProfileScreenState extends State<UserProfileScreen> {
+class UserProfilePanel extends StatefulWidget {
+  final AppSettings settings;
+  const UserProfilePanel({super.key, required this.settings});
+
+  @override
+  State<UserProfilePanel> createState() => _UserProfilePanelState();
+}
+
+class _UserProfilePanelState extends State<UserProfilePanel> {
   final _toneCtrl = TextEditingController();
   final _hoursCtrl = TextEditingController();
   final _interestsCtrl = TextEditingController();
@@ -51,68 +67,68 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('מה למדנו עליך')),
-      body: _loading ? const Center(child: CircularProgressIndicator()) : Padding(
-        padding: const EdgeInsets.all(16),
-        child: ListView(children: [
-          TextField(controller: _toneCtrl, decoration: const InputDecoration(labelText: 'טון דיבור')),
-          TextField(controller: _hoursCtrl, decoration: const InputDecoration(labelText: 'שעות מועדפות (מופרד בפסיקים)')),
-          TextField(controller: _interestsCtrl, decoration: const InputDecoration(labelText: 'תחומי עניין (מופרד בפסיקים)')),
-          TextField(controller: _tasksCtrl, decoration: const InputDecoration(labelText: 'משימות חוזרות (מופרד בפסיקים)')),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () async {
-              setState(() => _saving = true);
-              try {
-                await _api.saveUserProfile(
-                  speakingTone: _toneCtrl.text.trim().isEmpty
-                      ? 'friendly'
-                      : _toneCtrl.text.trim(),
-                  preferredHours: _split(_hoursCtrl.text),
-                  interests: _split(_interestsCtrl.text),
-                  recurringTasks: _split(_tasksCtrl.text),
-                );
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('נשמר בהצלחה')),
-                );
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(ApiService.friendlyError(e))),
-                );
-              } finally {
-                if (mounted) setState(() => _saving = false);
-              }
-            },
-            child: Text(_saving ? 'שומר...' : 'שמור'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton(
-            onPressed: () async {
-              try {
-                await _api.deleteUserProfile();
-                if (!mounted) return;
-                _toneCtrl.text = 'friendly';
-                _hoursCtrl.clear();
-                _interestsCtrl.clear();
-                _tasksCtrl.clear();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('הפרופיל נמחק')),
-                );
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(ApiService.friendlyError(e))),
-                );
-              }
-            },
-            style: OutlinedButton.styleFrom(foregroundColor: JC.cancelRed),
-            child: const Text('מחק פרופיל'),
-          ),
-        ]),
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      TextField(controller: _toneCtrl, decoration: const InputDecoration(labelText: 'טון דיבור')),
+      TextField(controller: _hoursCtrl, decoration: const InputDecoration(labelText: 'שעות מועדפות (מופרד בפסיקים)')),
+      TextField(controller: _interestsCtrl, decoration: const InputDecoration(labelText: 'תחומי עניין (מופרד בפסיקים)')),
+      TextField(controller: _tasksCtrl, decoration: const InputDecoration(labelText: 'משימות חוזרות (מופרד בפסיקים)')),
+      const SizedBox(height: 20),
+      ElevatedButton(
+        onPressed: () async {
+          setState(() => _saving = true);
+          try {
+            await _api.saveUserProfile(
+              speakingTone: _toneCtrl.text.trim().isEmpty
+                  ? 'friendly'
+                  : _toneCtrl.text.trim(),
+              preferredHours: _split(_hoursCtrl.text),
+              interests: _split(_interestsCtrl.text),
+              recurringTasks: _split(_tasksCtrl.text),
+            );
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('נשמר בהצלחה')),
+            );
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(ApiService.friendlyError(e))),
+            );
+          } finally {
+            if (mounted) setState(() => _saving = false);
+          }
+        },
+        child: Text(_saving ? 'שומר...' : 'שמור'),
       ),
-    );
+      const SizedBox(height: 8),
+      OutlinedButton(
+        onPressed: () async {
+          try {
+            await _api.deleteUserProfile();
+            if (!mounted) return;
+            _toneCtrl.text = 'friendly';
+            _hoursCtrl.clear();
+            _interestsCtrl.clear();
+            _tasksCtrl.clear();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('הפרופיל נמחק')),
+            );
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(ApiService.friendlyError(e))),
+            );
+          }
+        },
+        style: OutlinedButton.styleFrom(foregroundColor: JC.cancelRed),
+        child: const Text('מחק פרופיל'),
+      ),
+    ]);
   }
 }

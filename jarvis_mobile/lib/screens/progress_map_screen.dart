@@ -8,13 +8,22 @@ import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/proposal_scoring.dart';
 import '../services/telemetry_policy.dart';
+import 'user_profile_screen.dart';
+import 'e2e_reports_screen.dart';
+import 'survey_screen.dart';
 
+enum ControlCenterTab { overview, development, agents, insights, surveys }
 
 class ProgressMapScreen extends StatefulWidget {
   final AppSettings settings;
   final void Function(String)? onSwitchToChat;
-  final bool scrollToAgents;
-  const ProgressMapScreen({super.key, required this.settings, this.onSwitchToChat, this.scrollToAgents = false});
+  final ControlCenterTab initialTab;
+  const ProgressMapScreen({
+    super.key,
+    required this.settings,
+    this.onSwitchToChat,
+    this.initialTab = ControlCenterTab.overview,
+  });
 
   @override
   State<ProgressMapScreen> createState() => _ProgressMapScreenState();
@@ -170,7 +179,10 @@ Color _priorityColor(String p) => p == 'high'
 String _priorityLabel(String p) =>
     p == 'high' ? '🔴 גבוה' : p == 'low' ? '🟢 נמוך' : '🟡 בינוני';
 
-class _ProgressMapScreenState extends State<ProgressMapScreen> {
+class _ProgressMapScreenState extends State<ProgressMapScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
   static const _kCatMap = {
     'feature': "פיצ'ר", 'improvement': 'שיפור', 'bug': 'באג', 'ux': 'UX',
   };
@@ -240,38 +252,28 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   // Agent center
   List<Map<String, dynamic>> _agents = [];
   bool _loadingAgents = true;
-  final GlobalKey _agentSectionKey = GlobalKey();
+
+  // Surveys
+  List<Map<String, dynamic>> _surveyHistory = [];
+  List<String> _surveyInsights = [];
+  bool _loadingSurveys = true;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(
+      length: ControlCenterTab.values.length,
+      vsync: this,
+      initialIndex: widget.initialTab.index,
+    );
     _loadAll();
-    if (widget.scrollToAgents) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToAgentSection());
-    }
-  }
-
-  Future<void> _scrollToAgentSection() async {
-    // Retry briefly until the section is laid out (after async data loads).
-    for (var i = 0; i < 10; i++) {
-      final ctx = _agentSectionKey.currentContext;
-      if (ctx != null) {
-        await Scrollable.ensureVisible(
-          ctx,
-          duration: const Duration(milliseconds: 450),
-          curve: Curves.easeInOut,
-          alignment: 0.05,
-        );
-        return;
-      }
-      await Future.delayed(const Duration(milliseconds: 150));
-    }
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _retryTimer?.cancel();
     _copyTimer?.cancel();
     _addCtrl.dispose();
@@ -401,7 +403,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     if (_isRefreshing) return;
     _isRefreshing = true;
     _retryTimer?.cancel();
-    await Future.wait([_checkHealth(), _loadStats(), _loadFeatures(), _loadBacklog(), _loadAgents()]);
+    await Future.wait([
+      _checkHealth(),
+      _loadStats(),
+      _loadFeatures(),
+      _loadBacklog(),
+      _loadAgents(),
+      _loadSurveys(),
+    ]);
     _isRefreshing = false;
     if (mounted && _serverOk != true) _scheduleRetry();
   }
@@ -452,6 +461,72 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       }
     } catch (_) {
       if (mounted) setState(() => _loadingFeatures = false);
+    }
+  }
+
+  Future<void> _loadSurveys() async {
+    setState(() => _loadingSurveys = true);
+    final userName = widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim();
+    try {
+      final results = await Future.wait([
+        http.get(Uri.parse('$_base/survey-history?userName=${Uri.encodeQueryComponent(userName)}'))
+            .timeout(const Duration(seconds: 8)),
+        http.get(Uri.parse('$_base/survey-insights?userName=${Uri.encodeQueryComponent(userName)}'))
+            .timeout(const Duration(seconds: 12)),
+      ]);
+      if (!mounted) return;
+      if (results[0].statusCode == 200) {
+        final d = jsonDecode(results[0].body);
+        _surveyHistory = List<Map<String, dynamic>>.from(d['surveys'] ?? []);
+      }
+      if (results[1].statusCode == 200) {
+        final d = jsonDecode(results[1].body);
+        _surveyInsights = List<String>.from(d['insights'] ?? []);
+      }
+      setState(() => _loadingSurveys = false);
+    } catch (_) {
+      if (mounted) setState(() => _loadingSurveys = false);
+    }
+  }
+
+  Future<void> _startSurveyNow() async {
+    final userName = widget.settings.userName.trim();
+    if (userName.isEmpty) {
+      _showSnack('צריך להגדיר שם משתמש בהגדרות לפני סקר');
+      return;
+    }
+    try {
+      final res = await http.get(
+        Uri.parse('$_base/survey-check?force=true&userName=${Uri.encodeQueryComponent(userName)}'),
+      ).timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      if (res.statusCode != 200) {
+        _showSnack('לא ניתן להתחיל סקר עכשיו');
+        return;
+      }
+      final d = jsonDecode(res.body);
+      if (d['showSurvey'] != true) {
+        _showSnack('אין סקר זמין');
+        return;
+      }
+      final questions = List<Map<String, dynamic>>.from(d['questions'] ?? []);
+      if (questions.isEmpty) {
+        _showSnack('אין סקר זמין');
+        return;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: JC.surface,
+        builder: (ctx) => SurveyModal(
+          questions: questions,
+          settings: widget.settings,
+          onDismiss: () => Navigator.of(ctx).pop(),
+        ),
+      );
+      if (mounted) await _loadSurveys();
+    } catch (_) {
+      if (mounted) _showSnack('שגיאת רשת');
     }
   }
 
@@ -833,66 +908,240 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: JC.bg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        centerTitle: true,
-        title: const Text('מפת התקדמות',
-            style: TextStyle(color: JC.textPrimary, fontSize: 18,
-                fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: JC.textMuted, size: 20),
-            onPressed: _loadAll,
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadAll,
-        color: JC.blue400,
-        backgroundColor: JC.surface,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
-          children: [
-            _buildStatusBar(),
-            const SizedBox(height: 14),
-            _buildMetrics(),
-            const SizedBox(height: 14),
-            _buildSmartRoadmapLab(),
-            const SizedBox(height: 14),
-            _sectionTitle('🧠 מפת חדשנות'),
-            const SizedBox(height: 8),
-            _buildInnovationGraphCard(),
-            const SizedBox(height: 14),
-            if (!_loadingFeatures && _done.isNotEmpty) ...[
-              _buildProgressBar(),
-              const SizedBox(height: 20),
-            ],
-            _sectionTitle('🗂️ סטטוס יכולות'),
-            const SizedBox(height: 8),
-            _buildFeatureBoard(),
-            const SizedBox(height: 24),
-            Padding(
-              key: _agentSectionKey,
-              padding: EdgeInsets.zero,
-              child: _sectionTitle('🤖 מרכז סוכנים'),
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: JC.bg,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          centerTitle: true,
+          title: const Text('מרכז שליטה',
+              style: TextStyle(color: JC.textPrimary, fontSize: 18,
+                  fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded, color: JC.textMuted, size: 20),
+              onPressed: _loadAll,
             ),
-            const SizedBox(height: 8),
-            _buildAgentCenter(),
-            const SizedBox(height: 24),
-            _sectionTitle('🤖 Backlog AI'),
-            const SizedBox(height: 8),
-            _buildAIBacklog(),
-            const SizedBox(height: 24),
-            _sectionTitle('📌 פריטים ידניים'),
-            const SizedBox(height: 10),
-            _buildPromptGenerator(),
-            const SizedBox(height: 10),
-            _buildManualItems(),
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            isScrollable: true,
+            indicatorColor: JC.blue400,
+            labelColor: JC.blue400,
+            unselectedLabelColor: JC.textMuted,
+            labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13),
+            unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
+            tabs: const [
+              Tab(text: 'סקירה'),
+              Tab(text: 'פיתוח'),
+              Tab(text: 'סוכנים'),
+              Tab(text: 'מידע'),
+              Tab(text: 'סקרים'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildOverviewTab(),
+            _buildDevelopmentTab(),
+            _buildAgentsTab(),
+            _buildInsightsTab(),
+            _buildSurveysTab(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _tabListView(List<Widget> children) {
+    return RefreshIndicator(
+      onRefresh: _loadAll,
+      color: JC.blue400,
+      backgroundColor: JC.surface,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildOverviewTab() => _tabListView([
+        _buildStatusBar(),
+        const SizedBox(height: 14),
+        _buildMetrics(),
+        const SizedBox(height: 14),
+        _buildSmartRoadmapLab(),
+        const SizedBox(height: 14),
+        _sectionTitle('🧠 מפת חדשנות'),
+        const SizedBox(height: 8),
+        _buildInnovationGraphCard(),
+      ]);
+
+  Widget _buildDevelopmentTab() => _tabListView([
+        if (!_loadingFeatures && _done.isNotEmpty) ...[
+          _buildProgressBar(),
+          const SizedBox(height: 20),
+        ],
+        _sectionTitle('🗂️ סטטוס יכולות'),
+        const SizedBox(height: 8),
+        _buildFeatureBoard(),
+        const SizedBox(height: 24),
+        _sectionTitle('🤖 Backlog AI'),
+        const SizedBox(height: 8),
+        _buildAIBacklog(),
+        const SizedBox(height: 24),
+        _sectionTitle('📌 פריטים ידניים'),
+        const SizedBox(height: 10),
+        _buildPromptGenerator(),
+        const SizedBox(height: 10),
+        _buildManualItems(),
+      ]);
+
+  Widget _buildAgentsTab() => _tabListView([
+        _sectionTitle('🤖 מרכז סוכנים'),
+        const SizedBox(height: 8),
+        _buildAgentCenter(),
+      ]);
+
+  Widget _buildInsightsTab() => _tabListView([
+        _sectionTitle('👤 מה למדנו עליך'),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: JC.border, width: 0.8),
+          ),
+          child: UserProfilePanel(settings: widget.settings),
+        ),
+        const SizedBox(height: 24),
+        _sectionTitle('🧪 דוחות בדיקות E2E'),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 480,
+          child: E2eReportsPanel(settings: widget.settings),
+        ),
+      ]);
+
+  Widget _buildSurveysTab() => _tabListView([
+        _sectionTitle('📊 תובנות מצטברות'),
+        const SizedBox(height: 8),
+        _buildSurveyInsightsCard(),
+        const SizedBox(height: 18),
+        Row(children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: _startSurveyNow,
+              icon: const Icon(Icons.poll_outlined, size: 18),
+              label: const Text('התחל סקר עכשיו', style: TextStyle(fontFamily: 'Heebo')),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: JC.blue500,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 18),
+        _sectionTitle('📋 היסטוריית סקרים'),
+        const SizedBox(height: 8),
+        _buildSurveyHistory(),
+      ]);
+
+  Widget _buildSurveyInsightsCard() {
+    if (_loadingSurveys && _surveyInsights.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
+      );
+    }
+    if (_surveyInsights.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: JC.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: const Text(
+          'אין עדיין מספיק סקרים לתובנות. השב על כמה סקרים כדי לראות תובנות מצטברות.',
+          textAlign: TextAlign.right,
+          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: _surveyInsights
+            .map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('• $s',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13, height: 1.5)),
+                ))
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _buildSurveyHistory() {
+    if (_loadingSurveys && _surveyHistory.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
+      );
+    }
+    if (_surveyHistory.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: JC.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: const Text(
+          'עדיין לא ענית על סקרים.',
+          textAlign: TextAlign.right,
+          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
+        ),
+      );
+    }
+    return Column(
+      children: _surveyHistory.map((s) {
+        final created = (s['createdAt'] ?? '').toString();
+        final summary = (s['summary'] ?? '').toString();
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: JC.border, width: 0.8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(_relativeDate(created),
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+              const SizedBox(height: 4),
+              Text(summary,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13, height: 1.5)),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 

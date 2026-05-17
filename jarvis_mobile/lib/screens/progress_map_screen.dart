@@ -1609,21 +1609,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             }),
           ),
           const SizedBox(height: 10),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
-            child: KeyedSubtree(
+          if (currentItems.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: Text('אין פריטים',
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13))),
+            )
+          else
+            Column(
               key: ValueKey(_featureTabIndex),
-              child: currentItems.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Center(child: Text('אין פריטים',
-                          style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13))),
-                    )
-                  : Column(
-                      children: currentItems.map((f) => _featureItem(f, currentColor)).toList(),
-                    ),
+              children: currentItems.map((f) => _featureItem(f, currentColor)).toList(),
             ),
-          ),
           if (_featuresUpdated.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),

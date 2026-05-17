@@ -1287,7 +1287,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
           Text(
             'נבחר: ${_selectedGraphNode!.label}',
             textAlign: TextAlign.right,
-            style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+            style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11),
           ),
         ]
       ]),
@@ -1328,7 +1328,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               Text(
                 'why_now: ${node.whyNow}\nscore: ${node.score.toStringAsFixed(0)} · impact: ${node.impact.toStringAsFixed(1)}',
                 textAlign: TextAlign.right,
-                style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
+                style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12),
               ),
               const SizedBox(height: 12),
               Wrap(

@@ -96,6 +96,13 @@ class JarvisApp extends StatelessWidget {
           elevation: 0,
           systemOverlayStyle: SystemUiOverlayStyle.light,
         ),
+        snackBarTheme: const SnackBarThemeData(
+          backgroundColor: JC.surfaceAlt,
+          contentTextStyle: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+          actionTextColor: JC.blue400,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+        ),
         dialogTheme: DialogThemeData(
           backgroundColor: JC.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

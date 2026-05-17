@@ -13,7 +13,8 @@ import '../services/telemetry_policy.dart';
 class ProgressMapScreen extends StatefulWidget {
   final AppSettings settings;
   final void Function(String)? onSwitchToChat;
-  const ProgressMapScreen({super.key, required this.settings, this.onSwitchToChat});
+  final bool scrollToAgents;
+  const ProgressMapScreen({super.key, required this.settings, this.onSwitchToChat, this.scrollToAgents = false});
 
   @override
   State<ProgressMapScreen> createState() => _ProgressMapScreenState();
@@ -236,12 +237,37 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   Timer? _copyTimer;
   bool   _isRefreshing = false;
 
+  // Agent center
+  List<Map<String, dynamic>> _agents = [];
+  bool _loadingAgents = true;
+  final GlobalKey _agentSectionKey = GlobalKey();
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
     _loadAll();
+    if (widget.scrollToAgents) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToAgentSection());
+    }
+  }
+
+  Future<void> _scrollToAgentSection() async {
+    // Retry briefly until the section is laid out (after async data loads).
+    for (var i = 0; i < 10; i++) {
+      final ctx = _agentSectionKey.currentContext;
+      if (ctx != null) {
+        await Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeInOut,
+          alignment: 0.05,
+        );
+        return;
+      }
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
   }
 
   @override
@@ -375,7 +401,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     if (_isRefreshing) return;
     _isRefreshing = true;
     _retryTimer?.cancel();
-    await Future.wait([_checkHealth(), _loadStats(), _loadFeatures(), _loadBacklog()]);
+    await Future.wait([_checkHealth(), _loadStats(), _loadFeatures(), _loadBacklog(), _loadAgents()]);
     _isRefreshing = false;
     if (mounted && _serverOk != true) _scheduleRetry();
   }
@@ -426,6 +452,24 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       }
     } catch (_) {
       if (mounted) setState(() => _loadingFeatures = false);
+    }
+  }
+
+  Future<void> _loadAgents() async {
+    setState(() => _loadingAgents = true);
+    try {
+      final res = await http.get(Uri.parse('$_base/progress-map/agents')).timeout(const Duration(seconds: 8));
+      if (mounted && res.statusCode == 200) {
+        final d = jsonDecode(res.body);
+        setState(() {
+          _agents = List<Map<String, dynamic>>.from(d['agents'] ?? []);
+          _loadingAgents = false;
+        });
+      } else if (mounted) {
+        setState(() => _loadingAgents = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingAgents = false);
     }
   }
 
@@ -828,6 +872,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             _sectionTitle('🗂️ סטטוס יכולות'),
             const SizedBox(height: 8),
             _buildFeatureBoard(),
+            const SizedBox(height: 24),
+            Padding(
+              key: _agentSectionKey,
+              padding: EdgeInsets.zero,
+              child: _sectionTitle('🤖 מרכז סוכנים'),
+            ),
+            const SizedBox(height: 8),
+            _buildAgentCenter(),
             const SizedBox(height: 24),
             _sectionTitle('🤖 Backlog AI'),
             const SizedBox(height: 8),
@@ -2393,6 +2445,226 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
       ),
     );
   }
+
+  // ── Agent Center ──────────────────────────────────────────────────────────
+
+  Color _riskColor(String risk) => switch (risk) {
+        'high' => const Color(0xFFEF4444),
+        'medium' => const Color(0xFFF59E0B),
+        'low' => const Color(0xFF22C55E),
+        _ => JC.textMuted,
+      };
+
+  String _riskLabel(String risk) => switch (risk) {
+        'high' => 'סיכון גבוה',
+        'medium' => 'סיכון בינוני',
+        'low' => 'סיכון נמוך',
+        _ => risk,
+      };
+
+  Widget _buildAgentCenter() {
+    if (_loadingAgents && _agents.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
+      );
+    }
+    if (_agents.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: JC.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: const Text(
+          'לא נטענו סוכנים. בדוק חיבור לשרת.',
+          textAlign: TextAlign.right,
+          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Text(
+              '${_agents.length} סוכנים פעילים · הקש לפרטים',
+              textAlign: TextAlign.right,
+              style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+            ),
+          ),
+          const SizedBox(height: 6),
+          ..._agents.map(_buildAgentTile),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAgentTile(Map<String, dynamic> agent) {
+    final nameHe = (agent['nameHe'] ?? agent['name'] ?? agent['id'] ?? '').toString();
+    final role = (agent['role'] ?? '').toString();
+    final risk = (agent['risk'] ?? 'low').toString();
+    final mode = (agent['mode'] ?? '').toString();
+    final autonomy = (agent['autonomy'] ?? 0) as num;
+    final status = (agent['status'] ?? 'active').toString();
+    return GestureDetector(
+      onTap: () => _showAgentDetails(agent),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: JC.bg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: JC.border, width: 0.7),
+        ),
+        child: Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Container(
+              width: 8, height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: status == 'active' ? const Color(0xFF22C55E) : JC.textMuted,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(nameHe,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
+                  if (role.isNotEmpty)
+                    Text(role,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+                        overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Wrap(
+              spacing: 4,
+              children: [
+                _badge(_riskLabel(risk), _riskColor(risk)),
+                if (mode.isNotEmpty) _badge(mode, JC.blue400),
+                _badge('${autonomy.toInt()}%', JC.textMuted),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAgentDetails(Map<String, dynamic> agent) {
+    final nameHe = (agent['nameHe'] ?? agent['name'] ?? agent['id'] ?? '').toString();
+    final mission = (agent['mission'] ?? '').toString();
+    final prompt = (agent['prompt'] ?? '').toString();
+    final responsibilities = List<String>.from(agent['responsibilities'] ?? const []);
+    final tools = List<String>.from(agent['tools'] ?? const []);
+    final permissions = List<String>.from(agent['permissions'] ?? const []);
+    final connections = List<Map<String, dynamic>>.from(
+        (agent['connections'] ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: JC.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(nameHe,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 18)),
+                const SizedBox(height: 4),
+                if ((agent['role'] ?? '').toString().isNotEmpty)
+                  Text(agent['role'].toString(),
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+                const SizedBox(height: 10),
+                if (mission.isNotEmpty) ...[
+                  _agentSectionLabel('משימה'),
+                  _agentBodyText(mission),
+                  const SizedBox(height: 10),
+                ],
+                if (prompt.isNotEmpty) ...[
+                  _agentSectionLabel('פרומפט'),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: JC.bg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: JC.border, width: 0.7),
+                    ),
+                    child: Text(prompt,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.4)),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                if (responsibilities.isNotEmpty) ...[
+                  _agentSectionLabel('אחריות'),
+                  ...responsibilities.map((r) => _agentBodyText('• $r')),
+                  const SizedBox(height: 10),
+                ],
+                if (tools.isNotEmpty) ...[
+                  _agentSectionLabel('כלים'),
+                  _agentBodyText(tools.join(' · ')),
+                  const SizedBox(height: 10),
+                ],
+                if (permissions.isNotEmpty) ...[
+                  _agentSectionLabel('הרשאות'),
+                  _agentBodyText(permissions.join(' · ')),
+                  const SizedBox(height: 10),
+                ],
+                if (connections.isNotEmpty) ...[
+                  _agentSectionLabel('קשרים'),
+                  ...connections.map((c) {
+                    final name = (c['nameHe'] ?? c['name'] ?? c['agentId'] ?? '').toString();
+                    final dir = (c['direction'] ?? '').toString();
+                    final type = (c['type'] ?? '').toString();
+                    final arrow = dir == 'outgoing' ? '→' : dir == 'incoming' ? '←' : '↔';
+                    return _agentBodyText('$arrow $name · $type');
+                  }),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _agentSectionLabel(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(text,
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 0.5)),
+      );
+
+  Widget _agentBodyText(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(text,
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.4)),
+      );
 
   // ── Widget helpers ────────────────────────────────────────────────────────
 

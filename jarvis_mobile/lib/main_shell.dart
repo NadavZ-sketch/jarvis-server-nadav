@@ -222,9 +222,9 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: _onTabTapped,
               destinations: const [
                 NavigationDestination(
-                  icon: Icon(Icons.map_outlined),
-                  selectedIcon: Icon(Icons.map_rounded),
-                  label: 'מפה',
+                  icon: Icon(Icons.dashboard_outlined),
+                  selectedIcon: Icon(Icons.dashboard_rounded),
+                  label: 'מרכז',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.mic_none_rounded),

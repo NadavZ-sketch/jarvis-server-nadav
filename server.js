@@ -791,12 +791,13 @@ app.delete('/user-profile', async (_req, res) => {
 // ─── Survey check (should user take survey?) ──────────────────────────────
 app.get('/survey-check', async (req, res) => {
     try {
-        const { sessionMinutes, agentCallCount } = req.query;
+        const { sessionMinutes, agentCallCount, force } = req.query;
         const minutes = parseInt(sessionMinutes) || 0;
         const calls = parseInt(agentCallCount) || 0;
+        const forced = force === 'true' || force === '1';
 
-        // Trigger survey after 20+ minutes OR 3+ agent calls
-        const shouldShowSurvey = minutes >= 20 || calls >= 3;
+        // Trigger survey after 20+ minutes OR 3+ agent calls (or forced by user)
+        const shouldShowSurvey = forced || minutes >= 20 || calls >= 3;
 
         if (shouldShowSurvey) {
             const questions = selectSurveyQuestions({ minutes, calls });
@@ -861,6 +862,89 @@ app.post('/survey-submit', async (req, res) => {
         res.json({ success: true, summary });
     } catch (err) {
         console.error('⚠️ /survey-submit error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Survey history (past surveys for a user) ─────────────────────────────
+app.get('/survey-history', async (req, res) => {
+    try {
+        const { userName } = req.query;
+        if (!userName) return res.status(400).json({ error: 'userName required' });
+
+        const { data, error } = await supabase
+            .from('user_surveys')
+            .select('id, created_at, summary, responses')
+            .eq('user_name', userName)
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        if (error) throw error;
+
+        const surveys = (data || []).map(s => {
+            let parsed = s.responses;
+            if (typeof parsed === 'string') {
+                try { parsed = JSON.parse(parsed); } catch (_) { parsed = {}; }
+            }
+            return { id: s.id, createdAt: s.created_at, summary: s.summary, responses: parsed };
+        });
+
+        res.json({ surveys });
+    } catch (err) {
+        console.error('⚠️ /survey-history error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Survey aggregate insights (TTL cache, 1h) ────────────────────────────
+const _surveyInsightsCache = new Map(); // userName -> { insights, generatedAt }
+app.get('/survey-insights', async (req, res) => {
+    try {
+        const { userName } = req.query;
+        if (!userName) return res.status(400).json({ error: 'userName required' });
+
+        const cached = _surveyInsightsCache.get(userName);
+        if (cached && Date.now() - cached.ts < 60 * 60 * 1000) {
+            return res.json({ insights: cached.insights, generatedAt: cached.generatedAt, cached: true });
+        }
+
+        const { data, error } = await supabase
+            .from('user_surveys')
+            .select('summary, created_at')
+            .eq('user_name', userName)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+            return res.json({ insights: [], generatedAt: null });
+        }
+
+        const summariesText = data
+            .map((s, i) => `[${i + 1}] (${s.created_at}) ${s.summary || ''}`)
+            .join('\n\n');
+
+        let insights = [];
+        try {
+            const raw = await callGemma4([
+                { role: 'system', content: 'אתה אנליסט מוצר. ענה תמיד ב-JSON בלבד.' },
+                { role: 'user', content: `סקרים אחרונים של המשתמש "${userName}":\n${summariesText}\n\nסכם 3-5 תובנות מצטברות בעברית על המשתמש (העדפות, נקודות חוזק, אזורי שיפור). החזר JSON: {"insights":["...","..."]}` },
+            ], false, 500);
+            const match = raw.match(/\{[\s\S]*\}/);
+            if (match) {
+                const parsed = JSON.parse(match[0]);
+                if (Array.isArray(parsed.insights)) insights = parsed.insights.filter(x => typeof x === 'string');
+            }
+        } catch (e) {
+            console.error('⚠️ survey-insights LLM error:', e.message);
+        }
+
+        const generatedAt = new Date().toISOString();
+        _surveyInsightsCache.set(userName, { insights, generatedAt, ts: Date.now() });
+        res.json({ insights, generatedAt, cached: false });
+    } catch (err) {
+        console.error('⚠️ /survey-insights error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });

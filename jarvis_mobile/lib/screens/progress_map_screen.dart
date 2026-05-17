@@ -1609,21 +1609,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
             }),
           ),
           const SizedBox(height: 10),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
-            child: KeyedSubtree(
+          if (currentItems.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: Text('אין פריטים',
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13))),
+            )
+          else
+            Column(
               key: ValueKey(_featureTabIndex),
-              child: currentItems.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Center(child: Text('אין פריטים',
-                          style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13))),
-                    )
-                  : Column(
-                      children: currentItems.map((f) => _featureItem(f, currentColor)).toList(),
-                    ),
+              children: currentItems.map((f) => _featureItem(f, currentColor)).toList(),
             ),
-          ),
           if (_featuresUpdated.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -1648,14 +1644,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _expandedFeatures![key] = !isExpanded;
-          });
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
+        onTap: () => setState(() => _expandedFeatures[key] = !isExpanded),
+        child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: isExpanded ? color.withValues(alpha: 0.08) : JC.surface,
@@ -1667,50 +1657,39 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
               left:   BorderSide(color: JC.border, width: 0.5),
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Row(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(display,
-                        textDirection: TextDirection.rtl,
-                        style: TextStyle(
-                          color: JC.textPrimary, fontFamily: 'Heebo',
-                          fontWeight: FontWeight.w600, fontSize: 13)),
-                  ),
-                  SizedBox(width: 8),
-                  Icon(
-                    isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                    color: color,
-                    size: 18,
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(display,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          color: JC.textPrimary,
+                          fontFamily: 'Heebo',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        )),
+                    if (isExpanded && desc.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(desc,
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                            color: JC.textSecondary,
+                            fontFamily: 'Heebo',
+                            fontSize: 11,
+                            height: 1.5,
+                          )),
+                    ],
+                  ],
+                ),
               ),
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                child: isExpanded && desc.isNotEmpty
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.05),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: color.withValues(alpha: 0.2), width: 0.5),
-                            ),
-                            child: Text(desc,
-                                textDirection: TextDirection.rtl,
-                                style: const TextStyle(
-                                  color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11, height: 1.5)),
-                          ),
-                        ],
-                      )
-                    : const SizedBox.shrink(),
+              const SizedBox(width: 8),
+              Icon(
+                isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                color: color,
+                size: 18,
               ),
             ],
           ),

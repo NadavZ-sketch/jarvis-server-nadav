@@ -238,6 +238,9 @@ h1 span{color:var(--accent)}
 @media(max-width:900px){.ac-layout{grid-template-columns:1fr;overflow:visible;border-radius:12px}}
 .ac-sidebar{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;max-height:72vh;overflow:hidden}
 @media(max-width:900px){.ac-sidebar{max-height:40vh;border-left:none;border-bottom:1px solid var(--border)}}
+@media(max-width:900px){.ac-sidebar.hidden{display:none}.ac-details.fullscreen{max-height:none;min-height:60vh}}
+.ac-back-btn{display:none;align-items:center;gap:6px;background:none;border:none;color:var(--accent);font-size:.85rem;cursor:pointer;padding:6px 0 10px;font-family:inherit}
+@media(max-width:900px){.ac-back-btn{display:flex}}
 .ac-search{padding:10px 12px;border-bottom:1px solid var(--border)}
 .ac-search input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:.83rem;font-family:inherit;outline:none;direction:rtl}
 .ac-search input:focus{border-color:var(--accent)}
@@ -1152,14 +1155,24 @@ function acSelect(id) {
   acRenderList(acAgents.filter(a => { const q = document.getElementById('acSearch').value; return !q||a.nameHe.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()); }));
   acRenderDetails(acCurrent);
   if (window.innerWidth <= 900) {
-    setTimeout(() => document.getElementById('acDetails').scrollIntoView({behavior:'smooth',block:'start'}), 80);
+    document.querySelector('.ac-sidebar').classList.add('hidden');
+    document.getElementById('acDetails').classList.add('fullscreen');
+    window.scrollTo({top: document.getElementById('acDetails').getBoundingClientRect().top + window.scrollY - 16, behavior: 'smooth'});
   }
+}
+
+function acBack() {
+  document.querySelector('.ac-sidebar').classList.remove('hidden');
+  document.getElementById('acDetails').classList.remove('fullscreen');
+  acCurrent = null;
+  document.getElementById('acDetails').innerHTML = '<div class="ac-empty"><div style="font-size:2rem">🤖</div><div>בחר סוכן כדי לצפות בפרטיו</div></div>';
+  acRenderList(acAgents);
 }
 
 function acRenderDetails(a) {
   const p = document.getElementById('acDetails');
   try {
-    p.innerHTML = acHeaderCard(a) + acTabsHtml(a) +
+    p.innerHTML = `<button class="ac-back-btn" onclick="acBack()">← חזרה לרשימה</button>` + acHeaderCard(a) + acTabsHtml(a) +
       `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(a)}</div>` +
       `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(a)}</div>` +
       `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(a)}</div>` +

@@ -188,7 +188,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
   List<Map<String, dynamic>> _planned = [];
   bool _loadingFeatures = true;
   String _featuresUpdated = '';
-  Map<String, bool> _expandedFeatures = {};
+  String? _selectedChipKey;
 
   // Proposals (AI backlog)
   List<Map<String, dynamic>> _proposals = [];
@@ -1556,144 +1556,141 @@ class _ProgressMapScreenState extends State<ProgressMapScreen> {
     final currentItems = itemLists[_featureTabIndex];
     final currentColor = colors[_featureTabIndex];
 
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: List.generate(3, (i) {
-              final selected = i == _featureTabIndex;
-              final color    = colors[i];
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() => _featureTabIndex = i);
-                      final tabName = labels[i].split(' ').skip(1).join(' ');
-                      ScaffoldMessenger.of(context).clearSnackBars();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('הצגת: $tabName', textDirection: TextDirection.rtl),
-                          duration: const Duration(milliseconds: 800),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: selected ? color.withValues(alpha: 0.6) : JC.border,
-                          width: selected ? 1.2 : 0.5,
-                        ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Tab selector
+        Row(
+          children: List.generate(3, (i) {
+            final selected = i == _featureTabIndex;
+            final color    = colors[i];
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: GestureDetector(
+                  onTap: () => setState(() {
+                    _featureTabIndex = i;
+                    _selectedChipKey = null;
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selected ? color.withValues(alpha: 0.6) : JC.border,
+                        width: selected ? 1.2 : 0.5,
                       ),
-                      child: Text(labels[i],
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: selected ? color : JC.textSecondary,
-                            fontFamily: 'Heebo',
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                            fontSize: 12,
-                            height: 1.2,
-                          )),
                     ),
+                    child: Text(labels[i],
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: selected ? color : JC.textSecondary,
+                          fontFamily: 'Heebo',
+                          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: 12,
+                          height: 1.2,
+                        )),
                   ),
                 ),
-              );
-            }),
+              ),
+            );
+          }),
+        ),
+        const SizedBox(height: 12),
+        // Chips
+        if (currentItems.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: Text('אין פריטים',
+                style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13))),
+          )
+        else
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            textDirection: TextDirection.rtl,
+            children: currentItems.map((f) => _featureChip(f, currentColor)).toList(),
           ),
-          const SizedBox(height: 10),
-          if (currentItems.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: Text('אין פריטים',
-                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13))),
-            )
-          else
-            Column(
-              key: ValueKey(_featureTabIndex),
-              children: currentItems.map((f) => _featureItem(f, currentColor)).toList(),
+        // Detail panel for selected chip
+        Builder(builder: (context) {
+          if (_selectedChipKey == null) return const SizedBox.shrink();
+          final sel = currentItems.cast<Map<String, dynamic>?>().firstWhere(
+            (f) => 'feature_${f!['name']?.hashCode}' == _selectedChipKey,
+            orElse: () => null,
+          );
+          if (sel == null) return const SizedBox.shrink();
+          final name = sel['name']?.toString() ?? '';
+          final desc = sel['desc']?.toString() ?? '';
+          return Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: currentColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: currentColor.withValues(alpha: 0.35), width: 0.8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(name,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                          color: currentColor,
+                          fontFamily: 'Heebo',
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14)),
+                  if (desc.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(desc,
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                            color: JC.textSecondary,
+                            fontFamily: 'Heebo',
+                            fontSize: 12,
+                            height: 1.5)),
+                  ],
+                ],
+              ),
             ),
-          if (_featuresUpdated.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text('עודכן: $_featuresUpdated',
-                  style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
-                  textAlign: TextAlign.center),
-            ),
-        ],
-      ),
+          );
+        }),
+        if (_featuresUpdated.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('עודכן: $_featuresUpdated',
+                style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                textAlign: TextAlign.center),
+          ),
+      ],
     );
   }
 
-  Widget _featureItem(Map<String, dynamic> f, Color color) {
-    final name    = f['name']?.toString() ?? '';
-    final desc    = f['desc']?.toString() ?? '';
-    final display = name.isNotEmpty ? name : '—';
-    final key     = 'feature_${name.hashCode}';
-
-    // Get expanded state safely
-    final isExpanded = _expandedFeatures[key] ?? false;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: GestureDetector(
-        onTap: () => setState(() => _expandedFeatures[key] = !isExpanded),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: isExpanded ? color.withValues(alpha: 0.08) : JC.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border(
-              right: BorderSide(color: color.withValues(alpha: 0.6), width: 2.5),
-              top:    BorderSide(color: JC.border, width: 0.5),
-              bottom: BorderSide(color: JC.border, width: 0.5),
-              left:   BorderSide(color: JC.border, width: 0.5),
-            ),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(display,
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(
-                          color: JC.textPrimary,
-                          fontFamily: 'Heebo',
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        )),
-                    if (isExpanded && desc.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(desc,
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(
-                            color: JC.textSecondary,
-                            fontFamily: 'Heebo',
-                            fontSize: 11,
-                            height: 1.5,
-                          )),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                color: color,
-                size: 18,
-              ),
-            ],
-          ),
+  Widget _featureChip(Map<String, dynamic> f, Color color) {
+    final name = f['name']?.toString() ?? '—';
+    final key  = 'feature_${name.hashCode}';
+    final isSelected = _selectedChipKey == key;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedChipKey = isSelected ? null : key),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withValues(alpha: 0.15) : JC.surfaceAlt,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: isSelected ? color : JC.border,
+              width: isSelected ? 1.2 : 0.5),
         ),
+        child: Text(name,
+            style: TextStyle(
+                color: isSelected ? color : JC.textSecondary,
+                fontFamily: 'Heebo',
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400)),
       ),
     );
   }

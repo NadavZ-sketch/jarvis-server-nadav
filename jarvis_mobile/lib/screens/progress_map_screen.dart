@@ -269,26 +269,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       initialIndex: widget.initialTab.index,
     );
     _loadAll();
-    if (widget.scrollToAgents) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToAgentSection());
-    }
-  }
-
-  Future<void> _scrollToAgentSection() async {
-    // Retry briefly until the section is laid out (after async data loads).
-    for (var i = 0; i < 10; i++) {
-      final ctx = _agentSectionKey.currentContext;
-      if (ctx != null) {
-        await Scrollable.ensureVisible(
-          ctx,
-          duration: const Duration(milliseconds: 450),
-          curve: Curves.easeInOut,
-          alignment: 0.05,
-        );
-        return;
-      }
-      await Future.delayed(const Duration(milliseconds: 150));
-    }
   }
 
   @override

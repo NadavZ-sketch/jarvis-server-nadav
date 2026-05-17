@@ -1157,11 +1157,18 @@ function acRenderList(list) {
 }
 
 function acSelect(id) {
+  const p = document.getElementById('acDetails');
+  // Immediate visual feedback so we know the click registered
+  p.style.outline = '3px solid var(--accent)';
+  setTimeout(() => { if (p) p.style.outline = ''; }, 1000);
+
   acCurrent = acAgents.find(a => a.id === id);
-  if (!acCurrent) return;
+  if (!acCurrent) {
+    p.innerHTML = `<div class="ac-empty"><div style="font-size:2rem">⚠️</div><div style="color:var(--red)">סוכן לא נמצא: ${id}<br>סה"כ: ${acAgents.length} סוכנים</div></div>`;
+    return;
+  }
   acRenderList(acAgents.filter(a => { const q = document.getElementById('acSearch').value; return !q||a.nameHe.includes(q)||a.name.toLowerCase().includes(q.toLowerCase()); }));
   acRenderDetails(acCurrent);
-  // On mobile, details panel is above the list (order:-1), scroll page top to show it
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
@@ -1198,7 +1205,7 @@ function acBack() {
 function acRenderDetails(a) {
   const p = document.getElementById('acDetails');
   try {
-    p.innerHTML = `<button class="ac-back-btn" onclick="acBack()">← חזרה לרשימה</button>` + acHeaderCard(a) + acTabsHtml(a) +
+    p.innerHTML = acHeaderCard(a) + acTabsHtml(a) +
       `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(a)}</div>` +
       `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(a)}</div>` +
       `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(a)}</div>` +

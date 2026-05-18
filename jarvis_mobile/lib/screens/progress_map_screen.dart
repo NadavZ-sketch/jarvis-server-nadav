@@ -257,6 +257,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   List<Map<String, dynamic>> _surveyHistory = [];
   List<String> _surveyInsights = [];
   bool _loadingSurveys = true;
+  String? _surveyError;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -465,28 +466,44 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   }
 
   Future<void> _loadSurveys() async {
-    setState(() => _loadingSurveys = true);
-    final userName = widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim();
-    try {
-      final results = await Future.wait([
-        http.get(Uri.parse('$_base/survey-history?userName=${Uri.encodeQueryComponent(userName)}'))
-            .timeout(const Duration(seconds: 8)),
-        http.get(Uri.parse('$_base/survey-insights?userName=${Uri.encodeQueryComponent(userName)}'))
-            .timeout(const Duration(seconds: 12)),
-      ]);
-      if (!mounted) return;
-      if (results[0].statusCode == 200) {
-        final d = jsonDecode(results[0].body);
-        _surveyHistory = List<Map<String, dynamic>>.from(d['surveys'] ?? []);
-      }
-      if (results[1].statusCode == 200) {
-        final d = jsonDecode(results[1].body);
-        _surveyInsights = List<String>.from(d['insights'] ?? []);
-      }
-      setState(() => _loadingSurveys = false);
-    } catch (_) {
-      if (mounted) setState(() => _loadingSurveys = false);
+    final trimmedName = widget.settings.userName.trim();
+    if (trimmedName.isEmpty) {
+      if (mounted) setState(() {
+        _loadingSurveys = false;
+        _surveyHistory = const [];
+        _surveyInsights = const [];
+        _surveyError = null;
+      });
+      return;
     }
+    setState(() { _loadingSurveys = true; _surveyError = null; });
+    final userName = Uri.encodeQueryComponent(trimmedName);
+    final histFut = http.get(Uri.parse('$_base/survey-history?userName=$userName'))
+        .timeout(const Duration(seconds: 8));
+    final insFut = http.get(Uri.parse('$_base/survey-insights?userName=$userName'))
+        .timeout(const Duration(seconds: 15));
+    final results = await Future.wait([
+      histFut.then<dynamic>((r) => r).catchError((e) => e),
+      insFut.then<dynamic>((r) => r).catchError((e) => e),
+    ]);
+    if (!mounted) return;
+    var failures = 0;
+    if (results[0] is http.Response && (results[0] as http.Response).statusCode == 200) {
+      try {
+        final d = jsonDecode((results[0] as http.Response).body);
+        _surveyHistory = List<Map<String, dynamic>>.from(d['surveys'] ?? []);
+      } catch (_) { failures++; }
+    } else { failures++; }
+    if (results[1] is http.Response && (results[1] as http.Response).statusCode == 200) {
+      try {
+        final d = jsonDecode((results[1] as http.Response).body);
+        _surveyInsights = List<String>.from(d['insights'] ?? []);
+      } catch (_) { failures++; }
+    } else { failures++; }
+    setState(() {
+      _loadingSurveys = false;
+      _surveyError = failures == 2 ? 'שגיאת רשת — לא ניתן לטעון סקרים' : null;
+    });
   }
 
   Future<void> _startSurveyNow() async {
@@ -908,9 +925,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
+    return Scaffold(
         backgroundColor: JC.bg,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
@@ -951,7 +966,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             _buildSurveysTab(),
           ],
         ),
-      ),
     );
   }
 
@@ -1020,39 +1034,76 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         const SizedBox(height: 24),
         _sectionTitle('🧪 דוחות בדיקות E2E'),
         const SizedBox(height: 8),
-        SizedBox(
-          height: 480,
-          child: E2eReportsPanel(settings: widget.settings),
-        ),
+        E2eReportsPanel(settings: widget.settings),
       ]);
 
-  Widget _buildSurveysTab() => _tabListView([
-        _sectionTitle('📊 תובנות מצטברות'),
-        const SizedBox(height: 8),
-        _buildSurveyInsightsCard(),
-        const SizedBox(height: 18),
-        Row(children: [
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: _startSurveyNow,
-              icon: const Icon(Icons.poll_outlined, size: 18),
-              label: const Text('התחל סקר עכשיו', style: TextStyle(fontFamily: 'Heebo')),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: JC.blue500,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
+  Widget _buildSurveysTab() {
+    final hasUserName = widget.settings.userName.trim().isNotEmpty;
+    return _tabListView([
+      if (!hasUserName)
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.6), width: 0.8),
+          ),
+          child: const Text(
+            'צריך להגדיר שם משתמש בהגדרות כדי לצפות בסקרים.',
+            textAlign: TextAlign.right,
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13),
+          ),
+        )
+      else if (_surveyError != null) ...[
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: JC.cancelRed.withValues(alpha: 0.5), width: 0.8),
+          ),
+          child: Row(children: [
+            const Icon(Icons.error_outline, color: JC.cancelRed, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(_surveyError!,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+            ),
+            TextButton(onPressed: _loadSurveys, child: const Text('נסה שוב', style: TextStyle(fontFamily: 'Heebo'))),
+          ]),
+        ),
+        const SizedBox(height: 12),
+      ],
+      _sectionTitle('📊 תובנות מצטברות'),
+      const SizedBox(height: 8),
+      _buildSurveyInsightsCard(),
+      const SizedBox(height: 18),
+      Row(children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: hasUserName ? _startSurveyNow : null,
+            icon: const Icon(Icons.poll_outlined, size: 18),
+            label: const Text('התחל סקר עכשיו', style: TextStyle(fontFamily: 'Heebo')),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: JC.blue500,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: JC.surfaceAlt,
+              disabledForegroundColor: JC.textMuted,
+              padding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
-        ]),
-        const SizedBox(height: 18),
-        _sectionTitle('📋 היסטוריית סקרים'),
-        const SizedBox(height: 8),
-        _buildSurveyHistory(),
-      ]);
+        ),
+      ]),
+      const SizedBox(height: 18),
+      _sectionTitle('📋 היסטוריית סקרים'),
+      const SizedBox(height: 8),
+      _buildSurveyHistory(),
+    ]);
+  }
 
   Widget _buildSurveyInsightsCard() {
-    if (_loadingSurveys && _surveyInsights.isEmpty) {
+    if (_loadingSurveys && _surveyInsights.isEmpty && _surveyHistory.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(20),
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
@@ -1095,6 +1146,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   }
 
   Widget _buildSurveyHistory() {
+    if (_loadingSurveys && _surveyHistory.isEmpty && _surveyInsights.isEmpty) {
+      return const SizedBox.shrink();
+    }
     if (_loadingSurveys && _surveyHistory.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(20),
@@ -1214,7 +1268,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       height: 88,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        reverse: true,
         itemCount: items.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
@@ -1235,7 +1288,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                     fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Text(
-                  _loadingStats && i < 5 ? '…' : (num?.toString() ?? '—'),
+                  _loadingStats ? '…' : (num?.toString() ?? '—'),
                   style: const TextStyle(
                       color: JC.blue400, fontSize: 22,
                       fontWeight: FontWeight.w700, height: 1.1),

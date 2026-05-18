@@ -859,6 +859,10 @@ app.post('/survey-submit', async (req, res) => {
 
         if (error) throw error;
 
+        // Invalidate aggregate insights cache so the next /survey-insights
+        // request picks up this new submission.
+        _surveyInsightsCache.delete(userName);
+
         res.json({ success: true, summary });
     } catch (err) {
         console.error('⚠️ /survey-submit error:', err.message);
@@ -897,7 +901,10 @@ app.get('/survey-history', async (req, res) => {
 });
 
 // ─── Survey aggregate insights (TTL cache, 1h) ────────────────────────────
-const _surveyInsightsCache = new Map(); // userName -> { insights, generatedAt }
+// LRU-bounded: drops oldest entries beyond _SURVEY_INSIGHTS_CACHE_MAX
+// to prevent unbounded memory growth across many users.
+const _SURVEY_INSIGHTS_CACHE_MAX = 500;
+const _surveyInsightsCache = new Map(); // userName -> { insights, generatedAt, ts }
 app.get('/survey-insights', async (req, res) => {
     try {
         const { userName } = req.query;
@@ -905,6 +912,9 @@ app.get('/survey-insights', async (req, res) => {
 
         const cached = _surveyInsightsCache.get(userName);
         if (cached && Date.now() - cached.ts < 60 * 60 * 1000) {
+            // Refresh recency for LRU eviction order.
+            _surveyInsightsCache.delete(userName);
+            _surveyInsightsCache.set(userName, cached);
             return res.json({ insights: cached.insights, generatedAt: cached.generatedAt, cached: true });
         }
 
@@ -917,12 +927,13 @@ app.get('/survey-insights', async (req, res) => {
 
         if (error) throw error;
 
-        if (!data || data.length === 0) {
+        const summariesWithContent = (data || []).filter(s => (s.summary || '').trim().length > 0);
+        if (summariesWithContent.length === 0) {
             return res.json({ insights: [], generatedAt: null });
         }
 
-        const summariesText = data
-            .map((s, i) => `[${i + 1}] (${s.created_at}) ${s.summary || ''}`)
+        const summariesText = summariesWithContent
+            .map((s, i) => `[${i + 1}] (${s.created_at}) ${s.summary}`)
             .join('\n\n');
 
         let insights = [];
@@ -942,6 +953,10 @@ app.get('/survey-insights', async (req, res) => {
 
         const generatedAt = new Date().toISOString();
         _surveyInsightsCache.set(userName, { insights, generatedAt, ts: Date.now() });
+        while (_surveyInsightsCache.size > _SURVEY_INSIGHTS_CACHE_MAX) {
+            const oldestKey = _surveyInsightsCache.keys().next().value;
+            _surveyInsightsCache.delete(oldestKey);
+        }
         res.json({ insights, generatedAt, cached: false });
     } catch (err) {
         console.error('⚠️ /survey-insights error:', err.message);

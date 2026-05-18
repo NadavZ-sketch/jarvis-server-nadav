@@ -150,10 +150,34 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
       ));
     }
     if (_reports.isEmpty) {
+      if (widget.embedded) {
+        return Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: JC.border, width: 0.8),
+          ),
+          child: const Text(
+            'אין דוחות עדיין. שלח "בצע בדיקות קצה" מהשיחה כדי להתחיל.',
+            textAlign: TextAlign.right,
+            style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
+          ),
+        );
+      }
       return const EmptyState(
         icon: Icons.fact_check_outlined,
         title: 'אין דוחות עדיין',
         subtitle: 'שלח "בצע בדיקות קצה" מהשיחה כדי להתחיל',
+      );
+    }
+    if (widget.embedded) {
+      return ListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: _reports.length,
+        itemBuilder: (_, i) => _buildCard(_reports[i], _reports.length - i),
       );
     }
     return RefreshIndicator(

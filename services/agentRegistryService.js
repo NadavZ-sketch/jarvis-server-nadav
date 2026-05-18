@@ -4,6 +4,34 @@ const path = require('path');
 const fs = require('fs');
 
 const CUSTOM_REGISTRY_PATH = path.join(__dirname, '..', 'agents', 'custom', 'registry.json');
+const STATUS_OVERRIDE_PATH = path.join(__dirname, '..', 'agents', 'custom', 'agent-status.json');
+
+function readStatusOverrides() {
+  try {
+    if (!fs.existsSync(STATUS_OVERRIDE_PATH)) return {};
+    const raw = fs.readFileSync(STATUS_OVERRIDE_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (_) { return {}; }
+}
+
+function writeStatusOverrides(map) {
+  try {
+    const dir = path.dirname(STATUS_OVERRIDE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(STATUS_OVERRIDE_PATH, JSON.stringify(map, null, 2), 'utf8');
+    return true;
+  } catch (e) { return false; }
+}
+
+function setAgentStatus(agentId, status) {
+  if (!agentId) throw new Error('agentId required');
+  if (!['active', 'disabled'].includes(status)) throw new Error('status must be active|disabled');
+  const overrides = readStatusOverrides();
+  overrides[agentId] = { status, updatedAt: new Date().toISOString() };
+  if (!writeStatusOverrides(overrides)) throw new Error('failed to persist status override');
+  return overrides[agentId];
+}
 
 const STATIC_AGENTS = [
   {
@@ -412,14 +440,26 @@ const STATIC_AGENTS = [
 ];
 
 function getAgentRegistry() {
-  const agents = [...STATIC_AGENTS];
+  const overrides = readStatusOverrides();
+  const applyOverride = (agent) => {
+    const ov = overrides[agent.id];
+    if (ov && (ov.status === 'active' || ov.status === 'disabled')) {
+      return { ...agent, status: ov.status, statusUpdatedAt: ov.updatedAt };
+    }
+    return agent;
+  };
+  const agents = STATIC_AGENTS.map(applyOverride);
   try {
     if (fs.existsSync(CUSTOM_REGISTRY_PATH)) {
       const raw = fs.readFileSync(CUSTOM_REGISTRY_PATH, 'utf8');
       const custom = JSON.parse(raw);
       if (Array.isArray(custom)) {
-        custom.forEach(c => agents.push({
-          id: c.id || c.name,
+        custom.forEach(c => {
+          const id = c.id || c.name;
+          const baseStatus = 'custom';
+          const ov = overrides[id];
+          agents.push({
+          id,
           name: c.name || c.id,
           nameHe: c.nameHe || c.name || c.id,
           role: c.role || 'סוכן מותאם',
@@ -436,14 +476,16 @@ function getAgentRegistry() {
           mode: c.mode || 'assistant',
           approval: c.approval || 'none',
           autonomy: c.autonomy || 40,
-          status: 'custom',
+          status: (ov && (ov.status === 'active' || ov.status === 'disabled')) ? ov.status : baseStatus,
+          statusUpdatedAt: ov ? ov.updatedAt : undefined,
           connections: c.connections || [],
           dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
-        }));
+          });
+        });
       }
     }
   } catch (_) {}
   return agents;
 }
 
-module.exports = { getAgentRegistry };
+module.exports = { getAgentRegistry, setAgentStatus };

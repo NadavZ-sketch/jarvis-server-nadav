@@ -859,6 +859,10 @@ app.post('/survey-submit', async (req, res) => {
 
         if (error) throw error;
 
+        // Invalidate aggregate insights cache so the next /survey-insights
+        // request picks up this new submission.
+        _surveyInsightsCache.delete(userName);
+
         res.json({ success: true, summary });
     } catch (err) {
         console.error('⚠️ /survey-submit error:', err.message);
@@ -897,7 +901,10 @@ app.get('/survey-history', async (req, res) => {
 });
 
 // ─── Survey aggregate insights (TTL cache, 1h) ────────────────────────────
-const _surveyInsightsCache = new Map(); // userName -> { insights, generatedAt }
+// LRU-bounded: drops oldest entries beyond _SURVEY_INSIGHTS_CACHE_MAX
+// to prevent unbounded memory growth across many users.
+const _SURVEY_INSIGHTS_CACHE_MAX = 500;
+const _surveyInsightsCache = new Map(); // userName -> { insights, generatedAt, ts }
 app.get('/survey-insights', async (req, res) => {
     try {
         const { userName } = req.query;
@@ -905,6 +912,9 @@ app.get('/survey-insights', async (req, res) => {
 
         const cached = _surveyInsightsCache.get(userName);
         if (cached && Date.now() - cached.ts < 60 * 60 * 1000) {
+            // Refresh recency for LRU eviction order.
+            _surveyInsightsCache.delete(userName);
+            _surveyInsightsCache.set(userName, cached);
             return res.json({ insights: cached.insights, generatedAt: cached.generatedAt, cached: true });
         }
 
@@ -917,12 +927,13 @@ app.get('/survey-insights', async (req, res) => {
 
         if (error) throw error;
 
-        if (!data || data.length === 0) {
+        const summariesWithContent = (data || []).filter(s => (s.summary || '').trim().length > 0);
+        if (summariesWithContent.length === 0) {
             return res.json({ insights: [], generatedAt: null });
         }
 
-        const summariesText = data
-            .map((s, i) => `[${i + 1}] (${s.created_at}) ${s.summary || ''}`)
+        const summariesText = summariesWithContent
+            .map((s, i) => `[${i + 1}] (${s.created_at}) ${s.summary}`)
             .join('\n\n');
 
         let insights = [];
@@ -942,6 +953,10 @@ app.get('/survey-insights', async (req, res) => {
 
         const generatedAt = new Date().toISOString();
         _surveyInsightsCache.set(userName, { insights, generatedAt, ts: Date.now() });
+        while (_surveyInsightsCache.size > _SURVEY_INSIGHTS_CACHE_MAX) {
+            const oldestKey = _surveyInsightsCache.keys().next().value;
+            _surveyInsightsCache.delete(oldestKey);
+        }
         res.json({ insights, generatedAt, cached: false });
     } catch (err) {
         console.error('⚠️ /survey-insights error:', err.message);
@@ -1337,6 +1352,202 @@ app.get('/scan/errors', _rl(5), async (_req, res) => {
     } catch (err) {
         console.error('❌ /scan/errors:', err.message);
         res.status(500).json({ error: 'scan failed', message: err.message });
+    }
+});
+
+// ─── POST /e2e/trigger — fire-and-forget e2e run ─────────────────────────────
+// Used by the mobile control center "run e2e now" quick action and by the
+// re-trigger automation when the last report's score drops sharply.
+app.post('/e2e/trigger', _rl(3), async (_req, res) => {
+    try {
+        const { runE2EAgent } = require('./agents/e2eAgent');
+        // Fire-and-forget so the HTTP response is fast — the agent persists
+        // its report when it finishes, which the next /control-center/events
+        // poll will surface as a new badge.
+        setImmediate(() => {
+            try { runE2EAgent('הרץ סקירת קצה', supabase, false, {}); }
+            catch (e) { console.error('e2e trigger run error:', e.message); }
+        });
+        res.json({ triggered: true, startedAt: new Date().toISOString() });
+    } catch (err) {
+        console.error('❌ /e2e/trigger:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── GET /control-center/events ──────────────────────────────────────────────
+// Aggregates live alerts + per-tab unread badge counts for the mobile control
+// center polling loop. Designed to be cheap (no LLM) so adaptive polling
+// can hit it every 15–60s without thrashing the server.
+//
+// Query params:
+//   since   ISO timestamp — alerts strictly newer than this are flagged "new"
+//   userName  Optional, used for the survey-reminder heuristic
+app.get('/control-center/events', async (req, res) => {
+    try {
+        const since = req.query.since ? new Date(req.query.since) : null;
+        const sinceMs = since && !isNaN(since.getTime()) ? since.getTime() : 0;
+        const userName = (req.query.userName || '').toString().trim();
+
+        const alerts = [];
+        const badges = { overview: 0, development: 0, agents: 0, insights: 0, surveys: 0 };
+
+        // 1) New e2e reports → insights tab badge + alert on score drop.
+        try {
+            const { data: reports } = await supabase
+                .from('e2e_reports')
+                .select('run_id, score, critical, high, created_at')
+                .order('created_at', { ascending: false })
+                .limit(5);
+            const rows = reports || [];
+            if (rows.length > 0) {
+                const latest = rows[0];
+                const latestTs = new Date(latest.created_at).getTime();
+                if (latestTs > sinceMs) {
+                    badges.insights += 1;
+                    const sev = (latest.critical || 0) > 0 ? 'urgent'
+                              : (latest.score || 100) < 60 ? 'warning' : 'info';
+                    alerts.push({
+                        id: `e2e:${latest.run_id}`,
+                        type: 'e2e_new_report',
+                        severity: sev,
+                        title: 'דוח בדיקות חדש',
+                        message: `Score ${latest.score ?? '?'} · 🔴 ${latest.critical || 0} · 🟠 ${latest.high || 0}`,
+                        tabHint: 'insights',
+                        actionHint: 'open_e2e_report',
+                        actionPayload: { runId: latest.run_id },
+                        createdAt: latest.created_at,
+                    });
+                }
+                // Score-drop automation: if newest score is >=15 below
+                // previous, suggest a re-run as an inline action.
+                if (rows.length >= 2) {
+                    const prev = rows[1];
+                    const drop = (prev.score || 0) - (latest.score || 0);
+                    if (drop >= 15) {
+                        alerts.push({
+                            id: `e2e_drop:${latest.run_id}`,
+                            type: 'e2e_score_drop',
+                            severity: 'warning',
+                            title: 'ירידה חדה ב-Score',
+                            message: `Score ירד מ-${prev.score} ל-${latest.score}. כדאי להריץ סקירה חוזרת.`,
+                            tabHint: 'insights',
+                            actionHint: 'rerun_e2e',
+                            createdAt: latest.created_at,
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('control-center events: e2e error:', e.message);
+        }
+
+        // 2) Quick-win proposals needing a draft — development tab.
+        try {
+            const backlogPath = require('path').join(__dirname, 'backlog.json');
+            const fs = require('fs');
+            if (fs.existsSync(backlogPath)) {
+                const data = JSON.parse(fs.readFileSync(backlogPath, 'utf8'));
+                const proposals = Array.isArray(data.proposals) ? data.proposals : [];
+                const quickWins = proposals
+                    .filter(p => p && p.status === 'proposal')
+                    .filter(p => (p.impact || 0) >= 7 && (p.effort || 99) <= 4)
+                    .slice(0, 3);
+                if (quickWins.length > 0) {
+                    badges.development += quickWins.length;
+                    quickWins.forEach(p => {
+                        alerts.push({
+                            id: `quickwin:${p.id}`,
+                            type: 'high_quickwin',
+                            severity: 'info',
+                            title: 'הצעת Quick-Win זמינה',
+                            message: `"${(p.title || '').slice(0, 60)}" — מומלץ לקדם לתכנון`,
+                            tabHint: 'development',
+                            actionHint: 'promote_proposal',
+                            actionPayload: { proposalId: p.id },
+                            createdAt: p.createdAt || new Date().toISOString(),
+                        });
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('control-center events: backlog error:', e.message);
+        }
+
+        // 3) Agent idle alert — heuristic: if today's chat count is 0
+        // by mid-day Jerusalem time, surface a nudge on the agents tab.
+        try {
+            const now = new Date();
+            const hourJlm = (now.getUTCHours() + 2) % 24; // rough JLM offset
+            const todayStart = new Date();
+            todayStart.setUTCHours(0, 0, 0, 0);
+            const { count } = await supabase
+                .from('chat_history')
+                .select('id', { count: 'exact', head: true })
+                .gte('timestamp', todayStart.toISOString());
+            if ((count || 0) === 0 && hourJlm >= 12) {
+                badges.agents += 1;
+                alerts.push({
+                    id: `idle:${todayStart.toISOString().slice(0, 10)}`,
+                    type: 'agent_idle',
+                    severity: 'info',
+                    title: 'שקט מוחלט היום',
+                    message: 'הסוכנים לא טופלו שום משימה היום. רוצה לפתוח שיחה?',
+                    tabHint: 'agents',
+                    actionHint: 'open_chat',
+                    createdAt: new Date().toISOString(),
+                });
+            }
+        } catch (e) {
+            console.error('control-center events: idle error:', e.message);
+        }
+
+        // 4) Survey reminder — last survey > 7 days ago.
+        try {
+            if (userName) {
+                const { data } = await supabase
+                    .from('user_surveys')
+                    .select('created_at')
+                    .eq('user_name', userName)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                const lastSurvey = data && data.length ? new Date(data[0].created_at).getTime() : 0;
+                const weekMs = 7 * 24 * 60 * 60 * 1000;
+                if (lastSurvey === 0 || Date.now() - lastSurvey > weekMs) {
+                    badges.surveys += 1;
+                    alerts.push({
+                        id: `survey:${userName}:${Math.floor(Date.now() / weekMs)}`,
+                        type: 'survey_reminder',
+                        severity: 'info',
+                        title: lastSurvey === 0 ? 'אין סקרים עדיין' : 'עבר שבוע מהסקר האחרון',
+                        message: 'סקר קצר עוזר לי להבין אותך טוב יותר.',
+                        tabHint: 'surveys',
+                        actionHint: 'start_survey',
+                        createdAt: new Date().toISOString(),
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('control-center events: survey error:', e.message);
+        }
+
+        // 5) Disabled agents → development/agents tab info.
+        try {
+            const { getAgentRegistry } = require('./services/agentRegistryService');
+            const disabled = getAgentRegistry().filter(a => a.status === 'disabled');
+            if (disabled.length > 0) {
+                badges.agents += disabled.length;
+            }
+        } catch (_) {}
+
+        res.json({
+            generatedAt: new Date().toISOString(),
+            alerts,
+            badges,
+        });
+    } catch (err) {
+        console.error('❌ /control-center/events:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 

@@ -2,7 +2,7 @@
 
 const express = require('express');
 const path = require('path');
-const { getAgentRegistry } = require('../services/agentRegistryService');
+const { getAgentRegistry, setAgentStatus } = require('../services/agentRegistryService');
 
 function detectCategory(text) {
   const t = text.toLowerCase();
@@ -53,6 +53,24 @@ function createAgentCenterRouter({ callGemma4 }) {
       res.json({ agents: getAgentRegistry() });
     } catch (err) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Enable/disable an agent. Toggles status if no explicit value sent.
+  router.post('/agents/:id/toggle', (req, res) => {
+    try {
+      const agentId = req.params.id;
+      const registry = getAgentRegistry();
+      const current = registry.find(a => a.id === agentId);
+      if (!current) return res.status(404).json({ error: 'agent not found' });
+      const explicit = req.body && typeof req.body.status === 'string' ? req.body.status : null;
+      const nextStatus = explicit
+        ? explicit
+        : (current.status === 'disabled' ? 'active' : 'disabled');
+      const override = setAgentStatus(agentId, nextStatus);
+      res.json({ id: agentId, status: nextStatus, updatedAt: override.updatedAt });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
     }
   });
 

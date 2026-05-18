@@ -97,4 +97,24 @@ describe('runMemoryAgent', () => {
         const result = await runMemoryAgent('זכור ש חמש', supabase);
         expect(result.answer).toContain('הייתה בעיה בשמירת הזיכרון');
     });
+
+    test('save memory: JSON with braces inside the content value is parsed correctly', async () => {
+        // Bug fix: lastIndexOf('{') would have found the inner { inside the string,
+        // returning invalid JSON. indexOf('{') finds the outermost { correctly.
+        callGemma4.mockResolvedValue('{"memoryContent":"[health] אלרגי ל{בוטנים} ול{שקדים}"}');
+        const supabase = makeSupabase();
+        const result = await runMemoryAgent('זכור ש אני אלרגי לבוטנים', supabase);
+        expect(supabase._chain.insert).toHaveBeenCalledWith([
+            { content: '[health] אלרגי ל{בוטנים} ול{שקדים}' }
+        ]);
+        expect(result.answer).toContain('שמרתי');
+    });
+
+    test('save memory: LLM preamble before JSON is skipped correctly', async () => {
+        // indexOf finds the first { regardless of preamble text
+        callGemma4.mockResolvedValue('הנה הזיכרון שלך: {"memoryContent":"[hobby] אוהב ריצה"}');
+        const supabase = makeSupabase();
+        const result = await runMemoryAgent('זכור ש אני אוהב ריצה', supabase);
+        expect(supabase._chain.insert).toHaveBeenCalledWith([{ content: '[hobby] אוהב ריצה' }]);
+    });
 });

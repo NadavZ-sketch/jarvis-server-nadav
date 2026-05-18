@@ -227,7 +227,11 @@ function detectMimeType(base64) {
     return 'image/jpeg';
 }
 
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB decoded
 async function callGeminiVision(prompt, imageBase64) {
+    if (imageBase64.length > Math.ceil(MAX_IMAGE_BYTES * 4 / 3)) {
+        throw new Error('Image too large (max 10 MB)');
+    }
     const response = await axios.post(GEMINI_URL, {
         contents: [{
             parts: [

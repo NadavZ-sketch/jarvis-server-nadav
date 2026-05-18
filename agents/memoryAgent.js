@@ -152,7 +152,7 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
         // Save a memory (explicit save keyword present)
         const aiText = await callGemma4(buildSavePrompt(userName) + userMessage, useLocal);
 
-        const lastOpen = aiText.lastIndexOf('{');
+        const lastOpen = aiText.indexOf('{');
         const lastClose = aiText.lastIndexOf('}');
 
         if (lastOpen === -1 || lastClose === -1) throw new Error('No JSON in memory agent response');

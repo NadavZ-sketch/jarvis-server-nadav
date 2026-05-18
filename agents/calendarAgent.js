@@ -112,7 +112,7 @@ Return ONLY valid JSON (no explanation):
 
 // ─── Auth URL generator ────────────────────────────────────────────────────────
 
-function buildAuthUrl(redirectUri) {
+function buildAuthUrl(redirectUri, state) {
     const params = new URLSearchParams({
         client_id: process.env.GOOGLE_CLIENT_ID,
         redirect_uri: redirectUri,
@@ -120,6 +120,7 @@ function buildAuthUrl(redirectUri) {
         scope: SCOPES,
         access_type: 'offline',
         prompt: 'consent',
+        ...(state && { state }),
     });
     return `${GOOGLE_AUTH_BASE}/auth?${params.toString()}`;
 }

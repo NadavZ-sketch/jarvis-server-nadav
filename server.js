@@ -56,6 +56,8 @@ const { runStocksAgent }      = require('./agents/stocksAgent');
 const { runTranslationAgent } = require('./agents/translationAgent');
 const { runMusicAgent }       = require('./agents/musicAgent');
 const { detectCapabilityGap, savePendingGap, handleConfirmation } = require('./agents/devTaskAgent');
+const { runOrchestratorAgent } = require('./agents/orchestratorAgent');
+const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
 const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
 const { createTasksRouter } = require('./routes/tasks');
@@ -68,6 +70,53 @@ const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
+
+// ─── Task auto-reminder pending ───────────────────────────────────────────────
+const TASK_REMINDER_PENDING = path.join(__dirname, 'task_reminder_pending.json');
+
+async function saveTaskReminderPending(data) {
+    await fs.promises.writeFile(TASK_REMINDER_PENDING, JSON.stringify(data, null, 2));
+}
+async function loadTaskReminderPending() {
+    try { return JSON.parse(await fs.promises.readFile(TASK_REMINDER_PENDING, 'utf8')); } catch { return null; }
+}
+async function clearTaskReminderPending() {
+    try { await fs.promises.unlink(TASK_REMINDER_PENDING); } catch { /* ok */ }
+}
+
+const TASK_REM_YES = /^(כן|אשר|בסדר|אוקי|יאללה|כן בבקשה|תזכיר|כן תזכיר)/i;
+const TASK_REM_NO  = /^(לא|לא צריך|לא עכשיו|דלג)/i;
+
+async function handleTaskReminderConfirmation(userMessage) {
+    const pending = await loadTaskReminderPending();
+    if (!pending) return null;
+
+    if (TASK_REM_YES.test(userMessage.trim())) {
+        const { taskContent, dueDate } = pending;
+        const reminderDate = new Date(dueDate);
+        reminderDate.setDate(reminderDate.getDate() - 1);
+        reminderDate.setHours(9, 0, 0, 0); // 09:00 one day before
+
+        const pad = n => String(n).padStart(2, '0');
+        const isoReminder = `${reminderDate.getFullYear()}-${pad(reminderDate.getMonth()+1)}-${pad(reminderDate.getDate())}T09:00:00+03:00`;
+
+        try {
+            await supabase.from('reminders').insert([{ text: `לסיים משימה: ${taskContent}`, scheduled_time: isoReminder }]);
+        } catch { /* ignore */ }
+
+        await clearTaskReminderPending();
+        const dateStr = reminderDate.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' });
+        return { answer: `✅ הגדרתי תזכורת ל${dateStr} בשעה 09:00 לסיים את: "${taskContent}"` };
+    }
+
+    if (TASK_REM_NO.test(userMessage.trim())) {
+        await clearTaskReminderPending();
+        return { answer: 'בסדר, לא הגדרתי תזכורת.' };
+    }
+
+    return null;
+}
+
 const policyAuditTrail = [];
 const consentLedger = new Map(); // userId:domain -> { approvedAt }
 
@@ -486,16 +535,18 @@ async function askJarvisHandler(req, res) {
         settings.userProfile = userProfile;
         const useLocal  = settings.useLocalModel === true;
 
-        // ── Dev task confirmation check (before routing) ──────────────────────
-        const gapConfirmResult = await handleConfirmation(userMessage);
-        if (gapConfirmResult) {
-            const answer = gapConfirmResult.answer;
-            await Promise.all([
-                saveChatMessage('user', userMessage, chatId),
-                saveChatMessage('jarvis', answer, chatId),
-            ]);
-            cacheInvalidate(`chatHistory:${chatId}`);
-            return res.json({ answer, audio: null, action: null, chatId });
+        // ── Confirmation checks (before routing) ──────────────────────────────
+        for (const confirmFn of [handleConfirmation, handleTaskReminderConfirmation]) {
+            const confirmResult = await confirmFn(userMessage);
+            if (confirmResult) {
+                const answer = confirmResult.answer;
+                await Promise.all([
+                    saveChatMessage('user', userMessage, chatId),
+                    saveChatMessage('jarvis', answer, chatId),
+                ]);
+                cacheInvalidate(`chatHistory:${chatId}`);
+                return res.json({ answer, audio: null, action: null, chatId });
+            }
         }
 
         // ── Routing ───────────────────────────────────────────────────────────
@@ -629,10 +680,27 @@ async function askJarvisHandler(req, res) {
             result = { answer: '🧪 מתחיל בדיקות קצה ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.', skipTts: true };
         } else if (agentName === 'factory') {
             result = await runAgentFactoryAgent(userMessage, supabase, useLocal);
+        } else if (agentName === 'calendar') {
+            result = await runCalendarAgent(userMessage, supabase, settings);
         } else {
-            // Try a dynamically-created custom agent, fall back to chat
-            result = await tryCustomAgent(agentName, userMessage, supabase, useLocal, settings)
-                  || await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
+            // ── Orchestrator: handle multi-intent requests before chat fallback ─
+            if (!imageBase64 && userMessage.length > 15) {
+                try {
+                    const orchResult = await runOrchestratorAgent(userMessage, supabase, useLocal, settings, chatHistory, longTermMemories);
+                    if (orchResult) {
+                        result = orchResult;
+                        console.log('🎭 Orchestrator handled multi-intent request');
+                    }
+                } catch (orchErr) {
+                    console.error('⚠️ Orchestrator error:', orchErr.message);
+                }
+            }
+
+            if (!result) {
+                // Try a dynamically-created custom agent, fall back to chat
+                result = await tryCustomAgent(agentName, userMessage, supabase, useLocal, settings)
+                      || await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
+            }
 
             // ── Capability gap detection (chat fallback only) ─────────────────
             if (!imageBase64) {
@@ -652,6 +720,11 @@ async function askJarvisHandler(req, res) {
             }
         }
         const tAgent = Date.now();
+
+        // ── Task auto-reminder: save pending state when task has due date ──────
+        if (agentName === 'task' && result.pendingAction?.type === 'auto_reminder') {
+            await saveTaskReminderPending(result.pendingAction).catch(() => {});
+        }
 
         let answer = result.answer || 'לא הצלחתי לגבש תשובה.';
         const action = result.action || null;
@@ -1099,6 +1172,60 @@ app.get('/today-message', async (_req, res) => {
 });
 
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
+
+// ─── Morning Briefing endpoint ────────────────────────────────────────────────
+app.get('/morning-briefing', async (_req, res) => {
+    try {
+        const nowJer = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+        const todayISO = `${nowJer.getFullYear()}-${String(nowJer.getMonth()+1).padStart(2,'0')}-${String(nowJer.getDate()).padStart(2,'0')}`;
+
+        // Try cached briefing first
+        try {
+            const { data } = await supabase.from('daily_briefings').select('content').eq('date', todayISO).single();
+            if (data?.content) return res.json({ briefing: data.content, cached: true, date: todayISO });
+        } catch { /* table may not exist or no row */ }
+
+        // Generate fresh
+        const briefing = await buildMorningBriefing();
+        res.json({ briefing, cached: false, date: todayISO });
+    } catch (err) {
+        console.error('GET /morning-briefing error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Google Calendar OAuth ────────────────────────────────────────────────────
+app.get('/auth/google/start', (_req, res) => {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+        return res.status(400).json({ error: 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not configured' });
+    }
+    const redirectUri = `${process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`}/auth/google/callback`;
+    const authUrl = buildAuthUrl(redirectUri);
+    res.redirect(authUrl);
+});
+
+app.get('/auth/google/callback', async (req, res) => {
+    const { code, error } = req.query;
+    if (error) return res.status(400).send(`OAuth error: ${error}`);
+    if (!code) return res.status(400).send('No code received');
+    try {
+        const redirectUri = `${process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`}/auth/google/callback`;
+        const tokenRes = await require('axios').post('https://oauth2.googleapis.com/token', {
+            client_id: process.env.GOOGLE_CLIENT_ID,
+            client_secret: process.env.GOOGLE_CLIENT_SECRET,
+            code,
+            grant_type: 'authorization_code',
+            redirect_uri: redirectUri,
+        });
+        const tokenData = tokenRes.data;
+        // Store refresh token in user_profiles
+        await supabase.from('user_profiles').upsert([{ id: 'default', google_calendar_token: JSON.stringify(tokenData) }], { onConflict: 'id' });
+        res.send('<h2>✅ יומן Google חובר בהצלחה! אפשר לסגור את החלון.</h2>');
+    } catch (err) {
+        console.error('Google OAuth callback error:', err.message);
+        res.status(500).send(`OAuth failed: ${err.message}`);
+    }
+});
 
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
@@ -1819,25 +1946,62 @@ async function enqueueNotification(text) {
     }]);
 }
 
+// ─── Morning briefing builder ─────────────────────────────────────────────────
+
+async function buildMorningBriefing() {
+    const nowJer = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+    const todayISO = `${nowJer.getFullYear()}-${String(nowJer.getMonth()+1).padStart(2,'0')}-${String(nowJer.getDate()).padStart(2,'0')}`;
+    const dayName = nowJer.toLocaleDateString('he-IL', { weekday: 'long', timeZone: 'Asia/Jerusalem' });
+
+    const dayStart = new Date(nowJer); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd   = new Date(nowJer); dayEnd.setHours(23, 59, 59, 999);
+
+    const [{ data: pendingTasks }, { data: todayReminders }, { data: dueTodayTasks }] = await Promise.all([
+        supabase.from('tasks').select('id, content, priority').eq('done', false).order('created_at', { ascending: true }).limit(10),
+        supabase.from('reminders').select('text, scheduled_time').eq('fired', false)
+            .gte('scheduled_time', dayStart.toISOString())
+            .lt('scheduled_time', dayEnd.toISOString())
+            .order('scheduled_time', { ascending: true }),
+        supabase.from('tasks').select('content, priority, due_date').eq('done', false).eq('due_date', todayISO),
+    ]);
+
+    let briefing = `🌅 *בוקר טוב! ${dayName}*\n`;
+
+    if (dueTodayTasks?.length > 0) {
+        briefing += `\n📅 *משימות ליום זה (${dueTodayTasks.length}):*\n`;
+        dueTodayTasks.forEach((t, i) => {
+            const prio = t.priority === 'high' ? ' 🔴' : '';
+            briefing += `${i + 1}. ${t.content}${prio}\n`;
+        });
+    } else if (pendingTasks?.length > 0) {
+        briefing += `\n📋 יש לך ${pendingTasks.length} משימות פתוחות.`;
+        const high = pendingTasks.filter(t => t.priority === 'high');
+        if (high.length > 0) briefing += ` ${high.length} דחופות 🔴`;
+    } else {
+        briefing += `\n✅ אין משימות פתוחות — יום נקי!`;
+    }
+
+    if (todayReminders?.length > 0) {
+        briefing += `\n\n⏰ *תזכורות להיום (${todayReminders.length}):*\n`;
+        todayReminders.slice(0, 5).forEach(r => {
+            const timeStr = new Date(r.scheduled_time).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+            briefing += `• ${r.text} — ${timeStr}\n`;
+        });
+    }
+
+    // Store in Supabase daily_briefings table (best-effort)
+    try {
+        await supabase.from('daily_briefings').upsert([{ date: todayISO, content: briefing }], { onConflict: 'date' });
+    } catch { /* table may not exist yet */ }
+
+    return briefing;
+}
+
 // Morning briefing — 7:00 AM Jerusalem
 if (!isTestEnv) cron.schedule('0 7 * * *', async () => {
     try {
-        const [{ data: tasks }, { data: todayReminders }] = await Promise.all([
-            supabase.from('tasks').select('id'),
-            supabase
-                .from('reminders')
-                .select('id')
-                .eq('fired', false)
-                .gte('scheduled_time', (() => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })); d.setHours(0, 0, 0, 0); return d.toISOString(); })())
-                .lt('scheduled_time',  (() => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })); d.setHours(23, 59, 59, 999); return d.toISOString(); })()),
-        ]);
-
-        const dayName = new Date().toLocaleDateString('he-IL', { weekday: 'long', timeZone: 'Asia/Jerusalem' });
-        let text = `בוקר טוב! ${dayName} 🌅`;
-        if (tasks?.length)          text += ` יש לך ${tasks.length} משימות פתוחות.`;
-        if (todayReminders?.length) text += ` ${todayReminders.length} תזכורות להיום.`;
-
-        await enqueueNotification(text);
+        const briefingText = await buildMorningBriefing();
+        await enqueueNotification(briefingText);
         console.log('🌅 Morning briefing queued');
     } catch (err) {
         console.error('Morning briefing error:', err.message);

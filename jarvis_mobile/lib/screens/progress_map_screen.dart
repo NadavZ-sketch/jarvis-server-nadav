@@ -14,6 +14,40 @@ import 'survey_screen.dart';
 
 enum ControlCenterTab { overview, development, agents, insights, surveys }
 
+class _CcAlert {
+  final String id;
+  final String type;
+  final String severity; // info | warning | urgent
+  final String title;
+  final String message;
+  final String? tabHint;
+  final String? actionHint;
+  final Map<String, dynamic> actionPayload;
+  final String createdAt;
+  const _CcAlert({
+    required this.id,
+    required this.type,
+    required this.severity,
+    required this.title,
+    required this.message,
+    this.tabHint,
+    this.actionHint,
+    this.actionPayload = const {},
+    required this.createdAt,
+  });
+  factory _CcAlert.fromJson(Map<String, dynamic> j) => _CcAlert(
+        id: j['id']?.toString() ?? '',
+        type: j['type']?.toString() ?? 'info',
+        severity: j['severity']?.toString() ?? 'info',
+        title: j['title']?.toString() ?? '',
+        message: j['message']?.toString() ?? '',
+        tabHint: j['tabHint']?.toString(),
+        actionHint: j['actionHint']?.toString(),
+        actionPayload: Map<String, dynamic>.from(j['actionPayload'] ?? const {}),
+        createdAt: j['createdAt']?.toString() ?? '',
+      );
+}
+
 class ProgressMapScreen extends StatefulWidget {
   final AppSettings settings;
   final void Function(String)? onSwitchToChat;
@@ -180,7 +214,7 @@ String _priorityLabel(String p) =>
     p == 'high' ? '🔴 גבוה' : p == 'low' ? '🟢 נמוך' : '🟡 בינוני';
 
 class _ProgressMapScreenState extends State<ProgressMapScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final TabController _tabController;
 
   static const _kCatMap = {
@@ -259,27 +293,235 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   bool _loadingSurveys = true;
   String? _surveyError;
 
+  // Live control-center events (alerts + per-tab badges)
+  List<_CcAlert> _alerts = const [];
+  Map<ControlCenterTab, int> _tabBadges = const {};
+  final Set<String> _dismissedAlertIds = <String>{};
+  String? _eventsCursorIso;            // last seen alert createdAt
+  Timer? _pollTimer;
+  Duration _pollInterval = const Duration(seconds: 15);
+  int _pollNoChangeStreak = 0;         // adaptive backoff signal
+  bool _pollInFlight = false;
+  bool _isForeground = true;
+  // Per-tile in-flight set for the agent enable/disable quick action.
+  final Set<String> _togglingAgents = <String>{};
+  bool _triggeringE2e = false;
+  bool _scanningErrors = false;
+
+  // Adaptive polling cadence — keeps the UI feeling live while idle
+  // sessions ease off to save battery and server load.
+  static const Duration _kPollMin = Duration(seconds: 15);
+  static const Duration _kPollIdle = Duration(seconds: 30);
+  static const Duration _kPollMax = Duration(seconds: 60);
+  static const int _kIdleStreakStep1 = 3;  // after 3 no-change polls → idle
+  static const int _kIdleStreakStep2 = 6;  // after 6 → max backoff
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(
       length: ControlCenterTab.values.length,
       vsync: this,
       initialIndex: widget.initialTab.index,
     );
-    _loadAll();
+    _loadAll().whenComplete(() {
+      // Kick off the live poller after the initial load so the first
+      // events fetch carries a real `since` cursor.
+      _schedulePoll(initial: true);
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
     _tabController.dispose();
     _retryTimer?.cancel();
     _copyTimer?.cancel();
     _addCtrl.dispose();
     _promptCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final isForeground = state == AppLifecycleState.resumed;
+    if (isForeground == _isForeground) return;
+    _isForeground = isForeground;
+    if (isForeground) {
+      // Reset cadence on resume — the user is engaged again.
+      _pollNoChangeStreak = 0;
+      _pollInterval = _kPollMin;
+      _schedulePoll(immediate: true);
+    } else {
+      _pollTimer?.cancel();
+    }
+  }
+
+  // ── Adaptive polling ──────────────────────────────────────────────────────
+
+  void _schedulePoll({bool initial = false, bool immediate = false}) {
+    _pollTimer?.cancel();
+    if (!mounted || !_isForeground) return;
+    final delay = immediate
+        ? const Duration(milliseconds: 100)
+        : (initial ? _kPollMin : _pollInterval);
+    _pollTimer = Timer(delay, _pollEvents);
+  }
+
+  Future<void> _pollEvents() async {
+    if (!mounted || _pollInFlight) {
+      _schedulePoll();
+      return;
+    }
+    _pollInFlight = true;
+    try {
+      final qp = <String, String>{};
+      if (_eventsCursorIso != null) qp['since'] = _eventsCursorIso!;
+      final userName = widget.settings.userName.trim();
+      if (userName.isNotEmpty) qp['userName'] = userName;
+      final uri = Uri.parse('$_base/control-center/events')
+          .replace(queryParameters: qp.isEmpty ? null : qp);
+      final res = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      if (res.statusCode != 200) {
+        _bumpNoChangeStreak();
+        _schedulePoll();
+        return;
+      }
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final rawAlerts = List<Map<String, dynamic>>.from(body['alerts'] ?? const []);
+      final newAlerts = rawAlerts.map(_CcAlert.fromJson).toList();
+      final newBadges = _decodeBadges(body['badges']);
+      final newCursor = body['generatedAt']?.toString();
+
+      // Detect whether anything actually changed since last poll.
+      final changed = !_alertsListEquals(_alerts, newAlerts) || !_badgesEqual(_tabBadges, newBadges);
+      // Surface a snackbar for newly-arrived urgent alerts.
+      final urgentNew = newAlerts.where((a) =>
+          a.severity == 'urgent' &&
+          !_dismissedAlertIds.contains(a.id) &&
+          !_alerts.any((p) => p.id == a.id));
+      for (final a in urgentNew) {
+        _showSnack('⚠️ ${a.title}: ${a.message}', duration: const Duration(seconds: 5));
+      }
+
+      setState(() {
+        _alerts = newAlerts;
+        _tabBadges = newBadges;
+        if (newCursor != null) _eventsCursorIso = newCursor;
+      });
+
+      if (changed) {
+        _pollNoChangeStreak = 0;
+        _pollInterval = _kPollMin;
+      } else {
+        _bumpNoChangeStreak();
+      }
+    } catch (_) {
+      _bumpNoChangeStreak();
+    } finally {
+      _pollInFlight = false;
+      _schedulePoll();
+    }
+  }
+
+  void _bumpNoChangeStreak() {
+    _pollNoChangeStreak++;
+    if (_pollNoChangeStreak >= _kIdleStreakStep2) {
+      _pollInterval = _kPollMax;
+    } else if (_pollNoChangeStreak >= _kIdleStreakStep1) {
+      _pollInterval = _kPollIdle;
+    }
+  }
+
+  Map<ControlCenterTab, int> _decodeBadges(dynamic raw) {
+    if (raw is! Map) return const {};
+    final out = <ControlCenterTab, int>{};
+    raw.forEach((k, v) {
+      if (v is! num) return;
+      final key = k.toString();
+      final tab = ControlCenterTab.values.firstWhere(
+        (t) => t.name == key,
+        orElse: () => ControlCenterTab.overview,
+      );
+      if (tab.name == key) out[tab] = v.toInt();
+    });
+    return out;
+  }
+
+  bool _alertsListEquals(List<_CcAlert> a, List<_CcAlert> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
+  }
+
+  bool _badgesEqual(Map<ControlCenterTab, int> a, Map<ControlCenterTab, int> b) {
+    if (a.length != b.length) return false;
+    for (final e in a.entries) {
+      if (b[e.key] != e.value) return false;
+    }
+    return true;
+  }
+
+  List<_CcAlert> get _visibleAlerts =>
+      _alerts.where((a) => !_dismissedAlertIds.contains(a.id)).toList();
+
+  void _dismissAlert(String id) {
+    setState(() => _dismissedAlertIds.add(id));
+  }
+
+  Future<void> _runAlertAction(_CcAlert alert) async {
+    switch (alert.actionHint) {
+      case 'rerun_e2e':
+        await _triggerE2eRun();
+        _dismissAlert(alert.id);
+        break;
+      case 'open_e2e_report':
+        _tabController.animateTo(ControlCenterTab.insights.index);
+        _dismissAlert(alert.id);
+        break;
+      case 'promote_proposal':
+        final pid = alert.actionPayload['proposalId']?.toString();
+        if (pid != null && pid.isNotEmpty) {
+          final p = _proposals.firstWhere(
+            (x) => x['id']?.toString() == pid,
+            orElse: () => const <String, dynamic>{},
+          );
+          if (p.isNotEmpty) {
+            _tabController.animateTo(ControlCenterTab.development.index);
+            await _promoteProposalQuick(p);
+            _dismissAlert(alert.id);
+            break;
+          }
+        }
+        _tabController.animateTo(ControlCenterTab.development.index);
+        _dismissAlert(alert.id);
+        break;
+      case 'start_survey':
+        _tabController.animateTo(ControlCenterTab.surveys.index);
+        await _startSurveyNow();
+        _dismissAlert(alert.id);
+        break;
+      case 'open_chat':
+        widget.onSwitchToChat?.call('');
+        _dismissAlert(alert.id);
+        break;
+      default:
+        if (alert.tabHint != null) {
+          final tab = ControlCenterTab.values.firstWhere(
+            (t) => t.name == alert.tabHint,
+            orElse: () => ControlCenterTab.overview,
+          );
+          _tabController.animateTo(tab.index);
+        }
+        _dismissAlert(alert.id);
+    }
   }
 
   // ── Computed ──────────────────────────────────────────────────────────────
@@ -545,6 +787,105 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     } catch (_) {
       if (mounted) _showSnack('שגיאת רשת');
     }
+  }
+
+  // ── Quick actions ─────────────────────────────────────────────────────────
+
+  Future<void> _toggleAgent(Map<String, dynamic> agent) async {
+    final id = agent['id']?.toString() ?? '';
+    if (id.isEmpty || _togglingAgents.contains(id)) return;
+    setState(() => _togglingAgents.add(id));
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/progress-map/agents/$id/toggle'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({}),
+      ).timeout(const Duration(seconds: 8));
+      if (!mounted) return;
+      if (res.statusCode != 200) {
+        _showSnack('שגיאה בשינוי סטטוס סוכן');
+        return;
+      }
+      final d = jsonDecode(res.body);
+      final newStatus = d['status']?.toString() ?? agent['status']?.toString() ?? 'active';
+      setState(() {
+        final idx = _agents.indexWhere((a) => a['id']?.toString() == id);
+        if (idx != -1) _agents[idx] = {..._agents[idx], 'status': newStatus};
+      });
+      _showSnack(newStatus == 'disabled' ? 'הסוכן הושבת' : 'הסוכן הופעל');
+    } catch (_) {
+      if (mounted) _showSnack('שגיאת רשת');
+    } finally {
+      if (mounted) setState(() => _togglingAgents.remove(id));
+    }
+  }
+
+  Future<void> _triggerE2eRun() async {
+    if (_triggeringE2e) return;
+    setState(() => _triggeringE2e = true);
+    try {
+      final res = await http
+          .post(Uri.parse('$_base/e2e/trigger'), headers: {'Content-Type': 'application/json'})
+          .timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        _showSnack('בדיקות e2e יצאו לדרך — התוצאות יופיעו בטאב "מידע"');
+        // Reset polling cadence so the new report shows up quickly.
+        _pollNoChangeStreak = 0;
+        _pollInterval = _kPollMin;
+        _schedulePoll(immediate: true);
+      } else {
+        _showSnack('שגיאה בהפעלת בדיקות e2e');
+      }
+    } catch (_) {
+      if (mounted) _showSnack('שגיאת רשת');
+    } finally {
+      if (mounted) setState(() => _triggeringE2e = false);
+    }
+  }
+
+  Future<void> _scanErrorsNow() async {
+    if (_scanningErrors) return;
+    setState(() => _scanningErrors = true);
+    try {
+      final res = await http
+          .get(Uri.parse('$_base/scan/errors'))
+          .timeout(const Duration(seconds: 30));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final d = jsonDecode(res.body);
+        final findings = (d['findings'] is List) ? (d['findings'] as List).length : 0;
+        _showSnack(findings == 0
+            ? 'הסריקה הושלמה — לא נמצאו שגיאות'
+            : 'הסריקה הושלמה — $findings ממצאים');
+      } else if (res.statusCode == 429) {
+        _showSnack('יותר מדי סריקות. נסה שוב בעוד דקה.');
+      } else {
+        _showSnack('סריקה נכשלה');
+      }
+    } catch (_) {
+      if (mounted) _showSnack('שגיאת רשת');
+    } finally {
+      if (mounted) setState(() => _scanningErrors = false);
+    }
+  }
+
+  Future<void> _promoteProposalQuick(Map<String, dynamic> proposal) async {
+    final status = proposal['status']?.toString() ?? _PS.proposal;
+    final next = status == _PS.proposal
+        ? 'activate'
+        : status == _PS.draftPlan
+            ? 'activate'
+            : status == _PS.active
+                ? 'confirm'
+                : status == _PS.validation
+                    ? 'confirm'
+                    : null;
+    if (next == null) {
+      _showSnack('ההצעה כבר הושלמה');
+      return;
+    }
+    await _runProposalAction(proposal, next);
   }
 
   Future<void> _loadAgents() async {
@@ -947,25 +1288,139 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             unselectedLabelColor: JC.textMuted,
             labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13),
             unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
-            tabs: const [
-              Tab(text: 'סקירה'),
-              Tab(text: 'פיתוח'),
-              Tab(text: 'סוכנים'),
-              Tab(text: 'מידע'),
-              Tab(text: 'סקרים'),
+            tabs: [
+              _tabWithBadge('סקירה', ControlCenterTab.overview),
+              _tabWithBadge('פיתוח', ControlCenterTab.development),
+              _tabWithBadge('סוכנים', ControlCenterTab.agents),
+              _tabWithBadge('מידע', ControlCenterTab.insights),
+              _tabWithBadge('סקרים', ControlCenterTab.surveys),
             ],
           ),
         ),
-        body: TabBarView(
-          controller: _tabController,
+        body: Column(
           children: [
-            _buildOverviewTab(),
-            _buildDevelopmentTab(),
-            _buildAgentsTab(),
-            _buildInsightsTab(),
-            _buildSurveysTab(),
+            _buildAlertsBanner(),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildOverviewTab(),
+                  _buildDevelopmentTab(),
+                  _buildAgentsTab(),
+                  _buildInsightsTab(),
+                  _buildSurveysTab(),
+                ],
+              ),
+            ),
           ],
         ),
+    );
+  }
+
+  Widget _tabWithBadge(String label, ControlCenterTab tab) {
+    final count = _tabBadges[tab] ?? 0;
+    if (count <= 0) return Tab(text: label);
+    return Tab(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEF4444),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            constraints: const BoxConstraints(minWidth: 18),
+            child: Text(
+              count > 9 ? '9+' : count.toString(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 10, fontFamily: 'Heebo', fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAlertsBanner() {
+    final visible = _visibleAlerts;
+    if (visible.isEmpty) return const SizedBox.shrink();
+    final alert = visible.first;
+    final color = alert.severity == 'urgent'
+        ? const Color(0xFFEF4444)
+        : alert.severity == 'warning'
+            ? const Color(0xFFF59E0B)
+            : JC.blue400;
+    final icon = alert.severity == 'urgent'
+        ? Icons.error_outline
+        : alert.severity == 'warning'
+            ? Icons.warning_amber_rounded
+            : Icons.notifications_active_outlined;
+    final actionLabel = switch (alert.actionHint) {
+      'rerun_e2e' => 'הרץ שוב',
+      'open_e2e_report' => 'פתח דוח',
+      'promote_proposal' => 'קדם',
+      'start_survey' => 'פתח סקר',
+      'open_chat' => 'פתח שיחה',
+      _ => 'פתח',
+    };
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _runAlertAction(alert),
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.45), width: 0.8),
+          ),
+          child: Row(children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(alert.title,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(color: color, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13)),
+                  const SizedBox(height: 2),
+                  Text(alert.message,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.35)),
+                  if (visible.length > 1) ...[
+                    const SizedBox(height: 2),
+                    Text('עוד ${visible.length - 1} התראות',
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                  ],
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: () => _runAlertAction(alert),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(40, 32),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                foregroundColor: color,
+              ),
+              child: Text(actionLabel, style: const TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w700)),
+            ),
+            IconButton(
+              tooltip: 'הסתר',
+              onPressed: () => _dismissAlert(alert.id),
+              icon: const Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            ),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -983,6 +1438,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildOverviewTab() => _tabListView([
         _buildStatusBar(),
+        const SizedBox(height: 10),
+        _buildOverviewQuickActions(),
         const SizedBox(height: 14),
         _buildMetrics(),
         const SizedBox(height: 14),
@@ -992,6 +1449,44 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         const SizedBox(height: 8),
         _buildInnovationGraphCard(),
       ]);
+
+  Widget _buildOverviewQuickActions() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _triggeringE2e ? null : _triggerE2eRun,
+            icon: _triggeringE2e
+                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400))
+                : const Icon(Icons.play_circle_outline_rounded, size: 18),
+            label: const Text('הרץ e2e עכשיו', style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: JC.blue400,
+              side: const BorderSide(color: JC.blue400, width: 0.8),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _scanningErrors ? null : _scanErrorsNow,
+            icon: _scanningErrors
+                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFF59E0B)))
+                : const Icon(Icons.bug_report_outlined, size: 18),
+            label: const Text('סרוק שגיאות', style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFF59E0B),
+              side: const BorderSide(color: Color(0xFFF59E0B), width: 0.8),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildDevelopmentTab() => _tabListView([
         if (!_loadingFeatures && _done.isNotEmpty) ...[
@@ -1020,6 +1515,39 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       ]);
 
   Widget _buildInsightsTab() => _tabListView([
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => widget.onSwitchToChat?.call('צור משימה חדשה'),
+              icon: const Icon(Icons.add_task_rounded, size: 18),
+              label: const Text('צור משימה', style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: JC.blue400,
+                side: const BorderSide(color: JC.blue400, width: 0.8),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                _tabController.animateTo(ControlCenterTab.surveys.index);
+                _startSurveyNow();
+              },
+              icon: const Icon(Icons.poll_outlined, size: 18),
+              label: const Text('סקר חדש', style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF22C55E),
+                side: const BorderSide(color: Color(0xFF22C55E), width: 0.8),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 14),
         _sectionTitle('👤 מה למדנו עליך'),
         const SizedBox(height: 8),
         Container(
@@ -2812,58 +3340,93 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   }
 
   Widget _buildAgentTile(Map<String, dynamic> agent) {
+    final id = (agent['id'] ?? '').toString();
     final nameHe = (agent['nameHe'] ?? agent['name'] ?? agent['id'] ?? '').toString();
     final role = (agent['role'] ?? '').toString();
     final risk = (agent['risk'] ?? 'low').toString();
     final mode = (agent['mode'] ?? '').toString();
     final autonomy = (agent['autonomy'] ?? 0) as num;
     final status = (agent['status'] ?? 'active').toString();
-    return GestureDetector(
-      onTap: () => _showAgentDetails(agent),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: JC.bg,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: JC.border, width: 0.7),
-        ),
-        child: Row(
-          textDirection: TextDirection.rtl,
-          children: [
-            Container(
-              width: 8, height: 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: status == 'active' ? const Color(0xFF22C55E) : JC.textMuted,
-              ),
+    final isDisabled = status == 'disabled';
+    final isToggling = _togglingAgents.contains(id);
+    return Opacity(
+      opacity: isDisabled ? 0.55 : 1.0,
+      child: GestureDetector(
+        onTap: () => _showAgentDetails(agent),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            color: JC.bg,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isDisabled ? JC.textMuted.withValues(alpha: 0.4) : JC.border,
+              width: 0.7,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(nameHe,
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
-                  if (role.isNotEmpty)
-                    Text(role,
+          ),
+          child: Row(
+            textDirection: TextDirection.rtl,
+            children: [
+              Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isDisabled
+                      ? JC.textMuted
+                      : status == 'active'
+                          ? const Color(0xFF22C55E)
+                          : JC.blue400,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(nameHe,
                         textAlign: TextAlign.right,
-                        style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
-                        overflow: TextOverflow.ellipsis),
+                        style: TextStyle(
+                          color: JC.textPrimary,
+                          fontFamily: 'Heebo',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          decoration: isDisabled ? TextDecoration.lineThrough : null,
+                        )),
+                    if (role.isNotEmpty)
+                      Text(role,
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+                          overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Wrap(
+                spacing: 4,
+                children: [
+                  _badge(_riskLabel(risk), _riskColor(risk)),
+                  if (mode.isNotEmpty) _badge(mode, JC.blue400),
+                  _badge('${autonomy.toInt()}%', JC.textMuted),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            Wrap(
-              spacing: 4,
-              children: [
-                _badge(_riskLabel(risk), _riskColor(risk)),
-                if (mode.isNotEmpty) _badge(mode, JC.blue400),
-                _badge('${autonomy.toInt()}%', JC.textMuted),
-              ],
-            ),
-          ],
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 28, height: 28,
+                child: isToggling
+                    ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400))
+                    : IconButton(
+                        padding: EdgeInsets.zero,
+                        tooltip: isDisabled ? 'הפעל סוכן' : 'השבת סוכן',
+                        onPressed: () => _toggleAgent(agent),
+                        icon: Icon(
+                          isDisabled ? Icons.play_circle_outline : Icons.pause_circle_outline,
+                          size: 20,
+                          color: isDisabled ? const Color(0xFF22C55E) : JC.textMuted,
+                        ),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

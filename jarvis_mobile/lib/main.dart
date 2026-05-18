@@ -388,7 +388,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
             ),
             child: Column(
               crossAxisAlignment:
-                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  isUser ? CrossAxisAlignment.start : CrossAxisAlignment.start,
               children: [
                 Text(
                   widget.msg['text']!,

@@ -199,7 +199,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                           ),
                                           child: Column(
                                             crossAxisAlignment:
-                                                CrossAxisAlignment.end,
+                                                CrossAxisAlignment.start,
                                             children: [
                                               if (title.isNotEmpty) ...[
                                                 Text(

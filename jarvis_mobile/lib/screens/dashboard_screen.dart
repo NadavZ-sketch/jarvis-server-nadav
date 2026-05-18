@@ -350,7 +350,7 @@ class _DashTile extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
                     textDirection: TextDirection.rtl,
@@ -497,7 +497,7 @@ class _QuickActions extends StatelessWidget {
             bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title,
                 style: const TextStyle(

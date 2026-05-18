@@ -155,7 +155,7 @@ class _TasksScreenState extends State<TasksScreen> {
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('משימה חדשה',
                   style: TextStyle(color: JC.textPrimary, fontSize: 16,
@@ -470,7 +470,7 @@ class _TaskItemState extends State<_TaskItem> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         title,

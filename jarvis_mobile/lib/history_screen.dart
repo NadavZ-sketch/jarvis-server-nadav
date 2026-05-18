@@ -153,7 +153,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         children: [
                           Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   preview,
@@ -318,7 +318,7 @@ class _SessionDetailScreenState extends State<_SessionDetailScreen> {
               ),
               child: Column(
                 crossAxisAlignment:
-                    isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                    isUser ? CrossAxisAlignment.start : CrossAxisAlignment.start,
                 children: [
                   Text(
                     msg['text'] as String? ?? '',

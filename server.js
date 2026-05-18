@@ -1181,7 +1181,7 @@ app.get('/morning-briefing', async (_req, res) => {
 
         // Try cached briefing first
         try {
-            const { data } = await supabase.from('daily_briefings').select('content').eq('date', todayISO).single();
+            const { data } = await supabase.from('daily_briefings').select('content').eq('briefing_date', todayISO).single();
             if (data?.content) return res.json({ briefing: data.content, cached: true, date: todayISO });
         } catch { /* table may not exist or no row */ }
 
@@ -1991,7 +1991,7 @@ async function buildMorningBriefing() {
 
     // Store in Supabase daily_briefings table (best-effort)
     try {
-        await supabase.from('daily_briefings').upsert([{ date: todayISO, content: briefing }], { onConflict: 'date' });
+        await supabase.from('daily_briefings').upsert([{ briefing_date: todayISO, content: briefing }], { onConflict: 'briefing_date' });
     } catch { /* table may not exist yet */ }
 
     return briefing;

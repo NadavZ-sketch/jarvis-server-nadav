@@ -7,191 +7,83 @@ description: Full code review for the Jarvis server. Covers test coverage gaps, 
 
 ## Instructions
 
-Run all five review passes in order. Report findings in Hebrew. Use the severity scale:
-- 🔴 **קריטי** — blocks merge
-- 🟠 **גבוה** — must fix before merge
-- 🟡 **בינוני** — should fix soon
-- 🔵 **נמוך** — nice to have
+Run the automated review scripts, interpret their output, and produce a consolidated Hebrew report.
 
 ---
 
-### Step 1: Collect Changed Files
+### Step 1: Collect context
 
 ```bash
-git diff origin/main...HEAD --name-only
 git diff origin/main...HEAD --stat
 ```
 
-List every changed file and its category (agent / service / controller / route / test / config).
-
 ---
 
-### Step 2: Test Coverage Analysis
+### Step 2: Run the three review scripts
 
-**2a. Run coverage:**
+Run all three in parallel:
+
 ```bash
-npx jest --coverage --coverageReporters=text 2>&1 | grep -E "(PASS|FAIL|%|Uncovered)"
+node scripts/review-coverage.js 2>&1
+node scripts/review-security.js 2>&1
+node scripts/review-logic.js 2>&1
 ```
 
-**2b. For each changed non-test file, check:**
-- Does a corresponding test file exist in `tests/unit/` or `tests/integration/`?
-- What is the line/branch coverage percentage?
-- Which lines are uncovered (from the `Uncovered Line #s` column)?
-
-**2c. Flag these patterns as coverage gaps:**
-- New exported function with 0 test cases
-- New branch (`if/else`, `try/catch`) with no test covering the alternate path
-- New error path (`catch (err)`) with no test that triggers it
-- Changed JSON parsing logic with no test for malformed input
-- Changed LLM prompt handling with no test for unexpected LLM output
-
-**2d. Report format:**
-```
-📊 כיסוי בדיקות
-- agents/myAgent.js: 45% שורות (55% ענפים) — חסרות בדיקות לשורות: 34-67, 89
-- ❌ אין קובץ בדיקה ל-services/newService.js
-- ⚠️  פונקציה חדשה `runFoo()` ב-agents/foo.js — אין בדיקה
-```
+Each script exits with code 0 (clean) or 1 (findings that block merge).
 
 ---
 
-### Step 3: Security Scan
+### Step 3: Interpret results
 
-For every changed file, check the following. Report file:line for each finding.
+Use this severity scale in the final report:
+- 🔴 **קריטי** — blocks merge immediately
+- 🟠 **גבוה** — must fix before merge
+- 🟡 **בינוני** — should fix in a follow-up PR
+- 🔵 **נמוך** — nice to have
 
-**3a. Injection**
-- User input passed directly to `require()`, `eval()`, `new Function()`, or `child_process`
-- User input used to construct file paths without `path.resolve()` + boundary check
-- Template literals with user data passed to shell commands
-- LLM output written to filesystem without sanitization (especially in `agentFactoryAgent.js`)
+**Coverage script output:**
+- 🟠 = קובץ חדש עם כיסוי נמוך מ-30%
+- 🟡 = קובץ קיים עם כיסוי מתחת לסף (60% שורות / 50% ענפים / 60% פונקציות)
+- If a changed file has no test file at all → flag as 🟠 and recommend creating one
 
-**3b. Path Traversal**
-- `path.join()` or `path.resolve()` with user-controlled segments
-- Missing check: `resolvedPath.startsWith(SAFE_DIR + path.sep)`
-- `require()` with a path that comes from a database, file, or user input
+**Security script output:**
+- Each finding includes `[RULE-ID] file:line` — include these in the report
+- If exit code is 1, the PR **must not merge** until critical/high findings are resolved
 
-**3c. Authentication & Authorization**
-- New endpoint without `requirePolicy()` middleware on sensitive actions
-- WebSocket handler accepting user-supplied IDs without validation
-- OAuth flows missing `state` parameter validation
-- Hardcoded credentials or test tokens that might reach production
-
-**3d. Information Disclosure**
-- `res.status(500).json({ error: err.message })` — leaks internal error details
-- Stack traces or file paths in responses
-- API keys or secrets in log output (`console.log` with env vars)
-
-**3e. CORS & CSRF**
-- New `app.use(cors({ origin: '*' }))` or similar wildcard
-- State-changing endpoints (POST/PUT/DELETE) without CSRF protection
-- WebSocket server created without `verifyClient` origin check
-
-**3f. Rate Limiting**
-- New public endpoint without `_rl()` rate limiter applied
-- Existing limiter with `max` > 30/min on sensitive actions (email, auth, scan)
-
-**3g. Secrets in Code**
-- Hardcoded API keys, passwords, or tokens (even test values)
-- `.env` file accidentally committed
-- Credentials in comments or test fixtures
-
-**3h. Report format:**
-```
-🔒 אבטחה
-🔴 agents/foo.js:42 — path traversal: filePath ממשתמש עובר ל-require() ללא בדיקת גבול
-🟠 server.js:310 — endpoint POST /new-action חסר requirePolicy()
-🟡 agents/bar.js:88 — err.message נחשף לקליינט
-```
+**Logic script output:**
+- Flags missing agent wiring, wrong signatures, missing cron timezone, SELECT *, etc.
 
 ---
 
-### Step 4: Code Quality
+### Step 4: Manual checks (quick scan, 2 minutes)
 
-**4a. Error handling**
-- `async` functions without `try/catch` that call external APIs or DB
-- `catch` blocks that swallow errors silently (`catch (_) {}`) in non-trivial paths
-- Missing null-check before accessing `.data[0]` from Supabase results
+After running scripts, do a quick manual pass on the diff for things scripts can't catch:
 
-**4b. LLM response parsing**
-- JSON extracted with `lastIndexOf('{')` instead of `indexOf('{')` (known bug pattern)
-- No fallback when LLM returns empty string or non-JSON
-- Prompt built by string concatenation of user input without sanitization
-
-**4c. Agent patterns**
-- Agent function signature matches: `async function run*Agent(userMessage, supabase, useLocal, settings)`
-- Returns `{ answer: string, action?: object }` — no extra fields
-- No direct `process.exit()` or throws that escape to server.js
-
-**4d. Async patterns**
-- `await` inside `.forEach()` (use `for...of` or `Promise.all`)
-- Unhandled Promise rejections (missing `.catch()` on fire-and-forget calls)
-- `setImmediate` / background tasks that could silently fail
-
-**4e. Report format:**
-```
-🧹 איכות קוד
-🟠 agents/foo.js:55 — JSON parsing: lastIndexOf('{') — שים לב לבאג הידוע
-🟡 agents/bar.js:30 — forEach עם await — שנה ל-for...of
-🔵 server.js:200 — חסר null-check לפני data[0].id
-```
+1. **Business logic** — Does the change do what the PR description says? Any Hebrew edge cases (RTL, gender forms, timezone)?
+2. **New LLM prompts** — Is the prompt in Hebrew? Does it have a fallback for empty/null LLM response?
+3. **Supabase queries** — `.single()` without null-check on result? `.limit(1)` missing on open queries?
+4. **Breaking changes** — Does anything change the shape of `{ answer, action }` returned to the mobile app?
 
 ---
 
-### Step 5: Operational & Business Logic
-
-**5a. Intent routing (if `router.js` changed)**
-- Does the new keyword regex match all Hebrew variants of the intent?
-- Is there a collision with an existing intent (e.g., `תזכיר` matches both `reminder` and `memory`)?
-- Is the intent added to `VALID_INTENTS` and `LLM_CLASSIFY_PROMPT`?
-- Is there a matching `case` in the `/ask-jarvis` dispatch chain in `server.js`?
-
-**5b. Agent dispatch (if `server.js` changed)**
-- New agent imported and wired in both `/ask-jarvis` and `/stream-jarvis`?
-- Background agents (`code_error`, `e2e`) use `setImmediate` — is the new agent latency-sensitive?
-
-**5c. Supabase schema (if new table or column)**
-- Migration applied?
-- Select queries use `.select('specific_columns')` not `*` for sensitive tables
-- Row-level security (RLS) considered?
-
-**5d. Cron jobs (if cron changed)**
-- Timezone set to `Asia/Jerusalem`?
-- Idempotent (safe to run twice)?
-- Handles Supabase being unavailable?
-
-**5e. Business logic correctness**
-- Does the change do what the PR description says it does?
-- Are there edge cases the author didn't consider (empty input, Hebrew vs. English, null from DB)?
-- Does it break any existing agent behavior visible in the test suite?
-
-**5f. Report format:**
-```
-⚙️ היגיון תפעולי ועסקי
-🔴 agents/newAgent.js לא רשום ב-router.js ולא ב-server.js — לא נגיש
-🟠 agents/reminderAgent.js: חישוב DST לא מטפל בחזרה לשעון חורף
-🔵 הודעת ה-PR לא מסבירה למה נשנה הטיימאוט מ-3000 ל-5000ms
-```
-
----
-
-### Step 6: Final Report
+### Step 5: Final report
 
 Produce a consolidated report in Hebrew:
 
 ```
-## סקירת קוד — [שם ה-PR / branch]
+## סקירת קוד — [branch/PR name]
 
 ### 📊 כיסוי בדיקות
-[ממצאים]
+[output from review-coverage.js, grouped by severity]
 
 ### 🔒 אבטחה
-[ממצאים]
+[output from review-security.js]
 
-### 🧹 איכות קוד
-[ממצאים]
+### ⚙️ היגיון תפעולי
+[output from review-logic.js]
 
-### ⚙️ היגיון תפעולי ועסקי
-[ממצאים]
+### 👁️ בדיקה ידנית
+[findings from Step 4]
 
 ---
 ### סיכום
@@ -205,4 +97,8 @@ Produce a consolidated report in Hebrew:
 **המלצה:** ✅ מאושר לאיחוד / 🔁 נדרשים תיקונים / ❌ חסום
 ```
 
-If there are 🔴 Critical or more than 2 🟠 High findings, recommend blocking the merge.
+**Decision rule:**
+- Any 🔴 finding → ❌ חסום
+- 3+ 🟠 findings → ❌ חסום
+- 1-2 🟠 findings → 🔁 נדרשים תיקונים
+- Only 🟡/🔵 → ✅ מאושר (with follow-up noted)

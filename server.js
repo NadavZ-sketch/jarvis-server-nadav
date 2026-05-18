@@ -55,6 +55,7 @@ const { runNotesAgent }       = require('./agents/notesAgent');
 const { runStocksAgent }      = require('./agents/stocksAgent');
 const { runTranslationAgent } = require('./agents/translationAgent');
 const { runMusicAgent }       = require('./agents/musicAgent');
+const { detectCapabilityGap, savePendingGap, handleConfirmation } = require('./agents/devTaskAgent');
 const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
 const { createTasksRouter } = require('./routes/tasks');
@@ -485,6 +486,18 @@ async function askJarvisHandler(req, res) {
         settings.userProfile = userProfile;
         const useLocal  = settings.useLocalModel === true;
 
+        // ── Dev task confirmation check (before routing) ──────────────────────
+        const gapConfirmResult = await handleConfirmation(userMessage);
+        if (gapConfirmResult) {
+            const answer = gapConfirmResult.answer;
+            await Promise.all([
+                saveChatMessage('user', userMessage, chatId),
+                saveChatMessage('jarvis', answer, chatId),
+            ]);
+            cacheInvalidate(`chatHistory:${chatId}`);
+            return res.json({ answer, audio: null, action: null, chatId });
+        }
+
         // ── Routing ───────────────────────────────────────────────────────────
         let agentName = imageBase64 ? 'chat' : classifyIntent(userMessage);
         if (agentName === 'chat' && !imageBase64 && userMessage.trim().length > 12) {
@@ -620,6 +633,23 @@ async function askJarvisHandler(req, res) {
             // Try a dynamically-created custom agent, fall back to chat
             result = await tryCustomAgent(agentName, userMessage, supabase, useLocal, settings)
                   || await runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings);
+
+            // ── Capability gap detection (chat fallback only) ─────────────────
+            if (!imageBase64) {
+                try {
+                    const gap = await detectCapabilityGap(userMessage, result.answer);
+                    if (gap.isGap) {
+                        await savePendingGap({ userRequest: userMessage, gapDetails: gap });
+                        result = {
+                            ...result,
+                            answer: result.answer + '\n\nהאם תרצה שאוסיף זאת כמשימת פיתוח? (כן / לא)',
+                        };
+                        console.log(`🔧 Capability gap detected: "${gap.capabilityTitle}"`);
+                    }
+                } catch (gapErr) {
+                    console.error('⚠️ Capability gap detection error:', gapErr.message);
+                }
+            }
         }
         const tAgent = Date.now();
 

@@ -666,7 +666,10 @@ async function askJarvisHandler(req, res) {
             const reportChatId = chatId; // Capture chatId in closure
             setImmediate(async () => {
                 try {
-                    const e2eResult = await runE2EAgent(userMessage, supabase, useLocal, settings);
+                    // Skip the api probe when triggered from chat — it calls /ask-jarvis
+                    // 15 times on itself, overloading the server and blocking responses.
+                    const chatE2ESettings = { ...settings, skipProbes: ['api'] };
+                    const e2eResult = await runE2EAgent(userMessage, supabase, useLocal, chatE2ESettings);
                     console.log(`🧪 E2E saving to chatId: ${reportChatId}`);
                     await saveChatMessage('jarvis', e2eResult.answer, reportChatId);
                     cacheInvalidate(`chatHistory:${reportChatId}`);

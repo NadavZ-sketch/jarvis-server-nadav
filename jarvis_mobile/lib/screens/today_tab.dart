@@ -160,7 +160,7 @@ class _JarvisMessageCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(height: 14, width: 200,
                           decoration: BoxDecoration(color: JC.border, borderRadius: BorderRadius.circular(6))),
@@ -357,7 +357,7 @@ class _TodayItemTile extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   item['title']?.toString() ?? '',

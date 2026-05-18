@@ -148,7 +148,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
             bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('הוסף לרשימת הקניות',
                 style: TextStyle(

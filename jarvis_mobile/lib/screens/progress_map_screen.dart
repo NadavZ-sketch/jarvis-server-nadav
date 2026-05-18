@@ -1081,7 +1081,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         border: Border.all(color: JC.border, width: 0.8),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: _surveyInsights
             .map((s) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
@@ -1129,7 +1129,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             border: Border.all(color: JC.border, width: 0.8),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(_relativeDate(created),
                   textAlign: TextAlign.right,
@@ -1326,7 +1326,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         border: Border.all(color: JC.border, width: 0.8),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
             Switch.adaptive(
@@ -1369,7 +1369,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         border: Border.all(color: JC.border, width: 0.7),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('למדנו ש...',
               style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
@@ -1525,7 +1525,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         border: Border.all(color: JC.border, width: 0.7),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('מדדי שימוש (MVP מקומי)',
               textAlign: TextAlign.right,
@@ -1550,7 +1550,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('מצב 2D פשוט · ${nodes.length} ישויות', style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
           const SizedBox(height: 8),
           ...nodes.take(8).map((n) => Container(
@@ -1566,7 +1566,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('גרף חי · ${nodes.length} ישויות · ${edges.length} קשרים', style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
         const SizedBox(height: 8),
         SizedBox(
@@ -1936,7 +1936,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                 border: Border.all(color: currentColor.withValues(alpha: 0.35), width: 0.8),
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name,
                       textAlign: TextAlign.right,
@@ -2455,7 +2455,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         border: Border.all(color: JC.border, width: 0.8),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Row(
             children: [
@@ -2509,7 +2509,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                 border: Border.all(color: JC.border, width: 0.8),
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
                     GestureDetector(
@@ -2788,7 +2788,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             const SizedBox(width: 10),
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(nameHe,
                       textAlign: TextAlign.right,
@@ -2837,7 +2837,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(nameHe,
                     textAlign: TextAlign.right,

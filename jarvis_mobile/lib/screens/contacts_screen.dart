@@ -222,7 +222,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(isEdit ? 'עריכת איש קשר' : 'איש קשר חדש',
                 style: const TextStyle(
@@ -450,7 +450,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                               Expanded(
                                                 child: Column(
                                                   crossAxisAlignment:
-                                                      CrossAxisAlignment.end,
+                                                      CrossAxisAlignment.start,
                                                   children: [
                                                     Text(name,
                                                         textDirection:

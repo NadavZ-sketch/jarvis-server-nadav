@@ -215,7 +215,7 @@ class _TasksScreenState extends State<TasksScreen> {
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('משימה חדשה',
                   style: TextStyle(color: JC.textPrimary, fontSize: 16,
@@ -711,7 +711,7 @@ class _TaskItemState extends State<_TaskItem> {
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('עריכת משימה',
                   style: TextStyle(color: JC.textPrimary, fontSize: 16,
@@ -878,7 +878,7 @@ class _TaskItemState extends State<_TaskItem> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           title,
@@ -1120,7 +1120,7 @@ class _AiSuggestionsSheetState extends State<_AiSuggestionsSheet> {
           bottom: MediaQuery.of(context).viewInsets.bottom + 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             textDirection: TextDirection.rtl,
@@ -1190,7 +1190,7 @@ class _AiSuggestionsSheetState extends State<_AiSuggestionsSheet> {
                   children: [
                     Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(sugg['text']?.toString() ?? '',
                               textDirection: TextDirection.rtl,

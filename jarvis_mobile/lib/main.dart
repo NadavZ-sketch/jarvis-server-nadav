@@ -97,6 +97,10 @@ class JarvisApp extends StatelessWidget {
         ),
       ),
       home: const SplashScreen(),
+      builder: (context, child) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

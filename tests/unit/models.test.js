@@ -2,7 +2,7 @@
 jest.mock('axios');
 
 const axios = require('axios');
-const { callGemma4, callGeminiWithSearch, detectMimeType } = require('../../agents/models');
+const { callGemma4, callGeminiWithSearch, callGeminiVision, detectMimeType } = require('../../agents/models');
 
 const GROQ_RESPONSE = {
     data: { choices: [{ message: { content: '  groq answer  ' } }] }
@@ -116,5 +116,22 @@ describe('callGeminiWithSearch', () => {
         expect(result).toBe('gemini answer');
         const body = axios.post.mock.calls[0][1];
         expect(body.tools).toEqual([{ google_search: {} }]);
+    });
+});
+
+describe('callGeminiVision', () => {
+    test('throws when image base64 exceeds 10 MB', async () => {
+        // 10 MB decoded → ~13.6 MB base64; use a string just over that limit
+        const oversized = 'A'.repeat(Math.ceil(10 * 1024 * 1024 * 4 / 3) + 1);
+        await expect(callGeminiVision('describe this', oversized))
+            .rejects.toThrow('Image too large');
+        expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    test('accepts image within size limit and returns description', async () => {
+        axios.post.mockResolvedValueOnce(GEMINI_RESPONSE);
+        const smallImage = 'iVBORsmall';
+        const result = await callGeminiVision('describe this', smallImage);
+        expect(result).toBe('gemini answer');
     });
 });

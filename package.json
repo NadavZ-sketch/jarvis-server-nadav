@@ -8,7 +8,11 @@
     "test:coverage": "jest --coverage",
     "e2e": "node tests/e2e/runE2E.js",
     "e2e:local": "node tests/e2e/runE2E.js --local",
-    "lint": "node scripts/lint-syntax.js"
+    "lint": "node scripts/lint-syntax.js",
+    "review": "node scripts/review-coverage.js && node scripts/review-security.js && node scripts/review-logic.js",
+    "review:coverage": "node scripts/review-coverage.js",
+    "review:security": "node scripts/review-security.js",
+    "review:logic": "node scripts/review-logic.js"
   },
   "jest": {
     "testEnvironment": "node",

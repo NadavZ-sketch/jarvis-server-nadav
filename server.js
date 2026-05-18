@@ -188,15 +188,21 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc:  ["'self'", "'unsafe-inline'", 'unpkg.com', 'cdn.jsdelivr.net'],
-            styleSrc:   ["'self'", "'unsafe-inline'"],
+            scriptSrc:  ["'self'", 'unpkg.com', 'cdn.jsdelivr.net'],
+            styleSrc:   ["'self'", 'unpkg.com', 'cdn.jsdelivr.net'],
             connectSrc: ["'self'"],
             imgSrc:     ["'self'", 'data:'],
         },
     },
 }));
+const _corsOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : null;
+if (!_corsOrigins) {
+    console.warn('⚠️  CORS: ALLOWED_ORIGINS not set — allowing all origins. Set ALLOWED_ORIGINS in production.');
+}
 app.use(cors({
-    origin: '*',
+    origin: _corsOrigins || '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-User-Id', 'X-User-Role', 'X-User-Plan', 'X-User-Consent', 'X-Confirm-Action'],
 }));
@@ -276,8 +282,16 @@ function cacheGet(key) {
     return entry.value;
 }
 
+const _CACHE_MAX = 1000;
 function cacheSet(key, value, ttlMs) {
     _cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+    if (_cache.size > _CACHE_MAX) {
+        const now = Date.now();
+        for (const [k, v] of _cache) {
+            if (now > v.expiresAt) _cache.delete(k);
+            if (_cache.size <= _CACHE_MAX) break;
+        }
+    }
 }
 
 function cacheInvalidate(key) { _cache.delete(key); }
@@ -468,6 +482,7 @@ app.post('/transcribe', _rl(60), async (req, res) => {
 // ─── Custom Agent Loader ──────────────────────────────────────────────────────
 
 const CUSTOM_REGISTRY = path.join(__dirname, 'agents', 'custom', 'registry.json');
+const CUSTOM_AGENTS_DIR = path.resolve(__dirname, 'agents', 'custom');
 
 async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settings) {
     try {
@@ -475,9 +490,13 @@ async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settin
         const entry = registry.find(r => r.name === agentName);
         if (!entry) return null;
 
-        const agentPath = entry.filePath;
+        const agentPath = path.resolve(entry.filePath);
+        if (!agentPath.startsWith(CUSTOM_AGENTS_DIR + path.sep)) {
+            console.error(`🚨 Path traversal blocked for agent "${agentName}": ${entry.filePath}`);
+            return null;
+        }
         // Clear require cache so hot-reload works after factory creates/updates an agent
-        delete require.cache[require.resolve(agentPath)];
+        delete require.cache[agentPath];
         const mod = require(agentPath);
 
         const fnName = `run${agentName.charAt(0).toUpperCase() + agentName.slice(1)}`;
@@ -781,7 +800,7 @@ app.post('/send-email', requirePolicy('messaging.send', { sensitive: true, irrev
         res.json({ ok: true });
     } catch (err) {
         console.error('📧 Email send error:', err.message);
-        res.status(500).json({ ok: false, error: err.message });
+        res.status(500).json({ ok: false, error: 'Internal server error' });
     }
 });
 
@@ -801,7 +820,7 @@ app.delete('/chat-history/:chatId', async (req, res) => {
         res.json({ success: true, deletedChatId: chatId });
     } catch (err) {
         console.error('⚠️ DELETE /chat-history error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -811,7 +830,7 @@ app.get('/user-profile', async (_req, res) => {
         const profile = await getUserProfile();
         res.json({ profile });
     } catch (err) {
-        res.status(500).json({ error: err.message, profile: null });
+        res.status(500).json({ error: 'Internal server error', profile: null });
     }
 });
 
@@ -887,7 +906,7 @@ app.delete('/user-profile', async (_req, res) => {
         deleteLocalProfile();
         res.json({ success: true, deleted: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -969,7 +988,7 @@ app.post('/survey-submit', async (req, res) => {
         res.json({ success: true, summary });
     } catch (err) {
         console.error('⚠️ /survey-submit error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -999,7 +1018,7 @@ app.get('/survey-history', async (req, res) => {
         res.json({ surveys });
     } catch (err) {
         console.error('⚠️ /survey-history error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1063,7 +1082,7 @@ app.get('/survey-insights', async (req, res) => {
         res.json({ insights, generatedAt, cached: false });
     } catch (err) {
         console.error('⚠️ /survey-insights error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1190,24 +1209,37 @@ app.get('/morning-briefing', async (_req, res) => {
         res.json({ briefing, cached: false, date: todayISO });
     } catch (err) {
         console.error('GET /morning-briefing error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 // ─── Google Calendar OAuth ────────────────────────────────────────────────────
+// Short-lived nonces for CSRF protection on the OAuth flow (TTL: 10 min).
+const _oauthNonces = new Map(); // nonce -> expiresAt
+const _OAUTH_NONCE_TTL = 10 * 60 * 1000;
+
 app.get('/auth/google/start', (_req, res) => {
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
         return res.status(400).json({ error: 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not configured' });
     }
+    const state = require('crypto').randomBytes(32).toString('hex');
+    _oauthNonces.set(state, Date.now() + _OAUTH_NONCE_TTL);
     const redirectUri = `${process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`}/auth/google/callback`;
-    const authUrl = buildAuthUrl(redirectUri);
+    const authUrl = buildAuthUrl(redirectUri, state);
     res.redirect(authUrl);
 });
 
 app.get('/auth/google/callback', async (req, res) => {
-    const { code, error } = req.query;
-    if (error) return res.status(400).send(`OAuth error: ${error}`);
+    const { code, error, state } = req.query;
+    if (error) return res.status(400).send('OAuth error');
     if (!code) return res.status(400).send('No code received');
+
+    const nonceExpiry = _oauthNonces.get(state);
+    if (!nonceExpiry || Date.now() > nonceExpiry) {
+        return res.status(400).send('Invalid or expired OAuth state');
+    }
+    _oauthNonces.delete(state);
+
     try {
         const redirectUri = `${process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`}/auth/google/callback`;
         const tokenRes = await require('axios').post('https://oauth2.googleapis.com/token', {
@@ -1223,7 +1255,7 @@ app.get('/auth/google/callback', async (req, res) => {
         res.send('<h2>✅ יומן Google חובר בהצלחה! אפשר לסגור את החלון.</h2>');
     } catch (err) {
         console.error('Google OAuth callback error:', err.message);
-        res.status(500).send(`OAuth failed: ${err.message}`);
+        res.status(500).send('OAuth failed');
     }
 });
 
@@ -1250,7 +1282,7 @@ app.delete('/contacts/:id', requirePolicy('contacts.delete', { sensitive: true, 
         res.json({ ok: true });
     } catch (err) {
         console.error('DELETE /contacts/:id error:', err.message);
-        res.status(500).json({ ok: false, error: err.message });
+        res.status(500).json({ ok: false, error: 'Internal server error' });
     }
 });
 
@@ -1269,7 +1301,7 @@ app.put('/notes/:id', async (req, res) => {
         res.json({ note: data });
     } catch (err) {
         console.error('PUT /notes/:id error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1283,7 +1315,7 @@ app.post('/tasks', async (req, res) => {
         res.json({ task: data });
     } catch (err) {
         console.error('POST /tasks error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1314,7 +1346,7 @@ app.post('/shopping', async (req, res) => {
         res.json({ item: data });
     } catch (err) {
         console.error('POST /shopping error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1325,7 +1357,7 @@ app.delete('/shopping/:id', async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         console.error('DELETE /shopping:id error:', err.message);
-        res.status(500).json({ ok: false, error: err.message });
+        res.status(500).json({ ok: false, error: 'Internal server error' });
     }
 });
 
@@ -1356,7 +1388,7 @@ app.post('/notes', async (req, res) => {
         res.json({ note: data });
     } catch (err) {
         console.error('POST /notes error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1367,7 +1399,7 @@ app.delete('/notes/:id', async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         console.error('DELETE /notes:id error:', err.message);
-        res.status(500).json({ ok: false, error: err.message });
+        res.status(500).json({ ok: false, error: 'Internal server error' });
     }
 });
 
@@ -1411,7 +1443,7 @@ app.get('/e2e-reports', async (_req, res) => {
         res.json({ reports });
     } catch (err) {
         console.error('GET /e2e-reports error:', err.message);
-        res.status(500).json({ reports: [], error: err.message });
+        res.status(500).json({ reports: [], error: 'Internal server error' });
     }
 });
 
@@ -1437,7 +1469,7 @@ app.get('/e2e-reports/:runId', async (req, res) => {
         });
     } catch (err) {
         console.error('GET /e2e-reports/:id error:', err.message);
-        res.status(500).json({ findings: [], error: err.message });
+        res.status(500).json({ findings: [], error: 'Internal server error' });
     }
 });
 
@@ -1452,7 +1484,7 @@ app.delete('/e2e-reports/:runId', async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         console.error('DELETE /e2e-reports/:id error:', err.message);
-        res.status(500).json({ ok: false, error: err.message });
+        res.status(500).json({ ok: false, error: 'Internal server error' });
     }
 });
 
@@ -1476,7 +1508,7 @@ app.post('/e2e-reports/:runId/prompt', async (req, res) => {
         res.json({ claudePrompt });
     } catch (err) {
         console.error('POST /e2e-reports/:id/prompt error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1496,7 +1528,7 @@ app.post('/e2e-reports/:runId/mark-done', async (req, res) => {
         res.json({ ok: true, updated: fingerprints.length });
     } catch (err) {
         console.error('POST /e2e-reports/:id/mark-done error:', err.message);
-        res.status(500).json({ ok: false, error: err.message });
+        res.status(500).json({ ok: false, error: 'Internal server error' });
     }
 });
 
@@ -1508,7 +1540,7 @@ app.get('/scan/errors', _rl(5), async (_req, res) => {
         res.json(result);
     } catch (err) {
         console.error('❌ /scan/errors:', err.message);
-        res.status(500).json({ error: 'scan failed', message: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1528,7 +1560,7 @@ app.post('/e2e/trigger', _rl(3), async (_req, res) => {
         res.json({ triggered: true, startedAt: new Date().toISOString() });
     } catch (err) {
         console.error('❌ /e2e/trigger:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1704,7 +1736,7 @@ app.get('/control-center/events', async (req, res) => {
         });
     } catch (err) {
         console.error('❌ /control-center/events:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1723,7 +1755,7 @@ app.post('/contacts', requirePolicy('contacts.create', { sensitive: true }), asy
         res.json({ contact: data });
     } catch (err) {
         console.error('POST /contacts error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1743,7 +1775,7 @@ app.put('/contacts/:id', requirePolicy('contacts.update', { sensitive: true }), 
         res.json({ contact: data });
     } catch (err) {
         console.error('PUT /contacts/:id error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -1762,7 +1794,7 @@ app.patch('/shopping/:id', async (req, res) => {
         res.json({ item: data });
     } catch (err) {
         console.error('PATCH /shopping/:id error:', err.message);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -2029,7 +2061,7 @@ app.post('/sync/obsidian', async (_req, res) => {
         const result = await obsidianSync.syncAll();
         res.json({ ok: true, ...result });
     } catch (err) {
-        res.status(500).json({ ok: false, error: err.message });
+        res.status(500).json({ ok: false, error: 'Internal server error' });
     }
 });
 
@@ -2964,7 +2996,17 @@ if (require.main === module) {
     // ── Live talk WebSocket ─────────────────────────────────────────────────
     const { WebSocketServer } = require('ws');
     const { createWsHandler } = require('./routes/wsJarvis');
-    const wss = new WebSocketServer({ server, path: '/ws-jarvis' });
+    const _wsAllowedOrigins = _corsOrigins;
+    const wss = new WebSocketServer({
+        server,
+        path: '/ws-jarvis',
+        maxPayload: 64 * 1024, // 64 KB per frame
+        verifyClient: ({ origin }) => {
+            if (!_wsAllowedOrigins) return true; // dev mode: allow all
+            if (!origin) return true;            // non-browser clients (mobile app)
+            return _wsAllowedOrigins.includes(origin);
+        },
+    });
     const wsHandler = createWsHandler({
         classifyIntent,
         loadChatHistory,

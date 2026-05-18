@@ -143,7 +143,7 @@ async function classifyIntentWithLLM(userMessage) {
         );
 
         const raw = response.data?.choices?.[0]?.message?.content || '';
-        const open = raw.lastIndexOf('{'), close = raw.lastIndexOf('}');
+        const open = raw.indexOf('{'), close = raw.lastIndexOf('}');
         if (open === -1 || close === -1) return 'chat';
 
         let parsed;

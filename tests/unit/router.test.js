@@ -1,5 +1,7 @@
 'use strict';
-const { classifyIntent } = require('../../agents/router');
+jest.mock('axios');
+const axios = require('axios');
+const { classifyIntent, classifyIntentWithLLM } = require('../../agents/router');
 
 describe('classifyIntent — keyword routing', () => {
     test.each([
@@ -62,5 +64,45 @@ describe('classifyIntent — keyword routing', () => {
     test('returns string (not a Promise)', () => {
         const result = classifyIntent('שלום');
         expect(typeof result).toBe('string');
+    });
+});
+
+describe('classifyIntentWithLLM', () => {
+    const groqResponse = (intent) => ({
+        data: { choices: [{ message: { content: `{"intent":"${intent}"}` } }] }
+    });
+
+    beforeEach(() => jest.clearAllMocks());
+
+    test('returns valid intent from LLM JSON', async () => {
+        axios.post.mockResolvedValueOnce(groqResponse('task'));
+        expect(await classifyIntentWithLLM('אני צריך לגמור את הפרויקט')).toBe('task');
+    });
+
+    test('JSON with braces in surrounding text is parsed correctly', async () => {
+        // Bug fix: indexOf('{') vs lastIndexOf('{') — preamble before JSON must be ignored
+        axios.post.mockResolvedValueOnce({
+            data: { choices: [{ message: { content: 'Sure! {"intent":"reminder"}' } }] }
+        });
+        expect(await classifyIntentWithLLM('תזכיר לי לקנות חלב')).toBe('reminder');
+    });
+
+    test('unknown intent from LLM falls back to chat', async () => {
+        axios.post.mockResolvedValueOnce({
+            data: { choices: [{ message: { content: '{"intent":"flying"}' } }] }
+        });
+        expect(await classifyIntentWithLLM('משהו מוזר')).toBe('chat');
+    });
+
+    test('LLM returns no JSON → falls back to chat', async () => {
+        axios.post.mockResolvedValueOnce({
+            data: { choices: [{ message: { content: 'I do not know' } }] }
+        });
+        expect(await classifyIntentWithLLM('שאלה כלשהי')).toBe('chat');
+    });
+
+    test('network error → falls back to chat', async () => {
+        axios.post.mockRejectedValueOnce(new Error('timeout'));
+        expect(await classifyIntentWithLLM('שאלה כלשהי')).toBe('chat');
     });
 });

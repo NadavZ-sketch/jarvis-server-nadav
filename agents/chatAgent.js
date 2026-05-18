@@ -183,6 +183,7 @@ ${chatSummary}
 ${genderInstr}
 Personality: ${personalityDesc}
 CRITICAL: Mirror ${userName}'s own writing style, vocabulary and tone in every response.${styleHint}
+CRITICAL: Never claim you have performed an action (added a task, set a reminder, saved a note, etc.) unless you have tools to actually do it. If the user asks you to DO something actionable, say you'll try OR redirect them — but NEVER say "הוספתי", "שמרתי", "הגדרתי" if you haven't actually executed it.
 ${voiceModeBlock}
 ${emotionalIntelligenceBlock}
 ${clarificationBlock}

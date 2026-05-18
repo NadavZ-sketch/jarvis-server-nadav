@@ -122,6 +122,17 @@ function formatReminderTime(isoOrDate) {
     });
 }
 
+function timeUntil(isoDate) {
+    const ms = new Date(isoDate) - Date.now();
+    if (ms < 0) return 'כבר עבר';
+    const totalMinutes = Math.floor(ms / 60000);
+    if (totalMinutes < 60) return `בעוד ${totalMinutes} דק'`;
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    if (h >= 24) return `בעוד ${Math.floor(h / 24)} ימים`;
+    return m > 0 ? `בעוד ${h}ש ${m}ד` : `בעוד ${h} שעות`;
+}
+
 async function listReminders(supabase) {
     const { data, error } = await supabase
         .from('reminders')
@@ -134,10 +145,40 @@ async function listReminders(supabase) {
 
     const list = data.map((r, i) => {
         const recLabel = r.recurrence ? ` 🔁 ${RECURRENCE_LABELS[r.recurrence] || r.recurrence}` : '';
-        return `${i + 1}. "${r.text}" — ${formatReminderTime(r.scheduled_time)}${recLabel}`;
+        const countdown = ` (${timeUntil(r.scheduled_time)})`;
+        return `${i + 1}. "${r.text}" — ${formatReminderTime(r.scheduled_time)}${countdown}${recLabel}`;
     }).join('\n');
 
     return { answer: `הנה התזכורות שלך:\n${list}` };
+}
+
+async function snoozeReminder(userMessage, supabase) {
+    // Parse snooze duration
+    const minsMatch = userMessage.match(/(\d+)\s*דקות?/);
+    const hoursMatch = userMessage.match(/(\d+)\s*שעות?|שעה/);
+    let snoozeMs = 30 * 60 * 1000; // default 30 min
+    if (minsMatch) snoozeMs = parseInt(minsMatch[1]) * 60 * 1000;
+    else if (hoursMatch) snoozeMs = parseInt(hoursMatch[1] || '1') * 3600 * 1000;
+
+    // Find the most recent upcoming reminder
+    const { data, error } = await supabase
+        .from('reminders')
+        .select('id, text, scheduled_time')
+        .eq('fired', false)
+        .order('scheduled_time', { ascending: true })
+        .limit(1);
+
+    if (error) throw error;
+    if (!data || data.length === 0) return { answer: 'אין תזכורות לדחות.' };
+
+    const reminder = data[0];
+    const newTime = new Date(new Date(reminder.scheduled_time).getTime() + snoozeMs);
+    const newISO = toISO(newTime);
+
+    await supabase.from('reminders').update({ scheduled_time: newISO }).eq('id', reminder.id);
+
+    const snoozeMins = Math.round(snoozeMs / 60000);
+    return { answer: `⏰ דחיתי את התזכורת "${reminder.text}" ב-${snoozeMins} דקות — תצא ב${formatReminderTime(newTime)}.` };
 }
 
 async function deleteReminder(userMessage, supabase) {
@@ -167,6 +208,11 @@ async function runReminderAgent(userMessage, supabase) {
         // List reminders
         if (/הצג תזכורות|רשימת תזכורות|אילו תזכורות|מה התזכורות|כל התזכורות/i.test(userMessage)) {
             return listReminders(supabase);
+        }
+
+        // Snooze reminder (must contain explicit snooze verb before checking)
+        if (/^(דחה|סנוז|snooze)\b|דחה.*תזכורת|תזכורת.*דחה/i.test(userMessage)) {
+            return snoozeReminder(userMessage, supabase);
         }
 
         // Delete reminder

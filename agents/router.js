@@ -24,6 +24,7 @@ const KEYWORDS = {
     stocks:    /מניה|מניות|בורסה|שוק ההון|נסד"ק|nasdaq|s&p|ביטקוין|bitcoin|קריפטו|crypto|דולר|אירו|שקל|מטבע|תל אביב 35|ת"א 35|אפל|גוגל|טסלה|אמזון|מיקרוסופט|מדד|תיק השקעות|ריבית|אינפלציה/i,
     translate: /תרגם|תרגום|translate|translation|כתוב.*אנגלית|כתוב.*עברית|בעברית|באנגלית|בצרפתית|בספרדית|בערבית|בגרמנית|מה פירוש|מה המשמעות/i,
     factory:   /צור אייג'נט|יצור אייג'נט|בנה אייג'נט|הוסף אייג'נט|תייצר אייג'נט|תבנה אייג'נט|רשימת אייג'נטים|הצג אייג'נטים|מחק אייג'נט|הסר אייג'נט/i,
+    calendar:  /יומן|פגישות.*היום|פגישות.*מחר|מה יש לי.*ביומן|מה ביומן|קבע פגישה|קבע אירוע|הוסף.*ליומן|תקבע.*פגישה|אירועים.*היום|google calendar/i,
 };
 
 const REGISTRY_PATH = path.join(__dirname, 'custom', 'registry.json');
@@ -89,7 +90,7 @@ function classifyIntent(userMessage) {
 const VALID_INTENTS = new Set([
     'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
     'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'insight', 'security', 'code_error', 'e2e', 'factory', 'past_conv', 'chat',
+    'insight', 'security', 'code_error', 'e2e', 'factory', 'past_conv', 'calendar', 'chat',
 ]);
 
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
@@ -116,6 +117,7 @@ Rules:
 - code_error: scan source code for runtime errors, logic bugs, anti-patterns, missing error handling
 - e2e: run autonomous end-to-end self-tests of the assistant (UI, API, code scan, UX)
 - factory: create/manage/delete custom agents
+- calendar: Google Calendar — view events, create meetings/appointments
 - past_conv: asking about previous conversations with Jarvis
 - chat: general conversation, question, or anything that does not fit above
 

@@ -44,6 +44,11 @@ function createAgentCenterRouter({ callGemma4 }) {
   const router = express.Router();
 
   router.get('/', (_req, res) => {
+    // Dashboard uses inline scripts/styles — override strict global CSP for this route only
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline' unpkg.com cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' unpkg.com cdn.jsdelivr.net; connect-src 'self'; img-src 'self' data:",
+    );
     res.sendFile(path.join(__dirname, '..', 'progress-map.html'),
       err => { if (err && !res.headersSent) res.status(404).send('progress-map.html not found'); });
   });

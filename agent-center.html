@@ -731,7 +731,9 @@ async function loadOverview() {
       document.getElementById('ov-reminders').textContent = pending;
     }
     if (memories.status === 'fulfilled') {
-      document.getElementById('ov-memories').textContent = (memories.value || []).length;
+      const mem = memories.value;
+      const memArr = Array.isArray(mem) ? mem : (mem?.memories || mem?.data || []);
+      document.getElementById('ov-memories').textContent = memArr.length;
     }
     if (stats.status === 'fulfilled') {
       renderOverviewActivity(stats.value);
@@ -1031,7 +1033,9 @@ async function loadMemories() {
   el.innerHTML = '<div class="loading"><div class="loading-spin"></div> טוען זיכרונות...</div>';
   try {
     const r = await fetch(BASE + '/memories');
-    allMemories = r.ok ? (await r.json() || []) : [];
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    allMemories = Array.isArray(d) ? d : (d.memories || d.data || []);
   } catch { allMemories = []; }
   document.getElementById('memory-count').textContent = `(${allMemories.length})`;
   renderMemories(allMemories);
@@ -1048,7 +1052,7 @@ function renderMemories(list) {
   el.innerHTML = list.map(m => `
     <div class="data-item">
       <div class="data-item-body">
-        <div class="data-item-title">${m.content || m.text || '—'}</div>
+        <div class="data-item-title">${escHtml(m.content || m.text || m.memory || '—')}</div>
         <div class="data-item-meta">${m.created_at ? new Date(m.created_at).toLocaleDateString('he-IL') : ''} ${m.category ? '· ' + m.category : ''}</div>
       </div>
       <div class="data-item-actions">
@@ -1062,18 +1066,23 @@ async function saveMemory() {
   const content = document.getElementById('mem-content').value.trim();
   if (!content) { showToast('הכנס תוכן לזיכרון', 'error'); return; }
   try {
-    await fetch(BASE + '/memories', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ content }) });
+    const r = await fetch(BASE + '/ask-jarvis', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ message: 'שמור זיכרון: ' + content, settings: {} })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     document.getElementById('mem-content').value = '';
     toggleForm('memory-form');
     showToast('זיכרון נשמר ✓', 'success');
-    loadMemories();
+    setTimeout(loadMemories, 800);
   } catch { showToast('שגיאה בשמירה', 'error'); }
 }
 
 async function deleteMemory(id) {
   if (!confirm('למחוק זיכרון זה?')) return;
   try {
-    await fetch(BASE + '/memories/' + id, { method:'DELETE' });
+    const r = await fetch(BASE + '/memories/' + id, { method:'DELETE' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     showToast('נמחק ✓', 'success');
     loadMemories();
   } catch { showToast('שגיאה במחיקה', 'error'); }
@@ -1087,7 +1096,9 @@ async function loadTasks() {
   el.innerHTML = '<div class="loading"><div class="loading-spin"></div> טוען משימות...</div>';
   try {
     const r = await fetch(BASE + '/tasks');
-    allTasks = r.ok ? (await r.json() || []) : [];
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    allTasks = Array.isArray(d) ? d : (d.tasks || d.data || []);
   } catch { allTasks = []; }
   document.getElementById('tasks-count').textContent = `(${allTasks.length})`;
   renderTasks();
@@ -1119,7 +1130,7 @@ function renderTasks() {
     <div class="data-item ${done?'done':''}">
       <div class="task-check ${done?'done':''}" onclick="toggleTask('${t.id}',${done})" title="${done?'סמן כפתוח':'סמן כהושלם'}">${done?'✓':''}</div>
       <div class="data-item-body">
-        <div class="data-item-title">${t.title||t.text||'—'}</div>
+        <div class="data-item-title">${escHtml(t.content||t.title||t.text||'—')}</div>
         <div class="data-item-meta" style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:3px">
           ${t.priority ? `<span class="badge ${PRIO_BADGE[t.priority]||'badge-muted'} ">${PRIO_LABEL[t.priority]||t.priority}</span>` : ''}
           ${t.due_date || t.dueDate ? `<span style="font-size:.72rem;color:var(--muted2)">📅 ${new Date(t.due_date||t.dueDate).toLocaleDateString('he-IL')}</span>` : ''}
@@ -1134,12 +1145,12 @@ function renderTasks() {
 }
 
 async function saveTask() {
-  const title = document.getElementById('task-title').value.trim();
-  if (!title) { showToast('הכנס כותרת למשימה', 'error'); return; }
+  const content = document.getElementById('task-title').value.trim();
+  if (!content) { showToast('הכנס כותרת למשימה', 'error'); return; }
   const priority = document.getElementById('task-priority').value;
-  const due_date = document.getElementById('task-due').value || null;
   try {
-    await fetch(BASE + '/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title, priority, due_date }) });
+    const r = await fetch(BASE + '/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ content, priority }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     document.getElementById('task-title').value = '';
     document.getElementById('task-due').value = '';
     toggleForm('task-form');
@@ -1150,7 +1161,8 @@ async function saveTask() {
 
 async function toggleTask(id, currentDone) {
   try {
-    await fetch(BASE + '/tasks/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ done: !currentDone, completed: !currentDone }) });
+    const r = await fetch(BASE + '/tasks/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ done: !currentDone }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     loadTasks();
   } catch { showToast('שגיאה בעדכון', 'error'); }
 }
@@ -1158,7 +1170,8 @@ async function toggleTask(id, currentDone) {
 async function deleteTask(id) {
   if (!confirm('למחוק משימה זו?')) return;
   try {
-    await fetch(BASE + '/tasks/' + id, { method:'DELETE' });
+    const r = await fetch(BASE + '/tasks/' + id, { method:'DELETE' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     showToast('נמחק ✓', 'success');
     loadTasks();
   } catch { showToast('שגיאה במחיקה', 'error'); }
@@ -1172,7 +1185,9 @@ async function loadReminders() {
   el.innerHTML = '<div class="loading"><div class="loading-spin"></div> טוען תזכורות...</div>';
   try {
     const r = await fetch(BASE + '/reminders');
-    allReminders = r.ok ? (await r.json() || []) : [];
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    allReminders = Array.isArray(d) ? d : (d.reminders || d.data || []);
   } catch { allReminders = []; }
   document.getElementById('reminders-count').textContent = `(${allReminders.length})`;
   renderReminders();
@@ -1185,13 +1200,13 @@ function renderReminders() {
   const RECUR_LABEL = {daily:'יומי',weekly:'שבועי',monthly:'חודשי'};
   el.innerHTML = sorted.map(r => {
     const fired = r.fired;
-    const dt = r.remind_at || r.time;
+    const dt = r.scheduled_time || r.remind_at || r.time;
     const isPast = dt && new Date(dt) < new Date();
     return `
     <div class="data-item" style="${fired?'opacity:.6':''}">
       <div style="font-size:1.3rem;flex-shrink:0">${fired?'✅':'⏰'}</div>
       <div class="data-item-body">
-        <div class="data-item-title" style="${fired?'text-decoration:line-through;color:var(--muted)':''}">${r.title||r.text||'—'}</div>
+        <div class="data-item-title" style="${fired?'text-decoration:line-through;color:var(--muted)':''}">${escHtml(r.text||r.title||r.content||'—')}</div>
         <div class="data-item-meta" style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:3px">
           ${dt ? `<span style="font-size:.73rem;color:${isPast&&!fired?'var(--amber)':'var(--muted2)'}">${isPast&&!fired?'⚠ ':''}${new Date(dt).toLocaleString('he-IL')}</span>` : ''}
           ${r.recurrence ? `<span class="badge badge-blue">${RECUR_LABEL[r.recurrence]||r.recurrence}</span>` : ''}
@@ -1206,27 +1221,30 @@ function renderReminders() {
 }
 
 async function saveReminder() {
-  const title = document.getElementById('rem-title').value.trim();
+  const text = document.getElementById('rem-title').value.trim();
   const dt = document.getElementById('rem-datetime').value;
-  if (!title) { showToast('הכנס כותרת לתזכורת', 'error'); return; }
-  const body = { title, remind_at: dt ? new Date(dt).toISOString() : null };
+  if (!text) { showToast('הכנס כותרת לתזכורת', 'error'); return; }
+  if (!dt) { showToast('הכנס תאריך ושעה', 'error'); return; }
+  const body = { text, scheduled_time: new Date(dt).toISOString() };
   const recur = document.getElementById('rem-recur').value;
   if (recur) body.recurrence = recur;
   try {
-    await fetch(BASE + '/reminders', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const r = await fetch(BASE + '/reminders', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (!r.ok) { const e = await r.json().catch(()=>{}); throw new Error(e?.error || 'HTTP ' + r.status); }
     document.getElementById('rem-title').value = '';
     document.getElementById('rem-datetime').value = '';
     document.getElementById('rem-recur').value = '';
     toggleForm('reminder-form');
     showToast('תזכורת נשמרה ✓', 'success');
     loadReminders();
-  } catch { showToast('שגיאה בשמירה', 'error'); }
+  } catch(e) { showToast('שגיאה: ' + e.message, 'error'); }
 }
 
 async function deleteReminder(id) {
   if (!confirm('למחוק תזכורת זו?')) return;
   try {
-    await fetch(BASE + '/reminders/' + id, { method:'DELETE' });
+    const r = await fetch(BASE + '/reminders/' + id, { method:'DELETE' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     showToast('נמחק ✓', 'success');
     loadReminders();
   } catch { showToast('שגיאה במחיקה', 'error'); }

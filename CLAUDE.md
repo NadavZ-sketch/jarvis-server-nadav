@@ -204,8 +204,8 @@ Example gated endpoints:
 | `POST` | `/send-email` | Nodemailer | Requires policy |
 | `GET` | `/chat-history` | Retrieve chat | Optional `chatId` query param |
 | `DELETE` | `/chat-history/:chatId` | Delete chat session | Irreversible |
-| `GET/POST` | `/tasks`, `/tasks/:id` | Task CRUD | Via `tasksController` |
-| `GET/POST` | `/reminders`, `/reminders/:id` | Reminder CRUD | Via `remindersController` |
+| `GET/POST` | `/tasks`, `/tasks/:id` | Task CRUD | Returns `{ tasks: [] }`; create body: `{ content, priority }` |
+| `GET/POST` | `/reminders`, `/reminders/:id` | Reminder CRUD | Returns `{ reminders: [] }`; create body: `{ text, scheduled_time (ISO), recurrence? }` |
 | `GET/POST/PUT/DELETE` | `/notes`, `/notes/:id` | Notes CRUD | — |
 | `GET/POST/DELETE` | `/shopping`, `/shopping/:id` | Shopping CRUD | — |
 | `GET/POST/PUT/DELETE` | `/contacts`, `/contacts/:id` | Contacts CRUD | Requires policy |
@@ -221,7 +221,7 @@ Example gated endpoints:
 | `POST` | `/e2e-reports/:runId/prompt` | Re-analyze report | Re-run e2e analysis with new context |
 | `POST` | `/e2e-reports/:runId/mark-done` | Mark issue resolved | Clears report |
 | `GET` | `/scan/errors` | Scan codebase for errors | Rate-limited (5/min) |
-| `GET` | `/agent-center` | Dashboard HTML | Web-based agent monitoring |
+| `GET` | `/agent-center` | Dashboard HTML | 7-tab control center: overview, agents, memory, tasks, reminders, settings, performance |
 | `ws` | `/ws-jarvis` | WebSocket stream | Real-time bidirectional agent chat |
 
 ## Development Workflows
@@ -385,6 +385,14 @@ jarvis-server-nadav/
     ├── pubspec.yaml
     └── ...
 ```
+
+## Known API Gotchas
+
+- **No `GET /memories` endpoint** — a rate-limiter is registered at `/memories` but there is no route handler. Memory reads happen inside agents via Supabase directly; saving via UI should go through `POST /ask-jarvis` with a save-memory intent.
+- **Tasks field name is `content`**, not `title`. The `tasks` table has `content`, `priority`, `done`, `created_at`. No `due_date` column in the controller.
+- **Reminders field names**: `text` (not `title`), `scheduled_time` (ISO string, not `remind_at`), `fired` (boolean). `GET /reminders` only returns unfired reminders.
+- **Response wrappers**: `/tasks` → `{ tasks: [] }`, `/reminders` → `{ reminders: [] }`, `/chat-history` → `{ history: [] }`. Don't assume a bare array.
+- **Policy middleware on reminders**: all four CRUD routes require policy. The `free/member` allowlist in `config/policyRules.json` covers all `reminders.*` actions, so unauthenticated requests pass as `free/member`.
 
 ## Key Conventions & Patterns
 

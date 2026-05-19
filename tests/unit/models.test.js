@@ -107,6 +107,52 @@ describe('callGemma4', () => {
         const result = await callGemma4('test', false);
         expect(result).toBe('deepseek answer');
     });
+
+    test('all providers receive the same temperature/top_p (consistency)', async () => {
+        axios.post
+            .mockRejectedValueOnce(new Error('Groq fail'))
+            .mockRejectedValueOnce(new Error('DeepSeek fail'))
+            .mockResolvedValueOnce(GEMINI_RESPONSE);
+
+        await callGemma4('hi', false);
+
+        // Three calls: Groq → DeepSeek → Gemini.
+        const groqBody     = axios.post.mock.calls[0][1];
+        const deepseekBody = axios.post.mock.calls[1][1];
+        const geminiBody   = axios.post.mock.calls[2][1];
+
+        expect(groqBody.temperature).toBe(0.5);
+        expect(groqBody.top_p).toBe(0.9);
+        expect(deepseekBody.temperature).toBe(0.5);
+        expect(deepseekBody.top_p).toBe(0.9);
+        expect(geminiBody.generationConfig.temperature).toBe(0.5);
+        expect(geminiBody.generationConfig.topP).toBe(0.9);
+    });
+
+    test('Gemini fallback preserves role boundaries via systemInstruction', async () => {
+        axios.post
+            .mockRejectedValueOnce(new Error('Groq fail'))
+            .mockRejectedValueOnce(new Error('DeepSeek fail'))
+            .mockResolvedValueOnce(GEMINI_RESPONSE);
+
+        const msgs = [
+            { role: 'system', content: 'You are Jarvis.' },
+            { role: 'user', content: 'hi' },
+            { role: 'assistant', content: 'hello' },
+            { role: 'user', content: 'what is your name?' },
+        ];
+        await callGemma4(msgs, false);
+
+        const geminiBody = axios.post.mock.calls[2][1];
+        // System instruction is hoisted out of the user-side conversation.
+        expect(geminiBody.systemInstruction.parts[0].text).toBe('You are Jarvis.');
+        // Conversation preserves alternating roles (assistant→model).
+        expect(geminiBody.contents).toEqual([
+            { role: 'user',  parts: [{ text: 'hi' }] },
+            { role: 'model', parts: [{ text: 'hello' }] },
+            { role: 'user',  parts: [{ text: 'what is your name?' }] },
+        ]);
+    });
 });
 
 describe('callGeminiWithSearch', () => {

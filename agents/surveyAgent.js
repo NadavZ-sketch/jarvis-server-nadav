@@ -37,21 +37,39 @@ const SURVEY_QUESTIONS = {
   },
 };
 
-// Select 5-8 random questions based on user actions
-function selectSurveyQuestions(userActions) {
-  const qKeys = Object.keys(SURVEY_QUESTIONS);
-  const numQuestions = Math.floor(Math.random() * 4) + 5; // 5-8 questions
+// Select 5-8 random questions based on user actions.
+// `excludeIds` (Set | array) lists question keys to avoid — typically the
+// questions the user already answered in recent surveys, to prevent the
+// survey from feeling repetitive across sessions.
+function selectSurveyQuestions(userActions, excludeIds = []) {
+  const exclude = new Set(Array.isArray(excludeIds) ? excludeIds : [...excludeIds]);
+  const qKeys = Object.keys(SURVEY_QUESTIONS).filter(k => !exclude.has(k));
 
-  // Always include responseQuality, vary the rest
-  const selected = { responseQuality: SURVEY_QUESTIONS.responseQuality };
+  // Always include responseQuality if not excluded — it's the anchor question.
+  const selected = {};
+  let pool = qKeys;
+  if (!exclude.has('responseQuality')) {
+    selected.responseQuality = SURVEY_QUESTIONS.responseQuality;
+    pool = qKeys.filter(k => k !== 'responseQuality');
+  }
 
-  const remaining = qKeys.filter(k => k !== 'responseQuality')
+  // If we excluded too many, relax: re-include the least-recently-asked ones.
+  if (pool.length === 0 && Object.keys(selected).length === 0) {
+    const fallback = Object.keys(SURVEY_QUESTIONS).slice(0, 3);
+    fallback.forEach(k => { selected[k] = SURVEY_QUESTIONS[k]; });
+    return selected;
+  }
+
+  const numQuestions = Math.min(
+    Math.max(3, Math.floor(Math.random() * 4) + 5), // aim 5-8, floor at 3
+    pool.length + Object.keys(selected).length,
+  );
+
+  const remaining = pool
     .sort(() => Math.random() - 0.5)
-    .slice(0, numQuestions - 1);
+    .slice(0, numQuestions - Object.keys(selected).length);
 
-  remaining.forEach(k => {
-    selected[k] = SURVEY_QUESTIONS[k];
-  });
+  remaining.forEach(k => { selected[k] = SURVEY_QUESTIONS[k]; });
 
   return selected;
 }

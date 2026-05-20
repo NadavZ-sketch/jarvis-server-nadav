@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'main.dart' show JC, ChatScreen;
 import 'app_settings.dart';
+import 'widgets/animated_indexed_stack.dart';
 import 'screens/app_drawer.dart';
-import 'screens/progress_map_screen.dart';
+import 'screens/dashboard_screen.dart';
 import 'screens/productivity_screen.dart';
 import 'screens/lists_screen.dart';
 import 'services/api_service.dart';
@@ -21,8 +22,8 @@ class _MainShellState extends State<MainShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   Future<void> Function()? _archiveChatFn;
 
-  // Start on Chat tab (index 1)
-  int _selectedIndex = 1;
+  // Start on the Dashboard home tab (index 0)
+  int _selectedIndex = 0;
   AppSettings _settings = AppSettings();
 
   Timer? _notifPollTimer;
@@ -98,8 +99,8 @@ class _MainShellState extends State<MainShell> {
   }
 
   Future<bool> _onWillPop() async {
-    if (_selectedIndex != 1) {
-      _onTabTapped(1);
+    if (_selectedIndex != 0) {
+      _onTabTapped(0);
       return false;
     }
     final exit = await showDialog<bool>(
@@ -107,9 +108,9 @@ class _MainShellState extends State<MainShell> {
       builder: (ctx) => AlertDialog(
         backgroundColor: JC.surfaceAlt,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('יציאה מג׳רביס',
+        title: Text('יציאה מג׳רביס',
             style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
-        content: const Text('האם לצאת מהאפליקציה?',
+        content: Text('האם לצאת מהאפליקציה?',
             style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
         actions: [
           TextButton(
@@ -148,17 +149,19 @@ class _MainShellState extends State<MainShell> {
           endDrawer: AppDrawer(
             settings: _settings,
             onSettingsChanged: _onSettingsChanged,
+            onSwitchToChat: (cmd) => setState(() {
+              _pendingChatCommand = cmd;
+              _selectedIndex = 1;
+            }),
           ),
-          body: IndexedStack(
+          body: AnimatedIndexedStack(
             index: _selectedIndex,
+            enabled: _settings.animationsEnabled,
             children: [
-              // 0 — Progress Map
-              ProgressMapScreen(
+              // 0 — Dashboard (home)
+              DashboardScreen(
                 settings: _settings,
-                onSwitchToChat: (cmd) => setState(() {
-                  _pendingChatCommand = cmd;
-                  _selectedIndex = 1;
-                }),
+                onNavigate: _onTabTapped,
               ),
               // 1 — Chat (main screen)
               ChatScreen(
@@ -185,7 +188,7 @@ class _MainShellState extends State<MainShell> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: JC.surface,
           border: Border(top: BorderSide(color: JC.border, width: 0.6)),
         ),
@@ -222,9 +225,9 @@ class _MainShellState extends State<MainShell> {
               onDestinationSelected: _onTabTapped,
               destinations: const [
                 NavigationDestination(
-                  icon: Icon(Icons.dashboard_outlined),
-                  selectedIcon: Icon(Icons.dashboard_rounded),
-                  label: 'מרכז',
+                  icon: Icon(Icons.home_outlined),
+                  selectedIcon: Icon(Icons.home_rounded),
+                  label: 'בית',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.mic_none_rounded),

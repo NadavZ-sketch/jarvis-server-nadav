@@ -171,7 +171,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(isEdit ? 'עריכת תזכורת' : 'תזכורת חדשה',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: JC.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -182,25 +182,25 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 controller: textCtrl,
                 textDirection: TextDirection.rtl,
                 autofocus: true,
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textPrimary, fontFamily: 'Heebo'),
                 decoration: InputDecoration(
                   hintText: 'מה להזכיר לך?',
                   hintStyle:
-                      const TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+                      TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
                   filled: true,
                   fillColor: JC.surface,
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 10),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: JC.border)),
+                      borderSide: BorderSide(color: JC.border)),
                   enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: JC.border)),
+                      borderSide: BorderSide(color: JC.border)),
                   focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: JC.blue500)),
+                      borderSide: BorderSide(color: JC.blue500)),
                 ),
               ),
               const SizedBox(height: 10),
@@ -215,7 +215,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
                     builder: (_, child) => Theme(
                       data: ThemeData.dark().copyWith(
-                        colorScheme: const ColorScheme.dark(
+                        colorScheme: ColorScheme.dark(
                             primary: JC.blue500, surface: JC.surfaceAlt),
                       ),
                       child: child!,
@@ -228,7 +228,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     initialTime: TimeOfDay.fromDateTime(selectedDate),
                     builder: (_, child) => Theme(
                       data: ThemeData.dark().copyWith(
-                        colorScheme: const ColorScheme.dark(
+                        colorScheme: ColorScheme.dark(
                             primary: JC.blue500, surface: JC.surfaceAlt),
                       ),
                       child: child!,
@@ -252,12 +252,12 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   child: Row(
                     textDirection: TextDirection.rtl,
                     children: [
-                      const Icon(Icons.calendar_today_rounded,
+                      Icon(Icons.calendar_today_rounded,
                           color: JC.blue400, size: 18),
                       const SizedBox(width: 10),
                       Text(
                         _formatTime(selectedDate.toIso8601String()),
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: JC.textSecondary,
                             fontFamily: 'Heebo',
                             fontSize: 14),
@@ -272,7 +272,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: Text('חזרתיות',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: JC.textMuted,
                         fontSize: 12,
                         fontFamily: 'Heebo')),
@@ -499,7 +499,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                                                 color: JC.blue500
                                                     .withValues(alpha: 0.15),
                                               ),
-                                              child: const Icon(
+                                              child: Icon(
                                                   Icons.access_time_rounded,
                                                   color: JC.blue400,
                                                   size: 20),
@@ -515,7 +515,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                                                         '',
                                                     textDirection:
                                                         TextDirection.rtl,
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
                                                         color: JC.textPrimary,
                                                         fontSize: 15,
                                                         fontFamily: 'Heebo'),
@@ -525,12 +525,12 @@ class _RemindersScreenState extends State<RemindersScreen> {
                                                     mainAxisSize: MainAxisSize.min,
                                                     children: [
                                                       if (item['recurrence'] != null) ...[
-                                                        const Icon(Icons.repeat_rounded,
+                                                        Icon(Icons.repeat_rounded,
                                                             size: 11, color: JC.blue400),
                                                         const SizedBox(width: 3),
                                                         Text(
                                                           _recurrenceLabel[item['recurrence']] ?? '',
-                                                          style: const TextStyle(
+                                                          style: TextStyle(
                                                               color: JC.blue400,
                                                               fontSize: 11,
                                                               fontFamily: 'Heebo',
@@ -541,7 +541,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                                                       Text(
                                                         _formatTime(item['scheduled_time']),
                                                         textDirection: TextDirection.rtl,
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                             color: JC.textMuted,
                                                             fontSize: 12,
                                                             fontFamily: 'Heebo'),
@@ -575,6 +575,6 @@ Widget _remDismissBg() => Container(
         color: JC.cancelRed.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
+      child: Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
 

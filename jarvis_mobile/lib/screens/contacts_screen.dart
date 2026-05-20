@@ -126,7 +126,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Text(
                   name,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: JC.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -134,7 +134,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   textDirection: TextDirection.rtl,
                 ),
               ),
-              const Divider(color: JC.border, height: 1),
+              Divider(color: JC.border, height: 1),
               if (phone.isNotEmpty) ...[
                 _ActionTile(
                   icon: Icons.call_rounded,
@@ -168,7 +168,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     launchUrl(Uri.parse('mailto:$email'));
                   },
                 ),
-              const Divider(color: JC.border, height: 1),
+              Divider(color: JC.border, height: 1),
               _ActionTile(
                 icon: Icons.edit_outlined,
                 label: 'ערוך',
@@ -225,7 +225,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(isEdit ? 'עריכת איש קשר' : 'איש קשר חדש',
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -423,7 +423,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                               Container(
                                                 width: 44,
                                                 height: 44,
-                                                decoration: const BoxDecoration(
+                                                decoration: BoxDecoration(
                                                   shape: BoxShape.circle,
                                                   gradient: LinearGradient(
                                                     begin: Alignment.topLeft,
@@ -455,7 +455,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                                     Text(name,
                                                         textDirection:
                                                             TextDirection.rtl,
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                             color:
                                                                 JC.textPrimary,
                                                             fontSize: 15,
@@ -467,7 +467,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                                       Text(subtitle,
                                                           textDirection:
                                                               TextDirection.rtl,
-                                                          style: const TextStyle(
+                                                          style: TextStyle(
                                                               color: JC.textMuted,
                                                               fontSize: 12,
                                                               fontFamily:
@@ -475,7 +475,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                                   ],
                                                 ),
                                               ),
-                                              const Icon(
+                                              Icon(
                                                   Icons
                                                       .chevron_left_rounded,
                                                   color: JC.textMuted,
@@ -504,7 +504,7 @@ Widget _conDismissBg() => Container(
         color: JC.cancelRed.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
+      child: Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
 
 class _ActionTile extends StatelessWidget {
@@ -529,7 +529,7 @@ class _ActionTile extends StatelessWidget {
         title: Text(
           label,
           textDirection: TextDirection.rtl,
-          style: const TextStyle(
+          style: TextStyle(
               color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 14),
         ),
         onTap: onTap,
@@ -560,10 +560,10 @@ class _ContactField extends StatelessWidget {
       autofocus: autofocus,
       keyboardType: keyboardType,
       textDirection: textDirection,
-      style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+      style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(
+        hintStyle: TextStyle(
             color: JC.textMuted, fontFamily: 'Heebo'),
         filled: true,
         fillColor: JC.surface,
@@ -571,13 +571,13 @@ class _ContactField extends StatelessWidget {
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.border)),
+            borderSide: BorderSide(color: JC.border)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.border)),
+            borderSide: BorderSide(color: JC.border)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: JC.blue500)),
+            borderSide: BorderSide(color: JC.blue500)),
       ),
     );
   }

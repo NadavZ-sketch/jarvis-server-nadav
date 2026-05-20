@@ -520,7 +520,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'שיחה קולית',
           style: TextStyle(
             color: JC.textPrimary,
@@ -530,7 +530,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: JC.textSecondary),
+          icon: Icon(Icons.arrow_back_rounded, color: JC.textSecondary),
           onPressed: _endCall,
         ),
       ),
@@ -676,7 +676,7 @@ class _LiveBubble extends StatelessWidget {
         child: Text(
           msg['text'] ?? '',
           textDirection: TextDirection.rtl,
-          style: const TextStyle(
+          style: TextStyle(
             color: JC.textPrimary,
             fontSize: 14.5,
             height: 1.55,
@@ -713,7 +713,7 @@ class _InFlightCard extends StatelessWidget {
             Text(
               partialUser,
               textDirection: TextDirection.rtl,
-              style: const TextStyle(
+              style: TextStyle(
                 color: JC.blue300,
                 fontSize: 14,
                 fontStyle: FontStyle.italic,
@@ -726,7 +726,7 @@ class _InFlightCard extends StatelessWidget {
             Text(
               streamingReply,
               textDirection: TextDirection.rtl,
-              style: const TextStyle(
+              style: TextStyle(
                 color: JC.textPrimary,
                 fontSize: 14.5,
                 height: 1.55,

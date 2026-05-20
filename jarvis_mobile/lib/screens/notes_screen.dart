@@ -206,7 +206,7 @@ class _NotesScreenState extends State<NotesScreen> {
                                                   title,
                                                   textDirection:
                                                       TextDirection.rtl,
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     color: JC.textPrimary,
                                                     fontSize: 15,
                                                     fontWeight: FontWeight.w600,
@@ -253,7 +253,7 @@ Widget _noteDismissBg() => Container(
         color: JC.cancelRed.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
+      child: Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
 
 /// Full-screen note editor. Pops with the saved/updated note Map, or `null`
@@ -348,21 +348,21 @@ class _NoteEditScreenState extends State<NoteEditScreen> {
         backgroundColor: JC.surfaceAlt,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16)),
-        title: const Text('יציאה ללא שמירה?',
+        title: Text('יציאה ללא שמירה?',
             style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
             textDirection: TextDirection.rtl),
-        content: const Text('יש שינויים שלא נשמרו. לצאת בכל זאת?',
+        content: Text('יש שינויים שלא נשמרו. לצאת בכל זאת?',
             style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo'),
             textDirection: TextDirection.rtl),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('המשך עריכה',
+            child: Text('המשך עריכה',
                 style: TextStyle(color: JC.blue400, fontFamily: 'Heebo')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('צא',
+            child: Text('צא',
                 style: TextStyle(color: JC.cancelRed, fontFamily: 'Heebo')),
           ),
         ],
@@ -402,13 +402,13 @@ class _NoteEditScreenState extends State<NoteEditScreen> {
           backgroundColor: JC.surface,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+            icon: Icon(Icons.arrow_back_ios_new_rounded,
                 color: JC.textPrimary),
             onPressed: () => Navigator.maybePop(context),
           ),
           title: Text(
             widget.existing == null ? 'הערה חדשה' : 'עריכת הערה',
-            style: const TextStyle(
+            style: TextStyle(
               color: JC.textPrimary,
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -418,7 +418,7 @@ class _NoteEditScreenState extends State<NoteEditScreen> {
           centerTitle: true,
           actions: [
             if (_saving)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(right: 16),
                 child: Center(
                   child: SizedBox(
@@ -431,7 +431,7 @@ class _NoteEditScreenState extends State<NoteEditScreen> {
               )
             else
               IconButton(
-                icon: const Icon(Icons.check_rounded, color: JC.blue400),
+                icon: Icon(Icons.check_rounded, color: JC.blue400),
                 tooltip: 'שמור',
                 onPressed: _saveAndPop,
               ),
@@ -446,13 +446,13 @@ class _NoteEditScreenState extends State<NoteEditScreen> {
                 TextField(
                   controller: _titleCtrl,
                   textDirection: TextDirection.rtl,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: JC.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     fontFamily: 'Heebo',
                   ),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'כותרת (אופציונלי)',
                     hintStyle: TextStyle(
                         color: JC.textMuted,
@@ -461,7 +461,7 @@ class _NoteEditScreenState extends State<NoteEditScreen> {
                     border: InputBorder.none,
                   ),
                 ),
-                const Divider(color: JC.border, height: 1),
+                Divider(color: JC.border, height: 1),
                 const SizedBox(height: 8),
                 Expanded(
                   child: TextField(
@@ -472,13 +472,13 @@ class _NoteEditScreenState extends State<NoteEditScreen> {
                     expands: true,
                     keyboardType: TextInputType.multiline,
                     textAlignVertical: TextAlignVertical.top,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: JC.textPrimary,
                       fontSize: 15,
                       height: 1.6,
                       fontFamily: 'Heebo',
                     ),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'כתוב כאן את ההערה...',
                       hintStyle: TextStyle(
                           color: JC.textMuted, fontFamily: 'Heebo'),

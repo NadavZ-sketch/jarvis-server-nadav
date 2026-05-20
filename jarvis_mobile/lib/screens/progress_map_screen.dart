@@ -1271,12 +1271,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           centerTitle: true,
-          title: const Text('מרכז שליטה',
+          title: Text('מרכז שליטה',
               style: TextStyle(color: JC.textPrimary, fontSize: 18,
                   fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh_rounded, color: JC.textMuted, size: 20),
+              icon: Icon(Icons.refresh_rounded, color: JC.textMuted, size: 20),
               onPressed: _loadAll,
             ),
           ],
@@ -1392,12 +1392,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   const SizedBox(height: 2),
                   Text(alert.message,
                       textAlign: TextAlign.right,
-                      style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.35)),
+                      style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.35)),
                   if (visible.length > 1) ...[
                     const SizedBox(height: 2),
                     Text('עוד ${visible.length - 1} התראות',
                         textAlign: TextAlign.right,
-                        style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                        style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
                   ],
                 ],
               ),
@@ -1414,7 +1414,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             IconButton(
               tooltip: 'הסתר',
               onPressed: () => _dismissAlert(alert.id),
-              icon: const Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
+              icon: Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             ),
@@ -1457,12 +1457,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           child: OutlinedButton.icon(
             onPressed: _triggeringE2e ? null : _triggerE2eRun,
             icon: _triggeringE2e
-                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400))
+                ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400))
                 : const Icon(Icons.play_circle_outline_rounded, size: 18),
             label: const Text('הרץ e2e עכשיו', style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
             style: OutlinedButton.styleFrom(
               foregroundColor: JC.blue400,
-              side: const BorderSide(color: JC.blue400, width: 0.8),
+              side: BorderSide(color: JC.blue400, width: 0.8),
               padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
@@ -1523,7 +1523,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               label: const Text('צור משימה', style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
               style: OutlinedButton.styleFrom(
                 foregroundColor: JC.blue400,
-                side: const BorderSide(color: JC.blue400, width: 0.8),
+                side: BorderSide(color: JC.blue400, width: 0.8),
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
@@ -1576,7 +1576,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.6), width: 0.8),
           ),
-          child: const Text(
+          child: Text(
             'צריך להגדיר שם משתמש בהגדרות כדי לצפות בסקרים.',
             textAlign: TextAlign.right,
             style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13),
@@ -1591,12 +1591,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             border: Border.all(color: JC.cancelRed.withValues(alpha: 0.5), width: 0.8),
           ),
           child: Row(children: [
-            const Icon(Icons.error_outline, color: JC.cancelRed, size: 18),
+            Icon(Icons.error_outline, color: JC.cancelRed, size: 18),
             const SizedBox(width: 8),
             Expanded(
               child: Text(_surveyError!,
                   textAlign: TextAlign.right,
-                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
             ),
             TextButton(onPressed: _loadSurveys, child: const Text('נסה שוב', style: TextStyle(fontFamily: 'Heebo'))),
           ]),
@@ -1632,7 +1632,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildSurveyInsightsCard() {
     if (_loadingSurveys && _surveyInsights.isEmpty && _surveyHistory.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.all(20),
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
       );
@@ -1645,7 +1645,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: JC.border, width: 0.8),
         ),
-        child: const Text(
+        child: Text(
           'אין עדיין מספיק סקרים לתובנות. השב על כמה סקרים כדי לראות תובנות מצטברות.',
           textAlign: TextAlign.right,
           style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
@@ -1666,7 +1666,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text('• $s',
                       textAlign: TextAlign.right,
-                      style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13, height: 1.5)),
+                      style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13, height: 1.5)),
                 ))
             .toList(),
       ),
@@ -1678,7 +1678,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       return const SizedBox.shrink();
     }
     if (_loadingSurveys && _surveyHistory.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.all(20),
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
       );
@@ -1691,7 +1691,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: JC.border, width: 0.8),
         ),
-        child: const Text(
+        child: Text(
           'עדיין לא ענית על סקרים.',
           textAlign: TextAlign.right,
           style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
@@ -1715,11 +1715,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             children: [
               Text(_relativeDate(created),
                   textAlign: TextAlign.right,
-                  style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
               const SizedBox(height: 4),
               Text(summary,
                   textAlign: TextAlign.right,
-                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13, height: 1.5)),
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13, height: 1.5)),
             ],
           ),
         );
@@ -1762,15 +1762,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           const SizedBox(width: 8),
           Expanded(
             child: Text(label,
-                style: const TextStyle(color: JC.textSecondary, fontSize: 13, fontFamily: 'Heebo')),
+                style: TextStyle(color: JC.textSecondary, fontSize: 13, fontFamily: 'Heebo')),
           ),
           if (ok == true)
             Text('${_latencyMs}ms',
-                style: const TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'))
+                style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'))
           else if (ok == false)
             GestureDetector(
               onTap: _loadAll,
-              child: const Text('נסה עכשיו',
+              child: Text('נסה עכשיו',
                   style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
                       fontWeight: FontWeight.w600, fontSize: 12)),
             ),
@@ -1811,17 +1811,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(label, style: const TextStyle(
+                Text(label, style: TextStyle(
                     color: JC.textSecondary, fontSize: 11,
                     fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
                 Text(
                   _loadingStats ? '…' : (num?.toString() ?? '—'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: JC.blue400, fontSize: 22,
                       fontWeight: FontWeight.w700, height: 1.1),
                 ),
-                Text(sub, style: const TextStyle(
+                Text(sub, style: TextStyle(
                     color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo'),
                     overflow: TextOverflow.ellipsis),
               ],
@@ -1860,7 +1860,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               _dot(JC.textMuted, '${_planned.length} מתוכנן'),
               const Spacer(),
               Text('$pct% הושלם',
-                  style: const TextStyle(color: JC.textPrimary,
+                  style: TextStyle(color: JC.textPrimary,
                       fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13)),
             ],
           ),
@@ -1915,14 +1915,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               onChanged: (v) => setState(() => _smartCompactMode = v),
               activeColor: JC.blue400,
             ),
-            const Text('MVP', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+            Text('MVP', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
             const Spacer(),
-            const Text('מעבדת התפתחות חכמה',
+            Text('מעבדת התפתחות חכמה',
                 textAlign: TextAlign.right,
                 style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 15)),
           ]),
           const SizedBox(height: 6),
-          const Text('מנוע תעדוף חי: מציג כיווני שיפור ועוזר להתחיל ביצוע עכשיו. מצב MVP פעיל כברירת מחדל.',
+          Text('מנוע תעדוף חי: מציג כיווני שיפור ועוזר להתחיל ביצוע עכשיו. מצב MVP פעיל כברירת מחדל.',
               textAlign: TextAlign.right,
               style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
           const SizedBox(height: 12),
@@ -1952,7 +1952,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const Text('למדנו ש...',
+          Text('למדנו ש...',
               style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           for (final line in _learnedInsights.take(3))
@@ -1960,7 +1960,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               padding: const EdgeInsets.only(bottom: 4),
               child: Text('• $line',
                   textAlign: TextAlign.right,
-                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5)),
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5)),
             ),
         ],
       ),
@@ -2066,10 +2066,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         dense: true,
         title: Text(suggestion['title'] ?? '',
             textAlign: TextAlign.right,
-            style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
+            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
         subtitle: Text(suggestion['reason'] ?? '',
             textAlign: TextAlign.right,
-            style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+            style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
         trailing: TextButton(
           onPressed: () => _confirmSmartAction(suggestion),
           child: const Text('הפעל', style: TextStyle(fontFamily: 'Heebo')),
@@ -2087,7 +2087,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: JC.border, width: 0.7),
       ),
-      child: const Text(
+      child: Text(
         'פרטיות והרשאות: פעולות המעבדה משתמשות רק בנתונים שכבר נטענו למסך. מומלץ להוסיף בהמשך פרופיל הרשאות פר-משתמש לפני אוטומציה מלאה.',
         textAlign: TextAlign.right,
         style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
@@ -2108,16 +2108,16 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const Text('מדדי שימוש (MVP מקומי)',
+          Text('מדדי שימוש (MVP מקומי)',
               textAlign: TextAlign.right,
               style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text('אישורים: ${v('confirm_yes')} | ביטולים: ${v('confirm_no')}',
-              style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+              style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
           Text('הפעל הצעה: ${v('action_start_first')} | חיזוק זיכרון: ${v('action_memory_focus')}',
-              style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+              style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
           Text('Sprint MVP: ${v('action_sprint_prompt_mvp')} | Sprint מורחב: ${v('action_sprint_prompt_full')}',
-              style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+              style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
         ],
       ),
     );
@@ -2132,13 +2132,13 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text('מצב 2D פשוט · ${nodes.length} ישויות', style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+          Text('מצב 2D פשוט · ${nodes.length} ישויות', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
           const SizedBox(height: 8),
           ...nodes.take(8).map((n) => Container(
             margin: const EdgeInsets.only(bottom: 6),
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(color: JC.bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: JC.border, width: .7)),
-            child: Text('${n.label} · ${n.type} · score ${n.score}', textAlign: TextAlign.right, style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
+            child: Text('${n.label} · ${n.type} · score ${n.score}', textAlign: TextAlign.right, style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
           )),
         ]),
       );
@@ -2148,7 +2148,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text('גרף חי · ${nodes.length} ישויות · ${edges.length} קשרים', style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+        Text('גרף חי · ${nodes.length} ישויות · ${edges.length} קשרים', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
         const SizedBox(height: 8),
         SizedBox(
           height: 250,
@@ -2167,7 +2167,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           Text(
             'נבחר: ${_selectedGraphNode!.label}',
             textAlign: TextAlign.right,
-            style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11),
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11),
           ),
         ]
       ]),
@@ -2203,12 +2203,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(node.label, textAlign: TextAlign.right, style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 16)),
+              Text(node.label, textAlign: TextAlign.right, style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 16)),
               const SizedBox(height: 6),
               Text(
                 'why_now: ${node.whyNow}\nscore: ${node.score.toStringAsFixed(0)} · impact: ${node.impact.toStringAsFixed(1)}',
                 textAlign: TextAlign.right,
-                style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12),
+                style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -2230,7 +2230,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _graphActionBtn(String label, VoidCallback onTap) => OutlinedButton(
     onPressed: onTap,
-    style: OutlinedButton.styleFrom(side: const BorderSide(color: JC.border), foregroundColor: JC.textPrimary),
+    style: OutlinedButton.styleFrom(side: BorderSide(color: JC.border), foregroundColor: JC.textPrimary),
     child: Text(label, style: const TextStyle(fontFamily: 'Heebo')),
   );
 
@@ -2305,8 +2305,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         backgroundColor: JC.surface,
         title: Text(suggestion['title'] ?? 'הפעלת פעולה',
             textAlign: TextAlign.right,
-            style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
-        content: const Text('לבצע עכשיו את הפעולה הזו?',
+            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
+        content: Text('לבצע עכשיו את הפעולה הזו?',
             textAlign: TextAlign.right,
             style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
         actions: [
@@ -2400,7 +2400,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildFeatureBoard() {
     if (_loadingFeatures) {
-      return const Padding(padding: EdgeInsets.all(24),
+      return Padding(padding: EdgeInsets.all(24),
           child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)));
     }
     if (_done.isEmpty && _building.isEmpty && _planned.isEmpty && _serverOk != true) {
@@ -2408,9 +2408,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.cloud_off_rounded, color: JC.textMuted, size: 28),
+            Icon(Icons.cloud_off_rounded, color: JC.textMuted, size: 28),
             const SizedBox(height: 8),
-            const Text('לא ניתן לטעון נתונים — השרת לא זמין',
+            Text('לא ניתן לטעון נתונים — השרת לא זמין',
                 style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
             const SizedBox(height: 10),
             GestureDetector(
@@ -2422,7 +2422,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: JC.blue400.withValues(alpha: 0.4)),
                 ),
-                child: const Text('טעון מחדש',
+                child: Text('טעון מחדש',
                     style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
                         fontWeight: FontWeight.w600, fontSize: 13)),
               ),
@@ -2484,7 +2484,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         const SizedBox(height: 12),
         // Chips
         if (currentItems.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Center(child: Text('אין פריטים',
                 style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13))),
@@ -2530,7 +2530,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                     const SizedBox(height: 6),
                     Text(desc,
                         textAlign: TextAlign.right,
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: JC.textSecondary,
                             fontFamily: 'Heebo',
                             fontSize: 12,
@@ -2545,7 +2545,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text('עודכן: $_featuresUpdated',
-                style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
                 textAlign: TextAlign.center),
           ),
       ],
@@ -2606,7 +2606,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   _lastGenerated != null
                       ? 'עדכון: ${_relativeDate(_lastGenerated)}'
                       : 'Jarvis ינתח את הפרויקט ויציע פריטי עבודה עם תוכנית מלאה',
-                  style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                  style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
                   textAlign: TextAlign.right,
                   textDirection: TextDirection.rtl,
                 ),
@@ -2673,7 +2673,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
         // Content
         if (_generatingProposals)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 28),
             child: Column(children: [
               CircularProgressIndicator(color: JC.blue400, strokeWidth: 2),
@@ -2686,7 +2686,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         else if (_proposals.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Column(children: const [
+            child: Column(children: [
               Icon(Icons.auto_awesome_outlined, color: JC.textMuted, size: 32),
               SizedBox(height: 8),
               Text('לחץ "צור הצעות" כדי ש-Jarvis ינתח את הפרויקט',
@@ -2695,7 +2695,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             ]),
           )
         else if (filtered.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Center(child: Text('אין הצעות תואמות לפילטר הנוכחי',
                 style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
@@ -2806,7 +2806,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                         Text(
                           plan,
                           textDirection: TextDirection.rtl,
-                          style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
+                          style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
                               fontSize: 12, height: 1.45),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -2818,10 +2818,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                           children: [
                             GestureDetector(
                               onTap: () => _showScoreExplainer(scores),
-                              child: const Icon(Icons.info_outline_rounded, color: JC.textMuted, size: 16),
+                              child: Icon(Icons.info_outline_rounded, color: JC.textMuted, size: 16),
                             ),
                             const SizedBox(width: 6),
-                            const Text('הסבר ציון',
+                            Text('הסבר ציון',
                                 style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
                           ],
                         ),
@@ -2850,7 +2850,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                           child: Text(
                             'למה עכשיו: $whyNow',
                             textDirection: TextDirection.rtl,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: JC.textSecondary,
                               fontFamily: 'Heebo',
                               fontSize: 11.5,
@@ -2864,7 +2864,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                         Align(
                           alignment: Alignment.centerRight,
                           child: Text('תתי-שלבים: $doneCount/${checklist.length}',
-                              style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11)),
+                              style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11)),
                         ),
                         const SizedBox(height: 4),
                         ...checklist.take(4).map((c) => Padding(
@@ -2875,7 +2875,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                                   size: 14, color: c['done'] == true ? const Color(0xFF22C55E) : JC.textMuted),
                               const SizedBox(width: 6),
                               Expanded(child: Text(c['text']?.toString() ?? '',
-                                  style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12))),
+                                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12))),
                             ],
                           ),
                         )),
@@ -2893,7 +2893,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                           alignment: Alignment.centerRight,
                           child: Text(
                             'Audit: ${auditTrail.first['by'] ?? 'system'} · ${_relativeDate(auditTrail.first['at']?.toString())} · ${auditTrail.first['reason'] ?? ''}',
-                            style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10),
+                            style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -2929,12 +2929,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                                   border: Border.all(color: JC.blue400.withValues(alpha: 0.35), width: 0.8),
                                 ),
                                 child: activating
-                                    ? const SizedBox(
+                                    ? SizedBox(
                                         width: 13, height: 13,
                                         child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400),
                                       )
                                     : Text(isActive ? '⏸ חזרה לתכנון' : isDraftPlan ? '⚡ התחל ביצוע' : isValidation ? '⚡ חזרה לביצוע' : '🧭 צור תכנית',
-                                        style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                                        style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
                                             fontWeight: FontWeight.w600, fontSize: 11)),
                               ),
                             ),
@@ -2968,7 +2968,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                           const SizedBox(width: 4),
                           GestureDetector(
                             onTap: () => _deleteProposal(idRaw),
-                            child: const Padding(
+                            child: Padding(
                               padding: EdgeInsets.all(2),
                               child: Icon(Icons.close_rounded, size: 14, color: JC.textMuted),
                             ),
@@ -2999,14 +2999,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   children: [
                     Row(
                       children: [
-                        const Text('🤖 ג׳רביס:',
+                        Text('🤖 ג׳רביס:',
                             style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
                                 fontWeight: FontWeight.w700, fontSize: 12)),
                         const Spacer(),
                         if (widget.onSwitchToChat != null)
                           GestureDetector(
                             onTap: () => _switchToChatWithProposal(p),
-                            child: const Text('המשך בצ׳אט ←',
+                            child: Text('המשך בצ׳אט ←',
                                 style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
                                     fontSize: 12, fontWeight: FontWeight.w600)),
                           ),
@@ -3014,7 +3014,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                     ),
                     const SizedBox(height: 6),
                     Text(response,
-                        style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
+                        style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
                             fontSize: 13, height: 1.55)),
                   ],
                 ),
@@ -3038,7 +3038,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const Row(
+          Row(
             children: [
               Spacer(),
               Icon(Icons.auto_awesome_rounded, color: JC.blue400, size: 13),
@@ -3054,7 +3054,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               child: TextField(
                 controller: _promptCtrl,
                 textDirection: TextDirection.rtl,
-                style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
+                style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
                 decoration: _backlogInputDecoration(
                   hint: "תאר את הפיצ'ר שאתה רוצה לפתח...",
                   fill: JC.surfaceAlt,
@@ -3107,29 +3107,29 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                               size: 12, color: JC.blue400),
                           const SizedBox(width: 4),
                           Text(_promptCopied ? 'הועתק!' : 'העתק',
-                              style: const TextStyle(color: JC.blue400,
+                              style: TextStyle(color: JC.blue400,
                                   fontFamily: 'Heebo', fontSize: 12)),
                         ]),
                       ),
                     ),
                     const Spacer(),
-                    const Text('📋 פרומפט מוכן ל-Claude Code',
+                    Text('📋 פרומפט מוכן ל-Claude Code',
                         style: TextStyle(color: JC.textSecondary,
                             fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
                   ]),
                   const SizedBox(height: 8),
-                  const Divider(color: JC.border, height: 1),
+                  Divider(color: JC.border, height: 1),
                   const SizedBox(height: 8),
                   SelectableText(
                     _generatedPrompt!,
-                    style: const TextStyle(color: JC.textSecondary,
+                    style: TextStyle(color: JC.textSecondary,
                         fontFamily: 'Heebo', fontSize: 12, height: 1.6),
                     textDirection: TextDirection.rtl,
                   ),
                   const SizedBox(height: 8),
                   GestureDetector(
                     onTap: () => _addItemWithText(_promptCtrl.text.trim()),
-                    child: const Text('+ שמור כפריט ב-Backlog',
+                    child: Text('+ שמור כפריט ב-Backlog',
                         style: TextStyle(color: JC.textMuted,
                             fontFamily: 'Heebo', fontSize: 12)),
                   ),
@@ -3152,7 +3152,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             child: TextField(
               controller: _addCtrl,
               textDirection: TextDirection.rtl,
-              style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
+              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
               decoration: _backlogInputDecoration(hint: 'הוסף פריט ידני מהיר...'),
               onSubmitted: (_) => _addItem(),
             ),
@@ -3174,10 +3174,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         ]),
         const SizedBox(height: 10),
         if (_loadingBacklog)
-          const Padding(padding: EdgeInsets.all(20),
+          Padding(padding: EdgeInsets.all(20),
               child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2))
         else if (_items.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Center(child: Text('אין פריטים ידניים',
                 style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
@@ -3266,7 +3266,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                 if (dateLabel.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   Text(dateLabel,
-                      style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+                      style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
                 ],
               ],
             ),
@@ -3294,7 +3294,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildAgentCenter() {
     if (_loadingAgents && _agents.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.all(20),
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
       );
@@ -3307,7 +3307,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: JC.border, width: 0.8),
         ),
-        child: const Text(
+        child: Text(
           'לא נטענו סוכנים. בדוק חיבור לשרת.',
           textAlign: TextAlign.right,
           style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
@@ -3329,7 +3329,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             child: Text(
               '${_agents.length} סוכנים פעילים · הקש לפרטים',
               textAlign: TextAlign.right,
-              style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+              style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
             ),
           ),
           const SizedBox(height: 6),
@@ -3395,7 +3395,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                     if (role.isNotEmpty)
                       Text(role,
                           textAlign: TextAlign.right,
-                          style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+                          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
                           overflow: TextOverflow.ellipsis),
                   ],
                 ),
@@ -3413,7 +3413,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               SizedBox(
                 width: 28, height: 28,
                 child: isToggling
-                    ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400))
+                    ? Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400))
                     : IconButton(
                         padding: EdgeInsets.zero,
                         tooltip: isDisabled ? 'הפעל סוכן' : 'השבת סוכן',
@@ -3457,12 +3457,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               children: [
                 Text(nameHe,
                     textAlign: TextAlign.right,
-                    style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 18)),
+                    style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 18)),
                 const SizedBox(height: 4),
                 if ((agent['role'] ?? '').toString().isNotEmpty)
                   Text(agent['role'].toString(),
                       textAlign: TextAlign.right,
-                      style: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+                      style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
                 const SizedBox(height: 10),
                 if (mission.isNotEmpty) ...[
                   _agentSectionLabel('משימה'),
@@ -3480,7 +3480,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                     ),
                     child: Text(prompt,
                         textAlign: TextAlign.right,
-                        style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.4)),
+                        style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.4)),
                   ),
                   const SizedBox(height: 10),
                 ],
@@ -3521,14 +3521,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         padding: const EdgeInsets.only(bottom: 4),
         child: Text(text,
             textAlign: TextAlign.right,
-            style: const TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 0.5)),
+            style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 0.5)),
       );
 
   Widget _agentBodyText(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: Text(text,
             textAlign: TextAlign.right,
-            style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.4)),
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.4)),
       );
 
   // ── Widget helpers ────────────────────────────────────────────────────────
@@ -3583,12 +3583,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             if (loading)
-              const SizedBox(width: 13, height: 13,
+              SizedBox(width: 13, height: 13,
                   child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400))
             else if (icon != null)
               Icon(icon, size: 14, color: JC.blue400),
             const SizedBox(width: 6),
-            Text(label, style: const TextStyle(
+            Text(label, style: TextStyle(
                 color: JC.blue400, fontFamily: 'Heebo',
                 fontWeight: FontWeight.w600, fontSize: 13)),
           ],
@@ -3600,27 +3600,27 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   InputDecoration _backlogInputDecoration({required String hint, Color? fill}) =>
       InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13),
+        hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         filled: true,
         fillColor: fill ?? JC.surface,
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: JC.border)),
+            borderSide: BorderSide(color: JC.border)),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: JC.border, width: 0.8)),
+            borderSide: BorderSide(color: JC.border, width: 0.8)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: JC.blue400)),
+            borderSide: BorderSide(color: JC.blue400)),
       );
 
   Widget _sectionTitle(String title) => Padding(
     padding: const EdgeInsets.only(bottom: 2),
     child: Row(children: [
-      const Expanded(child: Divider(color: JC.border, height: 1)),
+      Expanded(child: Divider(color: JC.border, height: 1)),
       const SizedBox(width: 8),
-      Text(title, style: const TextStyle(
+      Text(title, style: TextStyle(
           color: JC.blue400, fontSize: 11, fontWeight: FontWeight.w700,
           fontFamily: 'Heebo', letterSpacing: 0.8)),
     ]),

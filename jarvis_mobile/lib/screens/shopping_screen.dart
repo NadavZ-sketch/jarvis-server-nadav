@@ -150,7 +150,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const Text('הוסף לרשימת הקניות',
+            Text('הוסף לרשימת הקניות',
                 style: TextStyle(
                     color: JC.textPrimary,
                     fontSize: 16,
@@ -162,22 +162,22 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
               controller: ctrl,
               textDirection: TextDirection.rtl,
               autofocus: true,
-              style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
               decoration: InputDecoration(
                 hintText: 'חלב, לחם, ביצים...',
                 hintStyle:
-                    const TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+                    TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
                 filled: true,
                 fillColor: JC.surface,
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: JC.border)),
+                    borderSide: BorderSide(color: JC.border)),
                 enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: JC.border)),
+                    borderSide: BorderSide(color: JC.border)),
                 focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: JC.blue500)),
+                    borderSide: BorderSide(color: JC.blue500)),
               ),
               onSubmitted: (_) => _submitAdd(ctrl.text, ctx),
             ),
@@ -259,7 +259,7 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
                               _showDone
                                   ? 'הסתר נקנו'
                                   : 'הצג נקנו ($doneCount)',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: JC.blue400,
                                   fontFamily: 'Heebo',
                                   fontSize: 13),
@@ -375,5 +375,5 @@ Widget _deleteBg() => Container(
         color: JC.cancelRed.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
+      child: Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );

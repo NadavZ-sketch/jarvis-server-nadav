@@ -160,7 +160,7 @@ class _TasksScreenState extends State<TasksScreen> {
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             content: Text(msg,
-                style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
+                style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
             duration: const Duration(seconds: 3),
           ));
         }
@@ -217,7 +217,7 @@ class _TasksScreenState extends State<TasksScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text('משימה חדשה',
+              Text('משימה חדשה',
                   style: TextStyle(color: JC.textPrimary, fontSize: 16,
                       fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
                   textDirection: TextDirection.rtl),
@@ -226,7 +226,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 controller: ctrl,
                 textDirection: TextDirection.rtl,
                 autofocus: true,
-                style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+                style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
                 decoration: _fieldDecoration('תיאור המשימה...'),
                 onSubmitted: (_) =>
                     _submitAdd(ctrl.text, dueDate, selectedPriority, ctx),
@@ -285,7 +285,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     lastDate: DateTime.now().add(const Duration(days: 365)),
                     builder: (c, child) => Theme(
                         data: Theme.of(c).copyWith(
-                          colorScheme: const ColorScheme.dark(
+                          colorScheme: ColorScheme.dark(
                               primary: JC.blue500, surface: JC.surface)),
                         child: child!),
                   );
@@ -321,7 +321,7 @@ class _TasksScreenState extends State<TasksScreen> {
                         const Spacer(),
                         GestureDetector(
                           onTap: () => setSheet(() => dueDate = null),
-                          child: const Icon(Icons.close_rounded,
+                          child: Icon(Icons.close_rounded,
                               size: 16, color: JC.textMuted),
                         ),
                       ],
@@ -453,7 +453,7 @@ class _TasksScreenState extends State<TasksScreen> {
                               _showDone
                                   ? 'הסתר בוצעו'
                                   : 'הצג בוצעו ($doneCount)',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: JC.blue400, fontFamily: 'Heebo',
                                   fontSize: 13),
                             ),
@@ -572,10 +572,10 @@ class _FilterBar extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.sort_rounded, size: 14, color: JC.textSecondary),
+                  Icon(Icons.sort_rounded, size: 14, color: JC.textSecondary),
                   const SizedBox(width: 4),
                   Text(_sortLabel(sortMode),
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: JC.textSecondary, fontSize: 12,
                           fontFamily: 'Heebo')),
                 ],
@@ -605,10 +605,10 @@ class _FilterBar extends StatelessWidget {
           textDirection: TextDirection.rtl,
           children: [
             if (current == value)
-              const Icon(Icons.check_rounded, size: 14, color: JC.blue400),
+              Icon(Icons.check_rounded, size: 14, color: JC.blue400),
             const SizedBox(width: 6),
             Text(label,
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
           ],
         ),
@@ -713,7 +713,7 @@ class _TaskItemState extends State<_TaskItem> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text('עריכת משימה',
+              Text('עריכת משימה',
                   style: TextStyle(color: JC.textPrimary, fontSize: 16,
                       fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
                   textDirection: TextDirection.rtl),
@@ -722,7 +722,7 @@ class _TaskItemState extends State<_TaskItem> {
                 controller: ctrl,
                 textDirection: TextDirection.rtl,
                 autofocus: true,
-                style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+                style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
                 decoration: _fieldDecoration('תיאור המשימה...'),
               ),
               const SizedBox(height: 10),
@@ -918,7 +918,7 @@ class _TaskItemState extends State<_TaskItem> {
                           color: JC.indigo500.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.auto_awesome_rounded,
+                        child: Icon(Icons.auto_awesome_rounded,
                             size: 14, color: JC.indigo300),
                       ),
                     ),
@@ -945,7 +945,7 @@ class _TaskItemState extends State<_TaskItem> {
                             const SizedBox(width: 3),
                             Text(
                               _promptExpanded ? 'סגור' : 'פרומפט',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: JC.indigo300, fontSize: 11,
                                 fontFamily: 'Heebo', fontWeight: FontWeight.w600),
                             ),
@@ -990,7 +990,7 @@ class _TaskItemState extends State<_TaskItem> {
                       child: Row(
                         textDirection: TextDirection.rtl,
                         children: [
-                          const Text('פרומפט AI לפיתוח',
+                          Text('פרומפט AI לפיתוח',
                               style: TextStyle(color: JC.indigo300,
                                   fontFamily: 'Heebo', fontSize: 12,
                                   fontWeight: FontWeight.w600)),
@@ -1019,7 +1019,7 @@ class _TaskItemState extends State<_TaskItem> {
                                 color: const Color(0xFF1A2E4A),
                                 borderRadius: BorderRadius.circular(7),
                               ),
-                              child: const Row(
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(Icons.copy_rounded,
@@ -1102,7 +1102,7 @@ class _AiSuggestionsSheetState extends State<_AiSuggestionsSheet> {
           backgroundColor: const Color(0xFF0F1929),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          content: const Text('המשימה נוספה ✓',
+          content: Text('המשימה נוספה ✓',
               style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
           duration: const Duration(seconds: 2),
         ));
@@ -1125,25 +1125,25 @@ class _AiSuggestionsSheetState extends State<_AiSuggestionsSheet> {
           Row(
             textDirection: TextDirection.rtl,
             children: [
-              const Icon(Icons.auto_awesome_rounded, color: JC.indigo300, size: 16),
+              Icon(Icons.auto_awesome_rounded, color: JC.indigo300, size: 16),
               const SizedBox(width: 8),
-              const Text('הצעות ג׳ארביס',
+              Text('הצעות ג׳ארביס',
                   style: TextStyle(color: JC.textPrimary, fontSize: 16,
                       fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
                   textDirection: TextDirection.rtl),
               const Spacer(),
               if (_loading)
-                const SizedBox(width: 16, height: 16,
+                SizedBox(width: 16, height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2, color: JC.indigo300)),
             ],
           ),
           const SizedBox(height: 4),
-          const Text('לחץ על הצעה להוספתה כמשימה',
+          Text('לחץ על הצעה להוספתה כמשימה',
               textDirection: TextDirection.rtl,
               style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
           const SizedBox(height: 14),
           if (_loading)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: 20),
               child: Center(
                 child: Column(
@@ -1160,10 +1160,10 @@ class _AiSuggestionsSheetState extends State<_AiSuggestionsSheet> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(child: Text(_error!,
-                  style: const TextStyle(color: JC.cancelRed, fontFamily: 'Heebo', fontSize: 13))),
+                  style: TextStyle(color: JC.cancelRed, fontFamily: 'Heebo', fontSize: 13))),
             )
           else if (_suggestions.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Center(child: Text('אין הצעות זמינות',
                   style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
@@ -1200,7 +1200,7 @@ class _AiSuggestionsSheetState extends State<_AiSuggestionsSheet> {
                           if ((sugg['reason']?.toString() ?? '').isNotEmpty)
                             Text(sugg['reason'].toString(),
                                 textDirection: TextDirection.rtl,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: JC.textMuted, fontSize: 11,
                                     fontFamily: 'Heebo')),
                         ],
@@ -1236,20 +1236,20 @@ class _AiSuggestionsSheetState extends State<_AiSuggestionsSheet> {
 
 InputDecoration _fieldDecoration(String hint) => InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+      hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
       filled: true,
       fillColor: JC.surface,
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: JC.border)),
+          borderSide: BorderSide(color: JC.border)),
       enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: JC.border)),
+          borderSide: BorderSide(color: JC.border)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: JC.blue500)),
+          borderSide: BorderSide(color: JC.blue500)),
     );
 
 Widget _dismissBg() => Container(
@@ -1260,5 +1260,5 @@ Widget _dismissBg() => Container(
         color: JC.cancelRed.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
+      child: Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );

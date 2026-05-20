@@ -2,8 +2,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'app_settings.dart';
 import 'main.dart' show JC;
+import 'theme/jarvis_theme.dart';
+import 'theme/theme_notifier.dart';
+import 'widgets/theme_picker.dart';
 import 'services/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -35,9 +39,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _assistantNameCtrl;
   late TextEditingController _userNameCtrl;
   late TextEditingController _localServerUrlCtrl;
+  late TextEditingController _localModelCtrl;
   String? _pingResult;
   int _selectedPreset = -1; // index into _kPresets, -1 = custom
   String? _obsidianSyncStatus;
+
+  // TTS preview
+  final FlutterTts _tts = FlutterTts();
+  List<String> _voiceNames = [];
 
   // Permissions
   PermissionStatus _micStatus        = PermissionStatus.denied;
@@ -48,23 +57,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    final w = widget.settings;
     _s = AppSettings(
-      assistantName:    widget.settings.assistantName,
-      gender:           widget.settings.gender,
-      personality:      widget.settings.personality,
-      voiceEnabled:     widget.settings.voiceEnabled,
-      userName:         widget.settings.userName,
-      useLocalModel:    widget.settings.useLocalModel,
-      useLocalServer:   widget.settings.useLocalServer,
-      localServerUrl:   widget.settings.localServerUrl,
-      obsidianAutoSync: widget.settings.obsidianAutoSync,
-      telemetryConsent: widget.settings.telemetryConsent,
+      assistantName:    w.assistantName,
+      gender:           w.gender,
+      personality:      w.personality,
+      voiceEnabled:     w.voiceEnabled,
+      userName:         w.userName,
+      useLocalModel:    w.useLocalModel,
+      useLocalServer:   w.useLocalServer,
+      localServerUrl:   w.localServerUrl,
+      obsidianAutoSync: w.obsidianAutoSync,
+      telemetryConsent: w.telemetryConsent,
+      bargeInEnabled:   w.bargeInEnabled,
+      selectedTheme:    w.selectedTheme,
+      animationsEnabled: w.animationsEnabled,
+      ttsSpeed:         w.ttsSpeed,
+      ttsPitch:         w.ttsPitch,
+      ttsLanguage:      w.ttsLanguage,
+      ttsVoiceName:     w.ttsVoiceName,
+      cloudProvider:    w.cloudProvider,
+      localModelName:   w.localModelName,
+      temperature:      w.temperature,
+      responseLength:   w.responseLength,
+      notificationsEnabled: w.notificationsEnabled,
+      quietHoursStart:  w.quietHoursStart,
+      quietHoursEnd:    w.quietHoursEnd,
     );
     _assistantNameCtrl  = TextEditingController(text: _s.assistantName);
     _userNameCtrl       = TextEditingController(text: _s.userName);
     _localServerUrlCtrl = TextEditingController(text: _s.localServerUrl);
+    _localModelCtrl     = TextEditingController(text: _s.localModelName);
     _detectPreset(_s.localServerUrl);
     _loadPermissions();
+    _loadVoices();
+  }
+
+  Future<void> _loadVoices() async {
+    try {
+      final voices = await _tts.getVoices;
+      if (voices is List && mounted) {
+        final names = <String>[];
+        for (final v in voices) {
+          if (v is Map) {
+            final locale = (v['locale'] ?? '').toString().toLowerCase();
+            final name = (v['name'] ?? '').toString();
+            // Hebrew + English voices only, to keep the list relevant
+            if (name.isNotEmpty &&
+                (locale.startsWith('he') || locale.startsWith('iw') ||
+                 locale.startsWith('en'))) {
+              names.add(name);
+            }
+          }
+        }
+        setState(() => _voiceNames = names.toSet().toList()..sort());
+      }
+    } catch (_) {/* voices unavailable on this platform */}
+  }
+
+  Future<void> _previewTts() async {
+    try {
+      await _tts.setLanguage(_s.ttsLanguage);
+      await _tts.setSpeechRate(_s.ttsSpeed);
+      await _tts.setPitch(_s.ttsPitch);
+      if (_s.ttsVoiceName.isNotEmpty) {
+        await _tts.setVoice({'name': _s.ttsVoiceName, 'locale': _s.ttsLanguage});
+      }
+      await _tts.speak(_s.ttsLanguage.startsWith('he')
+          ? 'שלום, אני ${_s.assistantName}. כך אני נשמע.'
+          : 'Hello, I am ${_s.assistantName}. This is how I sound.');
+    } catch (_) {/* ignore preview failures */}
   }
 
   Future<void> _loadPermissions() async {
@@ -122,6 +184,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _assistantNameCtrl.dispose();
     _userNameCtrl.dispose();
     _localServerUrlCtrl.dispose();
+    _localModelCtrl.dispose();
+    _tts.stop();
     super.dispose();
   }
 
@@ -129,6 +193,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.assistantName  = _assistantNameCtrl.text.trim().isEmpty ? 'Jarvis'                    : _assistantNameCtrl.text.trim();
     _s.userName       = _userNameCtrl.text.trim().isEmpty      ? 'נדב'                       : _userNameCtrl.text.trim();
     _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
+    _s.localModelName = _localModelCtrl.text.trim().isEmpty    ? 'llama3'                     : _localModelCtrl.text.trim();
     widget.onSave(_s);
     Navigator.pop(context);
   }
@@ -417,6 +482,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
+  Widget _quietHourRow({
+    required String label,
+    required IconData icon,
+    required int hour,
+    required void Function(int) onPick,
+  }) =>
+      InkWell(
+        onTap: () async {
+          final picked = await showTimePicker(
+            context: context,
+            initialTime: TimeOfDay(hour: hour, minute: 0),
+            builder: (ctx, child) => Directionality(
+              textDirection: TextDirection.rtl,
+              child: child ?? const SizedBox.shrink(),
+            ),
+          );
+          if (picked != null) onPick(picked.hour);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: JC.textMuted),
+              const SizedBox(width: 12),
+              Text(label,
+                  style: TextStyle(
+                      color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+              const Spacer(),
+              Text('${hour.toString().padLeft(2, '0')}:00',
+                  style: TextStyle(
+                      color: JC.blue400, fontSize: 14,
+                      fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      );
+
+  Widget _rowSlider({
+    required String label,
+    required IconData icon,
+    required double value,
+    required double min,
+    required double max,
+    int? divisions,
+    required String Function(double) display,
+    required void Function(double) onChanged,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 18, color: JC.textMuted),
+                const SizedBox(width: 12),
+                Text(label,
+                    style: TextStyle(
+                        color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+                const Spacer(),
+                Text(display(value),
+                    style: TextStyle(
+                        color: JC.blue400, fontSize: 13, fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: JC.blue500,
+                inactiveTrackColor: JC.border,
+                thumbColor: JC.blue400,
+                overlayColor: JC.blue500.withValues(alpha: 0.18),
+                trackHeight: 3,
+              ),
+              child: Slider(
+                value: value.clamp(min, max),
+                min: min,
+                max: max,
+                divisions: divisions,
+                onChanged: onChanged,
+              ),
+            ),
+          ],
+        ),
+      );
+
   Widget _rowSwitch({
     required String label,
     required String subtitle,
@@ -607,6 +758,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
 
+            // ── מראה ─────────────────────────────────────────────────────────
+            _sectionHeader('מראה ועיצוב', Icons.palette_outlined),
+            ThemePicker(
+              selected: _s.selectedTheme,
+              onSelected: (t) {
+                setState(() => _s.selectedTheme = t);
+                ThemeNotifier.of(context).value = t; // live preview
+              },
+            ),
+            const SizedBox(height: 6),
+            _card([
+              _rowSwitch(
+                label: 'אנימציות עשירות',
+                subtitle: 'מעברים ואפקטים חלקים בין מסכים',
+                icon: Icons.animation_outlined,
+                value: _s.animationsEnabled,
+                onChanged: (val) => setState(() => _s.animationsEnabled = val),
+              ),
+            ]),
+
             // ── זהות ─────────────────────────────────────────────────────────
             _sectionHeader('זהות', Icons.person_outline_rounded),
             _card([
@@ -650,8 +821,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ]),
 
-            // ── קול ──────────────────────────────────────────────────────────
-            _sectionHeader('קול', Icons.volume_up_outlined),
+            // ── קול ו-TTS ─────────────────────────────────────────────────────
+            _sectionHeader('קול ו-TTS', Icons.record_voice_over_outlined),
             _card([
               _rowSwitch(
                 label: 'הפעלת קול',
@@ -659,6 +830,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.record_voice_over_outlined,
                 value: _s.voiceEnabled,
                 onChanged: (val) => setState(() => _s.voiceEnabled = val),
+              ),
+              if (_s.voiceEnabled) ...[
+                _divider(),
+                _rowSlider(
+                  label: 'מהירות דיבור',
+                  icon: Icons.speed_rounded,
+                  value: _s.ttsSpeed,
+                  min: 0.3,
+                  max: 1.0,
+                  divisions: 14,
+                  display: (v) => '${(v * 100).round()}%',
+                  onChanged: (v) => setState(() => _s.ttsSpeed = v),
+                ),
+                _divider(),
+                _rowSlider(
+                  label: 'גובה קול',
+                  icon: Icons.graphic_eq_rounded,
+                  value: _s.ttsPitch,
+                  min: 0.5,
+                  max: 2.0,
+                  divisions: 15,
+                  display: (v) => v.toStringAsFixed(2),
+                  onChanged: (v) => setState(() => _s.ttsPitch = v),
+                ),
+                _divider(),
+                _rowDropdown<String>(
+                  label: 'שפת הקראה',
+                  icon: Icons.language_rounded,
+                  value: _s.ttsLanguage,
+                  items: const [
+                    DropdownMenuItem(value: 'he-IL', child: Text('עברית')),
+                    DropdownMenuItem(value: 'en-US', child: Text('English')),
+                  ],
+                  onChanged: (val) => setState(() => _s.ttsLanguage = val!),
+                ),
+                if (_voiceNames.isNotEmpty) ...[
+                  _divider(),
+                  _rowDropdown<String>(
+                    label: 'קול',
+                    icon: Icons.spatial_audio_off_rounded,
+                    value: _voiceNames.contains(_s.ttsVoiceName)
+                        ? _s.ttsVoiceName
+                        : '',
+                    items: [
+                      const DropdownMenuItem(value: '', child: Text('ברירת מחדל')),
+                      ..._voiceNames.map((n) => DropdownMenuItem(
+                            value: n,
+                            child: Text(n, overflow: TextOverflow.ellipsis),
+                          )),
+                    ],
+                    onChanged: (val) => setState(() => _s.ttsVoiceName = val ?? ''),
+                  ),
+                ],
+                _divider(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: GestureDetector(
+                    onTap: _previewTts,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: JC.blue500.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: JC.blue500.withValues(alpha: 0.4), width: 0.8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.play_arrow_rounded, size: 17, color: JC.blue400),
+                          const SizedBox(width: 8),
+                          Text('השמע דוגמה',
+                              style: TextStyle(
+                                  color: JC.blue400, fontSize: 13,
+                                  fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              _divider(),
+              _rowSwitch(
+                label: 'קטיעת דיבור (Barge-in)',
+                subtitle: 'אפשר לדבר תוך כדי שג׳רביס מקריא',
+                icon: Icons.interpreter_mode_outlined,
+                value: _s.bargeInEnabled,
+                onChanged: (val) => setState(() => _s.bargeInEnabled = val),
               ),
             ]),
 
@@ -787,17 +1045,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ]),
 
             // ── מודל AI ──────────────────────────────────────────────────────
-            _sectionHeader('מודל AI', Icons.memory_outlined),
+            _sectionHeader('AI ומודלים', Icons.memory_outlined),
             _card([
               _rowSwitch(
                 label: 'מודל מקומי (Ollama)',
                 subtitle: _s.useLocalModel
                     ? 'Ollama על השרת המקומי'
-                    : 'Groq → DeepSeek → Gemini',
+                    : 'ספק ענן',
                 icon: Icons.precision_manufacturing_outlined,
                 value: _s.useLocalModel,
                 onChanged: (val) => setState(() => _s.useLocalModel = val),
               ),
+              if (_s.useLocalModel) ...[
+                _divider(),
+                _rowField(
+                  label: 'שם מודל',
+                  icon: Icons.dns_outlined,
+                  ctrl: _localModelCtrl,
+                  hint: 'llama3',
+                ),
+              ] else ...[
+                _divider(),
+                _rowDropdown<String>(
+                  label: 'ספק ענן',
+                  icon: Icons.cloud_outlined,
+                  value: _s.cloudProvider,
+                  items: const [
+                    DropdownMenuItem(value: 'groq',     child: Text('Groq')),
+                    DropdownMenuItem(value: 'deepseek', child: Text('DeepSeek')),
+                    DropdownMenuItem(value: 'gemini',   child: Text('Gemini')),
+                  ],
+                  onChanged: (val) => setState(() => _s.cloudProvider = val!),
+                ),
+              ],
+              _divider(),
+              _rowSlider(
+                label: 'יצירתיות',
+                icon: Icons.auto_awesome_outlined,
+                value: _s.temperature,
+                min: 0.0,
+                max: 1.0,
+                divisions: 10,
+                display: (v) => v.toStringAsFixed(1),
+                onChanged: (v) => setState(() => _s.temperature = v),
+              ),
+              _divider(),
+              _rowDropdown<String>(
+                label: 'אורך תשובה',
+                icon: Icons.notes_rounded,
+                value: _s.responseLength,
+                items: const [
+                  DropdownMenuItem(value: 'short',  child: Text('קצר')),
+                  DropdownMenuItem(value: 'medium', child: Text('בינוני')),
+                  DropdownMenuItem(value: 'long',   child: Text('ארוך')),
+                ],
+                onChanged: (val) => setState(() => _s.responseLength = val!),
+              ),
+            ]),
+
+            // ── התראות ───────────────────────────────────────────────────────
+            _sectionHeader('התראות', Icons.notifications_outlined),
+            _card([
+              _rowSwitch(
+                label: 'התראות פעילות',
+                subtitle: 'תזכורות, סיכומי בוקר ועדכונים',
+                icon: Icons.notifications_active_outlined,
+                value: _s.notificationsEnabled,
+                onChanged: (val) => setState(() => _s.notificationsEnabled = val),
+              ),
+              if (_s.notificationsEnabled) ...[
+                _divider(),
+                _quietHourRow(
+                  label: 'תחילת שעות שקט',
+                  icon: Icons.bedtime_outlined,
+                  hour: _s.quietHoursStart,
+                  onPick: (h) => setState(() => _s.quietHoursStart = h),
+                ),
+                _divider(),
+                _quietHourRow(
+                  label: 'סיום שעות שקט',
+                  icon: Icons.wb_sunny_outlined,
+                  hour: _s.quietHoursEnd,
+                  onPick: (h) => setState(() => _s.quietHoursEnd = h),
+                ),
+              ],
             ]),
 
             // ── הרשאות ───────────────────────────────────────────────────────

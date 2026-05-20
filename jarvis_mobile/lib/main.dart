@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -414,66 +415,100 @@ class _ChatBubbleState extends State<_ChatBubble> {
         child: GestureDetector(
           onTap: () => setState(() => _showTime = !_showTime),
           onLongPress: () => _showCopyMenu(widget.msg['text'] ?? ''),
-          child: Container(
-            margin: EdgeInsets.only(
-              bottom: 14,
-              right: isUser ? 0 : 48,
-              left:  isUser ? 48 : 0,
+          child: _bubbleSurface(isUser: isUser, child: _bubbleContent(isUser)),
+        ),
+      ),
+    );
+  }
+
+  Widget _bubbleContent(bool isUser) => Column(
+        crossAxisAlignment:
+            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          MarkdownLite(
+            text: widget.msg['text']!,
+            textDirection: TextDirection.rtl,
+            baseStyle: TextStyle(
+              fontSize: 15,
+              color: JC.textPrimary,
+              height: 1.6,
+              fontFamily: 'Heebo',
+              fontWeight: FontWeight.w400,
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: isUser ? JC.userBubble : JC.jarvisBubble,
-              borderRadius: BorderRadius.only(
-                topLeft:     const Radius.circular(20),
-                topRight:    const Radius.circular(20),
-                bottomLeft:  Radius.circular(isUser ? 20 : 6),
-                bottomRight: Radius.circular(isUser ? 6 : 20),
+          ),
+          if (_showTime) ...[
+            const SizedBox(height: 6),
+            Text(
+              widget.msg['time'] ?? '',
+              style: TextStyle(
+                fontSize: 11,
+                color: JC.textMuted.withValues(alpha: 0.8),
+                fontFamily: 'Heebo',
               ),
-              border: Border.all(
-                color: isUser
-                    ? JC.blue400.withValues(alpha: 0.5)
-                    : JC.border.withValues(alpha: 0.7),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: isUser ? JC.blue400.withValues(alpha: 0.1) : Colors.transparent,
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
-            child: Column(
-              crossAxisAlignment:
-                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              children: [
-                MarkdownLite(
-                  text: widget.msg['text']!,
-                  textDirection: TextDirection.rtl,
-                  baseStyle: TextStyle(
-                    fontSize: 15,
-                    color: JC.textPrimary,
-                    height: 1.6,
-                    fontFamily: 'Heebo',
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                if (_showTime) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.msg['time'] ?? '',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: JC.textMuted.withValues(alpha: 0.8),
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                ],
-              ],
+          ],
+        ],
+      );
+
+  Widget _bubbleSurface({required bool isUser, required Widget child}) {
+    final scheme = JC.scheme;
+    final margin = EdgeInsets.only(
+      bottom: 14,
+      right: isUser ? 0 : 48,
+      left: isUser ? 48 : 0,
+    );
+    const padding = EdgeInsets.symmetric(horizontal: 16, vertical: 12);
+    final radius = BorderRadius.only(
+      topLeft: const Radius.circular(20),
+      topRight: const Radius.circular(20),
+      bottomLeft: Radius.circular(isUser ? 20 : 6),
+      bottomRight: Radius.circular(isUser ? 6 : 20),
+    );
+    final borderColor = isUser
+        ? JC.blue400.withValues(alpha: 0.5)
+        : (scheme.isCyber ? JC.blue400.withValues(alpha: 0.4)
+                          : JC.border.withValues(alpha: 0.7));
+    final baseColor = isUser ? JC.userBubble : JC.jarvisBubble;
+
+    if (scheme.usesGlass) {
+      return Container(
+        margin: margin,
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              padding: padding,
+              decoration: BoxDecoration(
+                color: baseColor.withValues(alpha: 0.5),
+                borderRadius: radius,
+                border: Border.all(color: borderColor, width: 1.0),
+              ),
+              child: child,
             ),
           ),
         ),
+      );
+    }
+
+    return Container(
+      margin: margin,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: baseColor,
+        borderRadius: radius,
+        border: Border.all(color: borderColor, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: isUser
+                ? JC.blue400.withValues(alpha: scheme.isCyber ? 0.18 : 0.1)
+                : (scheme.isCyber ? JC.blue400.withValues(alpha: 0.08) : Colors.transparent),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
+      child: child,
     );
   }
 }

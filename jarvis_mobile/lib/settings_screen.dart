@@ -5,7 +5,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'app_settings.dart';
 import 'main.dart' show JC;
-import 'theme/jarvis_theme.dart';
 import 'theme/theme_notifier.dart';
 import 'widgets/theme_picker.dart';
 import 'services/api_service.dart';

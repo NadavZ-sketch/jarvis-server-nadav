@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'main.dart' show JC, ChatScreen;
 import 'app_settings.dart';
+import 'widgets/animated_indexed_stack.dart';
 import 'screens/app_drawer.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/productivity_screen.dart';
@@ -153,8 +154,9 @@ class _MainShellState extends State<MainShell> {
               _selectedIndex = 1;
             }),
           ),
-          body: IndexedStack(
+          body: AnimatedIndexedStack(
             index: _selectedIndex,
+            enabled: _settings.animationsEnabled,
             children: [
               // 0 — Dashboard (home)
               DashboardScreen(

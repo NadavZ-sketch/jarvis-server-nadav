@@ -3,6 +3,7 @@ import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
+import '../widgets/surface_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   final AppSettings settings;
@@ -335,14 +336,10 @@ class _DashTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SurfaceCard(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: JC.surfaceAlt,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.border, width: 0.8),
-      ),
+      radius: 12,
       child: Row(
         textDirection: TextDirection.rtl,
         children: [
@@ -381,14 +378,10 @@ class _EmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SurfaceCard(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      decoration: BoxDecoration(
-        color: JC.surfaceAlt,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.border, width: 0.8),
-      ),
+      radius: 12,
       child: Text(label,
           textDirection: TextDirection.rtl,
           style: TextStyle(

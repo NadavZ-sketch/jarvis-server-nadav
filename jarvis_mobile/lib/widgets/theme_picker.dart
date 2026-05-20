@@ -23,7 +23,7 @@ class ThemePicker extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         itemCount: AppTheme.values.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
           final theme = AppTheme.values[i];
           final scheme = JarvisThemeData.schemeFor(theme);

@@ -3,7 +3,7 @@ import '../main.dart' show JC;
 import '../app_settings.dart';
 import 'shopping_screen.dart';
 import 'notes_screen.dart';
-import 'contacts_screen.dart';
+import 'people_schedule_screen.dart';
 
 class ListsScreen extends StatefulWidget {
   final AppSettings settings;
@@ -70,7 +70,7 @@ class _ListsScreenState extends State<ListsScreen>
           tabs: const [
             Tab(text: 'קניות 🛒'),
             Tab(text: 'הערות 📝'),
-            Tab(text: 'אנשי קשר 👤'),
+            Tab(text: 'אנשים ולוח 👥'),
           ],
         ),
       ),
@@ -85,9 +85,9 @@ class _ListsScreenState extends State<ListsScreen>
             settings: widget.settings,
             onCountUpdate: widget.onNotesCountUpdate,
           ),
-          ContactsScreen(
+          PeopleScheduleScreen(
             settings: widget.settings,
-            onCountUpdate: widget.onContactsCountUpdate,
+            onContactsCountUpdate: widget.onContactsCountUpdate,
           ),
         ],
       ),

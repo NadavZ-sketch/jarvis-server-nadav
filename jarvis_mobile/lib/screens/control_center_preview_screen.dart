@@ -186,7 +186,7 @@ class _ControlCenterPreviewScreenState
                 color: JC.textSecondary, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
-          title: const Column(
+          title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -375,7 +375,7 @@ class _ControlCenterPreviewScreenState
             child: TextField(
               textDirection: TextDirection.rtl,
               style: TextStyle(color: JC.textPrimary, fontSize: 13, fontFamily: 'Heebo'),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'חיפוש סוכן...',
                 hintStyle: TextStyle(color: JC.textMuted, fontSize: 13, fontFamily: 'Heebo'),
                 prefixIcon: Icon(Icons.search_rounded, color: JC.textMuted, size: 18),
@@ -882,7 +882,7 @@ class _SectionLoader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(vertical: 20),
       child: Center(
           child: CircularProgressIndicator(

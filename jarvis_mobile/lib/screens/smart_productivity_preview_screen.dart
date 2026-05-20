@@ -246,7 +246,7 @@ class _SmartProductivityPreviewScreenState
                 color: JC.textSecondary, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
-          title: const Column(
+          title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -286,7 +286,7 @@ class _SmartProductivityPreviewScreenState
               children: [
                 Expanded(
                   child: _loading
-                      ? const Center(
+                      ? Center(
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: JC.blue400))
                       : _error != null

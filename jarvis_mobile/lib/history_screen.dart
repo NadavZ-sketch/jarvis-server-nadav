@@ -6,7 +6,9 @@ import 'transitions/slide_fade_route.dart';
 import 'widgets/empty_state.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  final ValueChanged<Map<String, dynamic>>? onResume;
+
+  const HistoryScreen({super.key, this.onResume});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -74,6 +76,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
         page: _SessionDetailScreen(
           date: _formatDate(session['date'] as String?),
           messages: msgs,
+          onResume: widget.onResume != null
+              ? () {
+                  widget.onResume!(session);
+                  Navigator.popUntil(context, (route) => route.isFirst);
+                }
+              : null,
         ),
       ),
     );
@@ -119,7 +127,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 final date = _formatDate(session['date'] as String?);
 
                 return Dismissible(
-                  key: Key(session['date'] as String? ?? '$index'),
+                  key: Key(session['chat_id'] as String? ?? session['date'] as String? ?? '$index'),
                   direction: DismissDirection.endToStart,
                   background: Container(
                     alignment: Alignment.centerLeft,
@@ -179,13 +187,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          Text(
-                            date,
-                            style: TextStyle(
-                              color: JC.textMuted,
-                              fontSize: 12,
-                              fontFamily: 'Heebo',
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                date,
+                                style: TextStyle(
+                                  color: JC.textMuted,
+                                  fontSize: 12,
+                                  fontFamily: 'Heebo',
+                                ),
+                              ),
+                              if (widget.onResume != null) ...[
+                                const SizedBox(height: 6),
+                                Icon(Icons.reply_rounded,
+                                    color: JC.blue400, size: 16),
+                              ],
+                            ],
                           ),
                         ],
                       ),
@@ -201,8 +219,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 class _SessionDetailScreen extends StatefulWidget {
   final String date;
   final List<Map<String, dynamic>> messages;
+  final VoidCallback? onResume;
 
-  const _SessionDetailScreen({required this.date, required this.messages});
+  const _SessionDetailScreen({
+    required this.date,
+    required this.messages,
+    this.onResume,
+  });
 
   @override
   State<_SessionDetailScreen> createState() => _SessionDetailScreenState();
@@ -283,6 +306,13 @@ class _SessionDetailScreenState extends State<_SessionDetailScreen> {
           ),
         ),
         actions: [
+          if (widget.onResume != null)
+            TextButton.icon(
+              onPressed: widget.onResume,
+              icon: Icon(Icons.reply_rounded, size: 18, color: JC.blue400),
+              label: Text('המשך',
+                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 13)),
+            ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444)),
             onPressed: _deleteSession,

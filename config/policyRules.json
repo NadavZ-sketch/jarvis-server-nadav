@@ -15,6 +15,14 @@
         "reminders.create",
         "reminders.update",
         "reminders.delete",
+        "notes.read",
+        "notes.create",
+        "notes.update",
+        "notes.delete",
+        "shopping.read",
+        "shopping.create",
+        "shopping.update",
+        "shopping.delete",
         "messaging.send"
       ]
     },

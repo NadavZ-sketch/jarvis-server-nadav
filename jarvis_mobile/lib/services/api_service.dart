@@ -15,6 +15,18 @@ class ApiService {
 
   Uri _uri(String path) => Uri.parse('${settings.serverUrl}$path');
 
+  static const Map<String, String> _baseHeaders = {
+    'x-user-role': 'member',
+    'x-user-plan': 'free',
+    'x-user-consent': 'true',
+  };
+
+  Map<String, String> _headers([Map<String, String>? extra]) {
+    final h = Map<String, String>.from(_baseHeaders);
+    if (extra != null) h.addAll(extra);
+    return h;
+  }
+
   /// Maps low-level exceptions to short Hebrew messages safe to show in UI.
   /// The original error is logged via [debugPrint] so devs still see it.
   static String friendlyError(Object error) {
@@ -54,7 +66,7 @@ class ApiService {
       String? serverMsg;
       try {
         final json = jsonDecode(body) as Map<String, dynamic>;
-        serverMsg = json['error'] as String?;
+        serverMsg = (json['error'] ?? json['message']) as String?;
       } catch (_) {}
       throw Exception(serverMsg ?? 'שגיאת שרת (${res.statusCode})');
     }
@@ -64,7 +76,7 @@ class ApiService {
   // ─── Tasks ────────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getTasks() async {
-    final res = await _client.get(_uri('/tasks')).timeout(_timeout);
+    final res = await _client.get(_uri('/tasks'), headers: _baseHeaders).timeout(_timeout);
     final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['tasks'] ?? []);
   }
@@ -73,7 +85,7 @@ class ApiService {
       {String priority = 'medium'}) async {
     final res = await _client.post(
       _uri('/tasks'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode({'content': content, 'priority': priority}),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
@@ -92,19 +104,19 @@ class ApiService {
     if (priority != null) body['priority'] = priority;
     final res = await _client.put(
       _uri('/tasks/$id'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> getStats() async {
-    final res = await _client.get(_uri('/stats')).timeout(_timeout);
+    final res = await _client.get(_uri('/stats'), headers: _baseHeaders).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<List<Map<String, dynamic>>> getTodayItems() async {
-    final res = await _client.get(_uri('/tasks/today')).timeout(_timeout);
+    final res = await _client.get(_uri('/tasks/today'), headers: _baseHeaders).timeout(_timeout);
     final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['items'] ?? []);
   }
@@ -112,7 +124,7 @@ class ApiService {
   Future<List<Map<String, dynamic>>> getTaskSuggestions(String taskId) async {
     final res = await _client.post(
       _uri('/tasks/$taskId/suggest'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode({}),
     ).timeout(const Duration(seconds: 25));
     final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
@@ -120,14 +132,14 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getTodayMessage() async {
-    final res = await _client.get(_uri('/today-message')).timeout(_timeout);
+    final res = await _client.get(_uri('/today-message'), headers: _baseHeaders).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   // ─── Reminders ────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getReminders() async {
-    final res = await _client.get(_uri('/reminders')).timeout(_timeout);
+    final res = await _client.get(_uri('/reminders'), headers: _baseHeaders).timeout(_timeout);
     final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['reminders'] ?? []);
   }
@@ -141,7 +153,7 @@ class ApiService {
     if (recurrence != null) body['recurrence'] = recurrence;
     final res = await _client.post(
       _uri('/reminders'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
@@ -155,14 +167,14 @@ class ApiService {
     if (recurrence    != null) body['recurrence']     = recurrence;
     final res = await _client.put(
       _uri('/reminders/$id'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<void> deleteReminder(String id) async {
-    await _client.delete(_uri('/reminders/$id')).timeout(_timeout);
+    await _client.delete(_uri('/reminders/$id'), headers: _baseHeaders).timeout(_timeout);
   }
 
   /// Returns fired (due) reminders and removes them from the server queue.
@@ -175,7 +187,7 @@ class ApiService {
   // ─── Contacts ─────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getContacts() async {
-    final res = await _client.get(_uri('/contacts')).timeout(_timeout);
+    final res = await _client.get(_uri('/contacts'), headers: _baseHeaders).timeout(_timeout);
     final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['contacts'] ?? []);
   }
@@ -187,7 +199,7 @@ class ApiService {
     if (email != null && email.isNotEmpty) body['email'] = email;
     final res = await _client.post(
       _uri('/contacts'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
@@ -201,20 +213,20 @@ class ApiService {
     if (email != null) body['email'] = email;
     final res = await _client.put(
       _uri('/contacts/$id'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<void> deleteContact(String id) async {
-    await _client.delete(_uri('/contacts/$id')).timeout(_timeout);
+    await _client.delete(_uri('/contacts/$id'), headers: _baseHeaders).timeout(_timeout);
   }
 
   // ─── Shopping ─────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getShopping() async {
-    final res = await _client.get(_uri('/shopping')).timeout(_timeout);
+    final res = await _client.get(_uri('/shopping'), headers: _baseHeaders).timeout(_timeout);
     final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['items'] ?? []);
   }
@@ -222,14 +234,14 @@ class ApiService {
   Future<Map<String, dynamic>> addShoppingItem(String item) async {
     final res = await _client.post(
       _uri('/shopping'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode({'item': item}),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<void> deleteShoppingItem(String id) async {
-    await _client.delete(_uri('/shopping/$id')).timeout(_timeout);
+    await _client.delete(_uri('/shopping/$id'), headers: _baseHeaders).timeout(_timeout);
   }
 
   Future<Map<String, dynamic>> updateShoppingItem(String id,
@@ -239,7 +251,7 @@ class ApiService {
     if (item != null) body['item'] = item;
     final res = await _client.patch(
       _uri('/shopping/$id'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
@@ -248,7 +260,7 @@ class ApiService {
   // ─── Notes ────────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getNotes() async {
-    final res = await _client.get(_uri('/notes')).timeout(_timeout);
+    final res = await _client.get(_uri('/notes'), headers: _baseHeaders).timeout(_timeout);
     final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['notes'] ?? []);
   }
@@ -257,14 +269,14 @@ class ApiService {
       {String title = ''}) async {
     final res = await _client.post(
       _uri('/notes'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode({'title': title, 'content': content}),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   Future<void> deleteNote(String id) async {
-    await _client.delete(_uri('/notes/$id')).timeout(_timeout);
+    await _client.delete(_uri('/notes/$id'), headers: _baseHeaders).timeout(_timeout);
   }
 
   Future<Map<String, dynamic>> updateNote(String id,
@@ -274,7 +286,7 @@ class ApiService {
     if (content != null) body['content'] = content;
     final res = await _client.put(
       _uri('/notes/$id'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;

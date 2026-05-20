@@ -316,6 +316,30 @@ class ApiService {
   }
 
 
+  // ─── Agents ───────────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getAgents() async {
+    final res = await _client
+        .get(_uri('/agent-center/agents'))
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res));
+    if (data is List) {
+      return List<Map<String, dynamic>>.from(data);
+    }
+    if (data is Map<String, dynamic>) {
+      return List<Map<String, dynamic>>.from(data['agents'] ?? []);
+    }
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> getSurveyCheck(String userName) async {
+    final res = await _client
+        .get(_uri('/survey-check?userName=${Uri.encodeComponent(userName)}'))
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['survey'] ?? []);
+  }
+
   // ─── User Profile ─────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> getUserProfile() async {

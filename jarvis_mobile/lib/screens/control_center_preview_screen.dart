@@ -5,7 +5,7 @@ import '../services/api_service.dart';
 import '../widgets/preview_banner.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Risk / status helpers
+// Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 Color _riskColor(String? risk) {
@@ -54,8 +54,17 @@ String _statusLabel(String? status) {
   }
 }
 
+String _shortDate(String iso) {
+  try {
+    final dt = DateTime.parse(iso).toLocal();
+    return '${dt.day}/${dt.month}/${dt.year}';
+  } catch (_) {
+    return iso;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Demo data for non-existent backend sections
+// Demo data
 // ─────────────────────────────────────────────────────────────────────────────
 
 const _demoFeatureIdeas = [
@@ -111,9 +120,9 @@ class _ControlCenterPreviewScreenState
   String? _statsError;
   String? _agentsError;
 
-  // Survey state
   final Map<String, String?> _surveyAnswers = {};
   bool _surveySubmitted = false;
+  String? _snackMessage;
 
   @override
   void initState() {
@@ -123,7 +132,8 @@ class _ControlCenterPreviewScreenState
   }
 
   Future<void> _load() async {
-    await Future.wait([_loadStats(), _loadAgents(), _loadIssues(), _loadSurvey()]);
+    await Future.wait(
+        [_loadStats(), _loadAgents(), _loadIssues(), _loadSurvey()]);
   }
 
   Future<void> _loadStats() async {
@@ -131,7 +141,8 @@ class _ControlCenterPreviewScreenState
       final s = await _api.getStats();
       if (mounted) setState(() { _stats = s; _loadingStats = false; });
     } catch (e) {
-      if (mounted) setState(() { _statsError = ApiService.friendlyError(e); _loadingStats = false; });
+      if (mounted)
+        setState(() { _statsError = ApiService.friendlyError(e); _loadingStats = false; });
     }
   }
 
@@ -140,16 +151,18 @@ class _ControlCenterPreviewScreenState
       final a = await _api.getAgents();
       if (mounted) setState(() { _agents = a; _loadingAgents = false; });
     } catch (e) {
-      if (mounted) setState(() { _agentsError = ApiService.friendlyError(e); _loadingAgents = false; });
+      if (mounted)
+        setState(() { _agentsError = ApiService.friendlyError(e); _loadingAgents = false; });
     }
   }
 
   Future<void> _loadIssues() async {
     try {
       final reports = await _api.getE2eReports();
-      if (mounted) setState(() { _issues = reports.take(5).toList(); _loadingIssues = false; });
+      if (mounted)
+        setState(() { _issues = reports.take(5).toList(); _loadingIssues = false; });
     } catch (_) {
-      if (mounted) setState(() { _loadingIssues = false; });
+      if (mounted) setState(() => _loadingIssues = false);
     }
   }
 
@@ -163,9 +176,46 @@ class _ControlCenterPreviewScreenState
         });
       }
     } catch (_) {
-      if (mounted) setState(() { _survey = _demoSurveyQuestions; _useDemoSurvey = true; });
+      if (mounted)
+        setState(() { _survey = _demoSurveyQuestions; _useDemoSurvey = true; });
     }
   }
+
+  void _showSnack(String msg) {
+    setState(() => _snackMessage = msg);
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _snackMessage = null);
+    });
+  }
+
+  // Health score: fraction of active agents
+  double get _healthScore {
+    if (_agents.isEmpty) return 1.0;
+    final active = _agents
+        .where((a) =>
+            (a['status'] ?? '').toString().toLowerCase() == 'active' ||
+            (a['status'] ?? '').toString().toLowerCase() == 'online')
+        .length;
+    return active / _agents.length;
+  }
+
+  List<Map<String, dynamic>> get _activeAgents => _agents
+      .where((a) =>
+          (a['status'] ?? '').toString().toLowerCase() == 'active' ||
+          (a['status'] ?? '').toString().toLowerCase() == 'online')
+      .toList();
+
+  List<Map<String, dynamic>> get _idleAgents => _agents
+      .where((a) =>
+          (a['status'] ?? '').toString().toLowerCase() == 'idle')
+      .toList();
+
+  List<Map<String, dynamic>> get _offlineAgents => _agents
+      .where((a) {
+        final s = (a['status'] ?? '').toString().toLowerCase();
+        return s != 'active' && s != 'online' && s != 'idle';
+      })
+      .toList();
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
@@ -210,8 +260,8 @@ class _ControlCenterPreviewScreenState
           ),
           actions: [
             IconButton(
-              icon: Icon(Icons.refresh_rounded,
-                  color: JC.textSecondary, size: 22),
+              icon:
+                  Icon(Icons.refresh_rounded, color: JC.textSecondary, size: 22),
               onPressed: () {
                 setState(() {
                   _loadingStats = true;
@@ -226,80 +276,344 @@ class _ControlCenterPreviewScreenState
             const SizedBox(width: 8),
           ],
         ),
-        body: Column(
+        body: Stack(
           children: [
-            Expanded(
-              child: RefreshIndicator(
-                color: JC.blue400,
-                backgroundColor: JC.surface,
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                  children: [
-                    _StatusSection(),
-                    const SizedBox(height: 20),
-                    _IssuesSection(),
-                    const SizedBox(height: 20),
-                    _AgentsSection(),
-                    const SizedBox(height: 20),
-                    _FeaturesSection(),
-                    const SizedBox(height: 20),
-                    _SurveySection(),
-                    SizedBox(height: bottomPad + 8),
-                  ],
+            Column(
+              children: [
+                Expanded(
+                  child: RefreshIndicator(
+                    color: JC.blue400,
+                    backgroundColor: JC.surface,
+                    onRefresh: _load,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      children: [
+                        _SystemHealthCard(),
+                        const SizedBox(height: 16),
+                        _QuickActionsRow(),
+                        const SizedBox(height: 16),
+                        _StatsRow(),
+                        const SizedBox(height: 16),
+                        _AgentsByStatusSection(),
+                        const SizedBox(height: 16),
+                        _IssuesSection(),
+                        const SizedBox(height: 16),
+                        _FeaturesSection(),
+                        const SizedBox(height: 16),
+                        _SurveySection(),
+                        SizedBox(height: bottomPad + 8),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+                const PreviewBanner(),
+              ],
             ),
-            const PreviewBanner(),
+            if (_snackMessage != null)
+              Positioned(
+                bottom: 60,
+                left: 16,
+                right: 16,
+                child: _SnackOverlay(_snackMessage!),
+              ),
           ],
         ),
       ),
     );
   }
 
-  // ── Section: Status ────────────────────────────────────────────────────────
+  // ── System Health Card ─────────────────────────────────────────────────────
 
-  Widget _StatusSection() {
-    return _SectionCard(
-      title: 'סטטוס מערכת',
-      icon: Icons.monitor_heart_rounded,
-      iconColor: const Color(0xFF22C55E),
-      child: _loadingStats
-          ? const _SectionLoader()
-          : _statsError != null
-              ? _ErrorText(_statsError!)
-              : _StatsGrid(_stats ?? {}),
+  Widget _SystemHealthCard() {
+    final score = _healthScore;
+    final pct = (score * 100).round();
+    final healthColor = score > 0.8
+        ? const Color(0xFF22C55E)
+        : score > 0.5
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFFEF4444);
+    final serverOk = _statsError == null;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF1A2E4A),
+            JC.surface,
+          ],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Row(
+        children: [
+          // Health ring
+          SizedBox(
+            width: 70,
+            height: 70,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: _loadingAgents ? null : score,
+                  strokeWidth: 5,
+                  backgroundColor: const Color(0xFF1A2E4A),
+                  valueColor: AlwaysStoppedAnimation<Color>(healthColor),
+                ),
+                if (!_loadingAgents)
+                  Text(
+                    '$pct%',
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'בריאות המערכת',
+                  style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  serverOk ? 'השרת פעיל ומחובר' : 'שגיאת חיבור לשרת',
+                  style: TextStyle(
+                    color: serverOk
+                        ? const Color(0xFF22C55E)
+                        : const Color(0xFFEF4444),
+                    fontSize: 12,
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    _StatusDot(const Color(0xFF22C55E)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_activeAgents.length} פעילים',
+                      style: TextStyle(
+                          color: JC.textMuted,
+                          fontSize: 11,
+                          fontFamily: 'Heebo'),
+                    ),
+                    const SizedBox(width: 10),
+                    _StatusDot(const Color(0xFFF59E0B)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_idleAgents.length} המתנה',
+                      style: TextStyle(
+                          color: JC.textMuted,
+                          fontSize: 11,
+                          fontFamily: 'Heebo'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _StatsGrid(Map<String, dynamic> s) {
-    final totalMessages = s['total_messages'] ?? s['totalMessages'] ?? '—';
-    final agentCount = _agents.isNotEmpty ? _agents.length : (s['agents'] ?? '—');
-    final issueCount = _issues.length;
+  // ── Quick Actions ──────────────────────────────────────────────────────────
+
+  Widget _QuickActionsRow() {
+    final actions = [
+      {'icon': Icons.health_and_safety_outlined, 'label': 'בדוק מערכת', 'color': const Color(0xFF22C55E)},
+      {'icon': Icons.play_circle_outline_rounded, 'label': 'הפעל E2E', 'color': const Color(0xFF3B82F6)},
+      {'icon': Icons.hub_rounded, 'label': 'טען סוכנים', 'color': const Color(0xFFA5B4FC)},
+      {'icon': Icons.bar_chart_rounded, 'label': 'צפה בדוחות', 'color': const Color(0xFFF59E0B)},
+    ];
+    return SizedBox(
+      height: 76,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        reverse: true,
+        padding: EdgeInsets.zero,
+        itemCount: actions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (_, i) {
+          final a = actions[i];
+          return _QuickActionChip(
+            icon: a['icon'] as IconData,
+            label: a['label'] as String,
+            color: a['color'] as Color,
+            onTap: () => _showSnack('${a['label']} · בקרוב (Preview)'),
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Stats Row ──────────────────────────────────────────────────────────────
+
+  Widget _StatsRow() {
+    final totalMessages =
+        _stats?['total_messages'] ?? _stats?['totalMessages'] ?? '—';
     final serverOk = _statsError == null;
 
-    return Column(
+    return Row(
       children: [
-        Row(
-          children: [
-            Expanded(child: _StatTile(label: 'שרת', value: serverOk ? 'פעיל ✓' : 'שגיאה', valueColor: serverOk ? const Color(0xFF22C55E) : const Color(0xFFEF4444))),
-            const SizedBox(width: 10),
-            Expanded(child: _StatTile(label: 'הודעות', value: '$totalMessages')),
-          ],
+        Expanded(
+          child: _StatCard(
+            icon: Icons.dns_rounded,
+            label: 'שרת',
+            value: serverOk ? 'פעיל' : 'שגיאה',
+            valueColor:
+                serverOk ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
+          ),
         ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(child: _StatTile(label: 'סוכנים', value: '$agentCount')),
-            const SizedBox(width: 10),
-            Expanded(child: _StatTile(label: 'תקלות פתוחות', value: '$issueCount', valueColor: issueCount > 0 ? const Color(0xFFF59E0B) : const Color(0xFF22C55E))),
-          ],
+        const SizedBox(width: 10),
+        Expanded(
+          child: _StatCard(
+            icon: Icons.chat_bubble_outline_rounded,
+            label: 'הודעות',
+            value: '$totalMessages',
+            valueColor: null,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _StatCard(
+            icon: Icons.smart_toy_outlined,
+            label: 'סוכנים',
+            value: _loadingAgents ? '...' : '${_agents.length}',
+            valueColor: null,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _StatCard(
+            icon: Icons.warning_amber_rounded,
+            label: 'תקלות',
+            value: _loadingIssues ? '...' : '${_issues.length}',
+            valueColor: _issues.isNotEmpty
+                ? const Color(0xFFF59E0B)
+                : const Color(0xFF22C55E),
+          ),
         ),
       ],
     );
   }
 
-  // ── Section: Issues ────────────────────────────────────────────────────────
+  // ── Agents by Status ───────────────────────────────────────────────────────
+
+  Widget _AgentsByStatusSection() {
+    return _SectionCard(
+      title: 'סוכנים פעילים',
+      icon: Icons.hub_rounded,
+      iconColor: JC.blue400,
+      child: Column(
+        children: [
+          // Search
+          Container(
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F1929),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: JC.border, width: 0.8),
+            ),
+            child: TextField(
+              textDirection: TextDirection.rtl,
+              style: TextStyle(
+                  color: JC.textPrimary, fontSize: 13, fontFamily: 'Heebo'),
+              decoration: InputDecoration(
+                hintText: 'חיפוש סוכן...',
+                hintStyle: TextStyle(
+                    color: JC.textMuted, fontSize: 13, fontFamily: 'Heebo'),
+                prefixIcon:
+                    Icon(Icons.search_rounded, color: JC.textMuted, size: 18),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              onChanged: (v) => setState(() => _agentFilter = v.toLowerCase()),
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (_loadingAgents)
+            _SectionLoader()
+          else if (_agentsError != null)
+            _ErrorText(_agentsError!)
+          else if (_agents.isEmpty)
+            const _EmptyState(message: 'לא נמצאו סוכנים')
+          else
+            _AgentGroupedList(),
+        ],
+      ),
+    );
+  }
+
+  Widget _AgentGroupedList() {
+    List<Map<String, dynamic>> filtered(List<Map<String, dynamic>> list) {
+      if (_agentFilter.isEmpty) return list;
+      return list.where((a) {
+        final name = (a['name'] ?? a['id'] ?? '').toString().toLowerCase();
+        final role =
+            (a['description'] ?? a['role'] ?? '').toString().toLowerCase();
+        return name.contains(_agentFilter) || role.contains(_agentFilter);
+      }).toList();
+    }
+
+    final active = filtered(_activeAgents);
+    final idle = filtered(_idleAgents);
+    final offline = filtered(_offlineAgents);
+    final hasAny =
+        active.isNotEmpty || idle.isNotEmpty || offline.isNotEmpty;
+
+    if (!hasAny) return const _EmptyState(message: 'לא נמצאו סוכנים תואמים');
+
+    return Column(
+      children: [
+        if (active.isNotEmpty)
+          _AgentStatusGroup(
+            label: 'פעילים',
+            count: active.length,
+            dotColor: const Color(0xFF22C55E),
+            agents: active,
+          ),
+        if (active.isNotEmpty && (idle.isNotEmpty || offline.isNotEmpty))
+          const SizedBox(height: 10),
+        if (idle.isNotEmpty)
+          _AgentStatusGroup(
+            label: 'המתנה',
+            count: idle.length,
+            dotColor: const Color(0xFFF59E0B),
+            agents: idle,
+          ),
+        if (idle.isNotEmpty && offline.isNotEmpty)
+          const SizedBox(height: 10),
+        if (offline.isNotEmpty)
+          _AgentStatusGroup(
+            label: 'לא פעילים',
+            count: offline.length,
+            dotColor: const Color(0xFF475569),
+            agents: offline,
+          ),
+      ],
+    );
+  }
+
+  // ── Issues ─────────────────────────────────────────────────────────────────
 
   Widget _IssuesSection() {
     if (!_loadingIssues && _issues.isEmpty) return const SizedBox.shrink();
@@ -308,7 +622,7 @@ class _ControlCenterPreviewScreenState
       icon: Icons.warning_amber_rounded,
       iconColor: const Color(0xFFF59E0B),
       child: _loadingIssues
-          ? const _SectionLoader()
+          ? _SectionLoader()
           : _issues.isEmpty
               ? const _EmptyState(message: 'הכל תקין ✅ אין תקלות פתוחות')
               : Column(
@@ -327,19 +641,30 @@ class _ControlCenterPreviewScreenState
       decoration: BoxDecoration(
         color: const Color(0xFF0F1929),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3), width: 0.8),
+        border:
+            Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3), width: 0.8),
       ),
       child: Row(
         children: [
-          const Icon(Icons.bug_report_outlined, color: Color(0xFFF59E0B), size: 18),
+          const Icon(Icons.bug_report_outlined,
+              color: Color(0xFFF59E0B), size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(color: JC.textPrimary, fontSize: 13, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                Text(title,
+                    style: TextStyle(
+                        color: JC.textPrimary,
+                        fontSize: 13,
+                        fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600)),
                 if (ts.isNotEmpty)
-                  Text(_shortDate(ts), style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+                  Text(_shortDate(ts),
+                      style: TextStyle(
+                          color: JC.textMuted,
+                          fontSize: 11,
+                          fontFamily: 'Heebo')),
               ],
             ),
           ),
@@ -349,82 +674,7 @@ class _ControlCenterPreviewScreenState
     );
   }
 
-  // ── Section: Agents ────────────────────────────────────────────────────────
-
-  Widget _AgentsSection() {
-    return _SectionCard(
-      title: 'סוכנים פעילים',
-      icon: Icons.hub_rounded,
-      iconColor: JC.blue400,
-      headerTrailing: _agentFilter.isNotEmpty
-          ? GestureDetector(
-              onTap: () => setState(() => _agentFilter = ''),
-              child: Text('נקה', style: const TextStyle(color: Color(0xFF60A5FA), fontSize: 12, fontFamily: 'Heebo')),
-            )
-          : null,
-      child: Column(
-        children: [
-          // Search bar
-          Container(
-            height: 36,
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F1929),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: JC.border, width: 0.8),
-            ),
-            child: TextField(
-              textDirection: TextDirection.rtl,
-              style: TextStyle(color: JC.textPrimary, fontSize: 13, fontFamily: 'Heebo'),
-              decoration: InputDecoration(
-                hintText: 'חיפוש סוכן...',
-                hintStyle: TextStyle(color: JC.textMuted, fontSize: 13, fontFamily: 'Heebo'),
-                prefixIcon: Icon(Icons.search_rounded, color: JC.textMuted, size: 18),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 8),
-              ),
-              onChanged: (v) => setState(() => _agentFilter = v.toLowerCase()),
-            ),
-          ),
-          const SizedBox(height: 12),
-          _loadingAgents
-              ? const _SectionLoader()
-              : _agentsError != null
-                  ? _ErrorText(_agentsError!)
-                  : _agents.isEmpty
-                      ? const _EmptyState(message: 'לא נמצאו סוכנים')
-                      : _AgentGrid(),
-        ],
-      ),
-    );
-  }
-
-  Widget _AgentGrid() {
-    final filtered = _agentFilter.isEmpty
-        ? _agents
-        : _agents.where((a) {
-            final name = (a['name'] ?? a['id'] ?? '').toString().toLowerCase();
-            final role = (a['description'] ?? a['role'] ?? '').toString().toLowerCase();
-            return name.contains(_agentFilter) || role.contains(_agentFilter);
-          }).toList();
-
-    if (filtered.isEmpty) {
-      return const _EmptyState(message: 'לא נמצאו סוכנים תואמים');
-    }
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 0.85,
-      ),
-      itemCount: filtered.length,
-      itemBuilder: (_, i) => _AgentCard(agent: filtered[i]),
-    );
-  }
-
-  // ── Section: Feature Ideas ─────────────────────────────────────────────────
+  // ── Features ───────────────────────────────────────────────────────────────
 
   Widget _FeaturesSection() {
     return _SectionCard(
@@ -452,7 +702,7 @@ class _ControlCenterPreviewScreenState
     );
   }
 
-  // ── Section: Survey ────────────────────────────────────────────────────────
+  // ── Survey ─────────────────────────────────────────────────────────────────
 
   Widget _SurveySection() {
     return _SectionCard(
@@ -485,7 +735,9 @@ class _ControlCenterPreviewScreenState
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     child: const Text('שלח תשובות',
-                        style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                        style: TextStyle(
+                            fontFamily: 'Heebo',
+                            fontWeight: FontWeight.w600)),
                   ),
                 ),
               ],
@@ -497,6 +749,292 @@ class _ControlCenterPreviewScreenState
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-widgets
 // ─────────────────────────────────────────────────────────────────────────────
+
+class _StatusDot extends StatelessWidget {
+  final Color color;
+  const _StatusDot(this.color);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 7,
+      height: 7,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+class _QuickActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickActionChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.35), width: 0.8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _StatCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border, width: 0.6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: JC.textMuted, size: 16),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor ?? JC.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Heebo',
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+                color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentStatusGroup extends StatefulWidget {
+  final String label;
+  final int count;
+  final Color dotColor;
+  final List<Map<String, dynamic>> agents;
+
+  const _AgentStatusGroup({
+    required this.label,
+    required this.count,
+    required this.dotColor,
+    required this.agents,
+  });
+
+  @override
+  State<_AgentStatusGroup> createState() => _AgentStatusGroupState();
+}
+
+class _AgentStatusGroupState extends State<_AgentStatusGroup> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1929),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border, width: 0.6),
+      ),
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      color: widget.dotColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.label,
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: widget.dotColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${widget.count}',
+                      style: TextStyle(
+                        color: widget.dotColor,
+                        fontSize: 10,
+                        fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: JC.textMuted,
+                    size: 18,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded) ...[
+            Divider(color: JC.border, height: 1),
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 1.6,
+                ),
+                itemCount: widget.agents.length,
+                itemBuilder: (_, i) => _AgentMiniCard(widget.agents[i]),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentMiniCard extends StatelessWidget {
+  final Map<String, dynamic> agent;
+
+  const _AgentMiniCard(this.agent);
+
+  @override
+  Widget build(BuildContext context) {
+    final name = agent['name'] ?? agent['id'] ?? 'סוכן';
+    final role = agent['description'] ?? agent['role'] ?? '';
+    final risk = agent['riskLevel'] ?? agent['risk_level'] ?? 'low';
+    final riskColor = _riskColor(risk);
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1929),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: JC.border, width: 0.6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.smart_toy_outlined, color: JC.blue400, size: 14),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  name.toString(),
+                  style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Heebo',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: Text(
+              role.toString(),
+              style: TextStyle(
+                  color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: riskColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              _riskLabel(risk),
+              style: TextStyle(
+                  color: riskColor, fontSize: 9, fontFamily: 'Heebo'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _SectionCard extends StatelessWidget {
   final String title;
@@ -556,170 +1094,6 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _StatTile extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _StatTile({required this.label, required this.value, this.valueColor});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0B1929),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: JC.border, width: 0.6),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: TextStyle(
-                  color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-          const SizedBox(height: 4),
-          Text(value,
-              style: TextStyle(
-                color: valueColor ?? JC.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'Heebo',
-              )),
-        ],
-      ),
-    );
-  }
-}
-
-class _AgentCard extends StatefulWidget {
-  final Map<String, dynamic> agent;
-
-  const _AgentCard({required this.agent});
-
-  @override
-  State<_AgentCard> createState() => _AgentCardState();
-}
-
-class _AgentCardState extends State<_AgentCard> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final a = widget.agent;
-    final name = a['name'] ?? a['id'] ?? 'סוכן';
-    final role = a['description'] ?? a['role'] ?? '';
-    final status = a['status'] ?? 'active';
-    final risk = a['riskLevel'] ?? a['risk_level'] ?? 'low';
-    final autonomy = a['autonomyLevel'] ?? a['autonomy'] ?? '—';
-    final perms = a['permissions'];
-
-    return GestureDetector(
-      onTap: () => setState(() => _expanded = !_expanded),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0B1929),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _expanded ? JC.blue500 : JC.border,
-            width: _expanded ? 1.0 : 0.6,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: JC.blue500.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.smart_toy_outlined,
-                      color: JC.blue400, size: 18),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    name.toString(),
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (role.toString().isNotEmpty)
-              Text(
-                role.toString(),
-                style: TextStyle(
-                    color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            const Spacer(),
-            Row(
-              children: [
-                _StatusChip(status),
-                const SizedBox(width: 6),
-                _RiskBadge(risk),
-              ],
-            ),
-            if (_expanded) ...[
-              const SizedBox(height: 10),
-              Divider(color: JC.border, height: 1),
-              const SizedBox(height: 8),
-              _DetailRow(label: 'אוטונומיה', value: autonomy.toString()),
-              if (perms != null)
-                _DetailRow(
-                    label: 'הרשאות',
-                    value: perms is List ? perms.join(', ') : perms.toString()),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _DetailRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('$label: ',
-              style: TextStyle(
-                  color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-          Expanded(
-            child: Text(value,
-                style: TextStyle(
-                    color: JC.textSecondary,
-                    fontSize: 11,
-                    fontFamily: 'Heebo')),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _StatusChip extends StatelessWidget {
   final String status;
 
@@ -737,30 +1111,6 @@ class _StatusChip extends StatelessWidget {
         border: Border.all(color: color.withOpacity(0.5), width: 0.6),
       ),
       child: Text(label,
-          style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontFamily: 'Heebo',
-              fontWeight: FontWeight.w600)),
-    );
-  }
-}
-
-class _RiskBadge extends StatelessWidget {
-  final String risk;
-
-  const _RiskBadge(this.risk);
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _riskColor(risk);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(_riskLabel(risk),
           style: TextStyle(
               color: color,
               fontSize: 10,
@@ -791,7 +1141,8 @@ class _FeatureIdeaCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: const Color(0xFFA5B4FC), size: 22),
+          const Icon(Icons.lightbulb_outline_rounded,
+              color: Color(0xFFA5B4FC), size: 22),
           const SizedBox(height: 8),
           Text(title,
               style: TextStyle(
@@ -819,7 +1170,9 @@ class _SurveyQuestionCard extends StatelessWidget {
   final ValueChanged<String> onSelect;
 
   const _SurveyQuestionCard(
-      {required this.question, required this.selected, required this.onSelect});
+      {required this.question,
+      required this.selected,
+      required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
@@ -846,8 +1199,8 @@ class _SurveyQuestionCard extends StatelessWidget {
               return GestureDetector(
                 onTap: () => onSelect(opt),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? JC.blue500.withOpacity(0.2)
@@ -883,10 +1236,9 @@ class _SectionLoader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 20),
+      padding: const EdgeInsets.symmetric(vertical: 20),
       child: Center(
-          child: CircularProgressIndicator(
-              strokeWidth: 2, color: JC.blue400)),
+          child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400)),
     );
   }
 }
@@ -910,6 +1262,45 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+class _SnackOverlay extends StatelessWidget {
+  final String message;
+
+  const _SnackOverlay(this.message);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2E4A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.blue500, width: 0.8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle_outline_rounded,
+              color: Color(0xFF22C55E), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(message,
+                style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 13,
+                    fontFamily: 'Heebo')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 Widget _ErrorText(String msg) {
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 12),
@@ -917,13 +1308,4 @@ Widget _ErrorText(String msg) {
         style: const TextStyle(
             color: Color(0xFFEF4444), fontSize: 12, fontFamily: 'Heebo')),
   );
-}
-
-String _shortDate(String iso) {
-  try {
-    final dt = DateTime.parse(iso).toLocal();
-    return '${dt.day}/${dt.month}/${dt.year}';
-  } catch (_) {
-    return iso;
-  }
 }

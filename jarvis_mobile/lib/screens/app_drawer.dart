@@ -5,15 +5,18 @@ import '../app_settings.dart';
 import '../settings_screen.dart';
 import '../history_screen.dart';
 import '../transitions/slide_fade_route.dart';
+import 'progress_map_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final AppSettings settings;
   final ValueChanged<AppSettings>? onSettingsChanged;
+  final ValueChanged<String>? onSwitchToChat;
 
   const AppDrawer({
     super.key,
     required this.settings,
     this.onSettingsChanged,
+    this.onSwitchToChat,
   });
 
   String _hebrewDate() {
@@ -121,6 +124,25 @@ class AppDrawer extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
+                _DrawerTile(
+                  icon: Icons.insights_rounded,
+                  label: 'מרכז שליטה',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      SlideFadeRoute(
+                        page: ProgressMapScreen(
+                          settings: settings,
+                          onSwitchToChat: (cmd) {
+                            Navigator.pop(context);
+                            onSwitchToChat?.call(cmd);
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 _DrawerTile(
                   icon: Icons.history_rounded,
                   label: 'היסטוריית שיחות',

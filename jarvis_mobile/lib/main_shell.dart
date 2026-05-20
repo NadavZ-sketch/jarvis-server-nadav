@@ -107,9 +107,9 @@ class _MainShellState extends State<MainShell> {
       builder: (ctx) => AlertDialog(
         backgroundColor: JC.surfaceAlt,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('יציאה מג׳רביס',
+        title: Text('יציאה מג׳רביס',
             style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
-        content: const Text('האם לצאת מהאפליקציה?',
+        content: Text('האם לצאת מהאפליקציה?',
             style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
         actions: [
           TextButton(
@@ -185,7 +185,7 @@ class _MainShellState extends State<MainShell> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: JC.surface,
           border: Border(top: BorderSide(color: JC.border, width: 0.6)),
         ),

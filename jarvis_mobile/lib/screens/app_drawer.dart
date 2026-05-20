@@ -39,7 +39,7 @@ class AppDrawer extends StatelessWidget {
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('ביטול')),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('יציאה', style: TextStyle(color: JC.cancelRed)),
+              child: Text('יציאה', style: TextStyle(color: JC.cancelRed)),
             ),
           ],
         ),
@@ -76,7 +76,7 @@ class AppDrawer extends StatelessWidget {
                 Container(
                   width: 46,
                   height: 46,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
                       colors: [JC.blue400, JC.blue500],
@@ -94,7 +94,7 @@ class AppDrawer extends StatelessWidget {
                     children: [
                       Text(
                         settings.userName.isEmpty ? 'ג׳רביס' : settings.userName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: JC.textPrimary,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -103,7 +103,7 @@ class AppDrawer extends StatelessWidget {
                       ),
                       Text(
                         _hebrewDate(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: JC.textMuted,
                           fontSize: 12,
                           fontFamily: 'Heebo',
@@ -164,10 +164,10 @@ class AppDrawer extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: JC.border, width: 0.8)),
             ),
-            child: const Text(
+            child: Text(
               'Jarvis · העוזר האישי שלך',
               textDirection: TextDirection.rtl,
               textAlign: TextAlign.center,

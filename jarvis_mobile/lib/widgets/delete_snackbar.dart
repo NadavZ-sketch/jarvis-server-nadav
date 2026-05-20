@@ -22,7 +22,7 @@ void showDeleteSnackbar(
         SnackBar(
           content: Text(
             message,
-            style: const TextStyle(
+            style: TextStyle(
                 fontFamily: 'Heebo', color: JC.textPrimary),
             textDirection: TextDirection.rtl,
           ),

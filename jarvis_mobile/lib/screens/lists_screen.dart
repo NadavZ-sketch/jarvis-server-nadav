@@ -45,7 +45,7 @@ class _ListsScreenState extends State<ListsScreen>
       backgroundColor: JC.bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: const Text(
+        title: Text(
           'רשימות',
           style: TextStyle(
             color: JC.textPrimary,

@@ -44,7 +44,7 @@ class _ProductivityScreenState extends State<ProductivityScreen>
       backgroundColor: JC.bg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: const Text(
+        title: Text(
           'פרודקטיביות',
           style: TextStyle(
             color: JC.textPrimary,

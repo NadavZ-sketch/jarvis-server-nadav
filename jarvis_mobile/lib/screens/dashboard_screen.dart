@@ -137,12 +137,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: Column(
           children: [
             Text(_greeting(),
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textPrimary, fontSize: 16,
                     fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
                 textDirection: TextDirection.rtl),
             Text(_todayLabel(),
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'),
                 textDirection: TextDirection.rtl),
           ],
@@ -200,7 +200,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _EmptyCard(label: 'אין תזכורות קרובות')
             else
               ..._upcomingReminders.map((r) => _DashTile(
-                    leading: const Icon(Icons.access_time_rounded,
+                    leading: Icon(Icons.access_time_rounded,
                         color: JC.blue400, size: 18),
                     title: r['text']?.toString() ?? '',
                     subtitle: _formatRemTime(r['scheduled_time']),
@@ -226,7 +226,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 final title   = n['title']?.toString() ?? '';
                 final content = n['content']?.toString() ?? '';
                 return _DashTile(
-                  leading: const Icon(Icons.sticky_note_2_outlined,
+                  leading: Icon(Icons.sticky_note_2_outlined,
                       color: JC.blue300, size: 18),
                   title: title.isNotEmpty ? title : content,
                   subtitle: title.isNotEmpty
@@ -274,7 +274,7 @@ class _SectionHeader extends StatelessWidget {
           Icon(icon, color: JC.blue400, size: 18),
           const SizedBox(width: 8),
           Text(title,
-              style: const TextStyle(
+              style: TextStyle(
                   color: JC.textPrimary, fontSize: 15,
                   fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
           const SizedBox(width: 6),
@@ -286,7 +286,7 @@ class _SectionHeader extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text('$count',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: JC.blue400, fontSize: 11,
                       fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
             ),
@@ -308,7 +308,7 @@ class _SectionHeader extends StatelessWidget {
           if (onTap != null)
             GestureDetector(
               onTap: onTap,
-              child: const Text('הכל',
+              child: Text('הכל',
                   style: TextStyle(
                       color: JC.blue400, fontSize: 12, fontFamily: 'Heebo')),
             ),
@@ -356,7 +356,7 @@ class _DashTile extends StatelessWidget {
                     textDirection: TextDirection.rtl,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: JC.textPrimary, fontSize: 14,
                         fontFamily: 'Heebo')),
                 if (subtitle != null)
@@ -391,7 +391,7 @@ class _EmptyCard extends StatelessWidget {
       ),
       child: Text(label,
           textDirection: TextDirection.rtl,
-          style: const TextStyle(
+          style: TextStyle(
               color: JC.textMuted, fontSize: 13, fontFamily: 'Heebo')),
     );
   }
@@ -411,7 +411,7 @@ class _ShowAllButton extends StatelessWidget {
         child: Text(
           label,
           textDirection: TextDirection.rtl,
-          style: const TextStyle(
+          style: TextStyle(
               color: JC.blue400, fontSize: 12, fontFamily: 'Heebo'),
         ),
       ),
@@ -500,7 +500,7 @@ class _QuickActions extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(title,
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textPrimary, fontSize: 16,
                     fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
             const SizedBox(height: 12),
@@ -508,18 +508,18 @@ class _QuickActions extends StatelessWidget {
               controller: ctrl,
               textDirection: TextDirection.rtl,
               autofocus: true,
-              style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
               decoration: InputDecoration(
                 hintText: hint,
-                hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+                hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
                 filled: true, fillColor: JC.surface,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: JC.border)),
+                    borderSide: BorderSide(color: JC.border)),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: JC.border)),
+                    borderSide: BorderSide(color: JC.border)),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: JC.blue500)),
+                    borderSide: BorderSide(color: JC.blue500)),
               ),
             ),
             const SizedBox(height: 12),
@@ -568,7 +568,7 @@ class _QABtn extends StatelessWidget {
               Icon(icon, color: JC.blue400, size: 20),
               const SizedBox(height: 4),
               Text(label,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: JC.textSecondary, fontSize: 12,
                       fontFamily: 'Heebo')),
             ],

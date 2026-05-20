@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'theme/jarvis_theme.dart';
 
 class AppSettings {
   String assistantName;
@@ -12,6 +13,27 @@ class AppSettings {
   bool obsidianAutoSync;
   bool telemetryConsent;
   bool bargeInEnabled;
+
+  // ── Appearance ──
+  AppTheme selectedTheme;
+  bool animationsEnabled;
+
+  // ── Voice / TTS ──
+  double ttsSpeed;     // 0.3 – 1.0 (flutter_tts speech rate)
+  double ttsPitch;     // 0.5 – 2.0
+  String ttsLanguage;  // 'he-IL' | 'en-US'
+  String ttsVoiceName; // platform voice name, '' = default
+
+  // ── AI / model ──
+  String cloudProvider; // 'groq' | 'deepseek' | 'gemini'
+  String localModelName;
+  double temperature;   // 0.0 – 1.0
+  String responseLength; // 'short' | 'medium' | 'long'
+
+  // ── Notifications ──
+  bool notificationsEnabled;
+  int quietHoursStart; // hour 0-23
+  int quietHoursEnd;   // hour 0-23
 
   static const String cloudServerUrl = 'https://jarvis-server-nadav.onrender.com';
 
@@ -29,7 +51,28 @@ class AppSettings {
     this.obsidianAutoSync = true,
     this.telemetryConsent = false,
     this.bargeInEnabled = true,
+    this.selectedTheme = AppTheme.navyDark,
+    this.animationsEnabled = true,
+    this.ttsSpeed = 0.7,
+    this.ttsPitch = 1.0,
+    this.ttsLanguage = 'he-IL',
+    this.ttsVoiceName = '',
+    this.cloudProvider = 'groq',
+    this.localModelName = 'llama3',
+    this.temperature = 0.7,
+    this.responseLength = 'medium',
+    this.notificationsEnabled = true,
+    this.quietHoursStart = 22,
+    this.quietHoursEnd = 8,
   });
+
+  static AppTheme _parseTheme(String? name) {
+    if (name == null) return AppTheme.navyDark;
+    for (final t in AppTheme.values) {
+      if (t.name == name) return t;
+    }
+    return AppTheme.navyDark;
+  }
 
   static Future<AppSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -43,8 +86,21 @@ class AppSettings {
       useLocalServer:   prefs.getBool('useLocalServer')     ?? false,
       localServerUrl:   prefs.getString('localServerUrl')   ?? 'http://192.168.1.100:3000',
       obsidianAutoSync: prefs.getBool('obsidianAutoSync')   ?? true,
-      telemetryConsent: prefs.getBool('telemetryConsent') ?? false,
-      bargeInEnabled:   prefs.getBool('bargeInEnabled')   ?? true,
+      telemetryConsent: prefs.getBool('telemetryConsent')   ?? false,
+      bargeInEnabled:   prefs.getBool('bargeInEnabled')     ?? true,
+      selectedTheme:    _parseTheme(prefs.getString('selectedTheme')),
+      animationsEnabled: prefs.getBool('animationsEnabled') ?? true,
+      ttsSpeed:         prefs.getDouble('ttsSpeed')         ?? 0.7,
+      ttsPitch:         prefs.getDouble('ttsPitch')         ?? 1.0,
+      ttsLanguage:      prefs.getString('ttsLanguage')      ?? 'he-IL',
+      ttsVoiceName:     prefs.getString('ttsVoiceName')     ?? '',
+      cloudProvider:    prefs.getString('cloudProvider')    ?? 'groq',
+      localModelName:   prefs.getString('localModelName')   ?? 'llama3',
+      temperature:      prefs.getDouble('temperature')      ?? 0.7,
+      responseLength:   prefs.getString('responseLength')   ?? 'medium',
+      notificationsEnabled: prefs.getBool('notificationsEnabled') ?? true,
+      quietHoursStart:  prefs.getInt('quietHoursStart')     ?? 22,
+      quietHoursEnd:    prefs.getInt('quietHoursEnd')       ?? 8,
     );
   }
 
@@ -61,6 +117,19 @@ class AppSettings {
     await prefs.setBool('obsidianAutoSync', obsidianAutoSync);
     await prefs.setBool('telemetryConsent', telemetryConsent);
     await prefs.setBool('bargeInEnabled',   bargeInEnabled);
+    await prefs.setString('selectedTheme',  selectedTheme.name);
+    await prefs.setBool('animationsEnabled', animationsEnabled);
+    await prefs.setDouble('ttsSpeed',       ttsSpeed);
+    await prefs.setDouble('ttsPitch',       ttsPitch);
+    await prefs.setString('ttsLanguage',    ttsLanguage);
+    await prefs.setString('ttsVoiceName',   ttsVoiceName);
+    await prefs.setString('cloudProvider',  cloudProvider);
+    await prefs.setString('localModelName', localModelName);
+    await prefs.setDouble('temperature',    temperature);
+    await prefs.setString('responseLength', responseLength);
+    await prefs.setBool('notificationsEnabled', notificationsEnabled);
+    await prefs.setInt('quietHoursStart',   quietHoursStart);
+    await prefs.setInt('quietHoursEnd',     quietHoursEnd);
   }
 
   Map<String, dynamic> toJson() => {
@@ -72,5 +141,9 @@ class AppSettings {
     'useLocalServer': useLocalServer,
     'ttsEnabled':     voiceEnabled,   // server checks settings.ttsEnabled
     'telemetryConsent': telemetryConsent,
+    'cloudProvider':  cloudProvider,
+    'localModelName': localModelName,
+    'temperature':    temperature,
+    'responseLength': responseLength,
   };
 }

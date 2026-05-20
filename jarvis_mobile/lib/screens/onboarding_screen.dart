@@ -71,7 +71,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               alignment: Alignment.topLeft,
               child: TextButton(
                 onPressed: _finish,
-                child: const Text(
+                child: Text(
                   'דלג',
                   style: TextStyle(
                       color: JC.textMuted, fontFamily: 'Heebo', fontSize: 14),
@@ -182,7 +182,7 @@ class _OnboardPage extends StatelessWidget {
             title,
             textAlign: TextAlign.center,
             textDirection: TextDirection.rtl,
-            style: const TextStyle(
+            style: TextStyle(
               color: JC.textPrimary,
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -194,7 +194,7 @@ class _OnboardPage extends StatelessWidget {
             subtitle,
             textAlign: TextAlign.center,
             textDirection: TextDirection.rtl,
-            style: const TextStyle(
+            style: TextStyle(
               color: JC.textSecondary,
               fontSize: 15,
               height: 1.65,

@@ -185,7 +185,7 @@ class _JarvisMessageCard extends StatelessWidget {
                   child: Text(
                     data!['message']?.toString() ?? '',
                     textDirection: TextDirection.rtl,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: JC.textPrimary,
                       fontSize: 14,
                       fontFamily: 'Heebo',
@@ -266,7 +266,7 @@ class _StatCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(label,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: JC.textMuted,
+                style: TextStyle(color: JC.textMuted,
                     fontSize: 10, fontFamily: 'Heebo')),
           ],
         ),
@@ -288,7 +288,7 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         label,
         textDirection: TextDirection.rtl,
-        style: const TextStyle(
+        style: TextStyle(
           color: JC.textSecondary,
           fontSize: 12,
           fontWeight: FontWeight.w600,
@@ -362,7 +362,7 @@ class _TodayItemTile extends StatelessWidget {
                 Text(
                   item['title']?.toString() ?? '',
                   textDirection: TextDirection.rtl,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: JC.textPrimary,
                     fontSize: 14,
                     fontFamily: 'Heebo',

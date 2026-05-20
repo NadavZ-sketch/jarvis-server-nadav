@@ -65,18 +65,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         centerTitle: true,
-        title: const Text('לוח שנה',
+        title: Text('לוח שנה',
             style: TextStyle(color: JC.textPrimary, fontSize: 18,
                 fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: JC.textMuted, size: 20),
+            icon: Icon(Icons.refresh_rounded, color: JC.textMuted, size: 20),
             onPressed: _loadEvents,
           ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: JC.blue400))
+          ? Center(child: CircularProgressIndicator(color: JC.blue400))
           : Column(
               children: [
                 // ── Calendar ──────────────────────────────────────────────
@@ -97,26 +97,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     startingDayOfWeek: StartingDayOfWeek.sunday,
                     calendarStyle: CalendarStyle(
                       outsideDaysVisible: false,
-                      defaultTextStyle: const TextStyle(
+                      defaultTextStyle: TextStyle(
                           color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
-                      weekendTextStyle: const TextStyle(
+                      weekendTextStyle: TextStyle(
                           color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13),
                       todayDecoration: BoxDecoration(
                           color: JC.blue500.withValues(alpha: 0.3),
                           shape: BoxShape.circle),
-                      todayTextStyle: const TextStyle(
+                      todayTextStyle: TextStyle(
                           color: JC.blue400, fontFamily: 'Heebo',
                           fontWeight: FontWeight.w700, fontSize: 13),
-                      selectedDecoration: const BoxDecoration(
+                      selectedDecoration: BoxDecoration(
                           color: JC.blue500, shape: BoxShape.circle),
                       selectedTextStyle: const TextStyle(
                           color: Colors.white, fontFamily: 'Heebo',
                           fontWeight: FontWeight.w700, fontSize: 13),
-                      markerDecoration: const BoxDecoration(
+                      markerDecoration: BoxDecoration(
                           color: JC.blue400, shape: BoxShape.circle),
                       markerSize: 5,
                     ),
-                    headerStyle: const HeaderStyle(
+                    headerStyle: HeaderStyle(
                       formatButtonVisible: false,
                       titleCentered: true,
                       titleTextStyle: TextStyle(
@@ -125,7 +125,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       leftChevronIcon: Icon(Icons.chevron_left, color: JC.textMuted),
                       rightChevronIcon: Icon(Icons.chevron_right, color: JC.textMuted),
                     ),
-                    daysOfWeekStyle: const DaysOfWeekStyle(
+                    daysOfWeekStyle: DaysOfWeekStyle(
                       weekdayStyle: TextStyle(
                           color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
                       weekendStyle: TextStyle(
@@ -146,7 +146,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     children: [
                       Text(
                         _formatSelectedDate(_selected),
-                        style: const TextStyle(color: JC.textSecondary,
+                        style: TextStyle(color: JC.textSecondary,
                             fontSize: 13, fontFamily: 'Heebo', fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(width: 8),
@@ -158,7 +158,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text('${dayEvents.length}',
-                              style: const TextStyle(color: JC.blue400,
+                              style: TextStyle(color: JC.blue400,
                                   fontSize: 11, fontFamily: 'Heebo',
                                   fontWeight: FontWeight.w700)),
                         ),
@@ -171,7 +171,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ? Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
+                            children: [
                               Icon(Icons.event_available_rounded,
                                   color: JC.textMuted, size: 40),
                               SizedBox(height: 10),
@@ -253,7 +253,7 @@ class _EventTile extends StatelessWidget {
                 if (timeStr != null) ...[
                   const SizedBox(height: 3),
                   Text(timeStr,
-                      style: const TextStyle(color: JC.textMuted,
+                      style: TextStyle(color: JC.textMuted,
                           fontFamily: 'Heebo', fontSize: 11)),
                 ],
               ],

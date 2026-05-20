@@ -15,6 +15,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'app_settings.dart';
+import 'theme/jarvis_theme.dart';
+import 'theme/theme_notifier.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
 import 'live_talk_screen.dart';
@@ -34,84 +36,109 @@ void main() {
 }
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
+// `JC` is a runtime-swappable palette shim. Call [JC.apply] when the selected
+// theme changes; every getter reads from the active [JarvisColorScheme] so the
+// whole UI recolors on the next rebuild.
 class JC {
-  // Backgrounds
-  static const bg         = Color(0xFF05090E);
-  static const surface    = Color(0xFF0B1422);
-  static const surfaceAlt = Color(0xFF0F1929);
-  static const border     = Color(0xFF1A2E4A);
+  static JarvisColorScheme _scheme = JarvisColorScheme.navyDark;
+  static AppTheme _theme = AppTheme.navyDark;
 
-  // Blue palette
-  static const blue500 = Color(0xFF3B82F6);
-  static const blue400 = Color(0xFF60A5FA);
-  static const blue300 = Color(0xFF93C5FD);
+  static void apply(AppTheme t) {
+    _theme = t;
+    _scheme = JarvisThemeData.schemeFor(t);
+  }
+
+  static AppTheme get theme => _theme;
+  static JarvisColorScheme get scheme => _scheme;
+
+  // Backgrounds
+  static Color get bg         => _scheme.bg;
+  static Color get surface    => _scheme.surface;
+  static Color get surfaceAlt => _scheme.surfaceAlt;
+  static Color get border     => _scheme.border;
+
+  // Blue / accent palette
+  static Color get blue500 => _scheme.blue500;
+  static Color get blue400 => _scheme.blue400;
+  static Color get blue300 => _scheme.blue300;
 
   // Text
-  static const textPrimary   = Color(0xFFF1F5F9);
-  static const textSecondary = Color(0xFF94A3B8);
-  static const textMuted     = Color(0xFF475569);
+  static Color get textPrimary   => _scheme.textPrimary;
+  static Color get textSecondary => _scheme.textSecondary;
+  static Color get textMuted     => _scheme.textMuted;
 
   // Bubbles
-  static const userBubble   = Color(0xFF11284A);
-  static const jarvisBubble = Color(0xFF0B1929);
+  static Color get userBubble   => _scheme.userBubble;
+  static Color get jarvisBubble => _scheme.jarvisBubble;
 
   // Actions
-  static const cancelRed = Color(0xFFEF4444);
-  static const indigo500 = Color(0xFF6366F1);
-  static const indigo300 = Color(0xFFA5B4FC);
+  static Color get cancelRed => _scheme.cancelRed;
+  static Color get indigo500 => _scheme.indigo500;
+  static Color get indigo300 => _scheme.indigo300;
 
   // Priority colors
-  static const amber400 = Color(0xFFF59E0B);
-  static const green500 = Color(0xFF22C55E);
+  static Color get amber400 => _scheme.amber400;
+  static Color get green500 => _scheme.green500;
+
+  // Theme-specific extras
+  static Color get accentPrimary  => _scheme.accentPrimary;
+  static Color get glassOverlay   => _scheme.glassOverlay;
+  static Color get neoShadowLight => _scheme.neoShadowLight;
+  static Color get neoShadowDark  => _scheme.neoShadowDark;
 }
 
-class JarvisApp extends StatelessWidget {
+class JarvisApp extends StatefulWidget {
   const JarvisApp({super.key});
 
   @override
+  State<JarvisApp> createState() => _JarvisAppState();
+}
+
+class _JarvisAppState extends State<JarvisApp> {
+  final ValueNotifier<AppTheme> _themeNotifier =
+      ValueNotifier<AppTheme>(AppTheme.navyDark);
+
+  @override
+  void initState() {
+    super.initState();
+    AppSettings.load().then((s) {
+      JC.apply(s.selectedTheme);
+      _themeNotifier.value = s.selectedTheme;
+    });
+  }
+
+  @override
+  void dispose() {
+    _themeNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'ג׳רביס',
-      locale: const Locale('he', 'IL'),
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('he', 'IL')],
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: JC.bg,
-        colorScheme: const ColorScheme.dark(
-          primary: JC.blue500,
-          onPrimary: Colors.white,
-          surface: JC.surface,
-          surfaceContainerHighest: JC.surfaceAlt,
-          outline: JC.border,
-          onSurface: JC.textSecondary,
-          onSurfaceVariant: JC.textMuted,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          systemOverlayStyle: SystemUiOverlayStyle.light,
-        ),
-        snackBarTheme: const SnackBarThemeData(
-          backgroundColor: JC.surfaceAlt,
-          contentTextStyle: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
-          actionTextColor: JC.blue400,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-        ),
-        dialogTheme: DialogThemeData(
-          backgroundColor: JC.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        ),
-      ),
-      home: const SplashScreen(),
-      builder: (context, child) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: child ?? const SizedBox.shrink(),
+    return ThemeNotifier(
+      notifier: _themeNotifier,
+      child: ValueListenableBuilder<AppTheme>(
+        valueListenable: _themeNotifier,
+        builder: (context, theme, _) {
+          JC.apply(theme);
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'ג׳רביס',
+            locale: const Locale('he', 'IL'),
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('he', 'IL')],
+            theme: JarvisThemeData.themeDataFor(theme),
+            home: const SplashScreen(),
+            builder: (context, child) => Directionality(
+              textDirection: TextDirection.rtl,
+              child: child ?? const SizedBox.shrink(),
+            ),
+          );
+        },
       ),
     );
   }
@@ -320,7 +347,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 Clipboard.setData(ClipboardData(text: text));
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
+                  SnackBar(
                     content: Text('הודעה הועתקה'),
                     duration: Duration(seconds: 2),
                     backgroundColor: JC.blue500,
@@ -330,7 +357,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Row(
-                  children: const [
+                  children: [
                     Icon(Icons.copy_rounded, color: JC.textPrimary, size: 22),
                     SizedBox(width: 16),
                     Text(
@@ -404,7 +431,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
               children: [
                 Text(
                   widget.msg['text']!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     color: JC.textPrimary,
                     height: 1.6,
@@ -682,12 +709,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             content: Row(children: [
-              const Icon(Icons.task_alt_rounded, color: JC.indigo500, size: 18),
+              Icon(Icons.task_alt_rounded, color: JC.indigo500, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'הפרומפט נשמר במשימות תחת "$title"',
-                  style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
+                  style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
                 ),
               ),
             ]),
@@ -1242,30 +1269,30 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         backgroundColor: JC.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: JC.border, width: 1),
+          side: BorderSide(color: JC.border, width: 1),
         ),
         title: Text(
           'לשלוח $label?',
-          style: const TextStyle(color: JC.textPrimary, fontSize: 16,
+          style: TextStyle(color: JC.textPrimary, fontSize: 16,
               fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
           textDirection: TextDirection.rtl,
         ),
         content: Text(
           message,
-          style: const TextStyle(color: JC.textSecondary, fontSize: 14,
+          style: TextStyle(color: JC.textSecondary, fontSize: 14,
               height: 1.6, fontFamily: 'Heebo'),
           textDirection: TextDirection.rtl,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('ביטול',
+            child: Text('ביטול',
                 style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text('שלח $label',
-                style: const TextStyle(color: JC.blue400,
+                style: TextStyle(color: JC.blue400,
                     fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
           ),
         ],
@@ -1405,7 +1432,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.menu_rounded, color: JC.textSecondary, size: 22),
+          icon: Icon(Icons.menu_rounded, color: JC.textSecondary, size: 22),
           onPressed: () {
             if (widget.onOpenDrawer != null) {
               widget.onOpenDrawer!();
@@ -1414,7 +1441,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             }
           },
         ),
-        title: const Text(
+        title: Text(
           'ג׳רביס',
           style: TextStyle(
             color: JC.textSecondary,
@@ -1426,19 +1453,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded,
+            icon: Icon(Icons.refresh_rounded,
                 color: JC.textSecondary, size: 22),
             tooltip: 'רענן שיחה',
             onPressed: _loadChatHistory,
           ),
           IconButton(
-            icon: const Icon(Icons.add_comment_outlined,
+            icon: Icon(Icons.add_comment_outlined,
                 color: JC.textSecondary, size: 22),
             tooltip: 'שיחה חדשה',
             onPressed: _startNewChat,
           ),
           IconButton(
-            icon: const Icon(Icons.history_rounded,
+            icon: Icon(Icons.history_rounded,
                 color: JC.textSecondary, size: 22),
             tooltip: 'היסטוריית שיחות',
             onPressed: _openHistory,
@@ -1596,7 +1623,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                               color: Color(0xCC111827),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.close_rounded,
+                            child: Icon(Icons.close_rounded,
                                 color: JC.textPrimary, size: 14),
                           ),
                         ),
@@ -1628,7 +1655,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                           border: Border.all(
                               color: JC.blue400.withValues(alpha: 0.5), width: 1),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
@@ -1693,12 +1720,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       child: TextField(
                         controller: _controller,
                         textDirection: TextDirection.rtl,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: JC.textPrimary,
                           fontSize: 15,
                           fontFamily: 'Heebo',
                         ),
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: 'שאל אותי משהו...',
                           hintStyle: TextStyle(
                             color: JC.textMuted,

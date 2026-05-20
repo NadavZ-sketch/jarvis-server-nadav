@@ -22,29 +22,29 @@ class JarvisSearchBar extends StatelessWidget {
     return TextField(
       controller: controller,
       textDirection: TextDirection.rtl,
-      style: const TextStyle(
+      style: TextStyle(
           color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 14),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(
+        hintStyle: TextStyle(
             color: JC.textMuted, fontFamily: 'Heebo', fontSize: 14),
         prefixIcon:
-            const Icon(Icons.search_rounded, color: JC.textMuted, size: 18),
+            Icon(Icons.search_rounded, color: JC.textMuted, size: 18),
         filled: true,
         fillColor: JC.surfaceAlt,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: JC.border, width: 0.8),
+          borderSide: BorderSide(color: JC.border, width: 0.8),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: JC.border, width: 0.8),
+          borderSide: BorderSide(color: JC.border, width: 0.8),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: JC.blue500, width: 1),
+          borderSide: BorderSide(color: JC.blue500, width: 1),
         ),
       ),
     );

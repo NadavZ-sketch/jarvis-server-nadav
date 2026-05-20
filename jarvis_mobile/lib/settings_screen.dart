@@ -274,11 +274,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
                   const SizedBox(height: 2),
                   Text(description,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
                 ],
               ),
@@ -311,7 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(width: 7),
         Text(
           title.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             color: JC.blue400,
             fontSize: 11,
             fontWeight: FontWeight.w700,
@@ -354,7 +354,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Icon(icon, size: 18, color: JC.textMuted),
             const SizedBox(width: 12),
             Text(label,
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textPrimary,
                     fontSize: 15,
                     fontFamily: 'Heebo')),
@@ -365,7 +365,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 controller: ctrl,
                 textAlign: TextAlign.end,
                 textDirection: textDir,
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textSecondary,
                     fontSize: 14,
                     fontFamily: 'Heebo'),
@@ -395,7 +395,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Icon(icon, size: 18, color: JC.textMuted),
             const SizedBox(width: 12),
             Text(label,
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textPrimary,
                     fontSize: 15,
                     fontFamily: 'Heebo')),
@@ -406,7 +406,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               underline: const SizedBox(),
               icon: Icon(Icons.expand_more_rounded,
                   color: JC.textMuted, size: 18),
-              style: const TextStyle(
+              style: TextStyle(
                   color: JC.textSecondary,
                   fontSize: 14,
                   fontFamily: 'Heebo'),
@@ -435,13 +435,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: JC.textPrimary,
                           fontSize: 15,
                           fontFamily: 'Heebo')),
                   const SizedBox(height: 2),
                   Text(subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: JC.textMuted,
                           fontSize: 12,
                           fontFamily: 'Heebo')),
@@ -474,12 +474,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+          icon: Icon(Icons.arrow_back_ios_new_rounded,
               color: JC.textSecondary, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         centerTitle: true,
-        title: const Text(
+        title: Text(
           'הגדרות',
           style: TextStyle(
             color: JC.textPrimary,
@@ -564,7 +564,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Text(
                             _s.userName,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: JC.textPrimary,
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
@@ -591,7 +591,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               const SizedBox(width: 6),
                               Text(
                                 '${_s.assistantName} פעיל',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: JC.textSecondary,
                                   fontSize: 13,
                                   fontFamily: 'Heebo',
@@ -685,7 +685,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Icon(Icons.dns_outlined, size: 16, color: JC.textMuted),
                           const SizedBox(width: 8),
-                          const Text('בחר סוג שרת',
+                          Text('בחר סוג שרת',
                               style: TextStyle(color: JC.textPrimary, fontSize: 14, fontFamily: 'Heebo')),
                         ],
                       ),
@@ -758,7 +758,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             children: [
                               Icon(Icons.wifi_find_outlined, size: 15, color: JC.blue400),
                               const SizedBox(width: 8),
-                              const Text('בדוק חיבור לשרת',
+                              Text('בדוק חיבור לשרת',
                                   style: TextStyle(
                                       color: JC.blue400,
                                       fontSize: 13,
@@ -841,7 +841,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: _loadPermissions,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
+                    children: [
                       Icon(Icons.refresh_rounded, size: 14, color: JC.textMuted),
                       SizedBox(width: 6),
                       Text('רענן סטטוס הרשאות',
@@ -857,19 +857,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _card([
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                leading: const Icon(Icons.map_outlined, color: JC.textMuted, size: 20),
-                title: const Text('מפת התקדמות',
+                leading: Icon(Icons.map_outlined, color: JC.textMuted, size: 20),
+                title: Text('מפת התקדמות',
                     style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
-                subtitle: const Text('יכולות, הערות ודיאגרמת זרימה',
+                subtitle: Text('יכולות, הערות ודיאגרמת זרימה',
                     style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
-                trailing: const Icon(Icons.open_in_new_rounded, color: JC.textMuted, size: 18),
+                trailing: Icon(Icons.open_in_new_rounded, color: JC.textMuted, size: 18),
                 onTap: _openProgressMap,
               ),
               _divider(),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                leading: const Icon(Icons.sync_rounded, color: JC.textMuted, size: 20),
-                title: const Text('סנכרן עם Obsidian',
+                leading: Icon(Icons.sync_rounded, color: JC.textMuted, size: 20),
+                title: Text('סנכרן עם Obsidian',
                     style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
                 subtitle: Text(
                   _obsidianSyncStatus ?? 'סנכרון הערות, זיכרונות ומשימות',
@@ -884,7 +884,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontFamily: 'Heebo',
                   ),
                 ),
-                trailing: const Icon(Icons.chevron_right_rounded, color: JC.textMuted, size: 18),
+                trailing: Icon(Icons.chevron_right_rounded, color: JC.textMuted, size: 18),
                 onTap: _syncObsidian,
               ),
               _divider(),
@@ -912,9 +912,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                 leading: const Icon(Icons.delete_sweep_outlined, color: Color(0xFFEF4444), size: 20),
-                title: const Text('איפוס למידה / Telemetry', style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
-                subtitle: const Text('מחיקת אירועים שנשמרו עבור המשתמש הזה', style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
-                trailing: const Icon(Icons.chevron_right_rounded, color: JC.textMuted, size: 18),
+                title: Text('איפוס למידה / Telemetry', style: TextStyle(color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+                subtitle: Text('מחיקת אירועים שנשמרו עבור המשתמש הזה', style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+                trailing: Icon(Icons.chevron_right_rounded, color: JC.textMuted, size: 18),
                 onTap: _resetTelemetry,
               ),
             ]),

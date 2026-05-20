@@ -20,6 +20,37 @@ const DEEPSEEK_MODEL = 'deepseek-chat';
 const OLLAMA_URL   = process.env.OLLAMA_URL;
 const OLLAMA_MODEL = 'gemma4:e4b';
 
+// ─── Shared sampling parameters ────────────────────────────────────────────
+// Pin temperature/top_p across all providers so the same prompt yields a
+// consistent style regardless of which provider answered (Groq/DeepSeek/
+// Gemini/Ollama each ship a different default — 0.7/0.9/1.0/0.8). 0.5 keeps
+// answers focused while leaving enough room for natural Hebrew variation.
+const LLM_TEMPERATURE = 0.5;
+const LLM_TOP_P       = 0.9;
+
+// Convert OpenAI-style messages → Gemini contents + systemInstruction.
+// Preserves role boundaries (instead of flattening to a single string), so
+// the Gemini fallback keeps the same identity/context as the primary path.
+function _msgsToGeminiPayload(msgs, generationConfig = {}) {
+    const systemMsg = msgs.find(m => m.role === 'system');
+    const contents = msgs
+        .filter(m => m.role !== 'system')
+        .map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }],
+        }));
+    // Gemini requires at least one user message; if the only content was system
+    // (rare), fold it into a user turn so the API does not 400.
+    if (contents.length === 0) {
+        contents.push({ role: 'user', parts: [{ text: systemMsg?.content || '' }] });
+    }
+    const payload = { contents, generationConfig };
+    if (systemMsg?.content) {
+        payload.systemInstruction = { parts: [{ text: systemMsg.content }] };
+    }
+    return payload;
+}
+
 async function callGemma4(messages, useLocal = true, maxTokens = 800) {
     const msgs = typeof messages === 'string'
         ? [{ role: 'user', content: messages }]
@@ -28,7 +59,8 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
     // ── 1. Local Ollama (only if useLocal is enabled AND OLLAMA_URL is set) ──
     if (useLocal && OLLAMA_URL) {
         const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
-            model: OLLAMA_MODEL, messages: msgs, stream: false
+            model: OLLAMA_MODEL, messages: msgs, stream: false,
+            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
         }, { timeout: 15000 });
         return response.data.choices[0].message.content.trim();
     }
@@ -36,7 +68,8 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
     // ── 2. Groq (free, fast) ──
     try {
         const response = await axios.post(GROQ_URL, {
-            model: GROQ_MODEL, messages: msgs, max_tokens: maxTokens
+            model: GROQ_MODEL, messages: msgs, max_tokens: maxTokens,
+            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
         }, {
             headers: {
                 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
@@ -60,7 +93,8 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
     // ── 3. DeepSeek fallback ──
     try {
         const response = await axios.post(DEEPSEEK_URL, {
-            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: maxTokens
+            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: maxTokens,
+            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
         }, {
             headers: {
                 'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
@@ -73,11 +107,15 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
         console.warn('⚠️ DeepSeek failed, falling back to Gemini:', deepseekErr.message);
     }
 
-    // ── 4. Gemini final fallback ──
-    const prompt = msgs.map(m => m.content).join('\n');
-    const response = await axios.post(GEMINI_URL, {
-        contents: [{ parts: [{ text: prompt }] }]
-    }, { timeout: 15000 });
+    // ── 4. Gemini final fallback — preserves system/user/assistant role boundaries
+    //       so identity and conversation context survive the fallback, instead of
+    //       flattening everything into one user-side string blob.
+    const payload = _msgsToGeminiPayload(msgs, {
+        temperature: LLM_TEMPERATURE,
+        topP: LLM_TOP_P,
+        maxOutputTokens: maxTokens,
+    });
+    const response = await axios.post(GEMINI_URL, payload, { timeout: 15000 });
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
@@ -161,7 +199,8 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
     // ── 1. Local Ollama ──
     if (useLocal && OLLAMA_URL) {
         const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
-            model: OLLAMA_MODEL, messages: msgs, stream: true
+            model: OLLAMA_MODEL, messages: msgs, stream: true,
+            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
         }, streamOpts({ 'Content-Type': 'application/json' }));
         await parseSSEStream(response.data, onChunk);
         return;
@@ -170,7 +209,8 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
     // ── 2. Groq streaming ──
     try {
         const response = await axios.post(GROQ_URL, {
-            model: GROQ_MODEL, messages: msgs, max_tokens: maxTokens, stream: true
+            model: GROQ_MODEL, messages: msgs, max_tokens: maxTokens, stream: true,
+            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
         }, streamOpts({
             'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
             'Content-Type': 'application/json'
@@ -187,7 +227,8 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
     // ── 3. DeepSeek streaming fallback ──
     try {
         const response = await axios.post(DEEPSEEK_URL, {
-            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: maxTokens, stream: true
+            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: maxTokens, stream: true,
+            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
         }, streamOpts({
             'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
             'Content-Type': 'application/json'
@@ -199,11 +240,14 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
         console.warn('⚠️ DeepSeek stream failed, falling back to Gemini (non-streaming):', err.message);
     }
 
-    // ── 4. Gemini final fallback (non-streaming) ──
-    const prompt = msgs.map(m => m.content).join('\n');
-    const response = await axios.post(GEMINI_URL, {
-        contents: [{ parts: [{ text: prompt }] }]
-    }, { timeout: 15000, ...(signal ? { signal } : {}) });
+    // ── 4. Gemini final fallback (non-streaming) — same role-preserving payload
+    //       as the non-stream path for consistent tone across fallbacks.
+    const payload = _msgsToGeminiPayload(msgs, {
+        temperature: LLM_TEMPERATURE,
+        topP: LLM_TOP_P,
+        maxOutputTokens: maxTokens,
+    });
+    const response = await axios.post(GEMINI_URL, payload, { timeout: 15000, ...(signal ? { signal } : {}) });
     const text = response.data.candidates[0].content.parts[0].text.trim();
     onChunk(text);
 }

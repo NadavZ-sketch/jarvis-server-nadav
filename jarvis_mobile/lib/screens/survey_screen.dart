@@ -101,7 +101,7 @@ class _SurveyModalState extends State<SurveyModal> {
             children: [
               Text(
                 'סקר חוויית משתמש',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: JC.textPrimary,
@@ -112,13 +112,13 @@ class _SurveyModalState extends State<SurveyModal> {
               LinearProgressIndicator(
                 value: progress,
                 backgroundColor: JC.border.withValues(alpha: 0.3),
-                valueColor: const AlwaysStoppedAnimation<Color>(JC.blue400),
+                valueColor: AlwaysStoppedAnimation<Color>(JC.blue400),
                 minHeight: 4,
               ),
               const SizedBox(height: 8),
               Text(
                 'שאלה ${currentPage + 1} מתוך ${widget.questions.length}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   color: JC.textMuted,
                   fontFamily: 'Heebo',
@@ -136,7 +136,7 @@ class _SurveyModalState extends State<SurveyModal> {
             children: [
               Text(
                 question['question'],
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: JC.textPrimary,
@@ -195,7 +195,7 @@ class _SurveyModalState extends State<SurveyModal> {
                                       ),
                                     ),
                                     child: isSelected
-                                        ? const Padding(
+                                        ? Padding(
                                             padding: EdgeInsets.all(4),
                                             child: DecoratedBox(
                                               decoration: BoxDecoration(
@@ -241,7 +241,7 @@ class _SurveyModalState extends State<SurveyModal> {
               if (currentPage > 0)
                 TextButton(
                   onPressed: () => setState(() => currentPage--),
-                  child: const Text(
+                  child: Text(
                     'חזור',
                     style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo'),
                   ),
@@ -304,7 +304,7 @@ class _SurveyModalState extends State<SurveyModal> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 '✨ דוח סיכום',
                 style: TextStyle(
                   fontSize: 18,
@@ -316,7 +316,7 @@ class _SurveyModalState extends State<SurveyModal> {
               const SizedBox(height: 16),
               Text(
                 summary ?? '',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15,
                   color: JC.textPrimary,
                   fontFamily: 'Heebo',

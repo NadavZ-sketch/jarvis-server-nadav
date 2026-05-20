@@ -11,11 +11,13 @@ import 'smart_productivity_preview_screen.dart';
 class AppDrawer extends StatelessWidget {
   final AppSettings settings;
   final ValueChanged<AppSettings>? onSettingsChanged;
+  final ValueChanged<String>? onSwitchToChat;
 
   const AppDrawer({
     super.key,
     required this.settings,
     this.onSettingsChanged,
+    this.onSwitchToChat,
   });
 
   String _hebrewDate() {
@@ -41,7 +43,7 @@ class AppDrawer extends StatelessWidget {
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('ביטול')),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('יציאה', style: TextStyle(color: JC.cancelRed)),
+              child: Text('יציאה', style: TextStyle(color: JC.cancelRed)),
             ),
           ],
         ),
@@ -78,7 +80,7 @@ class AppDrawer extends StatelessWidget {
                 Container(
                   width: 46,
                   height: 46,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
                       colors: [JC.blue400, JC.blue500],
@@ -96,7 +98,7 @@ class AppDrawer extends StatelessWidget {
                     children: [
                       Text(
                         settings.userName.isEmpty ? 'ג׳רביס' : settings.userName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: JC.textPrimary,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -105,7 +107,7 @@ class AppDrawer extends StatelessWidget {
                       ),
                       Text(
                         _hebrewDate(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: JC.textMuted,
                           fontSize: 12,
                           fontFamily: 'Heebo',
@@ -123,6 +125,25 @@ class AppDrawer extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
+                _DrawerTile(
+                  icon: Icons.insights_rounded,
+                  label: 'מרכז שליטה',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      SlideFadeRoute(
+                        page: ProgressMapScreen(
+                          settings: settings,
+                          onSwitchToChat: (cmd) {
+                            Navigator.pop(context);
+                            onSwitchToChat?.call(cmd);
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 _DrawerTile(
                   icon: Icons.history_rounded,
                   label: 'היסטוריית שיחות',
@@ -216,10 +237,10 @@ class AppDrawer extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: JC.border, width: 0.8)),
             ),
-            child: const Text(
+            child: Text(
               'Jarvis · העוזר האישי שלך',
               textDirection: TextDirection.rtl,
               textAlign: TextAlign.center,

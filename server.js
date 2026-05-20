@@ -36,8 +36,9 @@ async function sendEmail(to, body) {
 const { classifyIntent, classifyIntentWithLLM } = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
-const { runMemoryAgent, autoExtractMemory } = require('./agents/memoryAgent');
-const { runChatAgent, detectFollowUp, filterRelevantMemories, buildSystemPrompt } = require('./agents/chatAgent');
+const { runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator } = require('./agents/memoryAgent');
+const { cleanupExpiredMemories } = require('./services/memoryCleanup');
+const { runChatAgent, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, buildSystemPrompt } = require('./agents/chatAgent');
 const conversationSummary = require('./services/conversationSummary');
 const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
@@ -203,7 +204,7 @@ if (!_corsOrigins) {
 }
 app.use(cors({
     origin: _corsOrigins || '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-User-Id', 'X-User-Role', 'X-User-Plan', 'X-User-Consent', 'X-Confirm-Action'],
 }));
 
@@ -296,7 +297,14 @@ function cacheSet(key, value, ttlMs) {
 
 function cacheInvalidate(key) { _cache.delete(key); }
 
-const TTL_MEMORIES     = 5  * 60 * 1000; // 5 min
+// Allow agents/memoryAgent to bust the memories cache after a successful save,
+// so the next fetchLongTermMemories sees the new row immediately. Guarded so
+// integration test mocks that omit this export don't fail at module load.
+if (typeof setMemoryCacheInvalidator === 'function') {
+    setMemoryCacheInvalidator(() => cacheInvalidate('memories'));
+}
+
+const TTL_MEMORIES     = 30 * 1000;       // 30 sec — short, so newly-saved memories are immediately visible
 const TTL_CHAT_HISTORY = 30 * 1000;       // 30 sec
 
 // ─── Past-conversation detection ──────────────────────────────────────────────
@@ -603,9 +611,12 @@ async function askJarvisHandler(req, res) {
                 // Pass userMessage for Pinecone semantic search; falls back to keyword filter
                 fetchLongTermMemories(userMessage)
             ]);
-            // Keyword fallback filter (no-op when Pinecone already filtered)
+            // When Pinecone returned the top-K relevant memories, keep as-is.
+            // Otherwise rank with embeddings if available, fall back to token ranking.
             if (!pinecone.isReady()) {
                 longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
+            } else {
+                longTermMemories = await filterRelevantMemoriesAsync(longTermMemories, userMessage);
             }
             // Inject rolling conversation summary so agent remembers context beyond 20 msgs
             if (agentName === 'chat') {
@@ -911,23 +922,64 @@ app.delete('/user-profile', async (_req, res) => {
 });
 
 // ─── Survey check (should user take survey?) ──────────────────────────────
+// Per-user 48h cooldown after a completed submission; questions answered in
+// the last 7 days are excluded from the next survey so it feels fresh.
+const SURVEY_COOLDOWN_HOURS = 48;
+const SURVEY_EXCLUDE_WINDOW_DAYS = 7;
+
 app.get('/survey-check', async (req, res) => {
     try {
-        const { sessionMinutes, agentCallCount, force } = req.query;
+        const { sessionMinutes, agentCallCount, force, userName } = req.query;
         const minutes = parseInt(sessionMinutes) || 0;
         const calls = parseInt(agentCallCount) || 0;
         const forced = force === 'true' || force === '1';
 
         // Trigger survey after 20+ minutes OR 3+ agent calls (or forced by user)
         const shouldShowSurvey = forced || minutes >= 20 || calls >= 3;
+        if (!shouldShowSurvey) return res.json({ showSurvey: false });
 
-        if (shouldShowSurvey) {
-            const questions = selectSurveyQuestions({ minutes, calls });
-            const surveyJson = buildSurveyJson(questions);
-            res.json({ showSurvey: true, questions: surveyJson });
-        } else {
-            res.json({ showSurvey: false });
+        // Cooldown + recent-question exclusion (requires userName).
+        let excludeIds = [];
+        if (userName) {
+            try {
+                const cooldownCutoff = new Date(Date.now() - SURVEY_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
+                const excludeCutoff  = new Date(Date.now() - SURVEY_EXCLUDE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+                // 1) Cooldown: any completed survey since cutoff blocks new prompts.
+                if (!forced) {
+                    const { data: recent } = await supabase
+                        .from('user_surveys')
+                        .select('id, completed_at')
+                        .eq('user_name', userName)
+                        .gte('completed_at', cooldownCutoff)
+                        .limit(1);
+                    if (recent && recent.length > 0) {
+                        return res.json({ showSurvey: false, cooldown: true });
+                    }
+                }
+
+                // 2) Build exclude list from question_ids of surveys in the last 7 days.
+                const { data: recentWeek } = await supabase
+                    .from('user_surveys')
+                    .select('question_ids')
+                    .eq('user_name', userName)
+                    .gte('completed_at', excludeCutoff)
+                    .limit(20);
+                for (const row of (recentWeek || [])) {
+                    for (const qid of (row.question_ids || [])) excludeIds.push(qid);
+                }
+            } catch (cooldownErr) {
+                // If the cooldown columns don't exist yet (migration not applied), proceed without filtering.
+                console.warn('⚠️ /survey-check cooldown query failed (will still serve survey):', cooldownErr.message);
+            }
         }
+
+        const questions = selectSurveyQuestions({ minutes, calls }, excludeIds);
+        if (Object.keys(questions).length === 0) {
+            return res.json({ showSurvey: false, exhausted: true });
+        }
+        const surveyJson = buildSurveyJson(questions);
+        res.json({ showSurvey: true, questions: surveyJson });
     } catch (err) {
         console.error('⚠️ /survey-check error:', err.message);
         res.json({ showSurvey: false });
@@ -969,16 +1021,26 @@ app.post('/survey-submit', async (req, res) => {
         let summary = await generateSurveySummary(survey, responses, userName);
         summary += e2eContext;
 
-        // Save survey to DB
-        const { error } = await supabase
-            .from('user_surveys')
-            .insert([{
-                user_name: userName,
-                responses: JSON.stringify(responses),
-                summary,
-                created_at: new Date().toISOString(),
-            }]);
+        // Save survey to DB with completion tracking so future /survey-check
+        // calls can enforce the per-user cooldown and exclude answered question_ids.
+        const nowIso = new Date().toISOString();
+        const insertRow = {
+            user_name: userName,
+            responses: JSON.stringify(responses),
+            summary,
+            created_at: nowIso,
+            completed_at: nowIso,
+            question_ids: surveyQIds,
+        };
+        let { error } = await supabase.from('user_surveys').insert([insertRow]);
 
+        // If the migration hasn't been applied yet, retry without the new columns
+        // so old deployments don't break on submit.
+        if (error && /completed_at|question_ids/i.test(error.message || '')) {
+            delete insertRow.completed_at;
+            delete insertRow.question_ids;
+            ({ error } = await supabase.from('user_surveys').insert([insertRow]));
+        }
         if (error) throw error;
 
         // Invalidate aggregate insights cache so the next /survey-insights
@@ -1261,7 +1323,7 @@ app.get('/auth/google/callback', async (req, res) => {
 
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
-app.get('/contacts', requirePolicy('contacts.read', { sensitive: true }), async (_req, res) => {
+app.get('/contacts', requirePolicy('contacts.read', {}), async (_req, res) => {
     try {
         const { data, error } = await supabase
             .from('contacts')
@@ -1742,7 +1804,7 @@ app.get('/control-center/events', async (req, res) => {
 
 // ─── PUT /reminders/:id — update text and/or scheduled_time ──────────────────
 // ─── POST /contacts — add contact from app ───────────────────────────────────
-app.post('/contacts', requirePolicy('contacts.create', { sensitive: true }), async (req, res) => {
+app.post('/contacts', requirePolicy('contacts.create', {}), async (req, res) => {
     try {
         const { name, phone, email } = req.body;
         if (!name) return res.status(400).json({ error: 'name required' });
@@ -1760,7 +1822,7 @@ app.post('/contacts', requirePolicy('contacts.create', { sensitive: true }), asy
 });
 
 // ─── PUT /contacts/:id — update contact ───────────────────────────────────────
-app.put('/contacts/:id', requirePolicy('contacts.update', { sensitive: true }), async (req, res) => {
+app.put('/contacts/:id', requirePolicy('contacts.update', {}), async (req, res) => {
     try {
         const { name, phone, email } = req.body;
         const updates = {};
@@ -1965,6 +2027,17 @@ if (!isTestEnv) cron.schedule('* * * * *', async () => {
         }
     } catch (err) {
         console.error('⏰ Cron unexpected error:', err.message);
+    }
+});
+
+// Hourly cleanup of expired session/recent memories (24h / 7d TTLs).
+if (!isTestEnv) cron.schedule('17 * * * *', async () => {
+    try {
+        const res = await cleanupExpiredMemories(supabase);
+        if (res.deleted > 0) cacheInvalidate('memories');
+        if (res.errors?.length) console.warn('🧹 memoryCleanup errors:', res.errors);
+    } catch (err) {
+        console.error('🧹 memoryCleanup unexpected error:', err.message);
     }
 });
 
@@ -2737,14 +2810,20 @@ Output format (copy exactly, replace the values):
 
         const raw = await callGemma4(prompt, false, 2000);
 
-        // Extract JSON array — handle markdown code blocks and leading text
-        const jsonMatch = raw.match(/\[[\s\S]*\]/);
-        if (!jsonMatch) {
+        // Extract JSON array — strip markdown code fences, find first [ ... ] block
+        const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '');
+        let parsed;
+        try {
+            // Try to find outermost [...] array
+            const start = stripped.indexOf('[');
+            const end   = stripped.lastIndexOf(']');
+            if (start === -1 || end === -1 || end <= start) throw new Error('no array');
+            parsed = JSON.parse(stripped.slice(start, end + 1));
+            if (!Array.isArray(parsed)) throw new Error('not array');
+        } catch (parseErr) {
             console.error('backlog/generate: no JSON array found in LLM output:', raw.slice(0, 200));
             return res.status(500).json({ error: 'מודל ה-AI לא החזיר JSON תקין — נסה שוב' });
         }
-
-        const parsed = JSON.parse(jsonMatch[0]);
 
         // Map both English and Hebrew field name variants
         const baseId = backlog._nextId;

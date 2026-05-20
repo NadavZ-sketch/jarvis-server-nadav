@@ -103,7 +103,7 @@ class _SplashScreenState extends State<SplashScreen>
                         height: 80,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: const RadialGradient(
+                          gradient: RadialGradient(
                             colors: [JC.blue400, Color(0xFF1E3A8A)],
                             center: Alignment(-0.25, -0.3),
                             radius: 0.85,
@@ -127,7 +127,7 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
               const SizedBox(height: 36),
-              const Text(
+              Text(
                 'Jarvis',
                 style: TextStyle(
                   color: JC.textPrimary,
@@ -138,7 +138,7 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'העוזר האישי שלך',
                 style: TextStyle(
                   color: JC.textMuted,

@@ -14,15 +14,62 @@ User message: `;
 
 // ─── Deduplication ────────────────────────────────────────────────────────────
 
+// Cache invalidation hook installed by server.js so memory writes immediately
+// reflect in subsequent reads (no more 5-minute staleness).
+let _invalidateMemoryCache = () => {};
+function setMemoryCacheInvalidator(fn) {
+    if (typeof fn === 'function') _invalidateMemoryCache = fn;
+}
+
+/**
+ * Check if `rawContent` is a duplicate of an existing memory.
+ * Semantic check via Pinecone (cosine >= 0.92) when available;
+ * falls back to substring ilike on the first 40 chars of the core.
+ * Returns:
+ *   - { duplicate: true,  existingId?: string } if a near-duplicate exists
+ *   - { duplicate: false } otherwise
+ */
 async function checkDuplicate(rawContent, supabase) {
     const core = rawContent.replace(/^\[[^\]]+\]\s*/, '').trim();
-    if (!core) return false;
+    if (!core) return { duplicate: false };
+
+    // Semantic check (preferred)
+    const similar = await pinecone.findSimilarMemory(rawContent, 0.92);
+    if (similar) {
+        return { duplicate: true, existingId: similar.id };
+    }
+
+    // Substring fallback — only when Pinecone returned null (unavailable).
+    // If Pinecone returned no match, trust it and do NOT fall back to substring,
+    // since substring on first 40 chars produces false positives across distinct facts
+    // with the same prefix (e.g. "[location] גר ב..." × N cities).
+    if (pinecone.isReady()) return { duplicate: false };
+
     const { data } = await supabase
         .from('memories')
-        .select('content')
+        .select('id')
         .ilike('content', `%${sanitizeLike(core.slice(0, 40))}%`)
         .limit(1);
-    return !!(data && data.length > 0);
+    if (data && data.length > 0) {
+        return { duplicate: true, existingId: String(data[0].id) };
+    }
+    return { duplicate: false };
+}
+
+// Retry wrapper: exponential backoff up to N attempts. Returns the resolved value
+// or rethrows the last error. Used for LLM calls in auto-extraction so transient
+// network/rate-limit failures don't silently lose extracted facts.
+async function withRetry(fn, { attempts = 2, baseMs = 400 } = {}) {
+    let lastErr;
+    for (let i = 0; i <= attempts; i++) {
+        try { return await fn(); }
+        catch (err) {
+            lastErr = err;
+            if (i === attempts) break;
+            await new Promise(r => setTimeout(r, baseMs * Math.pow(2, i)));
+        }
+    }
+    throw lastErr;
 }
 
 // ─── Passive auto-extraction (fire-and-forget) ────────────────────────────────
@@ -52,11 +99,11 @@ async function autoExtractMemory(userMessage, assistantAnswer, supabase, setting
         const prompt = AUTO_EXTRACT_PROMPT + userMessage
             + `\nAssistant reply: ${(assistantAnswer || '').slice(0, 200)}`;
 
-        const aiText = await callGemma4(
+        const aiText = await withRetry(() => callGemma4(
             [{ role: 'user', content: prompt }],
             settings.useLocalModel === true,
             300,
-        );
+        ));
 
         // Parse the first complete JSON object from the response.
         const firstOpen  = aiText.indexOf('{');
@@ -69,12 +116,14 @@ async function autoExtractMemory(userMessage, assistantAnswer, supabase, setting
         const items = Array.isArray(parsed.items) ? parsed.items : [];
         if (items.length === 0) return;
 
+        let savedAny = false;
         for (const item of items.slice(0, 3)) {
             const content = (item.content || '').trim();
             const scope   = item.scope === 'session' ? 'session' : 'long_term';
             if (!content) continue;
 
-            if (await checkDuplicate(content, supabase)) {
+            const dup = await checkDuplicate(content, supabase);
+            if (dup.duplicate) {
                 console.log('🧠 AutoExtract: duplicate skipped:', content);
                 continue;
             }
@@ -83,8 +132,10 @@ async function autoExtractMemory(userMessage, assistantAnswer, supabase, setting
                 .from('memories').insert([{ content, scope }]).select('id').limit(1);
             obsidianSync.dbToVault('memories', { content, scope });
             if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
+            savedAny = true;
             console.log(`🧠 AutoExtract saved [${scope}]:`, content);
         }
+        if (savedAny) _invalidateMemoryCache();
     } catch (err) {
         console.error('AutoExtract error (suppressed):', err.message);
     }
@@ -98,8 +149,9 @@ Stored memories:
 
 async function deleteMemory(userMessage, supabase) {
     const textToDelete = userMessage
-        .replace(/מחק זיכרון|הסר זיכרון|שכח ש|שכח/g, '')
-        .replace(/(?<!\S)(על|את|ה)(?!\S)/g, '')
+        .replace(/מחק\s+(?:את\s+)?(?:ה)?זיכרון|הסר\s+(?:את\s+)?(?:ה)?זיכרון|שכח\s+ש|שכח|תמחק|תסיר/gi, '')
+        .replace(/(?<!\S)(?:לגבי|בנוגע\s+ל|על|את|של|ה|ו|ב|מ|ל|ש|כ)(?!\S)/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 
     if (!textToDelete) {
@@ -124,7 +176,8 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
 
     try {
         // Delete memory
-        if (/מחק זיכרון|הסר זיכרון|שכח ש|שכח/i.test(userMessage)) {
+        if (/מחק|הסר|שכח|תמחק|תסיר/i.test(userMessage) && /זיכרון|זכור|זכרון|שכח/i.test(userMessage) ||
+            /מחק\s+(?:את\s+)?(?:ה)?זיכרון|הסר\s+(?:את\s+)?(?:ה)?זיכרון|שכח\s+ש|שכח/i.test(userMessage)) {
             return deleteMemory(userMessage, supabase);
         }
 
@@ -163,8 +216,8 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
         } catch {
             return { answer: 'לא הצלחתי לעבד את הבקשה, נסה לנסח אחרת.' };
         }
-        const isDuplicate = await checkDuplicate(parsed.memoryContent, supabase);
-        if (isDuplicate) {
+        const dup = await checkDuplicate(parsed.memoryContent, supabase);
+        if (dup.duplicate) {
             console.log('🧠 MemoryAgent: duplicate skipped:', parsed.memoryContent);
             return { answer: `כבר יש לי זיכרון דומה: "${parsed.memoryContent}"` };
         }
@@ -174,6 +227,7 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
             .from('memories').insert([{ content: parsed.memoryContent }]).select('id').limit(1);
         obsidianSync.dbToVault('memories', { content: parsed.memoryContent });
         if (saved?.[0]?.id) pinecone.upsertMemory(saved[0].id, parsed.memoryContent).catch(() => {});
+        _invalidateMemoryCache();
         return { answer: `שמרתי לפניי: ${parsed.memoryContent}` };
 
     } catch (err) {
@@ -183,4 +237,4 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
     return { answer: 'הייתה בעיה בשמירת הזיכרון, נסה שוב.' };
 }
 
-module.exports = { runMemoryAgent, autoExtractMemory };
+module.exports = { runMemoryAgent, autoExtractMemory, checkDuplicate, setMemoryCacheInvalidator };

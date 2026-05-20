@@ -111,6 +111,49 @@ async function searchMemories(query, topK = 12) {
 }
 
 /**
+ * Find the most similar existing memory to `content`.
+ * Used for semantic deduplication: if score >= threshold, treat as a duplicate.
+ * @param {string} content
+ * @param {number} threshold  cosine similarity above which the match is "duplicate"
+ * @returns {{ id: string, content: string, score: number } | null}
+ *          null if Pinecone unavailable, no matches, or none above threshold.
+ */
+async function findSimilarMemory(content, threshold = 0.92) {
+    await ensureInit();
+    if (!_ready) return null;
+    try {
+        const values = await embed(content);
+        const result = await _index.query({ vector: values, topK: 1, includeMetadata: true });
+        const top = result.matches?.[0];
+        if (!top || top.score < threshold) return null;
+        return { id: String(top.id), content: top.metadata?.content || '', score: top.score };
+    } catch (err) {
+        console.error('🔵 Pinecone findSimilar error:', err.message);
+        return null;
+    }
+}
+
+/**
+ * Search memories returning rich match objects (id + content + score).
+ * Useful when relevance ranking needs to inspect score.
+ * Returns null if Pinecone unavailable.
+ */
+async function searchMemoriesDetailed(query, topK = 12) {
+    await ensureInit();
+    if (!_ready) return null;
+    try {
+        const values = await embed(query);
+        const result = await _index.query({ vector: values, topK, includeMetadata: true });
+        return (result.matches || [])
+            .filter(m => m.score >= SCORE_THRESHOLD)
+            .map(m => ({ id: String(m.id), content: m.metadata?.content || '', score: m.score }));
+    } catch (err) {
+        console.error('🔵 Pinecone search detailed error:', err.message);
+        return null;
+    }
+}
+
+/**
  * Delete a memory from Pinecone by Supabase id.
  */
 async function deleteMemory(id) {
@@ -172,4 +215,7 @@ async function syncFromSupabase(supabase) {
 /** Is Pinecone ready? (for health checks) */
 function isReady() { return _ready; }
 
-module.exports = { upsertMemory, searchMemories, deleteMemory, syncFromSupabase, ensureInit, isReady };
+module.exports = {
+    upsertMemory, searchMemories, searchMemoriesDetailed, findSimilarMemory,
+    deleteMemory, syncFromSupabase, ensureInit, isReady, embed,
+};

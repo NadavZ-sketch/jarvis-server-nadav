@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { callGemma4, callGeminiVision } = require('./models');
+const pinecone = require('../services/pineconeMemory');
 
 const PERSONALITY_DESC = {
     friendly: (name) => `ידידותי, חם ואמפתי. אתה מדבר עם ${name} כמו חבר טוב שמבין אותו.
@@ -81,16 +82,13 @@ const HE_STOP = new Set([
     'בין','לפי','יש','אין','היה','הייתה','הייתי','יהיה','ל','ב','מ','ו',
 ]);
 
-function filterRelevantMemories(memoriesText, userMessage) {
-    if (!memoriesText || memoriesText === 'אין עדיין זיכרונות שמורים.') return memoriesText;
-    const lines = memoriesText.split('\n').filter(l => l.trim());
-    if (lines.length <= 8) return memoriesText;
-
+// Synchronous token-based ranking — used as a fast fallback when embeddings unavailable.
+function _tokenRankMemories(lines, userMessage) {
     const msgTokens = new Set(
         userMessage.toLowerCase().split(/[\s,.\-!?:;״׳]+/)
             .filter(t => t.length > 1 && !HE_STOP.has(t))
     );
-    if (msgTokens.size === 0) return memoriesText;
+    if (msgTokens.size === 0) return lines;
 
     const scored = lines.map(line => {
         const tokens = line.toLowerCase()
@@ -99,9 +97,47 @@ function filterRelevantMemories(memoriesText, userMessage) {
             .filter(t => t.length > 1 && !HE_STOP.has(t));
         return { line, score: tokens.filter(t => msgTokens.has(t)).length };
     });
-
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, 10).map(s => s.line).join('\n');
+    return scored.slice(0, 10).map(s => s.line);
+}
+
+// Cosine similarity for ranking memory lines by embedding proximity to query.
+function _cosine(a, b) {
+    let dot = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+    return na && nb ? dot / Math.sqrt(na * nb) : 0;
+}
+
+// Async embedding-based ranking. Falls back to token ranking on failure.
+// Used by the chat agent before assembling system prompt.
+async function filterRelevantMemoriesAsync(memoriesText, userMessage, topK = 8) {
+    if (!memoriesText || memoriesText === 'אין עדיין זיכרונות שמורים.') return memoriesText;
+    const lines = memoriesText.split('\n').filter(l => l.trim());
+    if (lines.length <= topK) return memoriesText;
+
+    if (!pinecone.isReady()) {
+        return _tokenRankMemories(lines, userMessage).join('\n');
+    }
+    try {
+        const [queryVec, ...lineVecs] = await Promise.all([
+            pinecone.embed(userMessage),
+            ...lines.map(l => pinecone.embed(l.replace(/^\s*-\s*/, ''))),
+        ]);
+        const scored = lines.map((line, i) => ({ line, score: _cosine(queryVec, lineVecs[i]) }));
+        scored.sort((a, b) => b.score - a.score);
+        return scored.slice(0, topK).map(s => s.line).join('\n');
+    } catch (err) {
+        console.warn('⚠️ filterRelevantMemoriesAsync embedding failed, using token fallback:', err.message);
+        return _tokenRankMemories(lines, userMessage).join('\n');
+    }
+}
+
+// Legacy sync export (kept for backward compatibility with existing call sites/tests).
+function filterRelevantMemories(memoriesText, userMessage) {
+    if (!memoriesText || memoriesText === 'אין עדיין זיכרונות שמורים.') return memoriesText;
+    const lines = memoriesText.split('\n').filter(l => l.trim());
+    if (lines.length <= 8) return memoriesText;
+    return _tokenRankMemories(lines, userMessage).join('\n');
 }
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
@@ -312,4 +348,4 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
     return { answer: 'סליחה, נתקלתי בבעיה. נסה שוב.' };
 }
 
-module.exports = { runChatAgent, detectFollowUp, filterRelevantMemories, analyzeUserStyle, buildSystemPrompt };
+module.exports = { runChatAgent, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, analyzeUserStyle, buildSystemPrompt };

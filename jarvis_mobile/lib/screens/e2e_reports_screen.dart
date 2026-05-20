@@ -118,10 +118,10 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
           elevation: 0,
           centerTitle: true,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: JC.textPrimary),
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: JC.textPrimary),
             onPressed: () => Navigator.pop(context),
           ),
-          title: const Text(
+          title: Text(
             'דוחות בדיקות E2E',
             style: TextStyle(color: JC.textPrimary, fontSize: 16,
                 fontWeight: FontWeight.w600, fontFamily: 'Heebo', letterSpacing: 0.3),
@@ -134,16 +134,16 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
 
   Widget _buildBody() {
     if (_loading && _reports.isEmpty) {
-      return const Center(child: CircularProgressIndicator(color: JC.blue400));
+      return Center(child: CircularProgressIndicator(color: JC.blue400));
     }
     if (_error != null && _reports.isEmpty) {
       return Center(child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const Icon(Icons.error_outline, color: JC.cancelRed, size: 48),
+          Icon(Icons.error_outline, color: JC.cancelRed, size: 48),
           const SizedBox(height: 12),
           Text(_error!, textAlign: TextAlign.center,
-              style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
+              style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
           const SizedBox(height: 16),
           TextButton(onPressed: _load, child: const Text('נסה שוב')),
         ]),
@@ -158,7 +158,7 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: JC.border, width: 0.8),
           ),
-          child: const Text(
+          child: Text(
             'אין דוחות עדיין. שלח "בצע בדיקות קצה" מהשיחה כדי להתחיל.',
             textAlign: TextAlign.right,
             style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
@@ -215,7 +215,7 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
           color: JC.cancelRed.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(Icons.delete_outline, color: JC.cancelRed, size: 26),
+        child: Icon(Icons.delete_outline, color: JC.cancelRed, size: 26),
       ),
       onDismissed: (_) => _delete(runId),
       child: InkWell(
@@ -256,21 +256,21 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
                       border: Border.all(color: JC.blue400.withValues(alpha: 0.35), width: 0.6),
                     ),
                     child: Text('#$reportNumber',
-                        style: const TextStyle(color: JC.blue400,
+                        style: TextStyle(color: JC.blue400,
                             fontSize: 11, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
                   ),
                   const SizedBox(width: 8),
                   Text(date,
-                      style: const TextStyle(color: JC.textPrimary,
+                      style: TextStyle(color: JC.textPrimary,
                           fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
                 ]),
                 const SizedBox(height: 4),
                 Text('$count ממצאים · 🔴 $critical · 🟠 $high · 🟡 $medium · 🟢 $low',
-                    style: const TextStyle(color: JC.textMuted,
+                    style: TextStyle(color: JC.textMuted,
                         fontSize: 12, fontFamily: 'Heebo')),
               ],
             )),
-            const Icon(Icons.chevron_left_rounded, color: JC.textMuted),
+            Icon(Icons.chevron_left_rounded, color: JC.textMuted),
           ]),
         ),
       ),
@@ -284,14 +284,14 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: JC.surface,
-          title: const Text('למחוק את הדוח?',
+          title: Text('למחוק את הדוח?',
               style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
-          content: const Text('הפעולה לא הפיכה.',
+          content: Text('הפעולה לא הפיכה.',
               style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('ביטול')),
             TextButton(onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('מחק', style: TextStyle(color: JC.cancelRed))),
+                child: Text('מחק', style: TextStyle(color: JC.cancelRed))),
           ],
         ),
       ),
@@ -582,16 +582,16 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                 ],
               ]),
               const SizedBox(height: 16),
-              const Text('מה הבעיה?',
+              Text('מה הבעיה?',
                   style: TextStyle(color: JC.textSecondary, fontSize: 11,
                       fontFamily: 'Heebo', fontWeight: FontWeight.w600,
                       letterSpacing: 0.4)),
               const SizedBox(height: 5),
               Text(finding,
-                  style: const TextStyle(color: JC.textPrimary, fontSize: 14,
+                  style: TextStyle(color: JC.textPrimary, fontSize: 14,
                       fontFamily: 'Heebo', height: 1.5)),
               const SizedBox(height: 14),
-              const Text('מה זה גורם?',
+              Text('מה זה גורם?',
                   style: TextStyle(color: JC.textSecondary, fontSize: 11,
                       fontFamily: 'Heebo', fontWeight: FontWeight.w600,
                       letterSpacing: 0.4)),
@@ -601,7 +601,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                       fontFamily: 'Heebo', height: 1.45)),
               if (rec.isNotEmpty) ...[
                 const SizedBox(height: 14),
-                const Text('איך לתקן?',
+                Text('איך לתקן?',
                     style: TextStyle(color: JC.textSecondary, fontSize: 11,
                         fontFamily: 'Heebo', fontWeight: FontWeight.w600,
                         letterSpacing: 0.4)),
@@ -654,14 +654,14 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           backgroundColor: JC.surface,
-          title: const Text('למחוק את הדוח הזה?',
+          title: Text('למחוק את הדוח הזה?',
               style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
-          content: const Text('כל הממצאים יוסרו לצמיתות.',
+          content: Text('כל הממצאים יוסרו לצמיתות.',
               style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('ביטול')),
             TextButton(onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('מחק', style: TextStyle(color: JC.cancelRed))),
+                child: Text('מחק', style: TextStyle(color: JC.cancelRed))),
           ],
         ),
       ),
@@ -709,30 +709,30 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
           elevation: 0,
           centerTitle: true,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: JC.textPrimary),
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: JC.textPrimary),
             onPressed: () => Navigator.pop(context),
           ),
           title: Text(
             widget.date,
-            style: const TextStyle(color: JC.textPrimary, fontSize: 16,
+            style: TextStyle(color: JC.textPrimary, fontSize: 16,
                 fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
           ),
           actions: [
             if (hasSelected)
               TextButton(
                 onPressed: _deselectAll,
-                child: const Text('בטל בחירה',
+                child: Text('בטל בחירה',
                     style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 13)),
               )
             else
               TextButton(
                 onPressed: _activeCount == 0 ? null : _selectAll,
-                child: const Text('בחר הכל',
+                child: Text('בחר הכל',
                     style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 13)),
               ),
             IconButton(
               tooltip: 'מחק דוח',
-              icon: const Icon(Icons.delete_outline, color: JC.cancelRed),
+              icon: Icon(Icons.delete_outline, color: JC.cancelRed),
               onPressed: _deleteRun,
             ),
           ],
@@ -751,7 +751,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
         border: Border(top: BorderSide(color: JC.border, width: 0.5)),
       ),
       child: _actionLoading
-          ? const Center(child: SizedBox(height: 44,
+          ? Center(child: SizedBox(height: 44,
               child: CircularProgressIndicator(color: JC.blue400)))
           : Row(children: [
               Expanded(
@@ -789,13 +789,13 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: JC.blue400));
+      return Center(child: CircularProgressIndicator(color: JC.blue400));
     }
     if (_error != null) {
       return Center(child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(_error!, textAlign: TextAlign.center,
-            style: const TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
       ));
     }
 
@@ -842,7 +842,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('$_activeCount פתוחים${_doneCount > 0 ? ' · $_doneCount ✅' : ''}',
-                      style: const TextStyle(color: JC.textPrimary,
+                      style: TextStyle(color: JC.textPrimary,
                           fontSize: 15, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
                   const SizedBox(height: 5),
                   Wrap(spacing: 10, children: [
@@ -871,7 +871,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                       size: 14, color: JC.textMuted),
                   const SizedBox(width: 5),
                   Text(_showDone ? 'הסתר שבוצעו' : 'הצג שבוצעו ($_doneCount)',
-                      style: const TextStyle(color: JC.textMuted,
+                      style: TextStyle(color: JC.textMuted,
                           fontSize: 12, fontFamily: 'Heebo')),
                 ]),
               ),
@@ -886,11 +886,11 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
           textDirection: TextDirection.rtl,
           decoration: InputDecoration(
             hintText: 'חפש ממצא, קובץ או המלצה...',
-            hintStyle: const TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13),
-            prefixIcon: const Icon(Icons.search_rounded, color: JC.textMuted, size: 20),
+            hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13),
+            prefixIcon: Icon(Icons.search_rounded, color: JC.textMuted, size: 20),
             suffixIcon: _searchQuery.isNotEmpty
                 ? IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 18, color: JC.textMuted),
+                    icon: Icon(Icons.close_rounded, size: 18, color: JC.textMuted),
                     onPressed: _searchCtrl.clear,
                   )
                 : null,
@@ -907,10 +907,10 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: JC.blue400, width: 1),
+              borderSide: BorderSide(color: JC.blue400, width: 1),
             ),
           ),
-          style: const TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
+          style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
         ),
         const SizedBox(height: 8),
 
@@ -922,7 +922,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
             alignment: Alignment.centerRight,
             child: GestureDetector(
               onTap: _clearFilters,
-              child: const Text('נקה סינון',
+              child: Text('נקה סינון',
                   style: TextStyle(color: JC.blue400,
                       fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
             ),
@@ -936,7 +936,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
             padding: const EdgeInsets.symmetric(vertical: 40),
             child: Center(child: Text(
                 _hasActiveFilter ? 'אין ממצאים תואמים לסינון' : '🎉 אין ממצאים פתוחים — הכל תקין!',
-                style: const TextStyle(color: JC.textSecondary,
+                style: TextStyle(color: JC.textSecondary,
                     fontSize: 15, fontFamily: 'Heebo'))),
           )
         else
@@ -1119,7 +1119,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
                           if (target.isNotEmpty) target.length > 50 ? '…${target.substring(target.length - 50)}' : target,
                           if (lat != null) '$lat ms',
                         ].join(' · '),
-                        style: const TextStyle(color: JC.textMuted,
+                        style: TextStyle(color: JC.textMuted,
                             fontSize: 11, fontFamily: 'Heebo'),
                         overflow: TextOverflow.ellipsis,
                       ),

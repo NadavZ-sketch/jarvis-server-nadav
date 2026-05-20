@@ -17,6 +17,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'app_settings.dart';
 import 'theme/jarvis_theme.dart';
 import 'theme/theme_notifier.dart';
+import 'widgets/markdown_lite.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
 import 'live_talk_screen.dart';
@@ -320,8 +321,9 @@ class _JarvisOrb extends StatelessWidget {
 class _ChatBubble extends StatefulWidget {
   final Map<String, String> msg;
   final int index;
+  final ValueChanged<String>? onSpeak;
 
-  const _ChatBubble({required this.msg, required this.index});
+  const _ChatBubble({required this.msg, required this.index, this.onSpeak});
 
   @override
   State<_ChatBubble> createState() => _ChatBubbleState();
@@ -331,6 +333,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
   bool _showTime = false;
 
   void _showCopyMenu(String text) {
+    final isJarvis = widget.msg['sender'] != 'user';
     showModalBottomSheet(
       context: context,
       backgroundColor: JC.surface,
@@ -342,41 +345,56 @@ class _ChatBubbleState extends State<_ChatBubble> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            InkWell(
+            _menuAction(
+              icon: Icons.copy_rounded,
+              label: 'העתקה',
               onTap: () {
                 Clipboard.setData(ClipboardData(text: text));
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('הודעה הועתקה'),
-                    duration: Duration(seconds: 2),
+                    content: const Text('הודעה הועתקה'),
+                    duration: const Duration(seconds: 2),
                     backgroundColor: JC.blue500,
                   ),
                 );
               },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Row(
-                  children: [
-                    Icon(Icons.copy_rounded, color: JC.textPrimary, size: 22),
-                    SizedBox(width: 16),
-                    Text(
-                      'העתקה',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: JC.textPrimary,
-                        fontFamily: 'Heebo',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
+            if (isJarvis && widget.onSpeak != null)
+              _menuAction(
+                icon: Icons.volume_up_rounded,
+                label: 'הקרא שוב',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  widget.onSpeak!(text);
+                },
+              ),
           ],
         ),
       ),
     );
   }
+
+  Widget _menuAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) =>
+      InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Icon(icon, color: JC.textPrimary, size: 22),
+              const SizedBox(width: 16),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 16, color: JC.textPrimary, fontFamily: 'Heebo')),
+            ],
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -429,16 +447,16 @@ class _ChatBubbleState extends State<_ChatBubble> {
               crossAxisAlignment:
                   isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.msg['text']!,
-                  style: TextStyle(
+                MarkdownLite(
+                  text: widget.msg['text']!,
+                  textDirection: TextDirection.rtl,
+                  baseStyle: TextStyle(
                     fontSize: 15,
                     color: JC.textPrimary,
                     height: 1.6,
                     fontFamily: 'Heebo',
                     fontWeight: FontWeight.w400,
                   ),
-                  textDirection: TextDirection.rtl,
                 ),
                 if (_showTime) ...[
                   const SizedBox(height: 6),
@@ -736,6 +754,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     if (widget.initialSettings != null &&
         widget.initialSettings != oldWidget.initialSettings) {
       setState(() => _settings = widget.initialSettings!);
+      _initTts(); // re-apply voice/speed/pitch from updated settings
     }
     if (widget.pendingCommand != null &&
         widget.pendingCommand != oldWidget.pendingCommand) {
@@ -788,12 +807,18 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   // ─── TTS (client-side) ───────────────────────────────────────────────────────
   void _initTts() async {
-    // Prefer Hebrew; fall back to English if not installed on the device
-    final heAvailable = await _flutterTts.isLanguageAvailable('he-IL');
-    await _flutterTts.setLanguage(heAvailable == true ? 'he-IL' : 'en-US');
-    await _flutterTts.setSpeechRate(0.7);
+    final pref = _settings.ttsLanguage.isNotEmpty ? _settings.ttsLanguage : 'he-IL';
+    final available = await _flutterTts.isLanguageAvailable(pref);
+    await _flutterTts.setLanguage(available == true ? pref : 'en-US');
+    await _flutterTts.setSpeechRate(_settings.ttsSpeed);
     await _flutterTts.setVolume(1.0);
-    await _flutterTts.setPitch(1.0);
+    await _flutterTts.setPitch(_settings.ttsPitch);
+    if (_settings.ttsVoiceName.isNotEmpty) {
+      try {
+        await _flutterTts.setVoice(
+            {'name': _settings.ttsVoiceName, 'locale': pref});
+      } catch (_) {/* voice not available; keep language default */}
+    }
     _flutterTts.setCompletionHandler(_onTtsDone);
     _flutterTts.setErrorHandler((_) => _onTtsDone());
   }
@@ -1584,7 +1609,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       );
                     }
 
-                    return _ChatBubble(msg: messages[index], index: index);
+                    return _ChatBubble(
+                      msg: messages[index],
+                      index: index,
+                      onSpeak: _speakText,
+                    );
                   },
                 ),
               ),

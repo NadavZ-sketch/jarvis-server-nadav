@@ -10,16 +10,16 @@ class PreviewBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0B1929),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1929),
         border: Border(top: BorderSide(color: JC.border, width: 0.8)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         textDirection: TextDirection.rtl,
-        children: const [
-          Icon(Icons.science_outlined, size: 14, color: Color(0xFF60A5FA)),
-          SizedBox(width: 6),
+        children: [
+          const Icon(Icons.science_outlined, size: 14, color: Color(0xFF60A5FA)),
+          const SizedBox(width: 6),
           Text(
             'מעבדת Jarvis · גרסת ניסיון בלבד',
             style: TextStyle(

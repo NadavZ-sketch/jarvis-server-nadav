@@ -690,7 +690,7 @@ class _ActionButton extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.active = false,
-    this.activeColor = JC.blue400,
+    this.activeColor = const Color(0xFF60A5FA),
   });
 
   @override

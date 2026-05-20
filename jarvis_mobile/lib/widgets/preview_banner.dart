@@ -18,7 +18,7 @@ class PreviewBanner extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         textDirection: TextDirection.rtl,
         children: const [
-          Icon(Icons.science_outlined, size: 14, color: JC.blue400),
+          Icon(Icons.science_outlined, size: 14, color: Color(0xFF60A5FA)),
           SizedBox(width: 6),
           Text(
             'מעבדת Jarvis · גרסת ניסיון בלבד',
@@ -51,12 +51,12 @@ class DemoChip extends StatelessWidget {
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.science_outlined, size: 10, color: JC.blue400),
+          Icon(Icons.science_outlined, size: 10, color: Color(0xFF60A5FA)),
           SizedBox(width: 4),
           Text(
             'דמו',
             style: TextStyle(
-              color: JC.blue400,
+              color: Color(0xFF60A5FA),
               fontSize: 10,
               fontFamily: 'Heebo',
               fontWeight: FontWeight.w600,

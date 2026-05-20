@@ -332,7 +332,7 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> getAgents() async {
     final res = await _client
-        .get(_uri('/agent-center/agents'))
+        .get(_uri('/progress-map/agents'))
         .timeout(_timeout);
     final data = jsonDecode(_safeBody(res));
     if (data is List) {
@@ -349,7 +349,9 @@ class ApiService {
         .get(_uri('/survey-check?userName=${Uri.encodeComponent(userName)}'))
         .timeout(_timeout);
     final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
-    return List<Map<String, dynamic>>.from(data['survey'] ?? []);
+    final showSurvey = data['showSurvey'] as bool? ?? false;
+    if (!showSurvey) return [];
+    return List<Map<String, dynamic>>.from(data['questions'] ?? []);
   }
 
   // ─── User Profile ─────────────────────────────────────────────────────────

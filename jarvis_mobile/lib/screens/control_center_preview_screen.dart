@@ -182,7 +182,7 @@ class _ControlCenterPreviewScreenState
           centerTitle: false,
           titleSpacing: 16,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+            icon: Icon(Icons.arrow_back_ios_new_rounded,
                 color: JC.textSecondary, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
@@ -210,7 +210,7 @@ class _ControlCenterPreviewScreenState
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh_rounded,
+              icon: Icon(Icons.refresh_rounded,
                   color: JC.textSecondary, size: 22),
               onPressed: () {
                 setState(() {
@@ -337,9 +337,9 @@ class _ControlCenterPreviewScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(color: JC.textPrimary, fontSize: 13, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                Text(title, style: TextStyle(color: JC.textPrimary, fontSize: 13, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
                 if (ts.isNotEmpty)
-                  Text(_shortDate(ts), style: const TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+                  Text(_shortDate(ts), style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
               ],
             ),
           ),
@@ -359,7 +359,7 @@ class _ControlCenterPreviewScreenState
       headerTrailing: _agentFilter.isNotEmpty
           ? GestureDetector(
               onTap: () => setState(() => _agentFilter = ''),
-              child: const Text('נקה', style: TextStyle(color: JC.blue400, fontSize: 12, fontFamily: 'Heebo')),
+              child: Text('נקה', style: const TextStyle(color: Color(0xFF60A5FA), fontSize: 12, fontFamily: 'Heebo')),
             )
           : null,
       child: Column(
@@ -374,7 +374,7 @@ class _ControlCenterPreviewScreenState
             ),
             child: TextField(
               textDirection: TextDirection.rtl,
-              style: const TextStyle(color: JC.textPrimary, fontSize: 13, fontFamily: 'Heebo'),
+              style: TextStyle(color: JC.textPrimary, fontSize: 13, fontFamily: 'Heebo'),
               decoration: const InputDecoration(
                 hintText: 'חיפוש סוכן...',
                 hintStyle: TextStyle(color: JC.textMuted, fontSize: 13, fontFamily: 'Heebo'),
@@ -533,7 +533,7 @@ class _SectionCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: JC.textPrimary,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -545,7 +545,7 @@ class _SectionCard extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(color: JC.border, height: 1),
+          Divider(color: JC.border, height: 1),
           Padding(
             padding: const EdgeInsets.all(14),
             child: child,
@@ -576,7 +576,7 @@ class _StatTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(
+              style: TextStyle(
                   color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
           const SizedBox(height: 4),
           Text(value,
@@ -638,14 +638,14 @@ class _AgentCardState extends State<_AgentCard> {
                     color: JC.blue500.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.smart_toy_outlined,
+                  child: Icon(Icons.smart_toy_outlined,
                       color: JC.blue400, size: 18),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     name.toString(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: JC.textPrimary,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -661,7 +661,7 @@ class _AgentCardState extends State<_AgentCard> {
             if (role.toString().isNotEmpty)
               Text(
                 role.toString(),
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -676,7 +676,7 @@ class _AgentCardState extends State<_AgentCard> {
             ),
             if (_expanded) ...[
               const SizedBox(height: 10),
-              const Divider(color: JC.border, height: 1),
+              Divider(color: JC.border, height: 1),
               const SizedBox(height: 8),
               _DetailRow(label: 'אוטונומיה', value: autonomy.toString()),
               if (perms != null)
@@ -705,11 +705,11 @@ class _DetailRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('$label: ',
-              style: const TextStyle(
+              style: TextStyle(
                   color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
           Expanded(
             child: Text(value,
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textSecondary,
                     fontSize: 11,
                     fontFamily: 'Heebo')),
@@ -794,7 +794,7 @@ class _FeatureIdeaCard extends StatelessWidget {
           Icon(icon, color: const Color(0xFFA5B4FC), size: 22),
           const SizedBox(height: 8),
           Text(title,
-              style: const TextStyle(
+              style: TextStyle(
                   color: JC.textPrimary,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -803,7 +803,7 @@ class _FeatureIdeaCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
           Text(desc,
-              style: const TextStyle(
+              style: TextStyle(
                   color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
               maxLines: 3,
               overflow: TextOverflow.ellipsis),
@@ -832,7 +832,7 @@ class _SurveyQuestionCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(q,
-              style: const TextStyle(
+              style: TextStyle(
                   color: JC.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -903,7 +903,7 @@ class _EmptyState extends StatelessWidget {
       child: Center(
         child: Text(message,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
                 color: JC.textMuted, fontSize: 13, fontFamily: 'Heebo')),
       ),
     );

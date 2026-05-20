@@ -242,7 +242,7 @@ class _SmartProductivityPreviewScreenState
           centerTitle: false,
           titleSpacing: 16,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+            icon: Icon(Icons.arrow_back_ios_new_rounded,
                 color: JC.textSecondary, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
@@ -270,7 +270,7 @@ class _SmartProductivityPreviewScreenState
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh_rounded,
+              icon: Icon(Icons.refresh_rounded,
                   color: JC.textSecondary, size: 22),
               onPressed: () {
                 setState(() { _loading = true; _error = null; _dayPlanBuilt = false; });
@@ -346,7 +346,7 @@ class _SmartProductivityPreviewScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(aiText,
-              style: const TextStyle(
+              style: TextStyle(
                 color: JC.textSecondary,
                 fontSize: 14,
                 height: 1.5,
@@ -400,7 +400,7 @@ class _SmartProductivityPreviewScreenState
                 SizedBox(
                   width: 130,
                   child: Text(slot['label'] as String,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: JC.textMuted,
                           fontSize: 12,
                           fontFamily: 'Heebo')),
@@ -473,7 +473,7 @@ class _SmartProductivityPreviewScreenState
                   ),
                   child: Center(
                     child: Text('${i + 1}',
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: JC.blue400,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -483,7 +483,7 @@ class _SmartProductivityPreviewScreenState
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(content,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: JC.textPrimary,
                           fontSize: 13,
                           fontFamily: 'Heebo')),
@@ -574,7 +574,7 @@ class _SectionCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: JC.textPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -585,7 +585,7 @@ class _SectionCard extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(color: JC.border, height: 1),
+          Divider(color: JC.border, height: 1),
           Padding(padding: const EdgeInsets.all(14), child: child),
         ],
       ),
@@ -767,14 +767,14 @@ class _ReminderRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(text,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: JC.textPrimary,
                         fontSize: 13,
                         fontFamily: 'Heebo',
                         fontWeight: FontWeight.w600)),
                 if (remaining.isNotEmpty)
                   Text(remaining,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: JC.textMuted,
                           fontSize: 11,
                           fontFamily: 'Heebo')),
@@ -824,7 +824,7 @@ class _EmptyState extends StatelessWidget {
       child: Center(
         child: Text(message,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
                 color: JC.textMuted, fontSize: 13, fontFamily: 'Heebo')),
       ),
     );
@@ -859,7 +859,7 @@ class _SnackOverlay extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(message,
-                style: const TextStyle(
+                style: TextStyle(
                     color: JC.textPrimary,
                     fontSize: 13,
                     fontFamily: 'Heebo')),
@@ -877,11 +877,11 @@ Widget _ErrorView(String msg, VoidCallback onRetry) {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.cloud_off_rounded, color: JC.textMuted, size: 48),
+          Icon(Icons.cloud_off_rounded, color: JC.textMuted, size: 48),
           const SizedBox(height: 16),
           Text(msg,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                   color: JC.textSecondary, fontSize: 14, fontFamily: 'Heebo')),
           const SizedBox(height: 20),
           ElevatedButton(

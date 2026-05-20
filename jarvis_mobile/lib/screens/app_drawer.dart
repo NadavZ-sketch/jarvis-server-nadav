@@ -7,6 +7,7 @@ import '../history_screen.dart';
 import '../transitions/slide_fade_route.dart';
 import 'control_center_preview_screen.dart';
 import 'smart_productivity_preview_screen.dart';
+import 'progress_map_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final AppSettings settings;
@@ -185,13 +186,13 @@ class AppDrawer extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
                   child: Row(
                     textDirection: TextDirection.rtl,
-                    children: const [
-                      Icon(Icons.science_outlined, size: 13, color: JC.blue400),
-                      SizedBox(width: 6),
-                      Text(
+                    children: [
+                      const Icon(Icons.science_outlined, size: 13, color: Color(0xFF60A5FA)),
+                      const SizedBox(width: 6),
+                      const Text(
                         'מעבדת Jarvis',
                         style: TextStyle(
-                          color: JC.blue400,
+                          color: Color(0xFF60A5FA),
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           fontFamily: 'Heebo',
@@ -271,7 +272,7 @@ class _PreviewBadge extends StatelessWidget {
       child: const Text(
         'Preview',
         style: TextStyle(
-          color: JC.blue400,
+          color: Color(0xFF60A5FA),
           fontSize: 10,
           fontFamily: 'Heebo',
           fontWeight: FontWeight.w600,

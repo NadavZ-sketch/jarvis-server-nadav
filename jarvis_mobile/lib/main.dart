@@ -721,10 +721,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _archiveSessionToHistory() async {
     if (messages.length <= 1) return; // Only the greeting — nothing to archive
+    if (_chatId.isEmpty) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString('chat_sessions') ?? '[]';
       final List sessions = jsonDecode(raw);
+      // Deduplicate: remove existing entry for this chatId, then re-add updated
+      sessions.removeWhere((s) => s['chat_id'] == _chatId);
       sessions.add({
         'date': DateTime.now().toIso8601String(),
         'messages': messages,
@@ -1399,7 +1402,27 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void _openHistory() {
     Navigator.push(
       context,
-      SlideFadeRoute(page: const HistoryScreen()),
+      SlideFadeRoute(
+        page: HistoryScreen(
+          onResume: (session) async {
+            final chatId = session['chat_id'] as String? ?? '';
+            final msgs = (session['messages'] as List?)
+                ?.cast<Map<String, dynamic>>() ?? [];
+            if (chatId.isEmpty || msgs.isEmpty) return;
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('current_chat_id', chatId);
+            await prefs.setString('current_messages', jsonEncode(msgs));
+            if (!mounted) return;
+            setState(() {
+              _chatId = chatId;
+              messages = msgs
+                  .map((m) => m.map((k, v) => MapEntry(k, v.toString())))
+                  .toList();
+            });
+            _scrollToBottom();
+          },
+        ),
+      ),
     );
   }
 

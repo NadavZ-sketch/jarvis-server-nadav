@@ -204,7 +204,7 @@ if (!_corsOrigins) {
 }
 app.use(cors({
     origin: _corsOrigins || '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-User-Id', 'X-User-Role', 'X-User-Plan', 'X-User-Consent', 'X-Confirm-Action'],
 }));
 
@@ -1323,7 +1323,7 @@ app.get('/auth/google/callback', async (req, res) => {
 
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
-app.get('/contacts', requirePolicy('contacts.read', { sensitive: true }), async (_req, res) => {
+app.get('/contacts', requirePolicy('contacts.read', {}), async (_req, res) => {
     try {
         const { data, error } = await supabase
             .from('contacts')
@@ -1804,7 +1804,7 @@ app.get('/control-center/events', async (req, res) => {
 
 // ─── PUT /reminders/:id — update text and/or scheduled_time ──────────────────
 // ─── POST /contacts — add contact from app ───────────────────────────────────
-app.post('/contacts', requirePolicy('contacts.create', { sensitive: true }), async (req, res) => {
+app.post('/contacts', requirePolicy('contacts.create', {}), async (req, res) => {
     try {
         const { name, phone, email } = req.body;
         if (!name) return res.status(400).json({ error: 'name required' });
@@ -1822,7 +1822,7 @@ app.post('/contacts', requirePolicy('contacts.create', { sensitive: true }), asy
 });
 
 // ─── PUT /contacts/:id — update contact ───────────────────────────────────────
-app.put('/contacts/:id', requirePolicy('contacts.update', { sensitive: true }), async (req, res) => {
+app.put('/contacts/:id', requirePolicy('contacts.update', {}), async (req, res) => {
     try {
         const { name, phone, email } = req.body;
         const updates = {};
@@ -2810,14 +2810,20 @@ Output format (copy exactly, replace the values):
 
         const raw = await callGemma4(prompt, false, 2000);
 
-        // Extract JSON array — handle markdown code blocks and leading text
-        const jsonMatch = raw.match(/\[[\s\S]*\]/);
-        if (!jsonMatch) {
+        // Extract JSON array — strip markdown code fences, find first [ ... ] block
+        const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '');
+        let parsed;
+        try {
+            // Try to find outermost [...] array
+            const start = stripped.indexOf('[');
+            const end   = stripped.lastIndexOf(']');
+            if (start === -1 || end === -1 || end <= start) throw new Error('no array');
+            parsed = JSON.parse(stripped.slice(start, end + 1));
+            if (!Array.isArray(parsed)) throw new Error('not array');
+        } catch (parseErr) {
             console.error('backlog/generate: no JSON array found in LLM output:', raw.slice(0, 200));
             return res.status(500).json({ error: 'מודל ה-AI לא החזיר JSON תקין — נסה שוב' });
         }
-
-        const parsed = JSON.parse(jsonMatch[0]);
 
         // Map both English and Hebrew field name variants
         const baseId = backlog._nextId;

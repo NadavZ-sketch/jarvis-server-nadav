@@ -149,8 +149,9 @@ Stored memories:
 
 async function deleteMemory(userMessage, supabase) {
     const textToDelete = userMessage
-        .replace(/מחק זיכרון|הסר זיכרון|שכח ש|שכח/g, '')
-        .replace(/(?<!\S)(על|את|ה)(?!\S)/g, '')
+        .replace(/מחק\s+(?:את\s+)?(?:ה)?זיכרון|הסר\s+(?:את\s+)?(?:ה)?זיכרון|שכח\s+ש|שכח|תמחק|תסיר/gi, '')
+        .replace(/(?<!\S)(?:לגבי|בנוגע\s+ל|על|את|של|ה|ו|ב|מ|ל|ש|כ)(?!\S)/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 
     if (!textToDelete) {
@@ -175,7 +176,8 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
 
     try {
         // Delete memory
-        if (/מחק זיכרון|הסר זיכרון|שכח ש|שכח/i.test(userMessage)) {
+        if (/מחק|הסר|שכח|תמחק|תסיר/i.test(userMessage) && /זיכרון|זכור|זכרון|שכח/i.test(userMessage) ||
+            /מחק\s+(?:את\s+)?(?:ה)?זיכרון|הסר\s+(?:את\s+)?(?:ה)?זיכרון|שכח\s+ש|שכח/i.test(userMessage)) {
             return deleteMemory(userMessage, supabase);
         }
 

@@ -150,7 +150,7 @@ Stored memories:
 async function deleteMemory(userMessage, supabase) {
     const textToDelete = userMessage
         .replace(/מחק\s+(?:את\s+)?(?:ה)?זיכרון|הסר\s+(?:את\s+)?(?:ה)?זיכרון|שכח\s+ש|שכח|תמחק|תסיר/gi, '')
-        .replace(/\b(?:לגבי|בנוגע\s+ל|על|את|של|ה|ו|ב|מ|ל|ש|כ)\b/g, ' ')
+        .replace(/(?<!\S)(?:לגבי|בנוגע\s+ל|על|את|של|ה|ו|ב|מ|ל|ש|כ)(?!\S)/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 

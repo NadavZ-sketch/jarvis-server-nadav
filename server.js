@@ -33,7 +33,7 @@ async function sendEmail(to, body) {
     console.log(`📧 Email sent to ${to}`);
 }
 
-const { classifyIntent, classifyIntentWithLLM } = require('./agents/router');
+const { classifyIntent, classifyIntentWithLLM, loadCustomRegistry } = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator } = require('./agents/memoryAgent');
@@ -306,6 +306,7 @@ if (typeof setMemoryCacheInvalidator === 'function') {
 
 const TTL_MEMORIES     = 30 * 1000;       // 30 sec — short, so newly-saved memories are immediately visible
 const TTL_CHAT_HISTORY = 30 * 1000;       // 30 sec
+const TTL_USER_PROFILE = 60 * 1000;       // 60 sec — profile changes rarely; invalidated on write
 
 // ─── Past-conversation detection ──────────────────────────────────────────────
 
@@ -494,7 +495,7 @@ const CUSTOM_AGENTS_DIR = path.resolve(__dirname, 'agents', 'custom');
 
 async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settings) {
     try {
-        const registry = JSON.parse(fs.readFileSync(CUSTOM_REGISTRY, 'utf8'));
+        const registry = loadCustomRegistry(); // reuses router's 30 s in-memory cache
         const entry = registry.find(r => r.name === agentName);
         if (!entry) return null;
 
@@ -528,6 +529,9 @@ app.get('/health', (req, res) => {
 });
 
 async function getUserProfile() {
+    const cached = cacheGet('userProfile');
+    if (cached !== undefined) return cached;
+
     const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
@@ -535,10 +539,12 @@ async function getUserProfile() {
         .limit(1);
     if (error) {
         console.error('user_profiles fetch error:', error.message);
-        return readLocalProfile();
+        return readLocalProfile(); // don't cache transient DB errors
     }
     const dbProfile = Array.isArray(data) && data.length > 0 ? data[0] : null;
-    return dbProfile || readLocalProfile();
+    const profile = dbProfile || readLocalProfile();
+    cacheSet('userProfile', profile, TTL_USER_PROFILE);
+    return profile;
 }
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -886,9 +892,11 @@ app.post('/user-profile', async (req, res) => {
             console.error('user_profiles save error:', result.error.message);
             const localProfile = { id: 'local-fallback', ...payload };
             writeLocalProfile(localProfile);
+            cacheInvalidate('userProfile');
             return res.json({ success: true, profile: localProfile, fallback: true });
         }
         writeLocalProfile(result.data);
+        cacheInvalidate('userProfile');
         res.json({ success: true, profile: result.data });
     } catch (err) {
         const msg = String(err.message || '');
@@ -906,15 +914,18 @@ app.delete('/user-profile', async (_req, res) => {
         const existing = await getUserProfile();
         if (!existing?.id || existing.id === 'local-fallback') {
             deleteLocalProfile();
+            cacheInvalidate('userProfile');
             return res.json({ success: true, deleted: true, fallback: true });
         }
         const { error } = await supabase.from('user_profiles').delete().eq('id', existing.id);
         if (error) {
             console.error('user_profiles delete error:', error.message);
             deleteLocalProfile();
+            cacheInvalidate('userProfile');
             return res.json({ success: true, deleted: true, fallback: true });
         }
         deleteLocalProfile();
+        cacheInvalidate('userProfile');
         res.json({ success: true, deleted: true });
     } catch (err) {
         res.status(500).json({ error: 'Internal server error' });
@@ -1314,6 +1325,7 @@ app.get('/auth/google/callback', async (req, res) => {
         const tokenData = tokenRes.data;
         // Store refresh token in user_profiles
         await supabase.from('user_profiles').upsert([{ id: 'default', google_calendar_token: JSON.stringify(tokenData) }], { onConflict: 'id' });
+        cacheInvalidate('userProfile');
         res.send('<h2>✅ יומן Google חובר בהצלחה! אפשר לסגור את החלון.</h2>');
     } catch (err) {
         console.error('Google OAuth callback error:', err.message);
@@ -3062,7 +3074,7 @@ cron.schedule('17 2 * * *', async () => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-module.exports = { app };
+module.exports = { app, cacheInvalidate };
 
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;

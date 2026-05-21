@@ -55,55 +55,51 @@ String _timeOfDay(String? iso) {
   }
 }
 
-// Demo: AI recommendations — generated client-side from real task data
+String _dynamicGreeting(String userName) {
+  final hour = DateTime.now().hour;
+  final name = userName.isEmpty ? 'Jarvis' : userName;
+  if (hour < 5) return 'לילה טוב, $name';
+  if (hour < 12) return 'בוקר טוב, $name';
+  if (hour < 17) return 'צהריים טובים, $name';
+  if (hour < 21) return 'ערב טוב, $name';
+  return 'לילה טוב, $name';
+}
+
+String _greetingEmoji() {
+  final hour = DateTime.now().hour;
+  if (hour < 5) return '✨';
+  if (hour < 12) return '☀️';
+  if (hour < 17) return '🌤';
+  if (hour < 21) return '🌙';
+  return '✨';
+}
+
 String _buildDayRecommendation(
     List<Map<String, dynamic>> tasks, String userName) {
   final open = tasks.where((t) => t['done'] != true).toList();
-  final highPriority = open.where((t) =>
-      (t['priority'] ?? '').toString().toLowerCase() == 'high').length;
+  final highPriority = open
+      .where((t) => (t['priority'] ?? '').toString().toLowerCase() == 'high')
+      .length;
   final total = open.length;
 
   if (total == 0) return 'כל המשימות הושלמו! היום נקי ✅ קחו הפסקה.';
   if (highPriority > 2) {
     return 'יש $highPriority משימות בעדיפות גבוהה. '
-        'Jarvis ממליץ להתחיל בהן לפני הצהריים כדי לפנות את אחר הצהריים.';
+        'Jarvis ממליץ להתחיל בהן לפני הצהריים.';
   }
   if (total > 6) {
-    return 'יש לך $total משימות פתוחות — זה הרבה ליום אחד. '
-        'Jarvis ממליץ לדחות 2-3 למחר ולהתמקד ב-${total > 4 ? 4 : total} עיקריות.';
+    return 'יש לך $total משימות פתוחות. '
+        'Jarvis ממליץ לדחות 2-3 למחר ולהתמקד ב-4 עיקריות.';
   }
   return 'יש לך $total משימות פתוחות. '
-      'נראה שהיום ניהולי — סדר עדיפויות ותתחיל מהחשובות ביותר.';
+      'התחל מהחשובות ביותר.';
 }
 
-// Demo load distribution
-List<Map<String, dynamic>> _buildLoadMap(
-    List<Map<String, dynamic>> tasks, List<Map<String, dynamic>> reminders) {
-  final slots = <Map<String, dynamic>>[
-    {'label': 'בוקר (8-12)', 'load': 0},
-    {'label': 'צהריים (12-15)', 'load': 0},
-    {'label': 'אחר הצהריים (15-18)', 'load': 0},
-    {'label': 'ערב (18+)', 'load': 0},
-  ];
-
-  for (final r in reminders) {
-    final iso = r['scheduled_time'] as String?;
-    if (iso == null) continue;
-    try {
-      final dt = DateTime.parse(iso).toLocal();
-      final h = dt.hour;
-      final idx = h < 12 ? 0 : h < 15 ? 1 : h < 18 ? 2 : 3;
-      slots[idx]['load'] = (slots[idx]['load'] as int) + 1;
-    } catch (_) {}
-  }
-
-  // Distribute open tasks evenly for demo
-  final open = tasks.where((t) => t['done'] != true).length;
-  for (int i = 0; i < open && i < 4; i++) {
-    slots[i % 4]['load'] = (slots[i % 4]['load'] as int) + 1;
-  }
-  return slots;
-}
+const _hebrewDays = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+const _hebrewMonths = [
+  'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר',
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main screen
@@ -130,12 +126,12 @@ class _SmartProductivityPreviewScreenState
   bool _loading = true;
   String? _error;
 
-  // UI state
-  bool _dayPlanBuilt = false;
-  List<Map<String, dynamic>> _dayPlan = [];
   Set<String> _postponed = {};
   Set<String> _markedImportant = {};
   String? _snackMessage;
+
+  // Selected calendar day offset (0 = today)
+  int _selectedDayOffset = 0;
 
   @override
   void initState() {
@@ -170,22 +166,6 @@ class _SmartProductivityPreviewScreenState
     }
   }
 
-  void _buildDayPlan() {
-    final open = _tasks.where((t) => t['done'] != true).toList();
-    // Sort: high priority first
-    open.sort((a, b) {
-      const order = {'high': 0, 'medium': 1, 'low': 2};
-      final pa = order[(a['priority'] ?? '').toString().toLowerCase()] ?? 2;
-      final pb = order[(b['priority'] ?? '').toString().toLowerCase()] ?? 2;
-      return pa.compareTo(pb);
-    });
-    setState(() {
-      _dayPlan = open.take(6).toList();
-      _dayPlanBuilt = true;
-    });
-    _showSnack('תוכנית היום נבנתה מ-${_dayPlan.length} משימות עדיפות');
-  }
-
   void _postponeTask(Map<String, dynamic> task) {
     setState(() => _postponed.add(task['id'].toString()));
     _showSnack('המשימה נדחתה למחר (Preview — לא נשמר בשרת)');
@@ -204,15 +184,15 @@ class _SmartProductivityPreviewScreenState
   }
 
   List<Map<String, dynamic>> get _todayReminders {
-    final now = DateTime.now();
+    final target = DateTime.now().add(Duration(days: _selectedDayOffset));
     return _reminders.where((r) {
       final iso = r['scheduled_time'] as String?;
       if (iso == null) return false;
       try {
         final dt = DateTime.parse(iso).toLocal();
-        return dt.year == now.year &&
-            dt.month == now.month &&
-            dt.day == now.day;
+        return dt.year == target.year &&
+            dt.month == target.month &&
+            dt.day == target.day;
       } catch (_) {
         return false;
       }
@@ -224,8 +204,28 @@ class _SmartProductivityPreviewScreenState
       });
   }
 
-  List<Map<String, dynamic>> get _openTasks =>
-      _tasks.where((t) => t['done'] != true).toList();
+  List<Map<String, dynamic>> get _inProgressTasks => _tasks
+      .where((t) =>
+          t['done'] != true &&
+          _markedImportant.contains(t['id'].toString()))
+      .toList();
+
+  List<Map<String, dynamic>> get _toDoTasks => _tasks
+      .where((t) =>
+          t['done'] != true &&
+          !_markedImportant.contains(t['id'].toString()) &&
+          (t['priority'] ?? '').toString().toLowerCase() != 'low')
+      .toList();
+
+  List<Map<String, dynamic>> get _upcomingTasks => _tasks
+      .where((t) =>
+          t['done'] != true &&
+          !_markedImportant.contains(t['id'].toString()) &&
+          (t['priority'] ?? '').toString().toLowerCase() == 'low')
+      .toList();
+
+  int get _doneTasks => _tasks.where((t) => t['done'] == true).length;
+  int get _totalTasks => _tasks.length;
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
@@ -270,10 +270,13 @@ class _SmartProductivityPreviewScreenState
           ),
           actions: [
             IconButton(
-              icon: Icon(Icons.refresh_rounded,
-                  color: JC.textSecondary, size: 22),
+              icon:
+                  Icon(Icons.refresh_rounded, color: JC.textSecondary, size: 22),
               onPressed: () {
-                setState(() { _loading = true; _error = null; _dayPlanBuilt = false; });
+                setState(() {
+                  _loading = true;
+                  _error = null;
+                });
                 _loadData();
               },
             ),
@@ -296,16 +299,18 @@ class _SmartProductivityPreviewScreenState
                               backgroundColor: JC.surface,
                               onRefresh: _loadData,
                               child: ListView(
-                                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                                 children: [
-                                  _RecommendationCard(),
-                                  const SizedBox(height: 20),
-                                  _LoadMapCard(),
-                                  const SizedBox(height: 20),
-                                  _DayPlanCard(),
-                                  const SizedBox(height: 20),
-                                  _TasksCard(),
-                                  const SizedBox(height: 20),
+                                  _GreetingCard(),
+                                  const SizedBox(height: 16),
+                                  _QuickActionsRow(),
+                                  const SizedBox(height: 16),
+                                  _CalendarStrip(),
+                                  const SizedBox(height: 16),
+                                  _ProgressCard(),
+                                  const SizedBox(height: 16),
+                                  _GroupedTasksSection(),
+                                  const SizedBox(height: 16),
                                   _RemindersCard(),
                                   SizedBox(height: bottomPad + 8),
                                 ],
@@ -315,7 +320,6 @@ class _SmartProductivityPreviewScreenState
                 const PreviewBanner(),
               ],
             ),
-            // Snack overlay
             if (_snackMessage != null)
               Positioned(
                 bottom: 60,
@@ -329,44 +333,95 @@ class _SmartProductivityPreviewScreenState
     );
   }
 
-  // ── Section: Recommendation ─────────────────────────────────────────────────
+  // ── Greeting Card ──────────────────────────────────────────────────────────
 
-  Widget _RecommendationCard() {
-    final userName = widget.settings.userName;
+  Widget _GreetingCard() {
+    final greeting = _dynamicGreeting(widget.settings.userName);
+    final emoji = _greetingEmoji();
     final aiText = _todayMessage.isNotEmpty
         ? _todayMessage
-        : _buildDayRecommendation(_tasks, userName);
+        : _buildDayRecommendation(_tasks, widget.settings.userName);
+    final now = DateTime.now();
+    final dateStr =
+        'יום ${_hebrewDays[now.weekday % 7]}, ${now.day} ב${_hebrewMonths[now.month - 1]}';
 
-    return _SectionCard(
-      title: 'Jarvis ממליץ עכשיו',
-      icon: Icons.auto_awesome_rounded,
-      iconColor: JC.blue400,
-      headerTrailing: const DemoChip(),
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF1A2E4A),
+            JC.surface,
+          ],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(aiText,
-              style: TextStyle(
-                color: JC.textSecondary,
-                fontSize: 14,
-                height: 1.5,
-                fontFamily: 'Heebo',
-              )),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _buildDayPlan,
-              icon: const Icon(Icons.calendar_today_rounded, size: 16),
-              label: const Text('בנה לי את היום',
-                  style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: JC.blue500,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(vertical: 11),
+          Row(
+            children: [
+              Text(
+                emoji,
+                style: const TextStyle(fontSize: 28),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      greeting,
+                      style: TextStyle(
+                        color: JC.textPrimary,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        fontFamily: 'Heebo',
+                      ),
+                    ),
+                    Text(
+                      dateStr,
+                      style: TextStyle(
+                        color: JC.textMuted,
+                        fontSize: 12,
+                        fontFamily: 'Heebo',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0B1929),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: const Color(0xFF3B82F6).withOpacity(0.3), width: 0.8),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome_rounded,
+                    color: JC.blue400, size: 16),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    aiText,
+                    style: TextStyle(
+                      color: JC.textSecondary,
+                      fontSize: 13,
+                      height: 1.4,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -374,161 +429,416 @@ class _SmartProductivityPreviewScreenState
     );
   }
 
-  // ── Section: Load Map ──────────────────────────────────────────────────────
+  // ── Quick Actions ──────────────────────────────────────────────────────────
 
-  Widget _LoadMapCard() {
-    final slots = _buildLoadMap(_tasks, _reminders);
-    final maxLoad =
-        slots.map((s) => s['load'] as int).reduce((a, b) => a > b ? a : b);
+  Widget _QuickActionsRow() {
+    final actions = [
+      {'icon': Icons.build_circle_outlined, 'label': 'בנה את היום', 'color': const Color(0xFF3B82F6)},
+      {'icon': Icons.task_alt_rounded, 'label': 'עדכן משימות', 'color': const Color(0xFF22C55E)},
+      {'icon': Icons.add_circle_outline_rounded, 'label': 'משימה חדשה', 'color': const Color(0xFFA5B4FC)},
+      {'icon': Icons.calendar_month_rounded, 'label': 'חבר יומן', 'color': const Color(0xFFF59E0B)},
+    ];
+    return SizedBox(
+      height: 76,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        reverse: true,
+        padding: EdgeInsets.zero,
+        itemCount: actions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (_, i) {
+          final a = actions[i];
+          return _QuickActionChip(
+            icon: a['icon'] as IconData,
+            label: a['label'] as String,
+            color: a['color'] as Color,
+            onTap: () => _showSnack('${a['label']} · בקרוב (Preview)'),
+          );
+        },
+      ),
+    );
+  }
 
-    return _SectionCard(
-      title: 'עומס היום',
-      icon: Icons.bar_chart_rounded,
-      iconColor: const Color(0xFFA5B4FC),
-      headerTrailing: const DemoChip(),
+  // ── Calendar Strip ─────────────────────────────────────────────────────────
+
+  Widget _CalendarStrip() {
+    final today = DateTime.now();
+    return Container(
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
       child: Column(
-        children: slots.map((slot) {
-          final load = slot['load'] as int;
-          final ratio = maxLoad == 0 ? 0.0 : load / maxLoad;
-          final isHeavy = ratio > 0.7;
-          final barColor = isHeavy ? const Color(0xFFF59E0B) : JC.blue500;
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
             child: Row(
               children: [
-                SizedBox(
-                  width: 130,
-                  child: Text(slot['label'] as String,
+                Icon(Icons.calendar_today_rounded,
+                    color: JC.blue400, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  'לוח שנה',
+                  style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(color: JC.border, height: 1),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            child: SizedBox(
+              height: 64,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                reverse: true,
+                itemCount: 7,
+                itemBuilder: (_, i) {
+                  // i=0 is today, i>0 is future days
+                  final offset = i - 3; // show 3 past, today, 3 future
+                  final day = today.add(Duration(days: offset));
+                  final isToday = offset == 0;
+                  final isSelected = offset == _selectedDayOffset;
+                  final remCount = _reminders.where((r) {
+                    final iso = r['scheduled_time'] as String?;
+                    if (iso == null) return false;
+                    try {
+                      final dt = DateTime.parse(iso).toLocal();
+                      return dt.year == day.year &&
+                          dt.month == day.month &&
+                          dt.day == day.day;
+                    } catch (_) {
+                      return false;
+                    }
+                  }).length;
+
+                  return GestureDetector(
+                    onTap: () =>
+                        setState(() => _selectedDayOffset = offset),
+                    child: Container(
+                      width: 44,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? JC.blue500
+                            : isToday
+                                ? JC.blue500.withOpacity(0.15)
+                                : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        border: isToday && !isSelected
+                            ? Border.all(
+                                color: JC.blue500.withOpacity(0.5), width: 1)
+                            : null,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _hebrewDays[day.weekday % 7],
+                            style: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : JC.textMuted,
+                              fontSize: 10,
+                              fontFamily: 'Heebo',
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${day.day}',
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : JC.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              fontFamily: 'Heebo',
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          if (remCount > 0)
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFFF59E0B),
+                                shape: BoxShape.circle,
+                              ),
+                            )
+                          else
+                            const SizedBox(height: 6),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          // Events for selected day
+          if (_todayReminders.isNotEmpty) ...[
+            Divider(color: JC.border, height: 1),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _selectedDayOffset == 0 ? 'אירועים היום' : 'אירועים ביום זה',
+                    style: TextStyle(
+                      color: JC.textMuted,
+                      fontSize: 11,
+                      fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ..._todayReminders.take(3).map((r) {
+                    final text = r['text'] as String? ?? '—';
+                    final time = _timeOfDay(r['scheduled_time'] as String?);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF59E0B).withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              time.isEmpty ? '--:--' : time,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFFF59E0B),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Heebo',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              text,
+                              style: TextStyle(
+                                color: JC.textSecondary,
+                                fontSize: 12,
+                                fontFamily: 'Heebo',
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  if (_todayReminders.length > 3)
+                    Text(
+                      '+${_todayReminders.length - 3} נוספות',
                       style: TextStyle(
                           color: JC.textMuted,
-                          fontSize: 12,
-                          fontFamily: 'Heebo')),
-                ),
-                Expanded(
-                  child: Stack(
-                    children: [
-                      Container(
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1A2E4A),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      FractionallySizedBox(
-                        widthFactor: ratio.clamp(0.05, 1.0),
-                        child: Container(
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: barColor,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 24,
-                  child: Text('$load',
-                      textAlign: TextAlign.end,
-                      style: TextStyle(
-                          color: isHeavy ? const Color(0xFFF59E0B) : JC.textMuted,
-                          fontSize: 12,
-                          fontFamily: 'Heebo',
-                          fontWeight: isHeavy ? FontWeight.w700 : FontWeight.normal)),
-                ),
-              ],
+                          fontSize: 11,
+                          fontFamily: 'Heebo'),
+                    ),
+                ],
+              ),
             ),
-          );
-        }).toList(),
+          ],
+        ],
       ),
     );
   }
 
-  // ── Section: Day Plan ──────────────────────────────────────────────────────
+  // ── Progress Card ──────────────────────────────────────────────────────────
 
-  Widget _DayPlanCard() {
-    if (!_dayPlanBuilt) return const SizedBox.shrink();
-    return _SectionCard(
-      title: 'תוכנית היום שלי',
-      icon: Icons.format_list_numbered_rounded,
-      iconColor: const Color(0xFF22C55E),
+  Widget _ProgressCard() {
+    final done = _doneTasks;
+    final total = _totalTasks;
+    final progress = total == 0 ? 0.0 : done / total;
+    final openCount = total - done;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
       child: Column(
-        children: _dayPlan.asMap().entries.map((entry) {
-          final i = entry.key;
-          final task = entry.value;
-          final content = task['content'] as String? ?? '—';
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: JC.blue500.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text('${i + 1}',
-                        style: TextStyle(
-                            color: JC.blue400,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Heebo')),
-                  ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.pie_chart_outline_rounded,
+                  color: const Color(0xFF22C55E), size: 16),
+              const SizedBox(width: 8),
+              Text(
+                'התקדמות משימות',
+                style: TextStyle(
+                  color: JC.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Heebo',
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(content,
-                      style: TextStyle(
-                          color: JC.textPrimary,
-                          fontSize: 13,
-                          fontFamily: 'Heebo')),
+              ),
+              const Spacer(),
+              Text(
+                '$done / $total',
+                style: TextStyle(
+                  color: JC.textMuted,
+                  fontSize: 13,
+                  fontFamily: 'Heebo',
+                  fontWeight: FontWeight.w600,
                 ),
-                _PriorityBadge(task['priority'] as String?),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: const Color(0xFF1A2E4A),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                progress > 0.7
+                    ? const Color(0xFF22C55E)
+                    : const Color(0xFF3B82F6),
+              ),
             ),
-          );
-        }).toList(),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _MiniStat(
+                label: 'הושלמו',
+                value: '$done',
+                color: const Color(0xFF22C55E),
+              ),
+              const SizedBox(width: 12),
+              _MiniStat(
+                label: 'בביצוע',
+                value: '${_inProgressTasks.length}',
+                color: const Color(0xFF3B82F6),
+              ),
+              const SizedBox(width: 12),
+              _MiniStat(
+                label: 'פתוחות',
+                value: '$openCount',
+                color: const Color(0xFF475569),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  // ── Section: Tasks ─────────────────────────────────────────────────────────
+  // ── Grouped Tasks ──────────────────────────────────────────────────────────
 
-  Widget _TasksCard() {
-    final open = _openTasks;
-    return _SectionCard(
-      title: 'משימות חכמות (${open.length})',
-      icon: Icons.task_alt_rounded,
-      iconColor: JC.blue400,
-      child: open.isEmpty
-          ? const _EmptyState(message: 'אין משימות פתוחות 🎉')
-          : Column(
-              children: open.map((task) => _SmartTaskCard(
-                    task: task,
-                    postponed: _postponed.contains(task['id'].toString()),
-                    important: _markedImportant.contains(task['id'].toString()),
-                    onPostpone: () => _postponeTask(task),
-                    onMarkImportant: () => _markImportant(task),
-                  )).toList(),
+  Widget _GroupedTasksSection() {
+    return Column(
+      children: [
+        if (_inProgressTasks.isNotEmpty)
+          _TaskGroup(
+            label: 'בביצוע',
+            count: _inProgressTasks.length,
+            dotColor: const Color(0xFF3B82F6),
+            tasks: _inProgressTasks,
+            postponed: _postponed,
+            important: _markedImportant,
+            onPostpone: _postponeTask,
+            onMarkImportant: _markImportant,
+          ),
+        if (_inProgressTasks.isNotEmpty) const SizedBox(height: 12),
+        if (_toDoTasks.isNotEmpty)
+          _TaskGroup(
+            label: 'לביצוע',
+            count: _toDoTasks.length,
+            dotColor: const Color(0xFFF59E0B),
+            tasks: _toDoTasks,
+            postponed: _postponed,
+            important: _markedImportant,
+            onPostpone: _postponeTask,
+            onMarkImportant: _markImportant,
+          ),
+        if (_toDoTasks.isNotEmpty) const SizedBox(height: 12),
+        if (_upcomingTasks.isNotEmpty)
+          _TaskGroup(
+            label: 'הבא בתור',
+            count: _upcomingTasks.length,
+            dotColor: const Color(0xFF475569),
+            tasks: _upcomingTasks,
+            postponed: _postponed,
+            important: _markedImportant,
+            onPostpone: _postponeTask,
+            onMarkImportant: _markImportant,
+          ),
+        if (_inProgressTasks.isEmpty &&
+            _toDoTasks.isEmpty &&
+            _upcomingTasks.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: JC.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: JC.border, width: 0.8),
             ),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.task_alt_rounded,
+                      color: const Color(0xFF22C55E), size: 40),
+                  const SizedBox(height: 10),
+                  Text(
+                    'כל המשימות הושלמו! 🎉',
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'הגענו למטרה היום',
+                    style: TextStyle(
+                      color: JC.textMuted,
+                      fontSize: 13,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 
-  // ── Section: Reminders ─────────────────────────────────────────────────────
+  // ── Reminders Card ─────────────────────────────────────────────────────────
 
   Widget _RemindersCard() {
     final today = _todayReminders;
     return _SectionCard(
-      title: 'תזכורות היום (${today.length})',
+      title: 'תזכורות (${today.length})',
       icon: Icons.notifications_outlined,
       iconColor: const Color(0xFFF59E0B),
       child: today.isEmpty
-          ? const _EmptyState(message: 'אין תזכורות להיום')
+          ? _EmptyState(
+              message: _selectedDayOffset == 0
+                  ? 'אין תזכורות להיום'
+                  : 'אין תזכורות ליום זה')
           : Column(
               children: today.map((r) => _ReminderRow(r)).toList(),
             ),
@@ -539,6 +849,205 @@ class _SmartProductivityPreviewScreenState
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-widgets
 // ─────────────────────────────────────────────────────────────────────────────
+
+class _QuickActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickActionChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.35), width: 0.8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MiniStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          '$value $label',
+          style: TextStyle(
+            color: JC.textMuted,
+            fontSize: 12,
+            fontFamily: 'Heebo',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TaskGroup extends StatefulWidget {
+  final String label;
+  final int count;
+  final Color dotColor;
+  final List<Map<String, dynamic>> tasks;
+  final Set<String> postponed;
+  final Set<String> important;
+  final void Function(Map<String, dynamic>) onPostpone;
+  final void Function(Map<String, dynamic>) onMarkImportant;
+
+  const _TaskGroup({
+    required this.label,
+    required this.count,
+    required this.dotColor,
+    required this.tasks,
+    required this.postponed,
+    required this.important,
+    required this.onPostpone,
+    required this.onMarkImportant,
+  });
+
+  @override
+  State<_TaskGroup> createState() => _TaskGroupState();
+}
+
+class _TaskGroupState extends State<_TaskGroup> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Column(
+        children: [
+          // Group header
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: widget.dotColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    widget.label,
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: widget.dotColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${widget.count} משימות',
+                      style: TextStyle(
+                        color: widget.dotColor,
+                        fontSize: 10,
+                        fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: JC.textMuted,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded) ...[
+            Divider(color: JC.border, height: 1),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: widget.tasks
+                    .map((task) => _SmartTaskCard(
+                          task: task,
+                          postponed: widget.postponed
+                              .contains(task['id'].toString()),
+                          important: widget.important
+                              .contains(task['id'].toString()),
+                          onPostpone: () => widget.onPostpone(task),
+                          onMarkImportant: () =>
+                              widget.onMarkImportant(task),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 class _SectionCard extends StatelessWidget {
   final String title;
@@ -622,7 +1131,7 @@ class _SmartTaskCard extends StatelessWidget {
         border: Border.all(
           color: important
               ? const Color(0xFFF59E0B).withOpacity(0.5)
-              : JC.border,
+              : const Color(0xFF1A2E4A),
           width: 0.8,
         ),
       ),
@@ -639,7 +1148,8 @@ class _SmartTaskCard extends StatelessWidget {
                     fontSize: 13,
                     fontFamily: 'Heebo',
                     fontWeight: FontWeight.w600,
-                    decoration: postponed ? TextDecoration.lineThrough : null,
+                    decoration:
+                        postponed ? TextDecoration.lineThrough : null,
                   ),
                 ),
               ),
@@ -701,9 +1211,8 @@ class _ActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: active
-              ? activeColor.withOpacity(0.12)
-              : const Color(0xFF0F1929),
+          color:
+              active ? activeColor.withOpacity(0.12) : const Color(0xFF0F1929),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
               color: active ? activeColor.withOpacity(0.5) : JC.border,

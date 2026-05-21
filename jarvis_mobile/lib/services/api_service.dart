@@ -136,6 +136,25 @@ class ApiService {
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> getMorningBrief() async {
+    final res = await _client
+        .get(_uri('/morning-briefing'), headers: _baseHeaders)
+        .timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> askJarvis(
+      String command, AppSettings settings) async {
+    final res = await _client
+        .post(
+          _uri('/ask-jarvis'),
+          headers: _headers({'Content-Type': 'application/json'}),
+          body: jsonEncode({'command': command, 'settings': settings.toJson()}),
+        )
+        .timeout(const Duration(seconds: 45));
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
   // ─── Reminders ────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getReminders() async {

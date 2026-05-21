@@ -91,8 +91,7 @@ String _buildDayRecommendation(
     return 'יש לך $total משימות פתוחות. '
         'Jarvis ממליץ לדחות 2-3 למחר ולהתמקד ב-4 עיקריות.';
   }
-  return 'יש לך $total משימות פתוחות. '
-      'התחל מהחשובות ביותר.';
+  return 'יש לך $total משימות פתוחות. התחל מהחשובות ביותר.';
 }
 
 const _hebrewDays = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
@@ -119,18 +118,28 @@ class _SmartProductivityPreviewScreenState
     extends State<SmartProductivityPreviewScreen> {
   late final ApiService _api;
 
+  // Core data
   List<Map<String, dynamic>> _tasks = [];
   List<Map<String, dynamic>> _reminders = [];
   String _todayMessage = '';
-
   bool _loading = true;
   String? _error;
 
+  // Morning brief
+  String _morningBrief = '';
+  bool _morningBriefLoading = true;
+  bool _morningBriefCached = false;
+  String? _morningBriefError;
+
+  // Jarvis insight
+  String _jarvisInsight = '';
+  bool _jarvisInsightLoading = true;
+  String? _jarvisInsightError;
+
+  // UI state
   Set<String> _postponed = {};
   Set<String> _markedImportant = {};
   String? _snackMessage;
-
-  // Selected calendar day offset (0 = today)
   int _selectedDayOffset = 0;
 
   @override
@@ -142,19 +151,22 @@ class _SmartProductivityPreviewScreenState
 
   Future<void> _loadData() async {
     try {
-      final results = await Future.wait([
-        _api.getTasks(),
-        _api.getReminders(),
-        _api.getTodayMessage().catchError((_) => <String, dynamic>{}),
-      ]);
+      final tasksFuture = _api.getTasks();
+      final remindersFuture = _api.getReminders();
+      final msgFuture = _api.getTodayMessage().catchError(
+          (_) async => <String, dynamic>{});
+      final tasks = await tasksFuture;
+      final reminders = await remindersFuture;
+      final msg = await msgFuture;
       if (mounted) {
-        final msg = results[2] as Map<String, dynamic>;
         setState(() {
-          _tasks = results[0] as List<Map<String, dynamic>>;
-          _reminders = results[1] as List<Map<String, dynamic>>;
+          _tasks = tasks;
+          _reminders = reminders;
           _todayMessage = (msg['message'] ?? msg['text'] ?? '') as String;
           _loading = false;
         });
+        _loadMorningBrief();
+        _loadJarvisInsight();
       }
     } catch (e) {
       if (mounted) {
@@ -163,6 +175,42 @@ class _SmartProductivityPreviewScreenState
           _loading = false;
         });
       }
+    }
+  }
+
+  Future<void> _loadMorningBrief() async {
+    setState(() { _morningBriefLoading = true; _morningBriefError = null; });
+    try {
+      final r = await _api.getMorningBrief();
+      if (mounted) setState(() {
+        _morningBrief = r['briefing'] as String? ?? '';
+        _morningBriefCached = r['cached'] as bool? ?? false;
+        _morningBriefLoading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        _morningBriefError = ApiService.friendlyError(e);
+        _morningBriefLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadJarvisInsight() async {
+    setState(() { _jarvisInsightLoading = true; _jarvisInsightError = null; });
+    try {
+      final r = await _api.askJarvis(
+        'תן לי תובנה קצרה אחת או משפט השראה לגבי יום עבודה פרודוקטיבי, בעברית, 2 שורות מקסימום',
+        widget.settings,
+      );
+      if (mounted) setState(() {
+        _jarvisInsight = r['answer'] as String? ?? '';
+        _jarvisInsightLoading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        _jarvisInsightError = ApiService.friendlyError(e);
+        _jarvisInsightLoading = false;
+      });
     }
   }
 
@@ -182,6 +230,107 @@ class _SmartProductivityPreviewScreenState
       if (mounted) setState(() => _snackMessage = null);
     });
   }
+
+  void _showAddTaskDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: const Color(0xFF0B1422),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'משימה חדשה',
+            style: TextStyle(
+              color: JC.textPrimary,
+              fontFamily: 'Heebo',
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+            decoration: InputDecoration(
+              hintText: 'תאר את המשימה...',
+              hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: JC.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: JC.blue500),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('ביטול',
+                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo')),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: JC.blue500,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                final text = controller.text.trim();
+                if (text.isEmpty) return;
+                Navigator.pop(context);
+                try {
+                  await _api.addTask(text, priority: 'medium');
+                  _loadData();
+                  _showSnack('משימה נוספה ✓');
+                } catch (e) {
+                  _showSnack('שגיאה: ${ApiService.friendlyError(e)}');
+                }
+              },
+              child: const Text('הוסף',
+                  style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Computed Getters ────────────────────────────────────────────────────────
+
+  List<Map<String, dynamic>> get _importantTasks => _tasks.where((t) =>
+      t['done'] != true &&
+      ((t['priority'] ?? '').toString().toLowerCase() == 'high' ||
+       _markedImportant.contains(t['id'].toString()))).toList();
+
+  List<Map<String, dynamic>> get _inProgressTasks => _tasks
+      .where((t) =>
+          t['done'] != true &&
+          _markedImportant.contains(t['id'].toString()) &&
+          (t['priority'] ?? '').toString().toLowerCase() != 'high')
+      .toList();
+
+  List<Map<String, dynamic>> get _toDoTasks => _tasks
+      .where((t) =>
+          t['done'] != true &&
+          !_markedImportant.contains(t['id'].toString()) &&
+          (t['priority'] ?? '').toString().toLowerCase() != 'high' &&
+          (t['priority'] ?? '').toString().toLowerCase() != 'low')
+      .toList();
+
+  List<Map<String, dynamic>> get _upcomingTasks => _tasks
+      .where((t) =>
+          t['done'] != true &&
+          !_markedImportant.contains(t['id'].toString()) &&
+          (t['priority'] ?? '').toString().toLowerCase() == 'low')
+      .toList();
+
+  int get _doneTasks => _tasks.where((t) => t['done'] == true).length;
+  int get _totalTasks => _tasks.length;
 
   List<Map<String, dynamic>> get _todayReminders {
     final target = DateTime.now().add(Duration(days: _selectedDayOffset));
@@ -203,29 +352,6 @@ class _SmartProductivityPreviewScreenState
         return ta.compareTo(tb);
       });
   }
-
-  List<Map<String, dynamic>> get _inProgressTasks => _tasks
-      .where((t) =>
-          t['done'] != true &&
-          _markedImportant.contains(t['id'].toString()))
-      .toList();
-
-  List<Map<String, dynamic>> get _toDoTasks => _tasks
-      .where((t) =>
-          t['done'] != true &&
-          !_markedImportant.contains(t['id'].toString()) &&
-          (t['priority'] ?? '').toString().toLowerCase() != 'low')
-      .toList();
-
-  List<Map<String, dynamic>> get _upcomingTasks => _tasks
-      .where((t) =>
-          t['done'] != true &&
-          !_markedImportant.contains(t['id'].toString()) &&
-          (t['priority'] ?? '').toString().toLowerCase() == 'low')
-      .toList();
-
-  int get _doneTasks => _tasks.where((t) => t['done'] == true).length;
-  int get _totalTasks => _tasks.length;
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
@@ -273,10 +399,7 @@ class _SmartProductivityPreviewScreenState
               icon:
                   Icon(Icons.refresh_rounded, color: JC.textSecondary, size: 22),
               onPressed: () {
-                setState(() {
-                  _loading = true;
-                  _error = null;
-                });
+                setState(() { _loading = true; _error = null; });
                 _loadData();
               },
             ),
@@ -305,11 +428,17 @@ class _SmartProductivityPreviewScreenState
                                   const SizedBox(height: 16),
                                   _QuickActionsRow(),
                                   const SizedBox(height: 16),
-                                  _CalendarStrip(),
+                                  _MorningBriefCard(),
                                   const SizedBox(height: 16),
                                   _ProgressCard(),
                                   const SizedBox(height: 16),
+                                  _ImportantTasksCard(),
+                                  const SizedBox(height: 16),
+                                  _JarvisInsightCard(),
+                                  const SizedBox(height: 16),
                                   _GroupedTasksSection(),
+                                  const SizedBox(height: 16),
+                                  _CalendarStrip(),
                                   const SizedBox(height: 16),
                                   _RemindersCard(),
                                   SizedBox(height: bottomPad + 8),
@@ -350,10 +479,7 @@ class _SmartProductivityPreviewScreenState
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            const Color(0xFF1A2E4A),
-            JC.surface,
-          ],
+          colors: [const Color(0xFF1A2E4A), JC.surface],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
@@ -365,10 +491,7 @@ class _SmartProductivityPreviewScreenState
         children: [
           Row(
             children: [
-              Text(
-                emoji,
-                style: const TextStyle(fontSize: 28),
-              ),
+              Text(emoji, style: const TextStyle(fontSize: 28)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -407,8 +530,7 @@ class _SmartProductivityPreviewScreenState
             ),
             child: Row(
               children: [
-                Icon(Icons.auto_awesome_rounded,
-                    color: JC.blue400, size: 16),
+                Icon(Icons.auto_awesome_rounded, color: JC.blue400, size: 16),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -433,11 +555,46 @@ class _SmartProductivityPreviewScreenState
 
   Widget _QuickActionsRow() {
     final actions = [
-      {'icon': Icons.build_circle_outlined, 'label': 'בנה את היום', 'color': const Color(0xFF3B82F6)},
-      {'icon': Icons.task_alt_rounded, 'label': 'עדכן משימות', 'color': const Color(0xFF22C55E)},
-      {'icon': Icons.add_circle_outline_rounded, 'label': 'משימה חדשה', 'color': const Color(0xFFA5B4FC)},
-      {'icon': Icons.calendar_month_rounded, 'label': 'חבר יומן', 'color': const Color(0xFFF59E0B)},
+      {
+        'icon': Icons.build_circle_outlined,
+        'label': 'בנה את היום',
+        'color': const Color(0xFF3B82F6),
+        'onTap': () => showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: const Color(0xFF0B1422),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (_) => _BuildDayBottomSheet(
+            api: _api,
+            settings: widget.settings,
+          ),
+        ),
+      },
+      {
+        'icon': Icons.task_alt_rounded,
+        'label': 'עדכן משימות',
+        'color': const Color(0xFF22C55E),
+        'onTap': () {
+          setState(() { _loading = true; _error = null; });
+          _loadData();
+        },
+      },
+      {
+        'icon': Icons.add_circle_outline_rounded,
+        'label': 'משימה חדשה',
+        'color': const Color(0xFFA5B4FC),
+        'onTap': () => _showAddTaskDialog(),
+      },
+      {
+        'icon': Icons.auto_awesome_rounded,
+        'label': 'תובנה חדשה',
+        'color': const Color(0xFFF59E0B),
+        'onTap': () => _loadJarvisInsight(),
+      },
     ];
+
     return SizedBox(
       height: 76,
       child: ListView.separated(
@@ -452,10 +609,541 @@ class _SmartProductivityPreviewScreenState
             icon: a['icon'] as IconData,
             label: a['label'] as String,
             color: a['color'] as Color,
-            onTap: () => _showSnack('${a['label']} · בקרוב (Preview)'),
+            onTap: a['onTap'] as VoidCallback,
           );
         },
       ),
+    );
+  }
+
+  // ── Morning Brief Card ─────────────────────────────────────────────────────
+
+  Widget _MorningBriefCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            child: Row(
+              children: [
+                const Icon(Icons.wb_sunny_rounded,
+                    color: Color(0xFFF59E0B), size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'בריף בוקר',
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A2E4A),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: const Color(0xFF3B82F6).withOpacity(0.5),
+                        width: 0.6),
+                  ),
+                  child: const Text(
+                    'Jarvis AI',
+                    style: TextStyle(
+                      color: Color(0xFF60A5FA),
+                      fontSize: 10,
+                      fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(color: JC.border, height: 1),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: _morningBriefLoading
+                ? const _CardSkeleton(lines: 3)
+                : _morningBriefError != null
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_morningBriefError!,
+                              style: const TextStyle(
+                                  color: Color(0xFFEF4444),
+                                  fontSize: 12,
+                                  fontFamily: 'Heebo')),
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: _loadMorningBrief,
+                            child: Text('נסה שוב',
+                                style: TextStyle(
+                                    color: JC.blue400, fontFamily: 'Heebo')),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _morningBrief.isNotEmpty
+                                ? _morningBrief
+                                : 'אין בריף זמין כרגע',
+                            style: TextStyle(
+                              color: JC.textSecondary,
+                              fontSize: 13,
+                              height: 1.55,
+                              fontFamily: 'Heebo',
+                            ),
+                          ),
+                          if (_morningBriefCached) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF475569).withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text(
+                                'מהמטמון',
+                                style: TextStyle(
+                                  color: Color(0xFF475569),
+                                  fontSize: 10,
+                                  fontFamily: 'Heebo',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Progress Card ──────────────────────────────────────────────────────────
+
+  Widget _ProgressCard() {
+    final done = _doneTasks;
+    final total = _totalTasks;
+    final progress = total == 0 ? 0.0 : done / total;
+    final openCount = total - done;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.pie_chart_outline_rounded,
+                  color: Color(0xFF22C55E), size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'התקדמות משימות',
+                  style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
+              ),
+              Text(
+                '$done / $total',
+                style: TextStyle(
+                  color: JC.textMuted,
+                  fontSize: 13,
+                  fontFamily: 'Heebo',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: const Color(0xFF1A2E4A),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                progress > 0.7
+                    ? const Color(0xFF22C55E)
+                    : const Color(0xFF3B82F6),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _MiniStat(
+                label: 'הושלמו',
+                value: '$done',
+                color: const Color(0xFF22C55E),
+              ),
+              const SizedBox(width: 12),
+              _MiniStat(
+                label: 'פתוחות',
+                value: '$openCount',
+                color: const Color(0xFFF59E0B),
+              ),
+              const SizedBox(width: 12),
+              _MiniStat(
+                label: 'חשובות',
+                value: '${_importantTasks.length}',
+                color: const Color(0xFFEF4444),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Important Tasks Card ───────────────────────────────────────────────────
+
+  Widget _ImportantTasksCard() {
+    final important = _importantTasks;
+    final shown = important.take(5).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+            color: const Color(0xFFEF4444).withOpacity(0.4), width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            child: Row(
+              children: [
+                const Icon(Icons.priority_high_rounded,
+                    color: Color(0xFFEF4444), size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'משימות חשובות',
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                ),
+                if (important.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${important.length}',
+                      style: const TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontSize: 12,
+                        fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Divider(color: JC.border.withOpacity(0.5), height: 1),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: important.isEmpty
+                ? Column(
+                    children: [
+                      const Text('🎯', style: TextStyle(fontSize: 28)),
+                      const SizedBox(height: 8),
+                      Text(
+                        'אין משימות בעדיפות גבוהה',
+                        style: TextStyle(
+                          color: JC.textMuted,
+                          fontSize: 13,
+                          fontFamily: 'Heebo',
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      ...shown.map((task) => _ImportantTaskRow(
+                            task: task,
+                            isImportant: _markedImportant
+                                .contains(task['id'].toString()),
+                          )),
+                      if (important.length > 5)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '+${important.length - 5} משימות נוספות',
+                            style: TextStyle(
+                                color: JC.textMuted,
+                                fontSize: 11,
+                                fontFamily: 'Heebo'),
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ImportantTaskRow(
+      {required Map<String, dynamic> task, required bool isImportant}) {
+    final content = task['content'] as String? ?? '—';
+    final priority = task['priority'] as String?;
+    final isHigh =
+        (priority ?? '').toString().toLowerCase() == 'high';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1929),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(
+          right: BorderSide(
+            color: isHigh
+                ? const Color(0xFFEF4444)
+                : const Color(0xFFF59E0B),
+            width: 3,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              content,
+              style: TextStyle(
+                color: JC.textPrimary,
+                fontSize: 13,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _PriorityBadge(priority),
+          if (isImportant)
+            const Padding(
+              padding: EdgeInsets.only(right: 4),
+              child: Icon(Icons.star_rounded,
+                  color: Color(0xFFF59E0B), size: 14),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── Jarvis Insight Card ────────────────────────────────────────────────────
+
+  Widget _JarvisInsightCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: JC.border, width: 0.8),
+        gradient: LinearGradient(
+          colors: [
+            JC.surface,
+            const Color(0xFF3B82F6).withOpacity(0.05),
+          ],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+            child: Row(
+              children: [
+                const Text('💡', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'תובנה מג׳רוויס',
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.refresh_rounded,
+                      color: JC.textMuted, size: 18),
+                  onPressed: _loadJarvisInsight,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+          Divider(color: JC.border, height: 1),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: _jarvisInsightLoading
+                ? const _CardSkeleton(lines: 2)
+                : _jarvisInsightError != null
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_jarvisInsightError!,
+                              style: const TextStyle(
+                                  color: Color(0xFFEF4444),
+                                  fontSize: 12,
+                                  fontFamily: 'Heebo')),
+                          const SizedBox(height: 6),
+                          TextButton(
+                            onPressed: _loadJarvisInsight,
+                            child: Text('נסה שוב',
+                                style: TextStyle(
+                                    color: JC.blue400, fontFamily: 'Heebo')),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _jarvisInsight.isNotEmpty
+                                ? _jarvisInsight
+                                : 'לא ניתן לטעון תובנה כרגע',
+                            style: TextStyle(
+                              color: JC.blue400,
+                              fontSize: 14,
+                              height: 1.55,
+                              fontFamily: 'Heebo',
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'מופעל על ידי AI ✨',
+                            style: TextStyle(
+                              color: JC.textMuted,
+                              fontSize: 10,
+                              fontFamily: 'Heebo',
+                            ),
+                          ),
+                        ],
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Grouped Tasks ──────────────────────────────────────────────────────────
+
+  Widget _GroupedTasksSection() {
+    final inProgress = _inProgressTasks;
+    final toDo = _toDoTasks;
+    final upcoming = _upcomingTasks;
+
+    if (inProgress.isEmpty && toDo.isEmpty && upcoming.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: JC.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: Center(
+          child: Column(
+            children: [
+              const Icon(Icons.task_alt_rounded,
+                  color: Color(0xFF22C55E), size: 40),
+              const SizedBox(height: 10),
+              Text(
+                'כל המשימות הושלמו! 🎉',
+                style: TextStyle(
+                  color: JC.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Heebo',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        if (inProgress.isNotEmpty) ...[
+          _TaskGroup(
+            label: 'בביצוע',
+            count: inProgress.length,
+            dotColor: const Color(0xFF3B82F6),
+            tasks: inProgress,
+            postponed: _postponed,
+            important: _markedImportant,
+            onPostpone: _postponeTask,
+            onMarkImportant: _markImportant,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (toDo.isNotEmpty) ...[
+          _TaskGroup(
+            label: 'לביצוע',
+            count: toDo.length,
+            dotColor: const Color(0xFFF59E0B),
+            tasks: toDo,
+            postponed: _postponed,
+            important: _markedImportant,
+            onPostpone: _postponeTask,
+            onMarkImportant: _markImportant,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (upcoming.isNotEmpty)
+          _TaskGroup(
+            label: 'הבא בתור',
+            count: upcoming.length,
+            dotColor: const Color(0xFF475569),
+            tasks: upcoming,
+            postponed: _postponed,
+            important: _markedImportant,
+            onPostpone: _postponeTask,
+            onMarkImportant: _markImportant,
+          ),
+      ],
     );
   }
 
@@ -476,8 +1164,7 @@ class _SmartProductivityPreviewScreenState
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
             child: Row(
               children: [
-                Icon(Icons.calendar_today_rounded,
-                    color: JC.blue400, size: 16),
+                Icon(Icons.calendar_today_rounded, color: JC.blue400, size: 16),
                 const SizedBox(width: 8),
                 Text(
                   'לוח שנה',
@@ -501,8 +1188,7 @@ class _SmartProductivityPreviewScreenState
                 reverse: true,
                 itemCount: 7,
                 itemBuilder: (_, i) {
-                  // i=0 is today, i>0 is future days
-                  final offset = i - 3; // show 3 past, today, 3 future
+                  final offset = i - 3;
                   final day = today.add(Duration(days: offset));
                   final isToday = offset == 0;
                   final isSelected = offset == _selectedDayOffset;
@@ -520,8 +1206,7 @@ class _SmartProductivityPreviewScreenState
                   }).length;
 
                   return GestureDetector(
-                    onTap: () =>
-                        setState(() => _selectedDayOffset = offset),
+                    onTap: () => setState(() => _selectedDayOffset = offset),
                     child: Container(
                       width: 44,
                       margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -543,9 +1228,7 @@ class _SmartProductivityPreviewScreenState
                           Text(
                             _hebrewDays[day.weekday % 7],
                             style: TextStyle(
-                              color: isSelected
-                                  ? Colors.white
-                                  : JC.textMuted,
+                              color: isSelected ? Colors.white : JC.textMuted,
                               fontSize: 10,
                               fontFamily: 'Heebo',
                             ),
@@ -554,7 +1237,8 @@ class _SmartProductivityPreviewScreenState
                           Text(
                             '${day.day}',
                             style: TextStyle(
-                              color: isSelected ? Colors.white : JC.textPrimary,
+                              color:
+                                  isSelected ? Colors.white : JC.textPrimary,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                               fontFamily: 'Heebo',
@@ -582,7 +1266,6 @@ class _SmartProductivityPreviewScreenState
               ),
             ),
           ),
-          // Events for selected day
           if (_todayReminders.isNotEmpty) ...[
             Divider(color: JC.border, height: 1),
             Padding(
@@ -591,7 +1274,9 @@ class _SmartProductivityPreviewScreenState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _selectedDayOffset == 0 ? 'אירועים היום' : 'אירועים ביום זה',
+                    _selectedDayOffset == 0
+                        ? 'אירועים היום'
+                        : 'אירועים ביום זה',
                     style: TextStyle(
                       color: JC.textMuted,
                       fontSize: 11,
@@ -611,7 +1296,8 @@ class _SmartProductivityPreviewScreenState
                             width: 36,
                             padding: const EdgeInsets.symmetric(vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF59E0B).withOpacity(0.12),
+                              color:
+                                  const Color(0xFFF59E0B).withOpacity(0.12),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -659,173 +1345,6 @@ class _SmartProductivityPreviewScreenState
     );
   }
 
-  // ── Progress Card ──────────────────────────────────────────────────────────
-
-  Widget _ProgressCard() {
-    final done = _doneTasks;
-    final total = _totalTasks;
-    final progress = total == 0 ? 0.0 : done / total;
-    final openCount = total - done;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: JC.border, width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.pie_chart_outline_rounded,
-                  color: const Color(0xFF22C55E), size: 16),
-              const SizedBox(width: 8),
-              Text(
-                'התקדמות משימות',
-                style: TextStyle(
-                  color: JC.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Heebo',
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '$done / $total',
-                style: TextStyle(
-                  color: JC.textMuted,
-                  fontSize: 13,
-                  fontFamily: 'Heebo',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: const Color(0xFF1A2E4A),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                progress > 0.7
-                    ? const Color(0xFF22C55E)
-                    : const Color(0xFF3B82F6),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _MiniStat(
-                label: 'הושלמו',
-                value: '$done',
-                color: const Color(0xFF22C55E),
-              ),
-              const SizedBox(width: 12),
-              _MiniStat(
-                label: 'בביצוע',
-                value: '${_inProgressTasks.length}',
-                color: const Color(0xFF3B82F6),
-              ),
-              const SizedBox(width: 12),
-              _MiniStat(
-                label: 'פתוחות',
-                value: '$openCount',
-                color: const Color(0xFF475569),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Grouped Tasks ──────────────────────────────────────────────────────────
-
-  Widget _GroupedTasksSection() {
-    return Column(
-      children: [
-        if (_inProgressTasks.isNotEmpty)
-          _TaskGroup(
-            label: 'בביצוע',
-            count: _inProgressTasks.length,
-            dotColor: const Color(0xFF3B82F6),
-            tasks: _inProgressTasks,
-            postponed: _postponed,
-            important: _markedImportant,
-            onPostpone: _postponeTask,
-            onMarkImportant: _markImportant,
-          ),
-        if (_inProgressTasks.isNotEmpty) const SizedBox(height: 12),
-        if (_toDoTasks.isNotEmpty)
-          _TaskGroup(
-            label: 'לביצוע',
-            count: _toDoTasks.length,
-            dotColor: const Color(0xFFF59E0B),
-            tasks: _toDoTasks,
-            postponed: _postponed,
-            important: _markedImportant,
-            onPostpone: _postponeTask,
-            onMarkImportant: _markImportant,
-          ),
-        if (_toDoTasks.isNotEmpty) const SizedBox(height: 12),
-        if (_upcomingTasks.isNotEmpty)
-          _TaskGroup(
-            label: 'הבא בתור',
-            count: _upcomingTasks.length,
-            dotColor: const Color(0xFF475569),
-            tasks: _upcomingTasks,
-            postponed: _postponed,
-            important: _markedImportant,
-            onPostpone: _postponeTask,
-            onMarkImportant: _markImportant,
-          ),
-        if (_inProgressTasks.isEmpty &&
-            _toDoTasks.isEmpty &&
-            _upcomingTasks.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: JC.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: JC.border, width: 0.8),
-            ),
-            child: Center(
-              child: Column(
-                children: [
-                  Icon(Icons.task_alt_rounded,
-                      color: const Color(0xFF22C55E), size: 40),
-                  const SizedBox(height: 10),
-                  Text(
-                    'כל המשימות הושלמו! 🎉',
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'הגענו למטרה היום',
-                    style: TextStyle(
-                      color: JC.textMuted,
-                      fontSize: 13,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
   // ── Reminders Card ─────────────────────────────────────────────────────────
 
   Widget _RemindersCard() {
@@ -847,8 +1366,184 @@ class _SmartProductivityPreviewScreenState
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-widgets
+// Standalone Widgets
 // ─────────────────────────────────────────────────────────────────────────────
+
+class _CardSkeleton extends StatelessWidget {
+  final int lines;
+  const _CardSkeleton({this.lines = 3});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: List.generate(lines, (i) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        height: 14,
+        width: i == lines - 1 ? 120 : double.infinity,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A2E4A),
+          borderRadius: BorderRadius.circular(6),
+        ),
+      )),
+    );
+  }
+}
+
+class _BuildDayBottomSheet extends StatefulWidget {
+  final ApiService api;
+  final AppSettings settings;
+
+  const _BuildDayBottomSheet({required this.api, required this.settings});
+
+  @override
+  State<_BuildDayBottomSheet> createState() => _BuildDayBottomSheetState();
+}
+
+class _BuildDayBottomSheetState extends State<_BuildDayBottomSheet> {
+  bool _loading = true;
+  String _result = '';
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final r = await widget.api.askJarvis(
+        'בנה לי תוכנית יום מהמשימות הפתוחות שלי, בעברית, עם סדר עדיפויות ברור',
+        widget.settings,
+      );
+      if (mounted) setState(() {
+        _result = r['answer'] as String? ?? '';
+        _loading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        _error = ApiService.friendlyError(e);
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (_, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF0B1422),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A2E4A),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                child: Row(
+                  children: [
+                    const Text('🗓', style: TextStyle(fontSize: 22)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'תוכנית היום',
+                        style: TextStyle(
+                          color: JC.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Heebo',
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close, color: JC.textMuted),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Divider(color: JC.border),
+              Expanded(
+                child: _loading
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(
+                                color: JC.blue400, strokeWidth: 2),
+                            const SizedBox(height: 14),
+                            Text(
+                              'ג׳רוויס בונה את היום שלך...',
+                              style: TextStyle(
+                                  color: JC.textMuted,
+                                  fontFamily: 'Heebo',
+                                  fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _error != null
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(_error!,
+                                      style: const TextStyle(
+                                          color: Color(0xFFEF4444),
+                                          fontFamily: 'Heebo')),
+                                  const SizedBox(height: 12),
+                                  TextButton(
+                                    onPressed: _fetch,
+                                    child: Text('נסה שוב',
+                                        style: TextStyle(
+                                            color: JC.blue400,
+                                            fontFamily: 'Heebo')),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : SingleChildScrollView(
+                            controller: scrollController,
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                            child: Text(
+                              _result,
+                              style: TextStyle(
+                                color: JC.textSecondary,
+                                fontSize: 14,
+                                height: 1.65,
+                                fontFamily: 'Heebo',
+                              ),
+                            ),
+                          ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _QuickActionChip extends StatelessWidget {
   final IconData icon;
@@ -968,7 +1663,6 @@ class _TaskGroupState extends State<_TaskGroup> {
       ),
       child: Column(
         children: [
-          // Group header
           GestureDetector(
             onTap: () => setState(() => _expanded = !_expanded),
             behavior: HitTestBehavior.opaque,
@@ -996,7 +1690,8 @@ class _TaskGroupState extends State<_TaskGroup> {
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 1),
                     decoration: BoxDecoration(
                       color: widget.dotColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(10),

@@ -55,7 +55,7 @@ async function runShoppingAgent(userMessage, supabase, useLocal = true) {
             const { data } = await supabase
                 .from('shopping_items')
                 .delete()
-                .ilike('item', `%${parsed.item}%`)
+                .ilike('item', `%${sanitizeLike(parsed.item)}%`)
                 .select();
             if (data && data.length > 0) return { answer: `הסרתי "${data[0].item}" מהרשימה ✓` };
             return { answer: 'לא מצאתי את הפריט ברשימה.' };

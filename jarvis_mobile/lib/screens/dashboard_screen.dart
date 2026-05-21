@@ -9,11 +9,13 @@ class DashboardScreen extends StatefulWidget {
   final AppSettings settings;
   /// Called when user taps "show all" on a section — navigates to that tab
   final ValueChanged<int>? onNavigate;
+  final VoidCallback? onOpenDrawer;
 
   const DashboardScreen({
     super.key,
     required this.settings,
     this.onNavigate,
+    this.onOpenDrawer,
   });
 
   @override
@@ -149,6 +151,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         centerTitle: true,
+        leading: widget.onOpenDrawer != null
+            ? IconButton(
+                icon: Icon(Icons.menu_rounded,
+                    color: JC.textSecondary, size: 22),
+                onPressed: widget.onOpenDrawer,
+              )
+            : null,
       ),
       body: RefreshIndicator(
         color: JC.blue400,

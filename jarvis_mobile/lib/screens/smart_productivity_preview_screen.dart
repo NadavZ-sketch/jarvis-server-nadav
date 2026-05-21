@@ -142,6 +142,9 @@ class _SmartProductivityPreviewScreenState
   String? _snackMessage;
   int _selectedDayOffset = 0;
 
+  // Selected calendar day offset (0 = today)
+  int _selectedDayOffset = 0;
+
   @override
   void initState() {
     super.initState();
@@ -395,8 +398,8 @@ class _SmartProductivityPreviewScreenState
           ),
           actions: [
             IconButton(
-              icon: Icon(Icons.refresh_rounded,
-                  color: JC.textSecondary, size: 22),
+              icon:
+                  Icon(Icons.refresh_rounded, color: JC.textSecondary, size: 22),
               onPressed: () {
                 setState(() { _loading = true; _error = null; });
                 _loadData();
@@ -1905,9 +1908,8 @@ class _ActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: active
-              ? activeColor.withOpacity(0.12)
-              : const Color(0xFF0F1929),
+          color:
+              active ? activeColor.withOpacity(0.12) : const Color(0xFF0F1929),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
               color: active ? activeColor.withOpacity(0.5) : JC.border,

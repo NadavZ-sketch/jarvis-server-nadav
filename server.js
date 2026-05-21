@@ -33,7 +33,7 @@ async function sendEmail(to, body) {
     console.log(`📧 Email sent to ${to}`);
 }
 
-const { classifyIntent, classifyIntentWithLLM } = require('./agents/router');
+const { classifyIntent, classifyIntentWithLLM, loadCustomRegistry } = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator } = require('./agents/memoryAgent');
@@ -58,6 +58,9 @@ const { runTranslationAgent } = require('./agents/translationAgent');
 const { runMusicAgent }       = require('./agents/musicAgent');
 const { detectCapabilityGap, savePendingGap, handleConfirmation } = require('./agents/devTaskAgent');
 const { runOrchestratorAgent } = require('./agents/orchestratorAgent');
+const contextResolver = require('./services/contextResolver');
+const proactiveEngine = require('./services/proactiveEngine');
+const profileLearner  = require('./services/profileLearner');
 const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
 const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
@@ -306,6 +309,7 @@ if (typeof setMemoryCacheInvalidator === 'function') {
 
 const TTL_MEMORIES     = 30 * 1000;       // 30 sec — short, so newly-saved memories are immediately visible
 const TTL_CHAT_HISTORY = 30 * 1000;       // 30 sec
+const TTL_USER_PROFILE = 60 * 1000;       // 60 sec — profile changes rarely; invalidated on write
 
 // ─── Past-conversation detection ──────────────────────────────────────────────
 
@@ -494,7 +498,7 @@ const CUSTOM_AGENTS_DIR = path.resolve(__dirname, 'agents', 'custom');
 
 async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settings) {
     try {
-        const registry = JSON.parse(fs.readFileSync(CUSTOM_REGISTRY, 'utf8'));
+        const registry = loadCustomRegistry(); // reuses router's 30 s in-memory cache
         const entry = registry.find(r => r.name === agentName);
         if (!entry) return null;
 
@@ -528,6 +532,9 @@ app.get('/health', (req, res) => {
 });
 
 async function getUserProfile() {
+    const cached = cacheGet('userProfile');
+    if (cached !== undefined) return cached;
+
     const { data, error } = await supabase
         .from('user_profiles')
         .select('*')
@@ -535,17 +542,20 @@ async function getUserProfile() {
         .limit(1);
     if (error) {
         console.error('user_profiles fetch error:', error.message);
-        return readLocalProfile();
+        return readLocalProfile(); // don't cache transient DB errors
     }
     const dbProfile = Array.isArray(data) && data.length > 0 ? data[0] : null;
-    return dbProfile || readLocalProfile();
+    const profile = dbProfile || readLocalProfile();
+    cacheSet('userProfile', profile, TTL_USER_PROFILE);
+    return profile;
 }
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 async function askJarvisHandler(req, res) {
     try {
-        const userMessage = req.body.command || '';
+        const originalMessage = req.body.command || '';
+        let userMessage = originalMessage; // may be rewritten by reference resolution
         const imageBase64 = req.body.image;
         // Extract chat_id from request, or generate one if not provided
         const chatId = req.body.chatId || req.body.chat_id || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -573,6 +583,22 @@ async function askJarvisHandler(req, res) {
                 ]);
                 cacheInvalidate(`chatHistory:${chatId}`);
                 return res.json({ answer, audio: null, action: null, chatId });
+            }
+        }
+
+        // ── Contextual reference resolution (cheap sync gate first) ───────────
+        // Rewrite short follow-ups with anaphora ("תזכיר לי על זה") into a
+        // self-contained message so specialist agents can act on them. The
+        // ORIGINAL message is still what gets saved to history (see below).
+        if (!imageBase64 && contextResolver.shouldResolve(userMessage)) {
+            const [resHistory, resSummary] = await Promise.all([
+                loadChatHistory(chatId),
+                conversationSummary.getSummary(chatId, supabase),
+            ]);
+            const { resolved, didResolve } = await contextResolver.resolveReferences(userMessage, resHistory, resSummary);
+            if (didResolve) {
+                userMessage = resolved;
+                console.log(`🧩 Resolved: "${originalMessage.slice(0, 30)}" → "${userMessage.slice(0, 40)}"`);
             }
         }
 
@@ -759,12 +785,32 @@ async function askJarvisHandler(req, res) {
         let answer = result.answer || 'לא הצלחתי לגבש תשובה.';
         const action = result.action || null;
 
+        // ── Proactive inline nudge (text chat only, hard-throttled) ───────────
+        // Skip in voice mode (markdown/emoji would be spoken), when the user is
+        // mid-flow (action/pendingAction), or when the reply ends in a question.
+        if (agentName === 'chat' && !imageBase64 && !settings.voiceMode && !action
+            && !result.pendingAction && !/[?？]\s*$/.test(answer)
+            && proactiveEngine.shouldNudgeInline(chatId)) {
+            let nudgeTimer;
+            try {
+                const sug = await Promise.race([
+                    proactiveEngine.computeProactiveSuggestion(supabase),
+                    new Promise(resolve => { nudgeTimer = setTimeout(() => resolve(null), 400); }),
+                ]);
+                if (sug) {
+                    answer += `\n\n💡 ${sug.message}`;
+                    proactiveEngine.markNudged(chatId);
+                }
+            } catch (_) { /* never block the reply on a nudge */ }
+            finally { clearTimeout(nudgeTimer); }
+        }
+
         // ── Parallel: save history + TTS ──────────────────────────────────────
         // Long-running agents (e.g. e2e in background) set skipTts to short-circuit
         // the response and avoid the client-side timeout.
         const ttsEnabled = settings.ttsEnabled !== false && !result.skipTts;
         const [,, audioBase64] = await Promise.all([
-            saveChatMessage('user', userMessage, chatId),
+            saveChatMessage('user', originalMessage, chatId),
             saveChatMessage('jarvis', answer, chatId),
             ttsEnabled ? generateSpeech(answer) : Promise.resolve(null),
         ]);
@@ -787,7 +833,7 @@ async function askJarvisHandler(req, res) {
         // ── Fire-and-forget: passive memory extraction + summary update ────────
         if (agentName === 'chat' && !imageBase64) {
             setImmediate(() => {
-                autoExtractMemory(userMessage, answer, supabase, settings).catch(() => {});
+                autoExtractMemory(originalMessage, answer, supabase, settings).catch(() => {});
                 // Reload fresh history (cache was just invalidated) for summary
                 loadChatHistory(chatId).then(freshHistory => {
                     conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, supabase, settings).catch(() => {});
@@ -858,15 +904,28 @@ app.post('/user-profile', async (req, res) => {
             ? v.map(x => String(x).trim()).filter(Boolean).slice(0, max)
             : [];
 
+        const existing = await getUserProfile();
+
+        // Track which fields the user explicitly set, so auto-learning never
+        // overwrites them. Accumulated across saves (a field stays user-owned
+        // once touched).
+        const rawBody = req.body || {};
+        const existingAuto = (existing && typeof existing.auto_learned === 'object' && existing.auto_learned) || {};
+        const userOverridden = new Set(Array.isArray(existingAuto.user_overridden) ? existingAuto.user_overridden : []);
+        if (rawBody.speaking_tone && String(rawBody.speaking_tone).trim()) userOverridden.add('speaking_tone');
+        for (const key of ['preferred_hours', 'interests', 'recurring_tasks']) {
+            if (Array.isArray(rawBody[key]) && rawBody[key].length > 0) userOverridden.add(key);
+        }
+
         const payload = {
             speaking_tone: String(speaking_tone || 'friendly').trim().slice(0, 40),
             preferred_hours: sanitizeList(preferred_hours, 8),
             interests: sanitizeList(interests, 20),
             recurring_tasks: sanitizeList(recurring_tasks, 20),
+            auto_learned: { ...existingAuto, user_overridden: Array.from(userOverridden) },
             updated_at: new Date().toISOString(),
         };
 
-        const existing = await getUserProfile();
         let result;
         if (existing?.id) {
             result = await supabase
@@ -886,9 +945,11 @@ app.post('/user-profile', async (req, res) => {
             console.error('user_profiles save error:', result.error.message);
             const localProfile = { id: 'local-fallback', ...payload };
             writeLocalProfile(localProfile);
+            cacheInvalidate('userProfile');
             return res.json({ success: true, profile: localProfile, fallback: true });
         }
         writeLocalProfile(result.data);
+        cacheInvalidate('userProfile');
         res.json({ success: true, profile: result.data });
     } catch (err) {
         const msg = String(err.message || '');
@@ -906,15 +967,18 @@ app.delete('/user-profile', async (_req, res) => {
         const existing = await getUserProfile();
         if (!existing?.id || existing.id === 'local-fallback') {
             deleteLocalProfile();
+            cacheInvalidate('userProfile');
             return res.json({ success: true, deleted: true, fallback: true });
         }
         const { error } = await supabase.from('user_profiles').delete().eq('id', existing.id);
         if (error) {
             console.error('user_profiles delete error:', error.message);
             deleteLocalProfile();
+            cacheInvalidate('userProfile');
             return res.json({ success: true, deleted: true, fallback: true });
         }
         deleteLocalProfile();
+        cacheInvalidate('userProfile');
         res.json({ success: true, deleted: true });
     } catch (err) {
         res.status(500).json({ error: 'Internal server error' });
@@ -1314,6 +1378,7 @@ app.get('/auth/google/callback', async (req, res) => {
         const tokenData = tokenRes.data;
         // Store refresh token in user_profiles
         await supabase.from('user_profiles').upsert([{ id: 'default', google_calendar_token: JSON.stringify(tokenData) }], { onConflict: 'id' });
+        cacheInvalidate('userProfile');
         res.send('<h2>✅ יומן Google חובר בהצלחה! אפשר לסגור את החלון.</h2>');
     } catch (err) {
         console.error('Google OAuth callback error:', err.message);
@@ -1876,7 +1941,8 @@ async function streamJarvisHandler(req, res) {
     req.on('close', () => controller.abort());
 
     try {
-        const userMessage = req.body.command || '';
+        const originalMessage = req.body.command || '';
+        let userMessage = originalMessage; // may be rewritten by reference resolution
         const chatId = req.body.chatId || req.body.chat_id || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const settings    = req.body.settings || {};
         const useLocal    = settings.useLocalModel === true;
@@ -1884,6 +1950,16 @@ async function streamJarvisHandler(req, res) {
         if (userMessage.length > 5000) {
             send({ error: 'ההודעה ארוכה מדי.', chatId });
             return res.end();
+        }
+
+        // Contextual reference resolution (cheap sync gate first) — mirrors /ask-jarvis.
+        if (contextResolver.shouldResolve(userMessage)) {
+            const [resHistory, resSummary] = await Promise.all([
+                loadChatHistory(chatId),
+                conversationSummary.getSummary(chatId, supabase),
+            ]);
+            const { resolved, didResolve } = await contextResolver.resolveReferences(userMessage, resHistory, resSummary);
+            if (didResolve) userMessage = resolved;
         }
 
         const agentName = await classifyIntent(userMessage);
@@ -1898,7 +1974,7 @@ async function streamJarvisHandler(req, res) {
                     : '🔒 סורק אבטחה ברקע — התוצאה תופיע בשיחה בקרוב.';
             send({ chunk: placeholder, done: true, chatId });
             await Promise.all([
-                saveChatMessage('user', userMessage, chatId),
+                saveChatMessage('user', originalMessage, chatId),
                 saveChatMessage('jarvis', placeholder, chatId),
             ]);
             res.end();
@@ -1934,7 +2010,7 @@ async function streamJarvisHandler(req, res) {
             const answer = result.answer || '';
             send({ chunk: answer, done: true, chatId });
             await Promise.all([
-                saveChatMessage('user', userMessage, chatId),
+                saveChatMessage('user', originalMessage, chatId),
                 saveChatMessage('jarvis', answer, chatId),
             ]);
             return res.end();
@@ -1964,17 +2040,36 @@ async function streamJarvisHandler(req, res) {
             send({ chunk });
         }, controller.signal, maxTokens);
 
+        // Proactive inline nudge (text chat only; skipped in voice mode) — mirrors /ask-jarvis.
+        if (agentName === 'chat' && !voiceMode && !/[?？]\s*$/.test(fullAnswer)
+            && proactiveEngine.shouldNudgeInline(chatId)) {
+            let nudgeTimer;
+            try {
+                const sug = await Promise.race([
+                    proactiveEngine.computeProactiveSuggestion(supabase),
+                    new Promise(resolve => { nudgeTimer = setTimeout(() => resolve(null), 400); }),
+                ]);
+                if (sug) {
+                    const extra = `\n\n💡 ${sug.message}`;
+                    send({ chunk: extra });
+                    fullAnswer += extra;
+                    proactiveEngine.markNudged(chatId);
+                }
+            } catch (_) { /* never block on a nudge */ }
+            finally { clearTimeout(nudgeTimer); }
+        }
+
         send({ done: true, chatId });
 
         await Promise.all([
-            saveChatMessage('user', userMessage, chatId),
+            saveChatMessage('user', originalMessage, chatId),
             saveChatMessage('jarvis', fullAnswer, chatId),
         ]);
         cacheInvalidate(`chatHistory:${chatId}`);
 
         // Update rolling summary + passive memory extraction (fire-and-forget)
         setImmediate(() => {
-            autoExtractMemory(userMessage, fullAnswer, supabase, settings).catch(() => {});
+            autoExtractMemory(originalMessage, fullAnswer, supabase, settings).catch(() => {});
             loadChatHistory(chatId).then(fresh => {
                 conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(() => {});
             }).catch(() => {});
@@ -2126,6 +2221,25 @@ if (!isTestEnv) cron.schedule('0 21 * * *', async () => {
     }
 }, { timezone: 'Asia/Jerusalem' });
 
+// Proactive midday push — 13:00 Jerusalem. Fires at most once/day and only on
+// high-signal task states (overdue / stale high-priority), so it complements
+// the morning briefing and evening nudge without nagging.
+let _lastProactivePushDate = null;
+if (!isTestEnv) cron.schedule('0 13 * * *', async () => {
+    try {
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+        if (_lastProactivePushDate === today) return;
+        const sug = await proactiveEngine.computeProactiveSuggestion(supabase);
+        if (sug && (sug.type === 'overdue' || sug.type === 'stale_high')) {
+            await enqueueNotification(`💡 ${sug.message}`);
+            _lastProactivePushDate = today;
+            console.log('💡 Proactive push queued:', sug.type);
+        }
+    } catch (err) {
+        console.error('Proactive push error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
+
 // ─── Obsidian sync endpoints ──────────────────────────────────────────────────
 let obsidianAutoSync = true;
 
@@ -2176,6 +2290,18 @@ if (!isTestEnv) cron.schedule('30 3 * * *', async () => {
         console.error('Memory cleanup cron error:', err.message);
     }
 });
+
+// Daily user-profile learning — 03:45 Jerusalem (after the 03:30 memory cleanup).
+// Derives preferred hours / interests / recurring tasks from behaviour and
+// writes them into the profile without clobbering fields the user set manually.
+if (!isTestEnv) cron.schedule('45 3 * * *', async () => {
+    try {
+        const r = await profileLearner.learnUserProfile(supabase, { getProfile: getUserProfile });
+        if (r.updated) console.log('🧠 User profile auto-learned from behaviour');
+    } catch (err) {
+        console.error('Profile learning cron error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
 
 app.get('/chart.js', (_req, res) => {
     res.sendFile(path.join(__dirname, 'node_modules/chart.js/dist/chart.umd.min.js'),
@@ -3062,7 +3188,7 @@ cron.schedule('17 2 * * *', async () => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-module.exports = { app };
+module.exports = { app, cacheInvalidate };
 
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
@@ -3088,6 +3214,7 @@ if (require.main === module) {
     });
     const wsHandler = createWsHandler({
         classifyIntent,
+        contextResolver,
         loadChatHistory,
         fetchLongTermMemories,
         conversationSummary,

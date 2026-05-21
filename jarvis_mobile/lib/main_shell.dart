@@ -162,6 +162,7 @@ class _MainShellState extends State<MainShell> {
               DashboardScreen(
                 settings: _settings,
                 onNavigate: _onTabTapped,
+                onOpenDrawer: _openDrawer,
               ),
               // 1 — Chat (main screen)
               ChatScreen(
@@ -173,9 +174,15 @@ class _MainShellState extends State<MainShell> {
                 onCommandConsumed: () => setState(() => _pendingChatCommand = null),
               ),
               // 2 — Productivity (Tasks + Reminders + Calendar)
-              ProductivityScreen(settings: _settings),
+              ProductivityScreen(
+                settings: _settings,
+                onOpenDrawer: _openDrawer,
+              ),
               // 3 — Lists (Shopping + Notes + Contacts)
-              ListsScreen(settings: _settings),
+              ListsScreen(
+                settings: _settings,
+                onOpenDrawer: _openDrawer,
+              ),
             ],
           ),
           bottomNavigationBar: _buildBottomNav(),

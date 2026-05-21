@@ -394,9 +394,7 @@ class _SmartProductivityPreviewScreenState
                                   const SizedBox(height: 16),
                                   _ProgressCard(),
                                   const SizedBox(height: 16),
-                                  _ImportantTasksCard(),
-                                  const SizedBox(height: 16),
-                                  _JarvisInsightCard(),
+                                  _ImportantAndToDoCard(),
                                   const SizedBox(height: 16),
                                   _GroupedTasksSection(),
                                   const SizedBox(height: 16),
@@ -549,6 +547,11 @@ class _SmartProductivityPreviewScreenState
                   ],
                 ),
               ),
+              GestureDetector(
+                onTap: _loadJarvisInsight,
+                child: Icon(Icons.refresh_rounded,
+                    color: JC.textMuted.withOpacity(0.6), size: 16),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -577,6 +580,39 @@ class _SmartProductivityPreviewScreenState
               ],
             ),
           ),
+          if (_jarvisInsightLoading || _jarvisInsight.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0B1929),
+                borderRadius: BorderRadius.circular(12),
+                border: Border(
+                  right: BorderSide(color: JC.blue400.withOpacity(0.5), width: 2),
+                ),
+              ),
+              child: _jarvisInsightLoading
+                  ? const _CardSkeleton(lines: 1)
+                  : Row(
+                      children: [
+                        const Text('💡', style: TextStyle(fontSize: 13)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _jarvisInsight.isNotEmpty ? _jarvisInsight : '...',
+                            style: TextStyle(
+                              color: JC.blue400,
+                              fontSize: 12,
+                              height: 1.4,
+                              fontFamily: 'Heebo',
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
         ],
       ),
     );
@@ -1112,14 +1148,144 @@ class _SmartProductivityPreviewScreenState
     );
   }
 
+  // ── Important + To-Do Merged Card ─────────────────────────────────────────
+
+  Widget _ImportantAndToDoCard() {
+    final important = _importantTasks;
+    final toDo = _toDoTasks;
+    if (important.isEmpty && toDo.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            child: Row(
+              children: [
+                const Icon(Icons.checklist_rounded, color: Color(0xFFEF4444), size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'משימות לטיפול',
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                ),
+                if (important.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('${important.length}',
+                        style: const TextStyle(
+                            color: Color(0xFFEF4444), fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+                  ),
+                if (toDo.isNotEmpty) ...[
+                  const SizedBox(width: 5),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text('${toDo.length}',
+                        style: const TextStyle(
+                            color: Color(0xFFF59E0B), fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Divider(color: JC.border.withOpacity(0.5), height: 1),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (important.isNotEmpty) ...[
+                  Row(children: [
+                    Container(width: 3, height: 12,
+                        decoration: BoxDecoration(
+                            color: const Color(0xFFEF4444),
+                            borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(width: 7),
+                    Text('חשובות',
+                        style: TextStyle(
+                            color: const Color(0xFFEF4444),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'Heebo')),
+                  ]),
+                  const SizedBox(height: 8),
+                  ...important.take(4).map((task) => _ImportantTaskRow(
+                        task: task,
+                        isImportant: _markedImportant.contains(task['id'].toString()),
+                      )),
+                  if (important.length > 4)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text('+${important.length - 4} נוספות',
+                          style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+                    ),
+                ],
+                if (toDo.isNotEmpty) ...[
+                  if (important.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Divider(color: JC.border.withOpacity(0.25), height: 1),
+                    const SizedBox(height: 10),
+                  ],
+                  Row(children: [
+                    Container(width: 3, height: 12,
+                        decoration: BoxDecoration(
+                            color: const Color(0xFFF59E0B),
+                            borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(width: 7),
+                    Text('לביצוע',
+                        style: TextStyle(
+                            color: const Color(0xFFF59E0B),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'Heebo')),
+                  ]),
+                  const SizedBox(height: 8),
+                  ...toDo.take(4).map((task) => _ImportantTaskRow(
+                        task: task,
+                        isImportant: false,
+                      )),
+                  if (toDo.length > 4)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text('+${toDo.length - 4} נוספות',
+                          style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Grouped Tasks ──────────────────────────────────────────────────────────
 
   Widget _GroupedTasksSection() {
     final inProgress = _inProgressTasks;
-    final toDo = _toDoTasks;
     final upcoming = _upcomingTasks;
 
-    if (inProgress.isEmpty && toDo.isEmpty && upcoming.isEmpty) {
+    if (inProgress.isEmpty && upcoming.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
@@ -1156,19 +1322,6 @@ class _SmartProductivityPreviewScreenState
             count: inProgress.length,
             dotColor: const Color(0xFF3B82F6),
             tasks: inProgress,
-            postponed: _postponed,
-            important: _markedImportant,
-            onPostpone: _postponeTask,
-            onMarkImportant: _markImportant,
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (toDo.isNotEmpty) ...[
-          _TaskGroup(
-            label: 'לביצוע',
-            count: toDo.length,
-            dotColor: const Color(0xFFF59E0B),
-            tasks: toDo,
             postponed: _postponed,
             important: _markedImportant,
             onPostpone: _postponeTask,

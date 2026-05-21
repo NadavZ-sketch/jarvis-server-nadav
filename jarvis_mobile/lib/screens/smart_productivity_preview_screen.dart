@@ -331,6 +331,9 @@ class _SmartProductivityPreviewScreenState
 
   int get _doneTasks => _tasks.where((t) => t['done'] == true).length;
   int get _totalTasks => _tasks.length;
+  int get _highPriorityCount => _tasks.where((t) => (t['priority'] ?? '').toString().toLowerCase() == 'high').length;
+  int get _medPriorityCount => _tasks.where((t) => (t['priority'] ?? '').toString().toLowerCase() == 'medium').length;
+  int get _lowPriorityCount => _tasks.where((t) => !['high', 'medium'].contains((t['priority'] ?? '').toString().toLowerCase())).length;
 
   List<Map<String, dynamic>> get _todayReminders {
     final target = DateTime.now().add(Duration(days: _selectedDayOffset));
@@ -806,21 +809,35 @@ class _SmartProductivityPreviewScreenState
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: const Color(0xFF1A2E4A),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                progress > 0.7
-                    ? const Color(0xFF22C55E)
-                    : const Color(0xFF3B82F6),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 84,
+                height: 84,
+                child: CustomPaint(
+                  painter: _DonutProgressPainter(
+                    progress: progress,
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _PriorityBar('גבוה', _highPriorityCount, _totalTasks, const Color(0xFFEF4444)),
+                    const SizedBox(height: 7),
+                    _PriorityBar('בינוני', _medPriorityCount, _totalTasks, const Color(0xFFF59E0B)),
+                    const SizedBox(height: 7),
+                    _PriorityBar('רגיל', _lowPriorityCount, _totalTasks, const Color(0xFF475569)),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           Row(
             children: [
               _MiniStat(
@@ -1273,17 +1290,25 @@ class _SmartProductivityPreviewScreenState
                           const SizedBox(height: 3),
                           if (remCount > 0)
                             Container(
-                              width: 6,
-                              height: 6,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? Colors.white
-                                    : const Color(0xFFF59E0B),
-                                shape: BoxShape.circle,
+                                    ? Colors.white.withOpacity(0.3)
+                                    : const Color(0xFFF59E0B).withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                '$remCount',
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : const Color(0xFFF59E0B),
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w700,
+                                  fontFamily: 'Heebo',
+                                ),
                               ),
                             )
                           else
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 12),
                         ],
                       ),
                     ),
@@ -2092,6 +2117,139 @@ class _SnackOverlay extends StatelessWidget {
     );
   }
 }
+
+// ── Donut Progress Chart ──────────────────────────────────────────────────────
+
+class _DonutProgressPainter extends CustomPainter {
+  final double progress;
+
+  const _DonutProgressPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.shortestSide / 2) - 7;
+    const strokeW = 9.0;
+    const startAngle = -1.5708; // -π/2 (top)
+    const fullCircle = 6.2832;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle,
+      fullCircle,
+      false,
+      Paint()
+        ..color = const Color(0xFF1A2E4A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeW,
+    );
+
+    if (progress > 0) {
+      final sweep = progress.clamp(0.0, 1.0) * fullCircle;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        sweep,
+        false,
+        Paint()
+          ..color = progress > 0.7
+              ? const Color(0xFF22C55E)
+              : const Color(0xFF3B82F6)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeW
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+
+    final pct = (progress * 100).round();
+    final pctTp = TextPainter(
+      text: TextSpan(
+        text: '$pct',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+          fontFamily: 'Heebo',
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final symbolTp = TextPainter(
+      text: const TextSpan(
+        text: '%',
+        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontFamily: 'Heebo'),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final totalW = pctTp.width + symbolTp.width;
+    pctTp.paint(canvas, center.translate(-totalW / 2, -pctTp.height / 2));
+    symbolTp.paint(canvas,
+        center.translate(-totalW / 2 + pctTp.width, -pctTp.height / 2 + 4));
+  }
+
+  @override
+  bool shouldRepaint(covariant _DonutProgressPainter old) =>
+      old.progress != progress;
+}
+
+// ── Priority Bar Row ──────────────────────────────────────────────────────────
+
+class _PriorityBar extends StatelessWidget {
+  final String label;
+  final int count;
+  final int total;
+  final Color color;
+
+  const _PriorityBar(this.label, this.count, this.total, this.color);
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = total == 0 ? 0.0 : (count / total).clamp(0.0, 1.0);
+    return Row(
+      children: [
+        SizedBox(
+          width: 30,
+          child: Text(
+            label,
+            style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo'),
+            textAlign: TextAlign.right,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Stack(
+              children: [
+                Container(height: 6, color: const Color(0xFF1A2E4A)),
+                FractionallySizedBox(
+                  widthFactor: fraction,
+                  child: Container(height: 6, color: color),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        SizedBox(
+          width: 18,
+          child: Text(
+            '$count',
+            style: TextStyle(
+              color: count > 0 ? color : JC.textMuted,
+              fontSize: 10,
+              fontFamily: 'Heebo',
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.left,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 Widget _ErrorView(String msg, VoidCallback onRetry) {
   return Center(

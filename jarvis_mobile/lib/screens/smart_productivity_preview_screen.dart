@@ -142,9 +142,6 @@ class _SmartProductivityPreviewScreenState
   String? _snackMessage;
   int _selectedDayOffset = 0;
 
-  // Selected calendar day offset (0 = today)
-  int _selectedDayOffset = 0;
-
   @override
   void initState() {
     super.initState();

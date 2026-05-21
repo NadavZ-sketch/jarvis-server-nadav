@@ -219,6 +219,74 @@ class _ControlCenterPreviewScreenState
 
   // ── Build ──────────────────────────────────────────────────────────────────
 
+  Widget _ScrollHeader(String screenTitle, VoidCallback onRefresh) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0B1422),
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                )],
+              ),
+              child: Icon(Icons.arrow_back_ios_new_rounded,
+                  color: JC.textSecondary, size: 18),
+            ),
+          ),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: onRefresh,
+            child: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0B1422),
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                )],
+              ),
+              child: Icon(Icons.refresh_rounded,
+                  color: JC.textSecondary, size: 18),
+            ),
+          ),
+          const Spacer(),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'שלום, ${widget.settings.userName}',
+                style: TextStyle(
+                  color: JC.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Heebo',
+                ),
+              ),
+              Text(
+                '$screenTitle · Preview',
+                style: TextStyle(
+                  color: JC.textMuted,
+                  fontSize: 12,
+                  fontFamily: 'Heebo',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
@@ -226,57 +294,9 @@ class _ControlCenterPreviewScreenState
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: JC.bg,
-        appBar: AppBar(
-          backgroundColor: JC.surface,
-          elevation: 0,
-          centerTitle: false,
-          titleSpacing: 16,
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back_ios_new_rounded,
-                color: JC.textSecondary, size: 20),
-            onPressed: () => Navigator.pop(context),
-          ),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'מרכז שליטה',
-                style: TextStyle(
-                  color: JC.textPrimary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Heebo',
-                ),
-              ),
-              Text(
-                'Control Center · Preview',
-                style: TextStyle(
-                  color: JC.textMuted,
-                  fontSize: 11,
-                  fontFamily: 'Heebo',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            IconButton(
-              icon:
-                  Icon(Icons.refresh_rounded, color: JC.textSecondary, size: 22),
-              onPressed: () {
-                setState(() {
-                  _loadingStats = true;
-                  _loadingAgents = true;
-                  _loadingIssues = true;
-                  _statsError = null;
-                  _agentsError = null;
-                });
-                _load();
-              },
-            ),
-            const SizedBox(width: 8),
-          ],
-        ),
-        body: Stack(
+        body: SafeArea(
+          top: true,
+          child: Stack(
           children: [
             Column(
               children: [
@@ -288,6 +308,16 @@ class _ControlCenterPreviewScreenState
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                       children: [
+                        _ScrollHeader('מרכז שליטה', () {
+                          setState(() {
+                            _loadingStats = true;
+                            _loadingAgents = true;
+                            _loadingIssues = true;
+                            _statsError = null;
+                            _agentsError = null;
+                          });
+                          _load();
+                        }),
                         _SystemHealthCard(),
                         const SizedBox(height: 16),
                         _QuickActionsRow(),
@@ -318,6 +348,7 @@ class _ControlCenterPreviewScreenState
               ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -335,7 +366,6 @@ class _ControlCenterPreviewScreenState
     final serverOk = _statsError == null;
 
     return Container(
-      margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -347,7 +377,7 @@ class _ControlCenterPreviewScreenState
           end: Alignment.bottomLeft,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: JC.border, width: 0.8),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Row(
         children: [
@@ -531,7 +561,6 @@ class _ControlCenterPreviewScreenState
             decoration: BoxDecoration(
               color: const Color(0xFF0F1929),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: JC.border, width: 0.8),
             ),
             child: TextField(
               textDirection: TextDirection.rtl,
@@ -641,8 +670,7 @@ class _ControlCenterPreviewScreenState
       decoration: BoxDecoration(
         color: const Color(0xFF0F1929),
         borderRadius: BorderRadius.circular(10),
-        border:
-            Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3), width: 0.8),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Row(
         children: [
@@ -829,7 +857,7 @@ class _StatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: JC.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.border, width: 0.6),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -883,7 +911,7 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
       decoration: BoxDecoration(
         color: const Color(0xFF0B1929),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.border, width: 0.6),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Column(
         children: [
@@ -984,7 +1012,7 @@ class _AgentMiniCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF0F1929),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: JC.border, width: 0.6),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1057,7 +1085,7 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: JC.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: JC.border, width: 0.8),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1136,7 +1164,7 @@ class _FeatureIdeaCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF0B1929),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.border, width: 0.6),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1274,7 +1302,6 @@ class _SnackOverlay extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF1A2E4A),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.blue500, width: 0.8),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.3),

@@ -119,6 +119,7 @@ class _ControlCenterPreviewScreenState
   String _agentFilter = '';
   String? _statsError;
   String? _agentsError;
+  int? _selectedAgentIdx;
 
   final Map<String, String?> _surveyAnswers = {};
   bool _surveySubmitted = false;
@@ -323,6 +324,8 @@ class _ControlCenterPreviewScreenState
                         _QuickActionsRow(),
                         const SizedBox(height: 16),
                         _StatsRow(),
+                        const SizedBox(height: 16),
+                        _AgentNetworkMapCard(),
                         const SizedBox(height: 16),
                         _AgentsByStatusSection(),
                         const SizedBox(height: 16),
@@ -639,6 +642,127 @@ class _ControlCenterPreviewScreenState
             agents: offline,
           ),
       ],
+    );
+  }
+
+  // ── Agent Network Map ──────────────────────────────────────────────────────
+
+  Widget _AgentNetworkMapCard() {
+    if (_loadingAgents || _agents.isEmpty) return const SizedBox.shrink();
+    return _SectionCard(
+      title: 'מפת הסוכנים',
+      icon: Icons.account_tree_rounded,
+      iconColor: JC.blue400,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 220,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final sz = Size(constraints.maxWidth, 220);
+                return GestureDetector(
+                  onTapUp: (details) {
+                    final positions = _AgentTreePainter.agentPositions(_agents, sz);
+                    int? closest;
+                    double minDist = 18;
+                    for (final p in positions) {
+                      final d = (p.$2 - details.localPosition).distance;
+                      if (d < minDist) {
+                        minDist = d;
+                        closest = p.$1;
+                      }
+                    }
+                    setState(() => _selectedAgentIdx =
+                        closest == _selectedAgentIdx ? null : closest);
+                  },
+                  child: CustomPaint(
+                    size: sz,
+                    painter: _AgentTreePainter(
+                      agents: _agents,
+                      selectedIdx: _selectedAgentIdx,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_selectedAgentIdx != null && _selectedAgentIdx! < _agents.length)
+            _AgentDetailStrip(_agents[_selectedAgentIdx!]),
+        ],
+      ),
+    );
+  }
+
+  Widget _AgentDetailStrip(Map<String, dynamic> agent) {
+    final name = agent['name'] ?? agent['id'] ?? 'סוכן';
+    final role = agent['description'] ?? agent['role'] ?? '';
+    final status = (agent['status'] ?? '').toString();
+    final risk = agent['riskLevel'] ?? agent['risk_level'] ?? 'low';
+    final statusColor = _statusColor(status);
+    final riskColor = _riskColor(risk);
+
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1929),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: statusColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: statusColor.withOpacity(0.5),
+                  blurRadius: 5,
+                  spreadRadius: 1,
+                )
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name.toString(),
+                  style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
+                if (role.toString().isNotEmpty)
+                  Text(
+                    role.toString(),
+                    style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: riskColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              _riskLabel(risk),
+              style: TextStyle(color: riskColor, fontSize: 9, fontFamily: 'Heebo'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1005,7 +1129,9 @@ class _AgentMiniCard extends StatelessWidget {
     final name = agent['name'] ?? agent['id'] ?? 'סוכן';
     final role = agent['description'] ?? agent['role'] ?? '';
     final risk = agent['riskLevel'] ?? agent['risk_level'] ?? 'low';
+    final status = (agent['status'] ?? '').toString();
     final riskColor = _riskColor(risk);
+    final statusColor = _statusColor(status);
 
     return Container(
       padding: const EdgeInsets.all(10),
@@ -1013,6 +1139,7 @@ class _AgentMiniCard extends StatelessWidget {
         color: const Color(0xFF0F1929),
         borderRadius: BorderRadius.circular(10),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
+        border: Border.all(color: statusColor.withOpacity(0.15), width: 0.8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1032,6 +1159,21 @@ class _AgentMiniCard extends StatelessWidget {
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: statusColor.withOpacity(0.6),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    )
+                  ],
                 ),
               ),
             ],
@@ -1335,4 +1477,194 @@ Widget _ErrorText(String msg) {
         style: const TextStyle(
             color: Color(0xFFEF4444), fontSize: 12, fontFamily: 'Heebo')),
   );
+}
+
+// ── Agent Category Helpers ────────────────────────────────────────────────────
+
+const _kCorePats = ['chat', 'memory', 'task', 'reminder', 'shopping', 'notes'];
+const _kDomainPats = ['weather', 'news', 'stock', 'sport', 'music', 'translat', 'messag'];
+const _kQualityPats = ['e2e', 'security', 'code', 'insight', 'draft', 'factory', 'survey'];
+
+String _agentCat(Map<String, dynamic> a) {
+  final n = (a['name'] ?? a['id'] ?? '').toString().toLowerCase();
+  if (_kCorePats.any((p) => n.contains(p))) return 'core';
+  if (_kQualityPats.any((p) => n.contains(p))) return 'quality';
+  if (_kDomainPats.any((p) => n.contains(p))) return 'domain';
+  return 'domain';
+}
+
+// ── Agent Tree CustomPainter ──────────────────────────────────────────────────
+
+class _AgentTreePainter extends CustomPainter {
+  final List<Map<String, dynamic>> agents;
+  final int? selectedIdx;
+
+  static const _catGreen  = Color(0xFF22C55E);
+  static const _catAmber  = Color(0xFFF59E0B);
+  static const _catPurple = Color(0xFFA78BFA);
+  static const _rootBlue  = Color(0xFF3B82F6);
+  static const _edgeColor = Color(0x22FFFFFF);
+
+  const _AgentTreePainter({required this.agents, this.selectedIdx});
+
+  // Returns list of (agentIndex, canvasPosition) for tap-hit-testing
+  static List<(int, Offset)> agentPositions(
+      List<Map<String, dynamic>> agents, Size size) {
+    final w = size.width;
+
+    final core    = <int>[];
+    final domain  = <int>[];
+    final quality = <int>[];
+
+    for (var i = 0; i < agents.length; i++) {
+      switch (_agentCat(agents[i])) {
+        case 'core':    core.add(i);    break;
+        case 'quality': quality.add(i); break;
+        default:        domain.add(i);  break;
+      }
+    }
+
+    final catAgents  = [core, domain, quality];
+    final catCentersX = [w * 0.78, w * 0.50, w * 0.22];
+    const agentY = 175.0;
+    const spread = 72.0;
+
+    final result = <(int, Offset)>[];
+    for (var c = 0; c < 3; c++) {
+      final list = catAgents[c].take(7).toList();
+      if (list.isEmpty) continue;
+      final cx = catCentersX[c];
+      final step = list.length == 1 ? 0.0 : spread / (list.length - 1);
+      final startX = cx - spread / 2;
+      for (var j = 0; j < list.length; j++) {
+        result.add((list[j], Offset(startX + step * j, agentY)));
+      }
+    }
+    return result;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+
+    final core    = <int>[];
+    final domain  = <int>[];
+    final quality = <int>[];
+    for (var i = 0; i < agents.length; i++) {
+      switch (_agentCat(agents[i])) {
+        case 'core':    core.add(i);    break;
+        case 'quality': quality.add(i); break;
+        default:        domain.add(i);  break;
+      }
+    }
+
+    final rootPt = Offset(w * 0.5, 28);
+
+    final catDefs = [
+      (pt: Offset(w * 0.78, 95), label: 'ליבה',   color: _catGreen,  idxs: core),
+      (pt: Offset(w * 0.50, 95), label: 'דומיין', color: _catAmber,  idxs: domain),
+      (pt: Offset(w * 0.22, 95), label: 'איכות',  color: _catPurple, idxs: quality),
+    ];
+
+    final edgePaint = Paint()
+      ..color = _edgeColor
+      ..strokeWidth = 1.0;
+
+    // Root → category edges
+    for (final cat in catDefs) {
+      canvas.drawLine(rootPt, cat.pt, edgePaint);
+    }
+
+    // Category → agent edges and agent nodes
+    final positions = agentPositions(agents, size);
+    final posMap = {for (final p in positions) p.$1: p.$2};
+
+    for (final cat in catDefs) {
+      for (final idx in cat.idxs.take(7)) {
+        final agentPt = posMap[idx];
+        if (agentPt == null) continue;
+        canvas.drawLine(cat.pt, agentPt, edgePaint);
+
+        final a = agents[idx];
+        final status = (a['status'] ?? '').toString().toLowerCase();
+        final agentColor = (status == 'active' || status == 'online')
+            ? const Color(0xFF22C55E)
+            : status == 'idle'
+                ? const Color(0xFFF59E0B)
+                : const Color(0xFF475569);
+
+        final isSelected = idx == selectedIdx;
+        if (isSelected) {
+          canvas.drawCircle(agentPt, 11, Paint()..color = agentColor.withOpacity(0.3));
+        }
+        canvas.drawCircle(agentPt, 5.5, Paint()..color = agentColor);
+
+        // Agent name label (truncated)
+        final agentName = (a['name'] ?? a['id'] ?? '').toString();
+        final short = agentName.length > 8 ? '${agentName.substring(0, 7)}…' : agentName;
+        final labelTp = TextPainter(
+          text: TextSpan(
+            text: short,
+            style: TextStyle(
+              color: isSelected ? Colors.white : const Color(0xFF64748B),
+              fontSize: 7,
+              fontFamily: 'Heebo',
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: 60);
+        labelTp.paint(canvas, agentPt.translate(-labelTp.width / 2, 7));
+      }
+    }
+
+    // Category nodes (drawn on top of edges)
+    for (final cat in catDefs) {
+      canvas.drawCircle(cat.pt, 16, Paint()..color = cat.color.withOpacity(0.15));
+      canvas.drawCircle(cat.pt, 11, Paint()..color = cat.color);
+
+      final tp = TextPainter(
+        text: TextSpan(
+          text: cat.label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 8,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Heebo',
+          ),
+        ),
+        textDirection: TextDirection.rtl,
+      )..layout();
+      tp.paint(canvas, cat.pt.translate(-tp.width / 2, 13));
+
+      // Agent count badge
+      final cnt = cat.idxs.length;
+      if (cnt > 0) {
+        final cntTp = TextPainter(
+          text: TextSpan(
+            text: '$cnt',
+            style: TextStyle(color: cat.color, fontSize: 7, fontWeight: FontWeight.w700, fontFamily: 'Heebo'),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        cntTp.paint(canvas, cat.pt.translate(-cntTp.width / 2, -11 - cntTp.height / 2));
+      }
+    }
+
+    // Root node
+    canvas.drawCircle(rootPt, 21, Paint()..color = _rootBlue.withOpacity(0.2));
+    canvas.drawCircle(rootPt, 15, Paint()..color = _rootBlue);
+
+    final rootTp = TextPainter(
+      text: const TextSpan(
+        text: 'Jarvis',
+        style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, fontFamily: 'Heebo'),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    rootTp.paint(canvas, rootPt.translate(-rootTp.width / 2, 17));
+  }
+
+  @override
+  bool shouldRepaint(covariant _AgentTreePainter old) =>
+      old.agents != agents || old.selectedIdx != selectedIdx;
 }

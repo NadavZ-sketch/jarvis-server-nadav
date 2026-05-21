@@ -41,9 +41,11 @@ function makeChain(data = [], error = null) {
 
 const supabaseClient = createClient.mock.results[0].value;
 const fallbackFile = path.join(__dirname, '../../notes/user_profile_fallback.json');
+const { cacheInvalidate } = require('../../server');
 
 beforeEach(() => {
   jest.clearAllMocks();
+  cacheInvalidate('userProfile'); // ensure profile cache starts empty for each test
   if (fs.existsSync(fallbackFile)) fs.unlinkSync(fallbackFile);
   supabaseClient.from.mockImplementation(() => makeChain([], null));
 });
@@ -58,6 +60,14 @@ describe('user profile endpoints', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.fallback).toBeUndefined();
+  });
+
+  test('GET /user-profile caches result — DB called only once for two requests', async () => {
+    // Two back-to-back GETs; only the first should hit user_profiles
+    await request(app).get('/user-profile');
+    await request(app).get('/user-profile');
+    const userProfileDbCalls = supabaseClient.from.mock.calls.filter(([t]) => t === 'user_profiles').length;
+    expect(userProfileDbCalls).toBe(1);
   });
 
   test('POST /user-profile falls back to local file on DB error', async () => {

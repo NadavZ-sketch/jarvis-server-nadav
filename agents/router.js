@@ -160,4 +160,4 @@ async function classifyIntentWithLLM(userMessage) {
     }
 }
 
-module.exports = { classifyIntent, classifyIntentWithLLM, invalidateRouterCache };
+module.exports = { classifyIntent, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry };

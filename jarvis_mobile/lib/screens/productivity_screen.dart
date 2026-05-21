@@ -9,12 +9,14 @@ class ProductivityScreen extends StatefulWidget {
   final AppSettings settings;
   final ValueChanged<int>? onTasksCountUpdate;
   final ValueChanged<int>? onRemindersCountUpdate;
+  final VoidCallback? onOpenDrawer;
 
   const ProductivityScreen({
     super.key,
     required this.settings,
     this.onTasksCountUpdate,
     this.onRemindersCountUpdate,
+    this.onOpenDrawer,
   });
 
   @override
@@ -54,6 +56,13 @@ class _ProductivityScreenState extends State<ProductivityScreen>
           textDirection: TextDirection.rtl,
         ),
         centerTitle: true,
+        leading: widget.onOpenDrawer != null
+            ? IconButton(
+                icon: Icon(Icons.menu_rounded,
+                    color: JC.textSecondary, size: 22),
+                onPressed: widget.onOpenDrawer,
+              )
+            : null,
         bottom: TabBar(
           controller: _tabController,
           labelColor: JC.blue400,

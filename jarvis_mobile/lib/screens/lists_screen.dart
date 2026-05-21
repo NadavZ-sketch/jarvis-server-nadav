@@ -10,6 +10,7 @@ class ListsScreen extends StatefulWidget {
   final ValueChanged<int>? onShoppingCountUpdate;
   final ValueChanged<int>? onNotesCountUpdate;
   final ValueChanged<int>? onContactsCountUpdate;
+  final VoidCallback? onOpenDrawer;
 
   const ListsScreen({
     super.key,
@@ -17,6 +18,7 @@ class ListsScreen extends StatefulWidget {
     this.onShoppingCountUpdate,
     this.onNotesCountUpdate,
     this.onContactsCountUpdate,
+    this.onOpenDrawer,
   });
 
   @override
@@ -56,6 +58,13 @@ class _ListsScreenState extends State<ListsScreen>
           textDirection: TextDirection.rtl,
         ),
         centerTitle: true,
+        leading: widget.onOpenDrawer != null
+            ? IconButton(
+                icon: Icon(Icons.menu_rounded,
+                    color: JC.textSecondary, size: 22),
+                onPressed: widget.onOpenDrawer,
+              )
+            : null,
         bottom: TabBar(
           controller: _tabController,
           labelColor: JC.blue400,

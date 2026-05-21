@@ -154,16 +154,17 @@ class _SmartProductivityPreviewScreenState
 
   Future<void> _loadData() async {
     try {
-      final results = await Future.wait([
-        _api.getTasks(),
-        _api.getReminders(),
-        _api.getTodayMessage().catchError((_) => <String, dynamic>{}),
-      ]);
+      final tasksFuture = _api.getTasks();
+      final remindersFuture = _api.getReminders();
+      final msgFuture = _api.getTodayMessage().catchError(
+          (_) async => <String, dynamic>{});
+      final tasks = await tasksFuture;
+      final reminders = await remindersFuture;
+      final msg = await msgFuture;
       if (mounted) {
-        final msg = results[2] as Map<String, dynamic>;
         setState(() {
-          _tasks = results[0] as List<Map<String, dynamic>>;
-          _reminders = results[1] as List<Map<String, dynamic>>;
+          _tasks = tasks;
+          _reminders = reminders;
           _todayMessage = (msg['message'] ?? msg['text'] ?? '') as String;
           _loading = false;
         });

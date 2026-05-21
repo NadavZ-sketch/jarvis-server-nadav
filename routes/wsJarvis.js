@@ -5,6 +5,7 @@
 function createWsHandler(deps) {
     const {
         classifyIntent,
+        contextResolver,
         loadChatHistory,
         fetchLongTermMemories,
         conversationSummary,
@@ -79,7 +80,19 @@ function createWsHandler(deps) {
             const useLocal = session.useLocal;
 
             try {
-                const agentName = await classifyIntent(userMessage);
+                // Contextual reference resolution — dispatch on the resolved message,
+                // but persist the original below. (No inline nudge in voice mode.)
+                let dispatchMessage = userMessage;
+                if (contextResolver && contextResolver.shouldResolve(userMessage)) {
+                    const [h, s] = await Promise.all([
+                        loadChatHistory(chatId),
+                        conversationSummary.getSummary(chatId, supabase),
+                    ]);
+                    const { resolved, didResolve } = await contextResolver.resolveReferences(userMessage, h, s);
+                    if (didResolve) dispatchMessage = resolved;
+                }
+
+                const agentName = await classifyIntent(dispatchMessage);
                 send({ type: 'thinking', agent: agentName });
 
                 let fullAnswer = '';
@@ -87,15 +100,15 @@ function createWsHandler(deps) {
                 if (['chat', 'draft'].includes(agentName)) {
                     const [chatHistory, longTermMemories, chatSummary] = await Promise.all([
                         loadChatHistory(chatId),
-                        fetchLongTermMemories(userMessage),
+                        fetchLongTermMemories(dispatchMessage),
                         conversationSummary.getSummary(chatId, supabase),
                     ]);
                     settings.chatSummary = chatSummary;
-                    const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, null, userMessage);
+                    const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, null, dispatchMessage);
                     const msgs = [
                         { role: 'system', content: systemPrompt },
                         ...chatHistory.map(m => ({ role: m.role === 'jarvis' ? 'assistant' : 'user', content: m.text })),
-                        { role: 'user', content: userMessage },
+                        { role: 'user', content: dispatchMessage },
                     ];
 
                     await callGemma4Stream(msgs, useLocal, (chunk) => {
@@ -104,15 +117,15 @@ function createWsHandler(deps) {
                     }, controller.signal, 200);
                 } else {
                     let result;
-                    if (agentName === 'weather')         result = await runWeatherAgent(userMessage);
-                    else if (agentName === 'news')       result = await runNewsAgent(userMessage);
-                    else if (agentName === 'stocks')     result = await runStocksAgent(userMessage);
-                    else if (agentName === 'translate')  result = await runTranslationAgent(userMessage, supabase, useLocal);
+                    if (agentName === 'weather')         result = await runWeatherAgent(dispatchMessage);
+                    else if (agentName === 'news')       result = await runNewsAgent(dispatchMessage);
+                    else if (agentName === 'stocks')     result = await runStocksAgent(dispatchMessage);
+                    else if (agentName === 'translate')  result = await runTranslationAgent(dispatchMessage, supabase, useLocal);
                     else {
                         const [chatHistory, longTermMemories] = await Promise.all([
                             loadChatHistory(chatId), fetchLongTermMemories(),
                         ]);
-                        result = await runChatAgent(userMessage, null, chatHistory, longTermMemories, settings);
+                        result = await runChatAgent(dispatchMessage, null, chatHistory, longTermMemories, settings);
                     }
                     fullAnswer = result.answer || '';
                     send({ type: 'assistant_chunk', text: fullAnswer });

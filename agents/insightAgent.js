@@ -185,4 +185,4 @@ async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
     }
 }
 
-module.exports = { runInsightAgent };
+module.exports = { runInsightAgent, analyzePatterns };

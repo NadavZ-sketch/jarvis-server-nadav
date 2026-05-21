@@ -186,3 +186,56 @@ describe('POST /ask-jarvis', () => {
         expect(res.status).toBe(200);
     });
 });
+
+describe('POST /ask-jarvis — intelligence upgrades', () => {
+    test('reference resolution does not alter a plain (no-anaphora) task request', async () => {
+        classifyIntent.mockReturnValue('task');
+        runTaskAgent.mockResolvedValue({ answer: 'הוספתי' });
+
+        const res = await request(app)
+            .post('/ask-jarvis')
+            .send({ command: 'הוסף משימה לקנות חלב' });
+
+        expect(res.status).toBe(200);
+        // The original message reaches the agent unchanged (resolver gate didn't fire).
+        expect(runTaskAgent).toHaveBeenCalledWith(
+            'הוסף משימה לקנות חלב',
+            expect.anything(),
+            expect.anything(),
+            expect.anything()
+        );
+    });
+
+    test('chat reply appends a proactive nudge when a task is overdue', async () => {
+        classifyIntent.mockReturnValue('chat');
+        runChatAgent.mockResolvedValue({ answer: 'בבקשה' });
+        supabaseClient.from.mockImplementation((table) => {
+            if (table === 'tasks') {
+                return makeChain([
+                    { content: 'להגיש דוח', priority: 'medium', due_date: '2020-01-01', created_at: '2020-01-01T00:00:00Z' },
+                ]);
+            }
+            return makeChain();
+        });
+
+        const res = await request(app)
+            .post('/ask-jarvis')
+            .send({ command: 'תודה רבה', chatId: 'nudge-overdue-1' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.answer).toContain('💡');
+        expect(res.body.answer).toContain('דוח');
+    });
+
+    test('no nudge when there are no actionable tasks', async () => {
+        classifyIntent.mockReturnValue('chat');
+        runChatAgent.mockResolvedValue({ answer: 'שלום!' });
+
+        const res = await request(app)
+            .post('/ask-jarvis')
+            .send({ command: 'מה קורה', chatId: 'nudge-empty-1' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.answer).toBe('שלום!');
+    });
+});

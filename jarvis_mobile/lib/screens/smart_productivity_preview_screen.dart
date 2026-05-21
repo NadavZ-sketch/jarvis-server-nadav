@@ -1174,9 +1174,10 @@ class _SmartProductivityPreviewScreenState
     );
   }
 
-  // ── Morning Brief Card ─────────────────────────────────────────────────────
+  // ── Calendar Strip ─────────────────────────────────────────────────────────
 
-  Widget _MorningBriefCard() {
+  Widget _CalendarStrip() {
+    final today = DateTime.now();
     return Container(
       decoration: BoxDecoration(
         color: JC.surface,
@@ -1192,35 +1193,13 @@ class _SmartProductivityPreviewScreenState
               children: [
                 Icon(Icons.calendar_today_rounded, color: JC.blue400, size: 16),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'בריף בוקר',
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A2E4A),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: const Color(0xFF3B82F6).withOpacity(0.5),
-                        width: 0.6),
-                  ),
-                  child: const Text(
-                    'Jarvis AI',
-                    style: TextStyle(
-                      color: Color(0xFF60A5FA),
-                      fontSize: 10,
-                      fontFamily: 'Heebo',
-                      fontWeight: FontWeight.w600,
-                    ),
+                Text(
+                  'לוח שנה',
+                  style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Heebo',
                   ),
                 ),
               ],
@@ -1281,106 +1260,35 @@ class _SmartProductivityPreviewScreenState
                               fontFamily: 'Heebo',
                             ),
                           ),
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                          const SizedBox(height: 3),
                           Text(
-                            _morningBrief.isNotEmpty
-                                ? _morningBrief
-                                : 'אין בריף זמין כרגע',
+                            '${day.day}',
                             style: TextStyle(
-                              color:
-                                  isSelected ? Colors.white : JC.textPrimary,
+                              color: isSelected ? Colors.white : JC.textPrimary,
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                               fontFamily: 'Heebo',
                             ),
                           ),
-                          if (_morningBriefCached) ...[
-                            const SizedBox(height: 8),
+                          const SizedBox(height: 3),
+                          if (remCount > 0)
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
+                              width: 6,
+                              height: 6,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF475569).withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(8),
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFFF59E0B),
+                                shape: BoxShape.circle,
                               ),
-                              child: const Text(
-                                'מהמטמון',
-                                style: TextStyle(
-                                  color: Color(0xFF475569),
-                                  fontSize: 10,
-                                  fontFamily: 'Heebo',
-                                ),
-                              ),
-                            ),
-                          ],
+                            )
+                          else
+                            const SizedBox(height: 6),
                         ],
                       ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Progress Card ──────────────────────────────────────────────────────────
-
-  Widget _ProgressCard() {
-    final done = _doneTasks;
-    final total = _totalTasks;
-    final progress = total == 0 ? 0.0 : done / total;
-    final openCount = total - done;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: JC.border, width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.pie_chart_outline_rounded,
-                  color: Color(0xFF22C55E), size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'התקדמות משימות',
-                  style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Heebo',
-                  ),
-                ),
-              ),
-              Text(
-                '$done / $total',
-                style: TextStyle(
-                  color: JC.textMuted,
-                  fontSize: 13,
-                  fontFamily: 'Heebo',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: const Color(0xFF1A2E4A),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                progress > 0.7
-                    ? const Color(0xFF22C55E)
-                    : const Color(0xFF3B82F6),
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -1414,8 +1322,7 @@ class _SmartProductivityPreviewScreenState
                             width: 36,
                             padding: const EdgeInsets.symmetric(vertical: 2),
                             decoration: BoxDecoration(
-                              color:
-                                  const Color(0xFFF59E0B).withOpacity(0.12),
+                              color: const Color(0xFFF59E0B).withOpacity(0.12),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(

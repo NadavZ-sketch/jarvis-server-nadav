@@ -32,9 +32,10 @@ function analyzePatterns(data) {
 
     const featureUsage = {};
     userMsgs.forEach(m => {
+        const text = m.text || '';
         let matched = false;
         for (const [feat, pat] of Object.entries(featurePatterns)) {
-            if (feat !== 'שיחה כללית' && pat.test(m.text)) {
+            if (feat !== 'שיחה כללית' && pat.test(text)) {
                 featureUsage[feat] = (featureUsage[feat] || 0) + 1;
                 matched = true;
                 break;
@@ -64,7 +65,7 @@ function analyzePatterns(data) {
         contactsCount:    data.contacts.length,
         firedReminders:   data.reminders.filter(r => r.fired).length,
         activeReminders:  data.reminders.filter(r => !r.fired).length,
-        recentSample:     userMsgs.slice(0, 12).map(m => m.text.slice(0, 100)),
+        recentSample:     userMsgs.slice(0, 12).map(m => (m.text || '').slice(0, 100)),
     };
 }
 
@@ -185,4 +186,4 @@ async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
     }
 }
 
-module.exports = { runInsightAgent };
+module.exports = { runInsightAgent, analyzePatterns };

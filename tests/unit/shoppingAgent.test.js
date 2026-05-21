@@ -37,4 +37,10 @@ describe('runShoppingAgent', () => {
         expect(result).toHaveProperty('answer');
         expect(typeof result.answer).toBe('string');
     });
+
+    it('escapes LIKE wildcards before deleting an item', async () => {
+        callGemma4.mockResolvedValue(JSON.stringify({ intent: 'delete', item: '100%_מיץ' }));
+        await runShoppingAgent('מחק 100%_מיץ מהרשימה', mockSupabase, false);
+        expect(mockSupabase.ilike).toHaveBeenCalledWith('item', '%100\\%\\_מיץ%');
+    });
 });

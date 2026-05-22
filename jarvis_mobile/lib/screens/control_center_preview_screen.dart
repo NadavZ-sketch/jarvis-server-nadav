@@ -216,17 +216,6 @@ class _ControlCenterPreviewScreenState
     });
   }
 
-  // Health score: fraction of active agents
-  double get _healthScore {
-    if (_agents.isEmpty) return 1.0;
-    final active = _agents
-        .where((a) =>
-            (a['status'] ?? '').toString().toLowerCase() == 'active' ||
-            (a['status'] ?? '').toString().toLowerCase() == 'online')
-        .length;
-    return active / _agents.length;
-  }
-
   List<Map<String, dynamic>> get _activeAgents => _agents
       .where((a) =>
           (a['status'] ?? '').toString().toLowerCase() == 'active' ||
@@ -388,14 +377,208 @@ class _ControlCenterPreviewScreenState
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          _CognitiveStatusCard(),
+          _JarvisHeroCard(),
           const SizedBox(height: 16),
-          _SystemHealthCard(),
-          const SizedBox(height: 16),
-          _StatsRow(),
+          _ActivityDomainsCard(),
           const SizedBox(height: 16),
           _QuickActionsRow(),
         ],
+      ),
+    );
+  }
+
+  // ── /stats helpers — reads the actual nested response shape ────────────────
+  // /stats returns: { chat:{total,today}, tasks:{total,done,pending},
+  //   reminders:{total,active}, memories:{total}, notes:{total},
+  //   shopping:{total,checked} }
+
+  int _statInt(String group, String key) {
+    final g = _stats?[group];
+    if (g is Map && g[key] is num) return (g[key] as num).toInt();
+    return 0;
+  }
+
+  // ── Tab 1: Jarvis Hero ─────────────────────────────────────────────────────
+
+  Widget _JarvisHeroCard() {
+    final serverOk = _statsError == null;
+    final chatToday = _statInt('chat', 'today');
+    final chatTotal = _statInt('chat', 'total');
+    final pending = _statInt('tasks', 'pending');
+    final reminders = _statInt('reminders', 'active');
+
+    final Color stateColor;
+    final String stateLabel;
+    final IconData stateIcon;
+    if (!serverOk) {
+      stateColor = const Color(0xFFEF4444);
+      stateLabel = 'לא מחובר';
+      stateIcon = Icons.cloud_off_rounded;
+    } else if (_loadingStats) {
+      stateColor = JC.textMuted;
+      stateLabel = 'טוען...';
+      stateIcon = Icons.sync_rounded;
+    } else {
+      stateColor = const Color(0xFF22C55E);
+      stateLabel = 'פעיל ומחובר';
+      stateIcon = Icons.cloud_done_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [const Color(0xFF1A2E4A), JC.surface],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: JC.blue400.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.psychology_rounded, color: JC.blue400, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Text('ג׳רוויס',
+                style: TextStyle(color: JC.textPrimary, fontSize: 18, fontWeight: FontWeight.w800, fontFamily: 'Heebo')),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: stateColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: stateColor.withOpacity(0.5), width: 0.8),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(stateIcon, color: stateColor, size: 12),
+                const SizedBox(width: 4),
+                Text(stateLabel,
+                    style: TextStyle(color: stateColor, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 18),
+          // Primary metric: conversations today
+          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+            Text(_loadingStats ? '—' : '$chatToday',
+                style: TextStyle(color: JC.textPrimary, fontSize: 44, fontWeight: FontWeight.w800, fontFamily: 'Heebo', height: 1)),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('שיחות היום',
+                  style: TextStyle(color: JC.textSecondary, fontSize: 15, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text(_loadingStats ? 'טוען נתונים...' : 'מתוך $chatTotal שיחות סה״כ',
+              style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+          if (!_loadingStats && (pending > 0 || reminders > 0)) ...[
+            const SizedBox(height: 14),
+            Divider(color: JC.border, height: 1),
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              if (pending > 0)
+                _HeroPill(Icons.checklist_rounded, '$pending משימות ממתינות', const Color(0xFFF59E0B)),
+              if (reminders > 0)
+                _HeroPill(Icons.notifications_active_rounded, '$reminders תזכורות פעילות', JC.blue400),
+            ]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _HeroPill(IconData icon, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: color, size: 13),
+        const SizedBox(width: 5),
+        Text(text, style: TextStyle(color: color, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+
+  // ── Tab 1: Activity Domains grid ───────────────────────────────────────────
+
+  Widget _ActivityDomainsCard() {
+    final tasksPending = _statInt('tasks', 'pending');
+    final tasksDone = _statInt('tasks', 'done');
+    final remindersActive = _statInt('reminders', 'active');
+    final memories = _statInt('memories', 'total');
+    final notes = _statInt('notes', 'total');
+    final shoppingTotal = _statInt('shopping', 'total');
+    final shoppingChecked = _statInt('shopping', 'checked');
+    final chatTotal = _statInt('chat', 'total');
+
+    return _SectionCard(
+      title: 'מה ג׳רוויס מנהל',
+      icon: Icons.dashboard_rounded,
+      iconColor: JC.blue400,
+      child: _loadingStats
+          ? _SectionLoader()
+          : Column(children: [
+              Row(children: [
+                _DomainTile(Icons.checklist_rtl_rounded, 'משימות פתוחות', '$tasksPending',
+                    sub: tasksDone > 0 ? '$tasksDone הושלמו' : null, color: const Color(0xFFF59E0B)),
+                const SizedBox(width: 10),
+                _DomainTile(Icons.notifications_active_rounded, 'תזכורות', '$remindersActive',
+                    sub: 'פעילות', color: const Color(0xFF3B82F6)),
+                const SizedBox(width: 10),
+                _DomainTile(Icons.forum_rounded, 'שיחות סה״כ', '$chatTotal',
+                    color: const Color(0xFF60A5FA)),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                _DomainTile(Icons.psychology_alt_rounded, 'זיכרונות', '$memories',
+                    color: const Color(0xFFA78BFA)),
+                const SizedBox(width: 10),
+                _DomainTile(Icons.sticky_note_2_rounded, 'הערות', '$notes',
+                    color: const Color(0xFF22C55E)),
+                const SizedBox(width: 10),
+                _DomainTile(Icons.shopping_cart_rounded, 'קניות', '$shoppingTotal',
+                    sub: shoppingTotal > 0 ? '$shoppingChecked סומנו' : null, color: const Color(0xFFEC4899)),
+              ]),
+            ]),
+    );
+  }
+
+  Widget _DomainTile(IconData icon, String label, String value, {String? sub, required Color color}) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F1929),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.15), width: 0.8),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(height: 8),
+          Text(value,
+              style: TextStyle(color: JC.textPrimary, fontSize: 20, fontWeight: FontWeight.w800, fontFamily: 'Heebo', height: 1)),
+          const SizedBox(height: 3),
+          Text(label,
+              style: TextStyle(color: JC.textSecondary, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w600),
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+          if (sub != null)
+            Text(sub,
+                style: TextStyle(color: JC.textMuted, fontSize: 9, fontFamily: 'Heebo'),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+        ]),
       ),
     );
   }
@@ -408,6 +591,8 @@ class _ControlCenterPreviewScreenState
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
+          _CognitiveStatusCard(),
+          const SizedBox(height: 16),
           _AgentNetworkMapCard(),
           const SizedBox(height: 16),
           _AgentActivityLog(),
@@ -462,30 +647,20 @@ class _ControlCenterPreviewScreenState
     );
   }
 
-  // ── Tab 1: Cognitive Status ────────────────────────────────────────────────
+  // ── Tab 2: Cognitive Status (agents) ───────────────────────────────────────
 
   Widget _CognitiveStatusCard() {
-    // Derive top intent from agent_usage stats
-    final usage = _stats?['agent_usage'] as Map<String, dynamic>?;
-    String topIntent = '—';
-    int topIntentCount = 0;
-    if (usage != null && usage.isNotEmpty) {
-      final sorted = usage.entries.toList()
-        ..sort((a, b) => (b.value as num).compareTo(a.value as num));
-      topIntent = sorted.first.key;
-      topIntentCount = (sorted.first.value as num).toInt();
-    }
-
-    final totalMessages = (_stats?['total_messages'] ?? _stats?['totalMessages'] ?? 0) as num;
     final active = _activeAgents.length;
+    final idle = _idleAgents.length;
+    final offline = _offlineAgents.length;
     final total = _agents.isEmpty ? 1 : _agents.length;
 
     final String jarvisState;
     final Color stateColor;
-    if (_statsError != null) {
+    if (_agentsError != null) {
       jarvisState = 'לא מחובר';
       stateColor = const Color(0xFFEF4444);
-    } else if (_loadingStats || _loadingAgents) {
+    } else if (_loadingAgents) {
       jarvisState = 'טוען...';
       stateColor = JC.textMuted;
     } else if (active == 0) {
@@ -514,9 +689,9 @@ class _ControlCenterPreviewScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Icon(Icons.psychology_rounded, color: JC.blue400, size: 18),
+            Icon(Icons.hub_rounded, color: JC.blue400, size: 18),
             const SizedBox(width: 8),
-            Text('מצב ג׳רוויס',
+            Text('מצב הסוכנים',
                 style: TextStyle(color: JC.textPrimary, fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
             const Spacer(),
             Container(
@@ -532,30 +707,26 @@ class _ControlCenterPreviewScreenState
           ]),
           Divider(color: JC.border, height: 20),
           Row(children: [
-            _MiniStat(Icons.chat_bubble_outline_rounded, 'שיחות כולל', '$totalMessages'),
+            _MiniStat(Icons.bolt_rounded, 'פעילים', '$active'),
             const SizedBox(width: 14),
-            _MiniStat(Icons.track_changes_rounded, 'כוונה שכיחה', topIntent),
+            _MiniStat(Icons.pause_circle_outline_rounded, 'בהמתנה', '$idle'),
             const SizedBox(width: 14),
-            _MiniStat(Icons.smart_toy_outlined, 'סוכנים פעילים', '$active/$total'),
+            _MiniStat(Icons.power_settings_new_rounded, 'כבויים', '$offline'),
+            const SizedBox(width: 14),
+            _MiniStat(Icons.smart_toy_outlined, 'סה״כ', '$total'),
           ]),
-          if (topIntentCount > 0) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: JC.blue400.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(8),
-              ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              height: 6,
               child: Row(children: [
-                Icon(Icons.auto_awesome_rounded, color: JC.blue400, size: 13),
-                const SizedBox(width: 6),
-                Expanded(child: Text(
-                  'הכוונה "$topIntent" נבחרה $topIntentCount פעמים — הסוכן הנפוץ ביותר',
-                  style: TextStyle(color: JC.textSecondary, fontSize: 11, fontFamily: 'Heebo'),
-                )),
+                if (active > 0) Expanded(flex: active, child: Container(color: const Color(0xFF22C55E))),
+                if (idle > 0) Expanded(flex: idle, child: Container(color: const Color(0xFFF59E0B))),
+                if (offline > 0) Expanded(flex: offline, child: Container(color: const Color(0xFF475569))),
               ]),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -574,14 +745,6 @@ class _ControlCenterPreviewScreenState
             overflow: TextOverflow.ellipsis),
       ]),
     );
-  }
-
-  Widget _DotLabel(Color color, String label, int count) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-      const SizedBox(width: 4),
-      Text('$label $count', style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-    ]);
   }
 
   // ── Tab 2: Agent Activity Log ──────────────────────────────────────────────
@@ -1313,118 +1476,6 @@ class _ControlCenterPreviewScreenState
     );
   }
 
-  // ── System Health Card ─────────────────────────────────────────────────────
-
-  Widget _SystemHealthCard() {
-    final score = _healthScore;
-    final pct = (score * 100).round();
-    final healthColor = score > 0.8
-        ? const Color(0xFF22C55E)
-        : score > 0.5
-            ? const Color(0xFFF59E0B)
-            : const Color(0xFFEF4444);
-    final serverOk = _statsError == null;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF1A2E4A),
-            JC.surface,
-          ],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Row(
-        children: [
-          // Health ring
-          SizedBox(
-            width: 70,
-            height: 70,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                CircularProgressIndicator(
-                  value: _loadingAgents ? null : score,
-                  strokeWidth: 5,
-                  backgroundColor: const Color(0xFF1A2E4A),
-                  valueColor: AlwaysStoppedAnimation<Color>(healthColor),
-                ),
-                if (!_loadingAgents)
-                  Text(
-                    '$pct%',
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'בריאות המערכת',
-                  style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    fontFamily: 'Heebo',
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  serverOk ? 'השרת פעיל ומחובר' : 'שגיאת חיבור לשרת',
-                  style: TextStyle(
-                    color: serverOk
-                        ? const Color(0xFF22C55E)
-                        : const Color(0xFFEF4444),
-                    fontSize: 12,
-                    fontFamily: 'Heebo',
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _StatusDot(const Color(0xFF22C55E)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${_activeAgents.length} פעילים',
-                      style: TextStyle(
-                          color: JC.textMuted,
-                          fontSize: 11,
-                          fontFamily: 'Heebo'),
-                    ),
-                    const SizedBox(width: 10),
-                    _StatusDot(const Color(0xFFF59E0B)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${_idleAgents.length} המתנה',
-                      style: TextStyle(
-                          color: JC.textMuted,
-                          fontSize: 11,
-                          fontFamily: 'Heebo'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ── Quick Actions ──────────────────────────────────────────────────────────
 
   Widget _QuickActionsRow() {
@@ -1452,60 +1503,6 @@ class _ControlCenterPreviewScreenState
           );
         },
       ),
-    );
-  }
-
-  // ── Stats Row ──────────────────────────────────────────────────────────────
-
-  Widget _StatsRow() {
-    final usage = _stats?['agent_usage'] as Map<String, dynamic>?;
-    String topIntent = '—';
-    if (usage != null && usage.isNotEmpty) {
-      final sorted = usage.entries.toList()
-        ..sort((a, b) => (b.value as num).compareTo(a.value as num));
-      topIntent = sorted.first.key;
-    }
-    final totalMessages = _stats?['total_messages'] ?? _stats?['totalMessages'] ?? '—';
-    final serverOk = _statsError == null;
-
-    return Row(
-      children: [
-        Expanded(
-          child: _StatCard(
-            icon: Icons.chat_bubble_outline_rounded,
-            label: 'שיחות כולל',
-            value: _loadingStats ? '...' : '$totalMessages',
-            valueColor: null,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.track_changes_rounded,
-            label: 'כוונה נפוצה',
-            value: _loadingStats ? '...' : topIntent,
-            valueColor: JC.blue400,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.smart_toy_outlined,
-            label: 'סוכנים פעילים',
-            value: _loadingAgents ? '...' : '${_activeAgents.length}/${_agents.length}',
-            valueColor: _activeAgents.isNotEmpty ? const Color(0xFF22C55E) : null,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.dns_rounded,
-            label: 'שרת',
-            value: serverOk ? 'פעיל' : 'שגיאה',
-            valueColor: serverOk ? const Color(0xFF22C55E) : const Color(0xFFEF4444),
-          ),
-        ),
-      ],
     );
   }
 
@@ -2137,20 +2134,6 @@ class _ControlCenterPreviewScreenState
 // Sub-widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _StatusDot extends StatelessWidget {
-  final Color color;
-  const _StatusDot(this.color);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 7,
-      height: 7,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-    );
-  }
-}
-
 class _QuickActionChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -2191,54 +2174,6 @@ class _QuickActionChip extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _StatCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-      decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: JC.textMuted, size: 16),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor ?? JC.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              fontFamily: 'Heebo',
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-                color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo'),
-          ),
-        ],
       ),
     );
   }

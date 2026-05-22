@@ -121,6 +121,15 @@ class ApiService {
     return List<Map<String, dynamic>>.from(data['items'] ?? []);
   }
 
+  // Smart Day Engine: scored, prioritized, load-aware day plan.
+  Future<Map<String, dynamic>> getDayPlan() async {
+    final name = Uri.encodeQueryComponent(settings.userName);
+    final res = await _client
+        .get(_uri('/day-plan?userName=$name'), headers: _baseHeaders)
+        .timeout(const Duration(seconds: 45));
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
   Future<List<Map<String, dynamic>>> getTaskSuggestions(String taskId) async {
     final res = await _client.post(
       _uri('/tasks/$taskId/suggest'),

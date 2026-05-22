@@ -136,6 +136,12 @@ class _SmartProductivityPreviewScreenState
   bool _jarvisInsightLoading = true;
   String? _jarvisInsightError;
 
+  // Smart Day Plan (priority engine)
+  Map<String, dynamic>? _dayPlan;
+  bool _dayPlanLoading = true;
+  String? _dayPlanError;
+  bool _focusMode = true; // collapse to top items when overloaded
+
   // UI state
   Set<String> _postponed = {};
   Set<String> _markedImportant = {};
@@ -167,6 +173,7 @@ class _SmartProductivityPreviewScreenState
         });
         _loadMorningBrief();
         _loadJarvisInsight();
+        _loadDayPlan();
       }
     } catch (e) {
       if (mounted) {
@@ -210,6 +217,22 @@ class _SmartProductivityPreviewScreenState
       if (mounted) setState(() {
         _jarvisInsightError = ApiService.friendlyError(e);
         _jarvisInsightLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadDayPlan() async {
+    setState(() { _dayPlanLoading = true; _dayPlanError = null; });
+    try {
+      final r = await _api.getDayPlan();
+      if (mounted) setState(() {
+        _dayPlan = r;
+        _dayPlanLoading = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        _dayPlanError = ApiService.friendlyError(e);
+        _dayPlanLoading = false;
       });
     }
   }
@@ -391,6 +414,8 @@ class _SmartProductivityPreviewScreenState
                                   _QuickActionsRow(),
                                   const SizedBox(height: 16),
                                   _MorningBriefCard(),
+                                  const SizedBox(height: 16),
+                                  _DayPlanCard(),
                                   const SizedBox(height: 16),
                                   _ProgressCard(),
                                   const SizedBox(height: 16),
@@ -797,6 +822,232 @@ class _SmartProductivityPreviewScreenState
           ),
         ],
       ),
+    );
+  }
+
+  // ── Smart Day Plan Card ──────────────────────────────────────────────────
+
+  Widget _DayPlanCard() {
+    if (_dayPlanLoading) {
+      return _SectionCard(
+        title: 'תוכנית היום החכמה',
+        icon: Icons.insights_rounded,
+        iconColor: const Color(0xFF6366F1),
+        child: const _CardSkeleton(lines: 4),
+      );
+    }
+    if (_dayPlanError != null || _dayPlan == null) {
+      return _SectionCard(
+        title: 'תוכנית היום החכמה',
+        icon: Icons.insights_rounded,
+        iconColor: const Color(0xFF6366F1),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_dayPlanError ?? 'לא ניתן לטעון את תוכנית היום',
+              style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: _loadDayPlan,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.refresh_rounded, color: const Color(0xFF6366F1), size: 14),
+              const SizedBox(width: 4),
+              Text('נסה שוב', style: TextStyle(color: const Color(0xFF6366F1), fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ]),
+      );
+    }
+
+    final plan = _dayPlan!;
+    final items = List<Map<String, dynamic>>.from(plan['items'] ?? []);
+    if (items.isEmpty) {
+      return _SectionCard(
+        title: 'תוכנית היום החכמה',
+        icon: Icons.insights_rounded,
+        iconColor: const Color(0xFF6366F1),
+        child: const _EmptyState(message: 'היום פנוי 🎉 אין משימות או תזכורות'),
+      );
+    }
+
+    final load = Map<String, dynamic>.from(plan['load'] ?? {});
+    final status = (load['status'] ?? 'ok').toString();
+    final peak = plan['peak_window'] as Map<String, dynamic>?;
+    final narrative = (plan['narrative'] ?? '').toString();
+    final aiAvailable = plan['ai_available'] == true;
+    final conflicts = List<Map<String, dynamic>>.from(plan['conflicts'] ?? []);
+    final quadrants = Map<String, dynamic>.from(plan['quadrants'] ?? {});
+
+    final nowItems   = List<Map<String, dynamic>>.from(quadrants['now'] ?? []);
+    final planItems  = List<Map<String, dynamic>>.from(quadrants['plan'] ?? []);
+    final quickItems = List<Map<String, dynamic>>.from(quadrants['quick'] ?? []);
+    final laterItems = List<Map<String, dynamic>>.from(quadrants['later'] ?? []);
+
+    final isOverload = status == 'overload';
+    final collapsed = isOverload && _focusMode;
+
+    final statusColor = status == 'overload'
+        ? const Color(0xFFEF4444)
+        : status == 'tight'
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFF22C55E);
+    final statusLabel = status == 'overload'
+        ? 'עומס יתר'
+        : status == 'tight'
+            ? 'צפוף'
+            : 'מאוזן';
+
+    return _SectionCard(
+      title: 'תוכנית היום החכמה',
+      icon: Icons.insights_rounded,
+      iconColor: const Color(0xFF6366F1),
+      headerTrailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: statusColor.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: statusColor.withOpacity(0.5), width: 0.8),
+        ),
+        child: Text(statusLabel,
+            style: TextStyle(color: statusColor, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Capacity + peak window row
+        Row(children: [
+          Icon(Icons.schedule_rounded, color: JC.textMuted, size: 13),
+          const SizedBox(width: 4),
+          Text('${load['mustDoMinutes'] ?? 0}/${load['capacityMinutes'] ?? 0} דק׳',
+              style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+          if (peak != null) ...[
+            const SizedBox(width: 12),
+            Icon(Icons.bolt_rounded, color: const Color(0xFFF59E0B), size: 13),
+            const SizedBox(width: 4),
+            Text('שיא: ${peak['label']} ${peak['start']}:00–${peak['end']}:00',
+                style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+          ],
+        ]),
+
+        // Overload focus-mode banner
+        if (isOverload) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEF4444).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.25), width: 0.8),
+            ),
+            child: Row(children: [
+              Icon(Icons.warning_amber_rounded, color: const Color(0xFFEF4444), size: 16),
+              const SizedBox(width: 8),
+              Expanded(child: Text(
+                'יותר מדי משימות דחופות להיום. התמקד ב-3 המובילות ושקול לדחות את השאר.',
+                style: TextStyle(color: JC.textSecondary, fontSize: 11, fontFamily: 'Heebo'))),
+              GestureDetector(
+                onTap: () => setState(() => _focusMode = !_focusMode),
+                child: Text(_focusMode ? 'הצג הכל' : 'מצב מיקוד',
+                    style: TextStyle(color: const Color(0xFFEF4444), fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+              ),
+            ]),
+          ),
+        ],
+
+        // AI narrative
+        if (aiAvailable && narrative.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF6366F1).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.auto_awesome_rounded, color: const Color(0xFF6366F1), size: 14),
+              const SizedBox(width: 6),
+              Expanded(child: Text(narrative,
+                  style: TextStyle(color: JC.textSecondary, fontSize: 12, fontFamily: 'Heebo', height: 1.4))),
+            ]),
+          ),
+        ],
+
+        // Conflicts
+        if (conflicts.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          ...conflicts.map((c) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.event_busy_rounded, color: const Color(0xFFF59E0B), size: 13),
+              const SizedBox(width: 6),
+              Expanded(child: Text((c['reason'] ?? '').toString(),
+                  style: TextStyle(color: const Color(0xFFF59E0B), fontSize: 11, fontFamily: 'Heebo'))),
+            ]),
+          )),
+        ],
+
+        // Quadrants
+        const SizedBox(height: 12),
+        _quadrantSection('עכשיו', const Color(0xFFEF4444),
+            collapsed ? nowItems.take(3).toList() : nowItems),
+        if (!collapsed) ...[
+          _quadrantSection('לתכנן', const Color(0xFF3B82F6), planItems),
+          _quadrantSection('מהיר', const Color(0xFFF59E0B), quickItems),
+          _quadrantSection('מאוחר יותר', const Color(0xFF475569), laterItems),
+        ],
+      ]),
+    );
+  }
+
+  Widget _quadrantSection(String label, Color color, List<Map<String, dynamic>> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 4),
+        child: Row(children: [
+          Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(color: color, fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+          const SizedBox(width: 6),
+          Text('${items.length}', style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+        ]),
+      ),
+      ...items.map(_dayPlanItemRow),
+    ]);
+  }
+
+  Widget _dayPlanItemRow(Map<String, dynamic> item) {
+    final isReminder = item['type'] == 'reminder';
+    final score = (item['score'] ?? 0).toString();
+    final title = (item['title'] ?? '').toString();
+    String when = '';
+    if (isReminder && item['scheduled_time'] != null) {
+      final dt = DateTime.tryParse(item['scheduled_time'].toString())?.toLocal();
+      if (dt != null) {
+        when = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      }
+    } else if (item['due_date'] != null) {
+      when = item['due_date'].toString();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6, right: 13),
+      child: Row(children: [
+        Icon(isReminder ? Icons.notifications_active_rounded : Icons.check_circle_outline_rounded,
+            color: isReminder ? const Color(0xFF3B82F6) : JC.textMuted, size: 14),
+        const SizedBox(width: 8),
+        Expanded(child: Text(title,
+            style: TextStyle(color: JC.textPrimary, fontSize: 12, fontFamily: 'Heebo'),
+            maxLines: 1, overflow: TextOverflow.ellipsis)),
+        if (when.isNotEmpty) ...[
+          Text(when, style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
+          const SizedBox(width: 8),
+        ],
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            color: JC.surfaceAlt,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(score, style: TextStyle(color: JC.textSecondary, fontSize: 10, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+        ),
+      ]),
     );
   }
 

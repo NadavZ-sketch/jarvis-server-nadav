@@ -186,4 +186,77 @@ async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
     }
 }
 
-module.exports = { runInsightAgent, analyzePatterns };
+// ─── Day-plan optimization (on-the-fly, reuses analyzePatterns) ──────────────
+
+const PEAK_WINDOWS = {
+    morning:   { label: 'בוקר',   start: 9,  end: 12 },
+    afternoon: { label: 'צהריים', start: 13, end: 16 },
+    evening:   { label: 'ערב',    start: 18, end: 21 },
+    night:     { label: 'לילה',   start: 22, end: 24 },
+};
+
+// Derive the productivity peak window from chat-history patterns.
+// Returns null when there isn't enough history to be meaningful.
+function peakWindowFromPatterns(patterns) {
+    if (!patterns || patterns.totalMessages < 12) return null;
+    const active = Object.values(patterns.buckets || {}).filter(n => n > 0).length;
+    if (active === 0) return null;
+    return PEAK_WINDOWS[patterns.peakBucket] || PEAK_WINDOWS.morning;
+}
+
+function buildDayPlanPrompt(scoredItems, peakWindow, load, userName) {
+    const top = scoredItems.slice(0, 8).map((it, i) => {
+        const kind = it.type === 'reminder' ? 'תזכורת' : 'משימה';
+        const when = it.type === 'reminder'
+            ? `(${new Date(it.scheduled_time).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })})`
+            : (it.due_date ? `(יעד: ${it.due_date})` : '(ללא תאריך)');
+        return `${i + 1}. [${it.quadrant}] ${kind}: "${it.title}" ${when} — ציון ${it.score}`;
+    }).join('\n');
+
+    const peakStr = peakWindow
+        ? `${peakWindow.label} (${peakWindow.start}:00–${peakWindow.end}:00)`
+        : 'לא ידוע (היסטוריה דלה)';
+
+    const loadStr = load.status === 'overload'
+        ? `עומס יתר! נדרשות ${load.mustDoMinutes} דק׳ אך נותרו רק ${load.capacityMinutes} דק׳ ביום.`
+        : load.status === 'tight'
+            ? `העומס צפוף (${load.mustDoMinutes}/${load.capacityMinutes} דק׳).`
+            : `העומס סביר (${load.mustDoMinutes}/${load.capacityMinutes} דק׳).`;
+
+    return `אתה מתכנן-יום אישי חכם עבור ${userName}. להלן המשימות והתזכורות של היום, כבר ממוינות לפי דחיפות (רביעים: now=עכשיו, plan=לתכנן, quick=מהיר, later=מאוחר).
+
+חלון הפרודוקטיביות של ${userName}: ${peakStr}
+מצב העומס: ${loadStr}
+
+הפריטים:
+${top || 'אין פריטים'}
+
+כתוב בעברית בלבד, קצר וענייני (עד 4 משפטים):
+- במה כדאי להתחיל עכשיו ולמה.
+- אם יש עומס יתר — אילו פריטי "later" כדאי לדחות למחר.
+- נצל את חלון הפרודוקטיביות למשימות הכבדות.
+אל תוסיף כותרות או רשימות — פסקה אחת זורמת.`;
+}
+
+// Produces a Hebrew schedule narrative. Degrades gracefully when the LLM is
+// unavailable: returns ai_available:false with no narrative (the deterministic
+// ordering from priorityEngine is still valid on its own).
+async function optimizeDayPlan(scoredItems, patterns, load, settings = {}) {
+    const userName = settings.userName || 'נדב';
+    const peakWindow = peakWindowFromPatterns(patterns);
+
+    if (!scoredItems || scoredItems.length === 0) {
+        return { narrative: '', peak_window: peakWindow, ai_available: false };
+    }
+
+    try {
+        const prompt = buildDayPlanPrompt(scoredItems, peakWindow, load, userName);
+        const narrative = await callGemma4(prompt, false, 400);
+        return { narrative: (narrative || '').trim(), peak_window: peakWindow, ai_available: true };
+    } catch (err) {
+        console.error('optimizeDayPlan LLM error:', err.message);
+        return { narrative: '', peak_window: peakWindow, ai_available: false };
+    }
+}
+
+module.exports = { runInsightAgent, analyzePatterns, optimizeDayPlan, peakWindowFromPatterns };

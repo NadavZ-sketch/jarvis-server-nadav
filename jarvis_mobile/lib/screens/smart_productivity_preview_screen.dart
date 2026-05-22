@@ -517,9 +517,6 @@ class _SmartProductivityPreviewScreenState
   Widget _GreetingCard() {
     final greeting = _dynamicGreeting(widget.settings.userName);
     final emoji = _greetingEmoji();
-    final aiText = _todayMessage.isNotEmpty
-        ? _todayMessage
-        : _buildDayRecommendation(_tasks, widget.settings.userName);
     final now = DateTime.now();
     final dateStr =
         'יום ${_hebrewDays[now.weekday % 7]}, ${now.day} ב${_hebrewMonths[now.month - 1]}';
@@ -572,32 +569,6 @@ class _SmartProductivityPreviewScreenState
                     color: JC.textMuted.withOpacity(0.6), size: 16),
               ),
             ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0B1929),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.auto_awesome_rounded, color: JC.blue400, size: 16),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    aiText,
-                    style: TextStyle(
-                      color: JC.textSecondary,
-                      fontSize: 13,
-                      height: 1.4,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
           if (_jarvisInsightLoading || _jarvisInsight.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -1104,44 +1075,51 @@ class _SmartProductivityPreviewScreenState
   // ── Tasks Card (unified) ──────────────────────────────────────────────────
 
   Widget _TasksCard() {
-    final pending = _tasks.where((t) => t['done'] != true).toList();
     final done = _doneTasks;
     final total = _totalTasks;
     final progress = total == 0 ? 0.0 : done / total;
 
-    final high = pending
+    // Important = high priority OR manually starred
+    final highTasks = _tasks
         .where((t) =>
+            t['done'] != true &&
             (t['priority'] ?? '').toString().toLowerCase() == 'high')
         .toList();
-    final medium = pending
+    final starredTasks = _tasks
         .where((t) =>
-            (t['priority'] ?? '').toString().toLowerCase() == 'medium')
+            t['done'] != true &&
+            (t['priority'] ?? '').toString().toLowerCase() != 'high' &&
+            _markedImportant.contains(t['id'].toString()))
         .toList();
-    final low = pending
-        .where((t) => !['high', 'medium']
-            .contains((t['priority'] ?? '').toString().toLowerCase()))
-        .toList();
+    final otherCount = _tasks
+        .where((t) =>
+            t['done'] != true &&
+            (t['priority'] ?? '').toString().toLowerCase() != 'high' &&
+            !_markedImportant.contains(t['id'].toString()))
+        .length;
+
+    final importantCount = highTasks.length + starredTasks.length;
 
     return _SectionCard(
-      title: 'משימות (${pending.length})',
-      icon: Icons.checklist_rounded,
-      iconColor: const Color(0xFF22C55E),
+      title: 'משימות חשובות ($importantCount)',
+      icon: Icons.priority_high_rounded,
+      iconColor: const Color(0xFFEF4444),
       headerTrailing: GestureDetector(
         onTap: _showAddTaskDialog,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: const Color(0xFF22C55E).withOpacity(0.12),
+            color: const Color(0xFFEF4444).withOpacity(0.12),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-                color: const Color(0xFF22C55E).withOpacity(0.3), width: 0.8),
+                color: const Color(0xFFEF4444).withOpacity(0.3), width: 0.8),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: const [
-            Icon(Icons.add_rounded, color: Color(0xFF22C55E), size: 14),
+            Icon(Icons.add_rounded, color: Color(0xFFEF4444), size: 14),
             SizedBox(width: 3),
             Text('חדשה',
                 style: TextStyle(
-                    color: Color(0xFF22C55E),
+                    color: Color(0xFFEF4444),
                     fontSize: 11,
                     fontFamily: 'Heebo',
                     fontWeight: FontWeight.w600)),
@@ -1167,17 +1145,32 @@ class _SmartProductivityPreviewScreenState
               style: TextStyle(
                   color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
         ]),
-        if (pending.isEmpty) ...[
+        if (importantCount == 0) ...[
           const SizedBox(height: 12),
-          const _EmptyState(message: 'כל המשימות הושלמו! 🎉'),
+          _EmptyState(
+              message: total == done
+                  ? 'כל המשימות הושלמו! 🎉'
+                  : 'אין משימות דחופות כרגע'),
         ] else ...[
           const SizedBox(height: 12),
-          if (high.isNotEmpty)
-            _buildTaskPriorityGroup('גבוה', const Color(0xFFEF4444), high),
-          if (medium.isNotEmpty)
-            _buildTaskPriorityGroup('בינוני', const Color(0xFFF59E0B), medium),
-          if (low.isNotEmpty)
-            _buildTaskPriorityGroup('רגיל', const Color(0xFF475569), low),
+          if (highTasks.isNotEmpty)
+            _buildTaskPriorityGroup(
+                'דחוף', const Color(0xFFEF4444), highTasks),
+          if (starredTasks.isNotEmpty)
+            _buildTaskPriorityGroup(
+                'מסומן חשוב ⭐', const Color(0xFFF59E0B), starredTasks),
+        ],
+        if (otherCount > 0) ...[
+          const SizedBox(height: 6),
+          Row(children: [
+            Icon(Icons.inbox_outlined, color: JC.textMuted, size: 12),
+            const SizedBox(width: 5),
+            Text('+ $otherCount משימות נוספות בתור',
+                style: TextStyle(
+                    color: JC.textMuted,
+                    fontSize: 11,
+                    fontFamily: 'Heebo')),
+          ]),
         ],
       ]),
     );
@@ -2031,13 +2024,42 @@ class _SmartProductivityPreviewScreenState
 
     return _SectionCard(
       title: 'תזכורות (${sorted.length})',
-      icon: Icons.notifications_outlined,
+      icon: Icons.notifications_active_rounded,
       iconColor: const Color(0xFFF59E0B),
       child: sorted.isEmpty
           ? const _EmptyState(message: 'אין תזכורות קרובות')
           : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Urgent alert banner
               if (urgent.isNotEmpty) ...[
-                _reminderGroupHeader('בקרוב 🔔', const Color(0xFFEF4444)),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: const Color(0xFFEF4444).withOpacity(0.3),
+                        width: 0.8),
+                  ),
+                  child: Row(children: [
+                    const Text('🔔', style: TextStyle(fontSize: 13)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        urgent.length == 1
+                            ? 'תזכורת דחופה בתוך שעתיים'
+                            : '${urgent.length} תזכורות דחופות בתוך שעתיים',
+                        style: const TextStyle(
+                            color: Color(0xFFEF4444),
+                            fontSize: 12,
+                            fontFamily: 'Heebo',
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 10),
+                _reminderGroupHeader('בקרוב', const Color(0xFFEF4444)),
                 const SizedBox(height: 6),
                 ...urgent.map((r) =>
                     _ReminderRowHighlighted(r, const Color(0xFFEF4444))),
@@ -2047,13 +2069,17 @@ class _SmartProductivityPreviewScreenState
               if (todayLater.isNotEmpty) ...[
                 _reminderGroupHeader('היום', const Color(0xFFF59E0B)),
                 const SizedBox(height: 6),
-                ...todayLater.map((r) => _ReminderRow(r)),
+                ...todayLater.map((r) =>
+                    _ReminderRowHighlighted(r, const Color(0xFFF59E0B))),
                 if (upcoming.isNotEmpty) const SizedBox(height: 10),
               ],
               if (upcoming.isNotEmpty) ...[
-                _reminderGroupHeader('הבא', JC.textMuted),
+                _reminderGroupHeader('הבא', const Color(0xFF3B82F6)),
                 const SizedBox(height: 6),
-                ...upcoming.take(3).map((r) => _ReminderRow(r)),
+                ...upcoming
+                    .take(3)
+                    .map((r) =>
+                        _ReminderRowHighlighted(r, const Color(0xFF3B82F6))),
                 if (upcoming.length > 3)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),

@@ -413,15 +413,9 @@ class _SmartProductivityPreviewScreenState
                                   const SizedBox(height: 16),
                                   _QuickActionsRow(),
                                   const SizedBox(height: 16),
-                                  _MorningBriefCard(),
-                                  const SizedBox(height: 16),
                                   _DayPlanCard(),
                                   const SizedBox(height: 16),
-                                  _ProgressCard(),
-                                  const SizedBox(height: 16),
-                                  _ImportantAndToDoCard(),
-                                  const SizedBox(height: 16),
-                                  _GroupedTasksSection(),
+                                  _TasksCard(),
                                   const SizedBox(height: 16),
                                   _CalendarStrip(),
                                   const SizedBox(height: 16),
@@ -638,6 +632,62 @@ class _SmartProductivityPreviewScreenState
                     ),
             ),
           ],
+          const SizedBox(height: 10),
+          Divider(color: JC.border.withOpacity(0.2), height: 1),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.wb_sunny_rounded,
+                  color: Color(0xFFF59E0B), size: 14),
+              const SizedBox(width: 6),
+              Text(
+                'בריף בוקר',
+                style: TextStyle(
+                    color: JC.textMuted,
+                    fontSize: 11,
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w600),
+              ),
+              if (_morningBriefCached) ...[
+                const SizedBox(width: 5),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF475569).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('מהמטמון',
+                      style: TextStyle(
+                          color: Color(0xFF475569),
+                          fontSize: 9,
+                          fontFamily: 'Heebo')),
+                ),
+              ],
+              const Spacer(),
+              GestureDetector(
+                onTap: _loadMorningBrief,
+                child: Icon(Icons.refresh_rounded,
+                    color: JC.textMuted.withOpacity(0.5), size: 14),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _morningBriefLoading
+              ? const _CardSkeleton(lines: 2)
+              : Text(
+                  _morningBrief.isNotEmpty
+                      ? _morningBrief
+                      : (_morningBriefError != null
+                          ? 'לא ניתן לטעון בריף'
+                          : 'אין בריף זמין כרגע'),
+                  style: TextStyle(
+                    color: JC.textSecondary,
+                    fontSize: 12,
+                    height: 1.5,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
         ],
       ),
     );
@@ -1047,6 +1097,130 @@ class _SmartProductivityPreviewScreenState
           ),
           child: Text(score, style: TextStyle(color: JC.textSecondary, fontSize: 10, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
         ),
+      ]),
+    );
+  }
+
+  // ── Tasks Card (unified) ──────────────────────────────────────────────────
+
+  Widget _TasksCard() {
+    final pending = _tasks.where((t) => t['done'] != true).toList();
+    final done = _doneTasks;
+    final total = _totalTasks;
+    final progress = total == 0 ? 0.0 : done / total;
+
+    final high = pending
+        .where((t) =>
+            (t['priority'] ?? '').toString().toLowerCase() == 'high')
+        .toList();
+    final medium = pending
+        .where((t) =>
+            (t['priority'] ?? '').toString().toLowerCase() == 'medium')
+        .toList();
+    final low = pending
+        .where((t) => !['high', 'medium']
+            .contains((t['priority'] ?? '').toString().toLowerCase()))
+        .toList();
+
+    return _SectionCard(
+      title: 'משימות (${pending.length})',
+      icon: Icons.checklist_rounded,
+      iconColor: const Color(0xFF22C55E),
+      headerTrailing: GestureDetector(
+        onTap: _showAddTaskDialog,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF22C55E).withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: const Color(0xFF22C55E).withOpacity(0.3), width: 0.8),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: const [
+            Icon(Icons.add_rounded, color: Color(0xFF22C55E), size: 14),
+            SizedBox(width: 3),
+            Text('חדשה',
+                style: TextStyle(
+                    color: Color(0xFF22C55E),
+                    fontSize: 11,
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Stack(children: [
+                Container(height: 5, color: const Color(0xFF1A2E4A)),
+                FractionallySizedBox(
+                  widthFactor: progress,
+                  child: Container(height: 5, color: const Color(0xFF22C55E)),
+                ),
+              ]),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text('$done/$total הושלמו',
+              style: TextStyle(
+                  color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+        ]),
+        if (pending.isEmpty) ...[
+          const SizedBox(height: 12),
+          const _EmptyState(message: 'כל המשימות הושלמו! 🎉'),
+        ] else ...[
+          const SizedBox(height: 12),
+          if (high.isNotEmpty)
+            _buildTaskPriorityGroup('גבוה', const Color(0xFFEF4444), high),
+          if (medium.isNotEmpty)
+            _buildTaskPriorityGroup('בינוני', const Color(0xFFF59E0B), medium),
+          if (low.isNotEmpty)
+            _buildTaskPriorityGroup('רגיל', const Color(0xFF475569), low),
+        ],
+      ]),
+    );
+  }
+
+  Widget _buildTaskPriorityGroup(
+      String label, Color color, List<Map<String, dynamic>> tasks) {
+    const maxShown = 4;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+              width: 3,
+              height: 12,
+              decoration: BoxDecoration(
+                  color: color, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 7),
+          Text(label,
+              style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Heebo')),
+          const SizedBox(width: 6),
+          Text('${tasks.length}',
+              style: TextStyle(
+                  color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
+        ]),
+        const SizedBox(height: 6),
+        ...tasks.take(maxShown).map((task) => _ImportantTaskRow(
+              task: task,
+              isImportant: _markedImportant.contains(task['id'].toString()),
+            )),
+        if (tasks.length > maxShown)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text('+${tasks.length - maxShown} נוספות',
+                style: TextStyle(
+                    color: JC.textMuted,
+                    fontSize: 11,
+                    fontFamily: 'Heebo')),
+          ),
       ]),
     );
   }
@@ -1802,19 +1976,167 @@ class _SmartProductivityPreviewScreenState
   // ── Reminders Card ─────────────────────────────────────────────────────────
 
   Widget _RemindersCard() {
-    final today = _todayReminders;
+    final now = DateTime.now();
+
+    final sorted = _reminders.where((r) {
+      final iso = r['scheduled_time'] as String?;
+      if (iso == null || iso.isEmpty) return false;
+      try {
+        final dt = DateTime.parse(iso).toLocal();
+        return !dt.isBefore(now.subtract(const Duration(minutes: 1)));
+      } catch (_) {
+        return false;
+      }
+    }).toList()
+      ..sort((a, b) =>
+          (a['scheduled_time'] as String? ?? '')
+              .compareTo(b['scheduled_time'] as String? ?? ''));
+
+    final urgent = sorted.where((r) {
+      try {
+        final diff = DateTime.parse(r['scheduled_time'] as String)
+            .toLocal()
+            .difference(now);
+        return diff.inMinutes >= 0 && diff.inMinutes <= 120;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+
+    final todayLater = sorted.where((r) {
+      try {
+        final dt =
+            DateTime.parse(r['scheduled_time'] as String).toLocal();
+        final diff = dt.difference(now);
+        return diff.inMinutes > 120 &&
+            dt.day == now.day &&
+            dt.month == now.month &&
+            dt.year == now.year;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+
+    final upcoming = sorted.where((r) {
+      try {
+        final dt =
+            DateTime.parse(r['scheduled_time'] as String).toLocal();
+        return !(dt.day == now.day &&
+            dt.month == now.month &&
+            dt.year == now.year);
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+
     return _SectionCard(
-      title: 'תזכורות (${today.length})',
+      title: 'תזכורות (${sorted.length})',
       icon: Icons.notifications_outlined,
       iconColor: const Color(0xFFF59E0B),
-      child: today.isEmpty
-          ? _EmptyState(
-              message: _selectedDayOffset == 0
-                  ? 'אין תזכורות להיום'
-                  : 'אין תזכורות ליום זה')
-          : Column(
-              children: today.map((r) => _ReminderRow(r)).toList(),
+      child: sorted.isEmpty
+          ? const _EmptyState(message: 'אין תזכורות קרובות')
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (urgent.isNotEmpty) ...[
+                _reminderGroupHeader('בקרוב 🔔', const Color(0xFFEF4444)),
+                const SizedBox(height: 6),
+                ...urgent.map((r) =>
+                    _ReminderRowHighlighted(r, const Color(0xFFEF4444))),
+                if (todayLater.isNotEmpty || upcoming.isNotEmpty)
+                  const SizedBox(height: 10),
+              ],
+              if (todayLater.isNotEmpty) ...[
+                _reminderGroupHeader('היום', const Color(0xFFF59E0B)),
+                const SizedBox(height: 6),
+                ...todayLater.map((r) => _ReminderRow(r)),
+                if (upcoming.isNotEmpty) const SizedBox(height: 10),
+              ],
+              if (upcoming.isNotEmpty) ...[
+                _reminderGroupHeader('הבא', JC.textMuted),
+                const SizedBox(height: 6),
+                ...upcoming.take(3).map((r) => _ReminderRow(r)),
+                if (upcoming.length > 3)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('+${upcoming.length - 3} נוספות',
+                        style: TextStyle(
+                            color: JC.textMuted,
+                            fontSize: 11,
+                            fontFamily: 'Heebo')),
+                  ),
+              ],
+            ]),
+    );
+  }
+
+  Widget _reminderGroupHeader(String label, Color color) {
+    return Row(children: [
+      Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+      const SizedBox(width: 6),
+      Text(label,
+          style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontFamily: 'Heebo',
+              fontWeight: FontWeight.w700)),
+    ]);
+  }
+
+  Widget _ReminderRowHighlighted(
+      Map<String, dynamic> reminder, Color accentColor) {
+    final text = reminder['text'] as String? ?? '—';
+    final iso = reminder['scheduled_time'] as String?;
+    final timeStr = _timeOfDay(iso);
+    final remaining = _formatRemTime(iso);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: accentColor.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(right: BorderSide(color: accentColor, width: 2)),
+      ),
+      child: Row(children: [
+        Container(
+          width: 44,
+          height: 38,
+          decoration: BoxDecoration(
+            color: accentColor.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text(
+              timeStr.isEmpty ? '—' : timeStr,
+              style: TextStyle(
+                  color: accentColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Heebo'),
             ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(text,
+                style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 13,
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+            if (remaining.isNotEmpty)
+              Text(remaining,
+                  style: TextStyle(
+                      color: accentColor,
+                      fontSize: 11,
+                      fontFamily: 'Heebo')),
+          ]),
+        ),
+      ]),
     );
   }
 }

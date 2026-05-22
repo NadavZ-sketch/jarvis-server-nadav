@@ -1,3 +1,4 @@
+import 'dart:math' show Random;
 import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
@@ -202,13 +203,22 @@ class _SmartProductivityPreviewScreenState
     }
   }
 
+  static const _insightPrompts = [
+    'תן לי תובנה קצרה ומפתיעה על פרודוקטיביות שאנשים בדרך כלל לא יודעים, בעברית, 2 שורות',
+    'שתף אותי בטיפ חכם אחד לניהול אנרגיה נפשית לאורך יום עבודה, בעברית, 2 שורות',
+    'תן לי משפט השראה מקורי שקשור להשגת מטרות, בעברית, 2 שורות',
+    'מה הדבר הכי חשוב שאפשר לעשות כדי לשפר מיקוד? תובנה קצרה בעברית, 2 שורות',
+    'שתף אותי בחכמה קצרה על קבלת החלטות טובות, בעברית, 2 שורות',
+    'תן לי טיפ פרקטי לאיך להתחיל את היום בצורה חזקה, בעברית, 2 שורות',
+    'מה הסוד של אנשים שמצליחים לסיים את כל המשימות שלהם? תובנה בעברית, 2 שורות',
+    'שתף אותי במחשבה מעניינת על איזון בין עבודה וחיים, בעברית, 2 שורות',
+  ];
+
   Future<void> _loadJarvisInsight() async {
     setState(() { _jarvisInsightLoading = true; _jarvisInsightError = null; });
     try {
-      final r = await _api.askJarvis(
-        'תן לי תובנה קצרה אחת או משפט השראה לגבי יום עבודה פרודוקטיבי, בעברית, 2 שורות מקסימום',
-        widget.settings,
-      );
+      final prompt = _insightPrompts[Random().nextInt(_insightPrompts.length)];
+      final r = await _api.askJarvis(prompt, widget.settings);
       if (mounted) setState(() {
         _jarvisInsight = r['answer'] as String? ?? '';
         _jarvisInsightLoading = false;
@@ -323,6 +333,140 @@ class _SmartProductivityPreviewScreenState
     );
   }
 
+  void _showAddReminderDialog() {
+    final textController = TextEditingController();
+    DateTime reminderTime =
+        DateTime.now().add(const Duration(hours: 1)).copyWith(second: 0, microsecond: 0);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF0B1422),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(
+              'תזכורת חדשה',
+              style: TextStyle(
+                  color: JC.textPrimary,
+                  fontFamily: 'Heebo',
+                  fontWeight: FontWeight.w700),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: textController,
+                  autofocus: true,
+                  style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+                  decoration: InputDecoration(
+                    hintText: 'תאר את התזכורת...',
+                    hintStyle:
+                        TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: JC.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: JC.blue500),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: ctx,
+                      initialDate: reminderTime,
+                      firstDate: DateTime.now(),
+                      lastDate:
+                          DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (date == null || !ctx.mounted) return;
+                    final time = await showTimePicker(
+                      context: ctx,
+                      initialTime: TimeOfDay.fromDateTime(reminderTime),
+                    );
+                    if (time == null) return;
+                    setDState(() {
+                      reminderTime = DateTime(date.year, date.month, date.day,
+                          time.hour, time.minute);
+                    });
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0B1929),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: JC.border),
+                    ),
+                    child: Row(children: [
+                      Icon(Icons.schedule_rounded,
+                          color: JC.blue400, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${reminderTime.day}/${reminderTime.month}  '
+                        '${reminderTime.hour.toString().padLeft(2, '0')}:'
+                        '${reminderTime.minute.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                            color: JC.textSecondary, fontFamily: 'Heebo'),
+                      ),
+                      const Spacer(),
+                      Text('שנה',
+                          style: TextStyle(
+                              color: JC.blue400,
+                              fontSize: 12,
+                              fontFamily: 'Heebo')),
+                    ]),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('ביטול',
+                    style:
+                        TextStyle(color: JC.textMuted, fontFamily: 'Heebo')),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF22C55E),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () async {
+                  final text = textController.text.trim();
+                  if (text.isEmpty) return;
+                  Navigator.pop(ctx);
+                  try {
+                    await _api.addReminder(
+                        text, reminderTime.toUtc().toIso8601String());
+                    _loadData();
+                    _showSnack('תזכורת נוספה ✓');
+                  } catch (e) {
+                    _showSnack('שגיאה: ${ApiService.friendlyError(e)}');
+                  }
+                },
+                child: const Text('הוסף',
+                    style: TextStyle(
+                        fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── Computed Getters ────────────────────────────────────────────────────────
 
   List<Map<String, dynamic>> get _importantTasks => _tasks.where((t) =>
@@ -410,6 +554,8 @@ class _SmartProductivityPreviewScreenState
                                 children: [
                                   _ScrollHeader('מנהל היום החכם', () { setState(() { _loading = true; _error = null; }); _loadData(); }),
                                   _GreetingCard(),
+                                  const SizedBox(height: 16),
+                                  _MorningBriefCard(),
                                   const SizedBox(height: 16),
                                   _QuickActionsRow(),
                                   const SizedBox(height: 16),
@@ -603,62 +749,6 @@ class _SmartProductivityPreviewScreenState
                     ),
             ),
           ],
-          const SizedBox(height: 10),
-          Divider(color: JC.border.withOpacity(0.2), height: 1),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              const Icon(Icons.wb_sunny_rounded,
-                  color: Color(0xFFF59E0B), size: 14),
-              const SizedBox(width: 6),
-              Text(
-                'בריף בוקר',
-                style: TextStyle(
-                    color: JC.textMuted,
-                    fontSize: 11,
-                    fontFamily: 'Heebo',
-                    fontWeight: FontWeight.w600),
-              ),
-              if (_morningBriefCached) ...[
-                const SizedBox(width: 5),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF475569).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text('מהמטמון',
-                      style: TextStyle(
-                          color: Color(0xFF475569),
-                          fontSize: 9,
-                          fontFamily: 'Heebo')),
-                ),
-              ],
-              const Spacer(),
-              GestureDetector(
-                onTap: _loadMorningBrief,
-                child: Icon(Icons.refresh_rounded,
-                    color: JC.textMuted.withOpacity(0.5), size: 14),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          _morningBriefLoading
-              ? const _CardSkeleton(lines: 2)
-              : Text(
-                  _morningBrief.isNotEmpty
-                      ? _morningBrief
-                      : (_morningBriefError != null
-                          ? 'לא ניתן לטעון בריף'
-                          : 'אין בריף זמין כרגע'),
-                  style: TextStyle(
-                    color: JC.textSecondary,
-                    fontSize: 12,
-                    height: 1.5,
-                    fontFamily: 'Heebo',
-                  ),
-                ),
         ],
       ),
     );
@@ -686,25 +776,22 @@ class _SmartProductivityPreviewScreenState
         ),
       },
       {
-        'icon': Icons.task_alt_rounded,
-        'label': 'עדכן משימות',
-        'color': const Color(0xFF22C55E),
-        'onTap': () {
-          setState(() { _loading = true; _error = null; });
-          _loadData();
-        },
-      },
-      {
         'icon': Icons.add_circle_outline_rounded,
         'label': 'משימה חדשה',
         'color': const Color(0xFFA5B4FC),
         'onTap': () => _showAddTaskDialog(),
       },
       {
-        'icon': Icons.auto_awesome_rounded,
-        'label': 'תובנה חדשה',
+        'icon': Icons.alarm_add_rounded,
+        'label': 'תזכורת חדשה',
+        'color': const Color(0xFF22C55E),
+        'onTap': () => _showAddReminderDialog(),
+      },
+      {
+        'icon': Icons.chat_bubble_outline_rounded,
+        'label': 'שיחה עם ג׳רוויס',
         'color': const Color(0xFFF59E0B),
-        'onTap': () => _loadJarvisInsight(),
+        'onTap': () => Navigator.pop(context),
       },
     ];
 
@@ -734,111 +821,139 @@ class _SmartProductivityPreviewScreenState
   Widget _MorningBriefCard() {
     return Container(
       decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF1C2D1A),
+            const Color(0xFF1A2E3A),
+          ],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+            color: const Color(0xFFF59E0B).withOpacity(0.2), width: 0.8),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFFF59E0B).withOpacity(0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 4))
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
             child: Row(
               children: [
-                const Icon(Icons.wb_sunny_rounded,
-                    color: Color(0xFFF59E0B), size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'בריף בוקר',
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A2E4A),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: const Color(0xFF3B82F6).withOpacity(0.5),
-                        width: 0.6),
+                    color: const Color(0xFFF59E0B).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Text(
-                    'Jarvis AI',
-                    style: TextStyle(
-                      color: Color(0xFF60A5FA),
-                      fontSize: 10,
-                      fontFamily: 'Heebo',
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: const Center(
+                    child: Text('☀️', style: TextStyle(fontSize: 20)),
                   ),
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'בריף היום',
+                        style: TextStyle(
+                          color: JC.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          fontFamily: 'Heebo',
+                        ),
+                      ),
+                      Text(
+                        'מה חשוב לדעת להיום',
+                        style: TextStyle(
+                          color: JC.textMuted,
+                          fontSize: 11,
+                          fontFamily: 'Heebo',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (_morningBriefCached)
+                    Container(
+                      margin: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF475569).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text('מטמון',
+                          style: TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 9,
+                              fontFamily: 'Heebo')),
+                    ),
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: _loadMorningBrief,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.refresh_rounded,
+                          color: Color(0xFFF59E0B), size: 14),
+                    ),
+                  ),
+                ]),
               ],
             ),
           ),
-          Divider(color: JC.border, height: 1),
+          Container(
+            height: 1,
+            color: const Color(0xFFF59E0B).withOpacity(0.12),
+          ),
           Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: _morningBriefLoading
-                ? const _CardSkeleton(lines: 3)
+                ? const _CardSkeleton(lines: 4)
                 : _morningBriefError != null
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_morningBriefError!,
+                    ? Row(children: [
+                        const Icon(Icons.error_outline_rounded,
+                            color: Color(0xFFEF4444), size: 14),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(_morningBriefError!,
                               style: const TextStyle(
                                   color: Color(0xFFEF4444),
                                   fontSize: 12,
                                   fontFamily: 'Heebo')),
-                          const SizedBox(height: 8),
-                          TextButton(
-                            onPressed: _loadMorningBrief,
-                            child: Text('נסה שוב',
-                                style: TextStyle(
-                                    color: JC.blue400, fontFamily: 'Heebo')),
-                          ),
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _morningBrief.isNotEmpty
-                                ? _morningBrief
-                                : 'אין בריף זמין כרגע',
-                            style: TextStyle(
-                              color: JC.textSecondary,
-                              fontSize: 13,
-                              height: 1.55,
-                              fontFamily: 'Heebo',
-                            ),
-                          ),
-                          if (_morningBriefCached) ...[
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF475569).withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Text(
-                                'מהמטמון',
-                                style: TextStyle(
-                                  color: Color(0xFF475569),
-                                  fontSize: 10,
+                        ),
+                        TextButton(
+                          onPressed: _loadMorningBrief,
+                          child: Text('נסה שוב',
+                              style: TextStyle(
+                                  color: JC.blue400,
                                   fontFamily: 'Heebo',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                                  fontSize: 12)),
+                        ),
+                      ])
+                    : Text(
+                        _morningBrief.isNotEmpty
+                            ? _morningBrief
+                            : 'אין בריף זמין כרגע',
+                        style: TextStyle(
+                          color: JC.textSecondary,
+                          fontSize: 13.5,
+                          height: 1.6,
+                          fontFamily: 'Heebo',
+                        ),
                       ),
           ),
         ],

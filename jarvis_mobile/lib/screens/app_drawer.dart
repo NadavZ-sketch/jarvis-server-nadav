@@ -8,6 +8,7 @@ import '../transitions/slide_fade_route.dart';
 import 'control_center_preview_screen.dart';
 import 'smart_productivity_preview_screen.dart';
 import 'progress_map_screen.dart';
+import 'lists_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final AppSettings settings;
@@ -141,6 +142,19 @@ class AppDrawer extends StatelessWidget {
                             onSwitchToChat?.call(cmd);
                           },
                         ),
+                      ),
+                    );
+                  },
+                ),
+                _DrawerTile(
+                  icon: Icons.list_alt_rounded,
+                  label: 'רשימות',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      SlideFadeRoute(
+                        page: ListsScreen(settings: settings),
                       ),
                     );
                   },

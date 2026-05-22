@@ -7,7 +7,7 @@ import 'widgets/animated_indexed_stack.dart';
 import 'screens/app_drawer.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/productivity_screen.dart';
-import 'screens/lists_screen.dart';
+import 'screens/control_center_preview_screen.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
 
@@ -178,11 +178,8 @@ class _MainShellState extends State<MainShell> {
                 settings: _settings,
                 onOpenDrawer: _openDrawer,
               ),
-              // 3 — Lists (Shopping + Notes + Contacts)
-              ListsScreen(
-                settings: _settings,
-                onOpenDrawer: _openDrawer,
-              ),
+              // 3 — Control Center
+              ControlCenterPreviewScreen(settings: _settings),
             ],
           ),
           bottomNavigationBar: _buildBottomNav(),
@@ -247,9 +244,9 @@ class _MainShellState extends State<MainShell> {
                   label: 'משימות',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.list_alt_outlined),
-                  selectedIcon: Icon(Icons.list_alt_rounded),
-                  label: 'רשימות',
+                  icon: Icon(Icons.hub_outlined),
+                  selectedIcon: Icon(Icons.hub_rounded),
+                  label: 'מרכז שליטה',
                 ),
               ],
             ),

@@ -4,6 +4,7 @@ import '../app_settings.dart';
 import 'today_tab.dart';
 import 'tasks_screen.dart';
 import 'reminders_screen.dart';
+import 'calendar_screen.dart';
 
 class ProductivityScreen extends StatefulWidget {
   final AppSettings settings;
@@ -30,7 +31,7 @@ class _ProductivityScreenState extends State<ProductivityScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -78,6 +79,7 @@ class _ProductivityScreenState extends State<ProductivityScreen>
             Tab(text: 'היום ☀️'),
             Tab(text: 'משימות ✅'),
             Tab(text: 'תזכורות 🔔'),
+            Tab(text: 'לוח שנה 📅'),
           ],
         ),
       ),
@@ -93,6 +95,7 @@ class _ProductivityScreenState extends State<ProductivityScreen>
             settings: widget.settings,
             onCountUpdate: widget.onRemindersCountUpdate,
           ),
+          CalendarScreen(settings: widget.settings),
         ],
       ),
     );

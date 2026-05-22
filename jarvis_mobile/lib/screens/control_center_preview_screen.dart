@@ -103,8 +103,10 @@ class ControlCenterPreviewScreen extends StatefulWidget {
 }
 
 class _ControlCenterPreviewScreenState
-    extends State<ControlCenterPreviewScreen> {
+    extends State<ControlCenterPreviewScreen>
+    with TickerProviderStateMixin {
   late final ApiService _api;
+  late final TabController _tabController;
 
   Map<String, dynamic>? _stats;
   List<Map<String, dynamic>> _agents = [];
@@ -129,6 +131,24 @@ class _ControlCenterPreviewScreenState
   void initState() {
     super.initState();
     _api = ApiService(widget.settings);
+    _tabController = TabController(length: 4, vsync: this);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _refreshAll() {
+    setState(() {
+      _loadingStats = true;
+      _loadingAgents = true;
+      _loadingIssues = true;
+      _statsError = null;
+      _agentsError = null;
+    });
     _load();
   }
 
@@ -290,58 +310,33 @@ class _ControlCenterPreviewScreenState
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         backgroundColor: JC.bg,
         body: SafeArea(
           top: true,
-          child: Stack(
-          children: [
-            Column(
-              children: [
-                Expanded(
-                  child: RefreshIndicator(
-                    color: JC.blue400,
-                    backgroundColor: JC.surface,
-                    onRefresh: _load,
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      children: [
-                        _ScrollHeader('מרכז שליטה', () {
-                          setState(() {
-                            _loadingStats = true;
-                            _loadingAgents = true;
-                            _loadingIssues = true;
-                            _statsError = null;
-                            _agentsError = null;
-                          });
-                          _load();
-                        }),
-                        _SystemHealthCard(),
-                        const SizedBox(height: 16),
-                        _QuickActionsRow(),
-                        const SizedBox(height: 16),
-                        _StatsRow(),
-                        const SizedBox(height: 16),
-                        _AgentNetworkMapCard(),
-                        const SizedBox(height: 16),
-                        _AgentsByStatusSection(),
-                        const SizedBox(height: 16),
-                        _IssuesSection(),
-                        const SizedBox(height: 16),
-                        _FeaturesSection(),
-                        const SizedBox(height: 16),
-                        _SurveySection(),
-                        SizedBox(height: bottomPad + 8),
-                      ],
-                    ),
-                  ),
+          child: Stack(children: [
+            Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                child: _ScrollHeader('מרכז שליטה', _refreshAll),
+              ),
+              _buildTabBar(),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _OverviewTab(),
+                    _AgentsTab(),
+                    _DevelopmentTab(),
+                    _InfoTab(),
+                  ],
                 ),
-                const PreviewBanner(),
-              ],
-            ),
+              ),
+              const PreviewBanner(),
+            ]),
             if (_snackMessage != null)
               Positioned(
                 bottom: 60,
@@ -349,10 +344,669 @@ class _ControlCenterPreviewScreenState
                 right: 16,
                 child: _SnackOverlay(_snackMessage!),
               ),
-          ],
-        ),
+          ]),
         ),
       ),
+    );
+  }
+
+  Widget _buildTabBar() {
+    return Container(
+      color: JC.bg,
+      child: TabBar(
+        controller: _tabController,
+        labelColor: JC.blue400,
+        unselectedLabelColor: JC.textMuted,
+        indicatorColor: JC.blue400,
+        indicatorSize: TabBarIndicatorSize.label,
+        labelStyle: const TextStyle(
+            fontSize: 12, fontWeight: FontWeight.w700, fontFamily: 'Heebo'),
+        unselectedLabelStyle: const TextStyle(
+            fontSize: 12, fontWeight: FontWeight.w500, fontFamily: 'Heebo'),
+        tabs: const [
+          Tab(text: 'סקירה'),
+          Tab(text: 'סוכנים'),
+          Tab(text: 'פיתוח'),
+          Tab(text: 'מידע'),
+        ],
+      ),
+    );
+  }
+
+  Widget _OverviewTab() {
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: JC.blue400,
+      backgroundColor: JC.surface,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          _CognitiveStatusCard(),
+          const SizedBox(height: 16),
+          _SystemHealthCard(),
+          const SizedBox(height: 16),
+          _StatsRow(),
+          const SizedBox(height: 16),
+          _QuickActionsRow(),
+        ],
+      ),
+    );
+  }
+
+  Widget _AgentsTab() {
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: JC.blue400,
+      backgroundColor: JC.surface,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          _AgentNetworkMapCard(),
+          const SizedBox(height: 12),
+          _AgentResourceBars(),
+          const SizedBox(height: 16),
+          _AgentsByStatusSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _DevelopmentTab() {
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: JC.blue400,
+      backgroundColor: JC.surface,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          _StabilityScoreCard(),
+          const SizedBox(height: 16),
+          _ImprovementSuggestionsCard(),
+          const SizedBox(height: 16),
+          _LatencyBarsCard(),
+          const SizedBox(height: 16),
+          _IssuesSection(),
+          const SizedBox(height: 16),
+          _FeaturesSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _InfoTab() {
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: JC.blue400,
+      backgroundColor: JC.surface,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          _SelfImprovementSurveyCard(),
+          const SizedBox(height: 16),
+          _ImprovementFeedbackLoopCard(),
+          const SizedBox(height: 16),
+          _DecisionFlowCard(),
+          const SizedBox(height: 16),
+          _RecentEventsLog(),
+        ],
+      ),
+    );
+  }
+
+  // ── Tab 1: Cognitive Status ────────────────────────────────────────────────
+
+  Widget _CognitiveStatusCard() {
+    final active = _activeAgents.length;
+    final idle = _idleAgents.length;
+    final offline = _offlineAgents.length;
+    final total = _agents.isEmpty ? 1 : _agents.length;
+
+    final String statusLabel;
+    final Color statusColor;
+    if (active > idle && active > 0) {
+      statusLabel = 'מחשב';
+      statusColor = JC.blue400;
+    } else if (idle >= active && idle > 0) {
+      statusLabel = 'ממתין';
+      statusColor = JC.textMuted;
+    } else {
+      statusLabel = 'מגיב';
+      statusColor = const Color(0xFF22C55E);
+    }
+
+    final coreCount = _agents.where((a) => _agentCat(a) == 'core').length;
+    final domainCount = _agents.where((a) => _agentCat(a) == 'domain').length;
+    final qualityCount = _agents.where((a) => _agentCat(a) == 'quality').length;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.psychology_rounded, color: JC.blue400, size: 18),
+            const SizedBox(width: 8),
+            Text('מצב קוגניטיבי',
+                style: TextStyle(color: JC.textPrimary, fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: statusColor.withOpacity(0.5), width: 0.8),
+              ),
+              child: Text(statusLabel,
+                  style: TextStyle(color: statusColor, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+            ),
+          ]),
+          Divider(color: JC.border, height: 20),
+          Row(children: [
+            _DotLabel(const Color(0xFF22C55E), 'ליבה', coreCount),
+            const SizedBox(width: 16),
+            _DotLabel(const Color(0xFFF59E0B), 'דומיין', domainCount),
+            const SizedBox(width: 16),
+            _DotLabel(const Color(0xFFA78BFA), 'איכות', qualityCount),
+          ]),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              height: 8,
+              child: Row(children: [
+                Expanded(flex: coreCount + 1, child: Container(color: const Color(0xFF22C55E).withOpacity(0.7))),
+                Expanded(flex: domainCount + 1, child: Container(color: const Color(0xFFF59E0B).withOpacity(0.7))),
+                Expanded(flex: qualityCount + 1, child: Container(color: const Color(0xFFA78BFA).withOpacity(0.7))),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            _DotLabel(const Color(0xFF22C55E), 'פעיל', active),
+            const SizedBox(width: 12),
+            _DotLabel(const Color(0xFFF59E0B), 'המתנה', idle),
+            const SizedBox(width: 12),
+            _DotLabel(const Color(0xFF475569), 'לא פעיל', offline),
+            const Spacer(),
+            Text('${active}/${total} פעיל',
+                style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _DotLabel(Color color, String label, int count) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+      const SizedBox(width: 4),
+      Text('$label $count', style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+    ]);
+  }
+
+  // ── Tab 2: Agent Resource Bars ─────────────────────────────────────────────
+
+  Widget _AgentResourceBars() {
+    final coreAgents = _agents.where((a) => _agentCat(a) == 'core').toList();
+    final domainAgents = _agents.where((a) => _agentCat(a) == 'domain').toList();
+    final qualityAgents = _agents.where((a) => _agentCat(a) == 'quality').toList();
+
+    if (_loadingAgents) return const SizedBox.shrink();
+
+    return _SectionCard(
+      title: 'עומס לפי קטגוריה',
+      icon: Icons.bar_chart_rounded,
+      iconColor: const Color(0xFFA78BFA),
+      child: Column(children: [
+        _CatBar('ליבה', coreAgents.length, 6, const Color(0xFF22C55E)),
+        const SizedBox(height: 10),
+        _CatBar('דומיין', domainAgents.length, 7, const Color(0xFFF59E0B)),
+        const SizedBox(height: 10),
+        _CatBar('איכות', qualityAgents.length, 7, const Color(0xFFA78BFA)),
+      ]),
+    );
+  }
+
+  Widget _CatBar(String label, int count, int max, Color color) {
+    final frac = max == 0 ? 0.0 : (count / max).clamp(0.0, 1.0);
+    return Row(children: [
+      SizedBox(width: 44, child: Text(label, style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'))),
+      const SizedBox(width: 8),
+      Expanded(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Stack(children: [
+            Container(height: 10, color: color.withOpacity(0.12)),
+            FractionallySizedBox(
+              widthFactor: frac,
+              child: Container(height: 10, color: color.withOpacity(0.8)),
+            ),
+          ]),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Text('$count/$max', style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+    ]);
+  }
+
+  // ── Tab 3: Stability Score ─────────────────────────────────────────────────
+
+  Widget _StabilityScoreCard() {
+    final score = (_loadingIssues ? 80 : (100 - _issues.length * 15).clamp(0, 100)).toDouble();
+    final scoreColor = score > 80
+        ? const Color(0xFF22C55E)
+        : score >= 50
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFFEF4444);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Row(children: [
+        SizedBox(
+          width: 72,
+          height: 72,
+          child: CustomPaint(
+            painter: _StabilityDonutPainter(score / 100, scoreColor),
+            child: Center(
+              child: Text(
+                '${score.round()}',
+                style: TextStyle(color: JC.textPrimary, fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Heebo'),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('ציון יציבות',
+              style: TextStyle(color: JC.textPrimary, fontSize: 16, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
+          const SizedBox(height: 4),
+          Text(
+            _loadingIssues ? 'טוען...' : '${_issues.length} בעיות פתוחות',
+            style: TextStyle(color: scoreColor, fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            score > 80 ? 'המערכת יציבה ✅' : score >= 50 ? 'יש מקום לשיפור' : 'דורש טיפול מיידי ⚠️',
+            style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+          ),
+        ])),
+      ]),
+    );
+  }
+
+  // ── Tab 3: Improvement Suggestions ────────────────────────────────────────
+
+  Widget _ImprovementSuggestionsCard() {
+    final suggestions = <Map<String, dynamic>>[
+      if (_issues.isNotEmpty) ...[
+        {'color': const Color(0xFFEF4444), 'text': 'הפעל E2E מחדש לאחר תיקון הבעיות', 'chip': 'אוטומטי'},
+        {'color': const Color(0xFFF59E0B), 'text': 'בדוק את הלוגים של הסוכנים הכשולים', 'chip': 'ידני'},
+      ],
+      {'color': const Color(0xFF22C55E), 'text': 'עדכן את רשימת הסוכנים הפעילים', 'chip': 'אוטומטי'},
+      {'color': const Color(0xFF3B82F6), 'text': 'סנכרן זיכרון עם Pinecone', 'chip': 'ידני'},
+      {'color': const Color(0xFFA78BFA), 'text': 'בדוק הגדרות מדיניות גישה', 'chip': 'ידני'},
+    ];
+
+    return _SectionCard(
+      title: 'שיפורים מוצעים',
+      icon: Icons.tips_and_updates_rounded,
+      iconColor: const Color(0xFFF59E0B),
+      child: Column(
+        children: suggestions.map((s) {
+          final color = s['color'] as Color;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              const SizedBox(width: 10),
+              Expanded(child: Text(s['text'] as String,
+                  style: TextStyle(color: JC.textSecondary, fontSize: 12, fontFamily: 'Heebo'))),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: color.withOpacity(0.4), width: 0.6),
+                ),
+                child: Text(s['chip'] as String,
+                    style: TextStyle(color: color, fontSize: 9, fontFamily: 'Heebo')),
+              ),
+            ]),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ── Tab 3: Latency Bars ────────────────────────────────────────────────────
+
+  Widget _LatencyBarsCard() {
+    const data = [
+      ('chatAgent', 87),
+      ('memoryAgent', 143),
+      ('weatherAgent', 342),
+      ('taskAgent', 65),
+      ('e2eAgent', 489),
+    ];
+    const maxMs = 500;
+
+    return _SectionCard(
+      title: 'זמן תגובה לפי סוכן',
+      icon: Icons.speed_rounded,
+      iconColor: const Color(0xFF3B82F6),
+      headerTrailing: const DemoChip(),
+      child: Column(
+        children: data.map((entry) {
+          final frac = (entry.$2 / maxMs).clamp(0.0, 1.0);
+          final color = entry.$2 < 100
+              ? const Color(0xFF22C55E)
+              : entry.$2 < 300
+                  ? const Color(0xFFF59E0B)
+                  : const Color(0xFFEF4444);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(children: [
+              SizedBox(
+                width: 80,
+                child: Text(entry.$1, style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                    overflow: TextOverflow.ellipsis),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Stack(children: [
+                    Container(height: 8, color: color.withOpacity(0.1)),
+                    FractionallySizedBox(
+                      widthFactor: frac,
+                      child: Container(height: 8, color: color.withOpacity(0.8)),
+                    ),
+                  ]),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 48,
+                child: Text('${entry.$2}ms',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(color: color, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+              ),
+            ]),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ── Tab 4: Self-Improvement Survey ────────────────────────────────────────
+
+  Widget _SelfImprovementSurveyCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+          child: Row(children: [
+            Icon(Icons.psychology_rounded, color: const Color(0xFF6366F1), size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('סקר שיפור עצמי לג׳רוויס',
+                  style: TextStyle(color: JC.textPrimary, fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
+              const SizedBox(height: 2),
+              Text('התשובות שלך מעצבות את האופן שבו ג׳רוויס לומד ומשתפר',
+                  style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+            ])),
+            if (_useDemoSurvey) const DemoChip(),
+          ]),
+        ),
+        Divider(color: JC.border, height: 1),
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: _surveySubmitted
+              ? _FeedbackLoopVisualization()
+              : Column(children: [
+                  ..._survey.map((q) => _SurveyQuestionCard(
+                        question: q,
+                        selected: _surveyAnswers[q['id'] as String?],
+                        onSelect: (ans) => setState(() => _surveyAnswers[q['id'] as String] = ans),
+                      )),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _surveyAnswers.isNotEmpty
+                          ? () => setState(() => _surveySubmitted = true)
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: JC.blue500,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text('שלח תשובות',
+                          style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _FeedbackLoopVisualization() {
+    return Column(children: [
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          _FlowNode('תשובתך', const Color(0xFF3B82F6), Icons.person_rounded),
+          const Icon(Icons.arrow_forward_rounded, color: Color(0xFF475569), size: 16),
+          _FlowNode('עיבוד AI', const Color(0xFF7C3AED), Icons.auto_awesome_rounded),
+          const Icon(Icons.arrow_forward_rounded, color: Color(0xFF475569), size: 16),
+          _FlowNode('עדכון', const Color(0xFF22C55E), Icons.update_rounded),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      Text(
+        'תודה! ג׳רוויס יתחשב בכך בשיחות הבאות 🤖',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: JC.textSecondary, fontSize: 12, fontFamily: 'Heebo'),
+      ),
+    ]);
+  }
+
+  Widget _FlowNode(String label, Color color, IconData icon) {
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 44, height: 44,
+        decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle,
+            border: Border.all(color: color.withOpacity(0.5), width: 1)),
+        child: Icon(icon, color: color, size: 20),
+      ),
+      const SizedBox(height: 4),
+      Text(label, style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
+    ]);
+  }
+
+  // ── Tab 4: Improvement Feedback Loop ──────────────────────────────────────
+
+  Widget _ImprovementFeedbackLoopCard() {
+    final qualityFrac = _surveyAnswers['responseQuality'] == 'מעולה'
+        ? 0.92 : _surveyAnswers['responseQuality'] == 'טובה'
+            ? 0.72 : _surveyAnswers['responseQuality'] == 'בינונית'
+                ? 0.50 : 0.75;
+
+    return _SectionCard(
+      title: 'תחומים בפיתוח פעיל',
+      icon: Icons.trending_up_rounded,
+      iconColor: const Color(0xFF22C55E),
+      child: Column(children: [
+        _FeedbackBar('דיוק תשובות', qualityFrac, const Color(0xFF22C55E), false),
+        const SizedBox(height: 10),
+        _FeedbackBar('מהירות תגובה', 0.68, const Color(0xFFF59E0B), true),
+        const SizedBox(height: 10),
+        _FeedbackBar('זיהוי כוונות', 0.81, const Color(0xFF3B82F6), true),
+        const SizedBox(height: 10),
+        _FeedbackBar('זיכרון והקשר', 0.59, const Color(0xFFA78BFA), true),
+      ]),
+    );
+  }
+
+  Widget _FeedbackBar(String label, double frac, Color color, bool isDemo) {
+    final pct = (frac * 100).round();
+    return Row(children: [
+      SizedBox(width: 100,
+          child: Row(children: [
+            Expanded(child: Text(label, style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'))),
+            if (isDemo) const SizedBox(width: 4),
+            if (isDemo) const DemoChip(),
+          ])),
+      const SizedBox(width: 8),
+      Expanded(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Stack(children: [
+            Container(height: 8, color: color.withOpacity(0.12)),
+            FractionallySizedBox(
+              widthFactor: frac,
+              child: Container(height: 8, color: color.withOpacity(0.8)),
+            ),
+          ]),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Text('$pct%', style: TextStyle(color: color, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+    ]);
+  }
+
+  // ── Tab 4: Decision Flow ───────────────────────────────────────────────────
+
+  Widget _DecisionFlowCard() {
+    final nodes = [
+      ('משתמש', Icons.person_rounded, const Color(0xFF3B82F6), 'הודעה נשלחת מהמשתמש'),
+      ('ניתוב', Icons.alt_route_rounded, const Color(0xFFF59E0B), 'הנתב מזהה את כוונת ההודעה'),
+      ('כוונה', Icons.track_changes_rounded, const Color(0xFFA78BFA), 'הכוונה מסווגת לקטגוריה'),
+      ('סוכן', Icons.smart_toy_rounded, const Color(0xFF22C55E), 'הסוכן המתאים מטפל בבקשה'),
+      ('תשובה', Icons.chat_bubble_rounded, const Color(0xFF6366F1), 'התשובה חוזרת למשתמש'),
+    ];
+
+    return _SectionCard(
+      title: 'זרימת החלטות',
+      icon: Icons.account_tree_rounded,
+      iconColor: const Color(0xFF3B82F6),
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: nodes.asMap().entries.map((entry) {
+              final i = entry.key;
+              final node = entry.value;
+              return Row(mainAxisSize: MainAxisSize.min, children: [
+                GestureDetector(
+                  onTap: () => _showSnack('${node.$1}: ${node.$4}'),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(
+                        color: node.$3.withOpacity(0.15),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: node.$3.withOpacity(0.6), width: 1.2),
+                      ),
+                      child: Icon(node.$2, color: node.$3, size: 20),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(node.$1,
+                        style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
+                  ]),
+                ),
+                if (i < nodes.length - 1)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Icon(Icons.arrow_forward_rounded, color: JC.textMuted.withOpacity(0.4), size: 14),
+                  ),
+              ]);
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Tab 4: Recent Events Log ───────────────────────────────────────────────
+
+  Widget _RecentEventsLog() {
+    final entries = <Map<String, dynamic>>[];
+
+    for (final r in _issues) {
+      entries.add({
+        'ts': r['created_at'] ?? '',
+        'text': 'E2E run: ${r['run_id'] ?? r['id'] ?? '?'} → ${r['status'] ?? 'Status: Unknown'}',
+        'color': _statusColor(r['status']),
+      });
+    }
+
+    for (final a in _agents.take(10)) {
+      final name = a['name'] ?? a['id'] ?? 'agent';
+      final status = (a['status'] ?? '').toString();
+      entries.add({
+        'ts': '',
+        'text': '[boot] Agent $name initialized — ${_statusLabel(status)}',
+        'color': _statusColor(status),
+      });
+    }
+
+    final display = entries.take(20).toList();
+
+    return _SectionCard(
+      title: 'לוג אירועים',
+      icon: Icons.receipt_long_rounded,
+      iconColor: JC.textMuted,
+      child: display.isEmpty
+          ? const _EmptyState(message: 'אין אירועים להצגה')
+          : Column(
+              children: display.map((e) {
+                final color = e['color'] as Color;
+                final ts = e['ts'] as String;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(children: [
+                    if (ts.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        margin: const EdgeInsets.only(left: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F1929),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(_shortDate(ts),
+                            style: TextStyle(color: JC.textMuted, fontSize: 9, fontFamily: 'Heebo')),
+                      ),
+                    Container(width: 6, height: 6,
+                        decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(e['text'] as String,
+                        style: TextStyle(color: JC.textSecondary, fontSize: 11, fontFamily: 'Heebo'),
+                        overflow: TextOverflow.ellipsis)),
+                  ]),
+                );
+              }).toList(),
+            ),
     );
   }
 
@@ -854,48 +1508,6 @@ class _ControlCenterPreviewScreenState
     );
   }
 
-  // ── Survey ─────────────────────────────────────────────────────────────────
-
-  Widget _SurveySection() {
-    return _SectionCard(
-      title: 'סקר חכם',
-      icon: Icons.quiz_outlined,
-      iconColor: const Color(0xFF93C5FD),
-      headerTrailing: _useDemoSurvey ? const DemoChip() : null,
-      child: _surveySubmitted
-          ? const _EmptyState(message: 'תודה! התשובות נשמרו 🙏')
-          : Column(
-              children: [
-                ..._survey.map((q) => _SurveyQuestionCard(
-                      question: q,
-                      selected: _surveyAnswers[q['id'] as String?],
-                      onSelect: (ans) => setState(
-                          () => _surveyAnswers[q['id'] as String] = ans),
-                    )),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _surveyAnswers.isNotEmpty
-                        ? () => setState(() => _surveySubmitted = true)
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: JC.blue500,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: const Text('שלח תשובות',
-                        style: TextStyle(
-                            fontFamily: 'Heebo',
-                            fontWeight: FontWeight.w600)),
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1491,6 +2103,45 @@ String _agentCat(Map<String, dynamic> a) {
   if (_kQualityPats.any((p) => n.contains(p))) return 'quality';
   if (_kDomainPats.any((p) => n.contains(p))) return 'domain';
   return 'domain';
+}
+
+// ── Stability Donut Painter ───────────────────────────────────────────────────
+
+class _StabilityDonutPainter extends CustomPainter {
+  final double fraction;
+  final Color color;
+  const _StabilityDonutPainter(this.fraction, this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 5;
+    const strokeWidth = 6.0;
+
+    final bgPaint = Paint()
+      ..color = color.withOpacity(0.12)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+    canvas.drawCircle(center, radius, bgPaint);
+
+    final fgPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -3.14 / 2,
+      2 * 3.14159 * fraction,
+      false,
+      fgPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _StabilityDonutPainter old) =>
+      old.fraction != fraction || old.color != color;
 }
 
 // ── Agent Tree CustomPainter ──────────────────────────────────────────────────

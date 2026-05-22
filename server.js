@@ -47,7 +47,8 @@ const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
 const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = require('./agents/e2eAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
-const { runInsightAgent }     = require('./agents/insightAgent');
+const { runInsightAgent, analyzePatterns, optimizeDayPlan } = require('./agents/insightAgent');
+const priorityEngine          = require('./services/priorityEngine');
 const { runWeatherAgent }     = require('./agents/weatherAgent');
 const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, generateSurveySummary } = require('./agents/surveyAgent');
 const { runNewsAgent }        = require('./agents/newsAgent');
@@ -1252,6 +1253,74 @@ app.get('/stats', async (_req, res) => {
         notes:     { total: getCount(notesTotal) },
         shopping:  { total: getCount(shoppingTotal),  checked: getCount(shoppingChecked) },
     });
+});
+
+// ─── GET /day-plan — Smart Day Engine: scored, prioritized, load-aware plan ──
+app.get('/day-plan', async (req, res) => {
+    try {
+        const now = new Date();
+        const settings = { userName: req.query.userName || 'נדב' };
+
+        // 1. Fetch pending tasks (all, so undated backlog is scored too),
+        //    active reminders, and recent chat timestamps for peak detection.
+        const [tasksRes, remindersRes, chatsRes] = await Promise.all([
+            supabase.from('tasks')
+                .select('id, content, done, due_date, priority, created_at')
+                .eq('done', false),
+            supabase.from('reminders')
+                .select('id, text, scheduled_time, fired, recurrence')
+                .eq('fired', false),
+            supabase.from('chat_history')
+                .select('role, text, created_at')
+                .order('created_at', { ascending: false })
+                .limit(200),
+        ]);
+
+        // 2. Normalize into engine items.
+        const taskItems = (tasksRes.data || []).map(t => ({
+            id: `task-${t.id}`, sourceId: t.id, type: 'task',
+            title: t.content, priority: t.priority || 'medium',
+            due_date: t.due_date, created_at: t.created_at,
+        }));
+        const reminderItems = (remindersRes.data || []).map(r => ({
+            id: `reminder-${r.id}`, sourceId: r.id, type: 'reminder',
+            title: r.text, scheduled_time: r.scheduled_time, recurrence: r.recurrence,
+        }));
+        const items = [...taskItems, ...reminderItems];
+
+        // 3. Deterministic scoring + load + conflicts (priorityEngine).
+        const plan = priorityEngine.buildDayPlan(items, now);
+
+        // 4. On-the-fly pattern analysis → AI narrative (graceful degrade).
+        const patterns = analyzePatterns({
+            chats:     chatsRes.data || [],
+            tasks:     tasksRes.data || [],
+            memories:  [],
+            reminders: remindersRes.data || [],
+            contacts:  [],
+        });
+        const ai = await optimizeDayPlan(plan.items, patterns, plan.load, settings);
+
+        res.json({
+            generated_at: now.toISOString(),
+            peak_window:  ai.peak_window,
+            load:         plan.load,
+            quadrants:    plan.quadrants,
+            items:        plan.items,
+            conflicts:    plan.conflicts,
+            narrative:    ai.narrative,
+            ai_available: ai.ai_available,
+        });
+    } catch (err) {
+        console.error('GET /day-plan error:', err.message);
+        res.status(500).json({
+            generated_at: new Date().toISOString(),
+            peak_window: null,
+            load: { ratio: 0, status: 'empty', mustDoMinutes: 0, capacityMinutes: 0 },
+            quadrants: { now: [], plan: [], quick: [], later: [] },
+            items: [], conflicts: [], narrative: '', ai_available: false,
+        });
+    }
 });
 
 // ─── Today Message — personalized AI morning/motivation card ──────────────────

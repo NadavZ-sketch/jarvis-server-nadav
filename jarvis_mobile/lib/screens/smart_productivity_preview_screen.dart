@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
-import '../widgets/preview_banner.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -217,7 +216,8 @@ class _SmartProductivityPreviewScreenState
   Future<void> _loadJarvisInsight() async {
     setState(() { _jarvisInsightLoading = true; _jarvisInsightError = null; });
     try {
-      final prompt = _insightPrompts[Random().nextInt(_insightPrompts.length)];
+      final basePrompt = _insightPrompts[Random().nextInt(_insightPrompts.length)];
+      final prompt = '$basePrompt\n$_dayContextLine'.trim();
       final r = await _api.askJarvis(prompt, widget.settings);
       if (mounted) setState(() {
         _jarvisInsight = r['answer'] as String? ?? '';
@@ -247,9 +247,18 @@ class _SmartProductivityPreviewScreenState
     }
   }
 
-  void _postponeTask(Map<String, dynamic> task) {
-    setState(() => _postponed.add(task['id'].toString()));
-    _showSnack('המשימה נדחתה למחר (Preview — לא נשמר בשרת)');
+  Future<void> _postponeTask(Map<String, dynamic> task) async {
+    final id = task['id'].toString();
+    setState(() => _postponed.add(id));
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1, 9);
+    try {
+      await _api.updateTask(id, dueDate: tomorrow.toUtc().toIso8601String());
+      _showSnack('המשימה נדחתה למחר ✓');
+    } catch (e) {
+      setState(() => _postponed.remove(id));
+      _showSnack(ApiService.friendlyError(e));
+    }
   }
 
   void _markImportant(Map<String, dynamic> task) {
@@ -496,6 +505,17 @@ class _SmartProductivityPreviewScreenState
           (t['priority'] ?? '').toString().toLowerCase() == 'low')
       .toList();
 
+  // One-line snapshot of the user's day, injected into the insight prompt so the
+  // tip is grounded in their actual load instead of being generic.
+  String get _dayContextLine {
+    final open = _tasks.where((t) => t['done'] != true).length;
+    final urgent = _highPriorityCount;
+    final reminders = _reminders.length;
+    if (open == 0 && reminders == 0) return '';
+    return 'הקשר: למשתמש $open משימות פתוחות ($urgent דחופות) ו-$reminders תזכורות. '
+        'התאם את התובנה למצב הזה בעדינות, בלי לחזור על המספרים.';
+  }
+
   int get _doneTasks => _tasks.where((t) => t['done'] == true).length;
   int get _totalTasks => _tasks.length;
   int get _highPriorityCount => _tasks.where((t) => (t['priority'] ?? '').toString().toLowerCase() == 'high').length;
@@ -571,7 +591,6 @@ class _SmartProductivityPreviewScreenState
                               ),
                             ),
                 ),
-                const PreviewBanner(),
               ],
             ),
             if (_snackMessage != null)
@@ -644,7 +663,7 @@ class _SmartProductivityPreviewScreenState
                 ),
               ),
               Text(
-                '$screenTitle · Preview',
+                screenTitle,
                 style: TextStyle(
                   color: JC.textMuted,
                   fontSize: 12,

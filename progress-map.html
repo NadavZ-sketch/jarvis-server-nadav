@@ -326,6 +326,19 @@ h1 span{color:var(--accent)}
 .ac-conf-fill{height:100%;background:linear-gradient(90deg,var(--accent),#a78bfa);border-radius:2px}
 .ac-risk-chips{display:flex;flex-wrap:wrap;gap:4px;margin:7px 0}
 .ac-risk-chip{padding:2px 8px;border-radius:5px;font-size:.68rem;font-weight:700;background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+/* agent on/off + risk controls */
+.ac-controls{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.ac-ctrl-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.ac-ctrl-btn{padding:5px 12px;border-radius:7px;font-size:.78rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+.ac-ctrl-btn.off{background:rgba(239,68,68,.12);color:var(--red);border-color:rgba(239,68,68,.35)}
+.ac-ctrl-btn.on{background:rgba(34,197,94,.12);color:var(--green);border-color:rgba(34,197,94,.35)}
+.ac-ctrl-status{font-size:.72rem;font-weight:700}
+.ac-ctrl-status.ok{color:var(--green)}
+.ac-ctrl-status.na{color:var(--muted)}
+.ac-ctrl-label{font-size:.72rem;color:var(--muted);margin-bottom:4px}
+.ac-risk-row{display:flex;gap:6px}
+.ac-risk-set{padding:3px 12px;border-radius:6px;font-size:.74rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--muted)}
+.ac-risk-set.sel{border-color:var(--accent);color:var(--accent);background:rgba(99,102,241,.12)}
 .ac-qblock{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
 .ac-qlabel{font-size:.82rem;font-weight:600;margin-bottom:5px}
 .ac-opt-row{display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:4px}
@@ -1125,7 +1138,8 @@ loadBacklog();
 setInterval(() => { checkHealth(); loadStats(); }, 30000);
 
 // ── Agent Center ───────────────────────────────────────────────────────────────
-let acAgents = [], acCurrent = null, acInitDone = false;
+let acAgents = [], acCurrent = null, acInitDone = false, acMetrics = {};
+const AC_PROTECTED = ['router', 'chatAgent'];
 const AC_ICONS = {router:'🔀',chatAgent:'💬',taskAgent:'✅',reminderAgent:'⏰',memoryAgent:'🧠',weatherAgent:'🌤',newsAgent:'📰',stocksAgent:'📈',translationAgent:'🌐',sportsAgent:'⚽',shoppingAgent:'🛒',notesAgent:'📝',musicAgent:'🎵',messagingAgent:'📨',draftAgent:'✍️',insightAgent:'💡',securityAgent:'🛡',codeErrorAgent:'🐛',e2eAgent:'🧪',agentFactoryAgent:'🏭',surveyAgent:'📋'};
 const AC_IBGS = {low:'rgba(34,197,94,.12)',medium:'rgba(245,158,11,.12)',high:'rgba(239,68,68,.12)'};
 const AC_STATIC=[{"id":"router","name":"Router","nameHe":"ראוטר","role":"מסווג כוונות","mission":"מנתח כל הודעת משתמש ומכוון לסוכן הנכון.","prompt":"סווג כוונות.","responsibilities":["סיווג intent","fallback LLM"],"inputs":["הודעת משתמש"],"outputs":["intent"],"tools":["regex","Groq"],"permissions":["קריאה בלבד"],"memoryAccess":"אין","restrictions":["לא שומר"],"risk":"medium","mode":"guard","approval":"none","autonomy":70,"status":"active","connections":[{"agentId":"chatAgent","name":"Chat Agent","nameHe":"סוכן שיחה","direction":"outgoing","type":"dispatch","payload":"intent","trigger":"כל הודעה","risk":"low","requiresApproval":false,"confidence":"inferred"}],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"chatAgent","name":"Chat Agent","nameHe":"סוכן שיחה","role":"עוזר שיחה ראשי","mission":"שיחות חופשיות עם זיכרון והיסטוריה.","prompt":"אתה ג׳רביס.","responsibilities":["שיחה","זיכרונות","voiceMode"],"inputs":["הודעה","היסטוריה","זיכרונות"],"outputs":["תשובה","TTS"],"tools":["callGemma4","TTS"],"permissions":["קריאת היסטוריה"],"memoryAccess":"קריאה","restrictions":[],"risk":"medium","mode":"assistant","approval":"none","autonomy":40,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"taskAgent","name":"Task Agent","nameHe":"סוכן משימות","role":"ניהול משימות","mission":"יוצר ומנהל משימות ב-Supabase.","prompt":"נהל משימות.","responsibilities":["יצירה","עדכון","מחיקה"],"inputs":["הודעה"],"outputs":["{ answer, action }"],"tools":["Supabase tasks","callGemma4"],"permissions":["קריאה/כתיבה tasks"],"memoryAccess":"אין","restrictions":[],"risk":"medium","mode":"operator","approval":"medium","autonomy":50,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"memoryAgent","name":"Memory Agent","nameHe":"סוכן זיכרון","role":"זיכרון אישי","mission":"שמירה ואחזור עובדות אישיות + autoExtract.","prompt":"שמור ואחזר זיכרון.","responsibilities":["שמירה","חיפוש","autoExtract"],"inputs":["הודעה"],"outputs":["{ answer, action }"],"tools":["Supabase memories","Pinecone","callGemma4"],"permissions":["קריאה/כתיבה memories"],"memoryAccess":"מלאה","restrictions":[],"risk":"medium","mode":"operator","approval":"medium","autonomy":40,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"reminderAgent","name":"Reminder Agent","nameHe":"סוכן תזכורות","role":"תזכורות","mission":"מנהל תזכורות עם recurrence.","prompt":"נהל תזכורות.","responsibilities":["יצירה","recurrence","מחיקה"],"inputs":["הודעה"],"outputs":["{ answer, action }"],"tools":["Supabase reminders","callGemma4"],"permissions":["קריאה/כתיבה reminders"],"memoryAccess":"אין","restrictions":[],"risk":"medium","mode":"operator","approval":"medium","autonomy":50,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"weatherAgent","name":"Weather Agent","nameHe":"סוכן מזג אוויר","role":"מזג אוויר","mission":"תחזית מזג אוויר.","prompt":"ספק תחזית.","responsibilities":["תחזית"],"inputs":["מיקום"],"outputs":["תשובה"],"tools":["callGeminiWithSearch"],"permissions":["רשת"],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"observer","approval":"none","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"newsAgent","name":"News Agent","nameHe":"סוכן חדשות","role":"חדשות","mission":"חדשות עדכניות.","prompt":"ספק חדשות.","responsibilities":["חיפוש","תקציר"],"inputs":["נושא"],"outputs":["ידיעות"],"tools":["callGeminiWithSearch"],"permissions":["רשת"],"memoryAccess":"אין","restrictions":[],"risk":"low","mode":"observer","approval":"none","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"insightAgent","name":"Insight Agent","nameHe":"סוכן תובנות","role":"תובנות","mission":"ניתוח נתונים אישיים.","prompt":"נתח נתונים.","responsibilities":["ניתוח","המלצות"],"inputs":["tasks,memories,notes"],"outputs":["תובנות"],"tools":["Supabase","callGemma4"],"permissions":["קריאה tables"],"memoryAccess":"קריאה","restrictions":["לא כותב"],"risk":"medium","mode":"assistant","approval":"none","autonomy":30,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"securityAgent","name":"Security Agent","nameHe":"סוכן אבטחה","role":"אבטחה","mission":"סריקת קוד לחולשות.","prompt":"סרוק.","responsibilities":["סריקה","דוחות"],"inputs":["קוד"],"outputs":["דוח"],"tools":["fs","Supabase","callGemma4"],"permissions":["קריאת קבצים","כתיבה e2e_reports"],"memoryAccess":"אין","restrictions":["background"],"risk":"high","mode":"guard","approval":"high","autonomy":20,"status":"active","connections":[],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}},{"id":"agentFactoryAgent","name":"Agent Factory","nameHe":"מפעל סוכנים","role":"יצירת סוכנים","mission":"יוצר סוכנים דינמיים.","prompt":"צור סוכן.","responsibilities":["כתיבת JS","registry","hot-load"],"inputs":["תיאור"],"outputs":["JS + registry"],"tools":["fs","callGemma4"],"permissions":["כתיבה agents/custom"],"memoryAccess":"אין","restrictions":[],"risk":"high","mode":"autonomous","approval":"high","autonomy":60,"status":"active","connections":[{"agentId":"router","name":"Router","nameHe":"ראוטר","direction":"outgoing","type":"רישום keywords","payload":"registry → router","trigger":"אחרי יצירה","risk":"high","requiresApproval":true,"confidence":"inferred"}],"dashboard":{"tasksHandled":"unknown","failures":"unknown","avgLatency":"unknown","confidence":"unknown","lastActive":"unknown"}}];
@@ -1139,6 +1153,11 @@ async function acInit() {
   acInitDone = true;
   acAgents = AC_STATIC;
   acRenderList(acAgents);
+  await acLoadAgents();
+  acLoadMetrics();
+}
+
+async function acLoadAgents() {
   try {
     const r = await fetch('/progress-map/agents');
     if (r.ok) {
@@ -1146,9 +1165,43 @@ async function acInit() {
       if (Array.isArray(d.agents) && d.agents.length) {
         acAgents = d.agents;
         acRenderList(acAgents);
+        if (acCurrent) { const u = acAgents.find(a => a.id === acCurrent.id); if (u) acCurrent = u; }
       }
     }
   } catch(_) {}
+}
+
+async function acLoadMetrics() {
+  try {
+    const r = await fetch('/progress-map/metrics');
+    if (r.ok) {
+      const d = await r.json();
+      acMetrics = {};
+      (d.latency || []).forEach(m => { acMetrics[m.agent] = m; });
+    }
+  } catch(_) {}
+}
+
+async function acToggle(id) {
+  try {
+    const r = await fetch(`/progress-map/agents/${id}/toggle`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'נכשל');
+    showToast(`${id} ${d.status === 'disabled' ? 'כובה' : 'הופעל'} ✓`, 'success');
+    await acLoadAgents();
+    if (acCurrent && acCurrent.id === id) acSelect(id);
+  } catch(e) { showToast(e.message); }
+}
+
+async function acSetRisk(id, level) {
+  try {
+    const r = await fetch(`/progress-map/agents/${id}/risk`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ riskLevel: level }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'נכשל');
+    showToast(`רמת סיכון עודכנה ל-${level} ✓`, 'success');
+    await acLoadAgents();
+    if (acCurrent && acCurrent.id === id) acSelect(id);
+  } catch(e) { showToast(e.message); }
 }
 
 function acFilter(q) {
@@ -1256,6 +1309,23 @@ function acHeaderCard(a) {
     </div>
     <div class="ac-mission" id="acm-${a.id}">${a.mission}</div>
     <button class="ac-expbtn" onclick="acTogMission('${a.id}')">הצג עוד ▾</button>
+    ${acControlsHtml(a)}
+  </div>`;
+}
+
+function acControlsHtml(a) {
+  const isProtected = AC_PROTECTED.includes(a.id);
+  const isDisabled = a.status === 'disabled';
+  const toggleBtn = isProtected
+    ? `<button class="ac-ctrl-btn" disabled title="סוכן ליבה — לא ניתן לכיבוי" style="opacity:.45;cursor:not-allowed">🔒 סוכן ליבה</button>`
+    : `<button class="ac-ctrl-btn ${isDisabled ? 'on' : 'off'}" onclick="acToggle('${a.id}')">${isDisabled ? '▶ הפעל סוכן' : '⏸ כבה סוכן'}</button>`;
+  const riskChips = ['low','medium','high'].map(r =>
+    `<button class="ac-risk-set ${a.risk===r?'sel':''}" onclick="acSetRisk('${a.id}','${r}')">${({low:'נמוך',medium:'בינוני',high:'גבוה'})[r]}</button>`
+  ).join('');
+  return `<div class="ac-controls">
+    <div class="ac-ctrl-row">${toggleBtn}<span class="ac-ctrl-status ${isDisabled?'na':'ok'}">${isDisabled?'● כבוי':'● פעיל'}</span></div>
+    <div class="ac-ctrl-label">רמת סיכון</div>
+    <div class="ac-risk-row">${riskChips}</div>
   </div>`;
 }
 
@@ -1347,9 +1417,15 @@ function acRenderSVG(a) {
 
 function acDashTab(a) {
   const d = a.dashboard||{};
-  const ms = [{n:d.tasksHandled,l:'פניות'},{n:d.failures,l:'שגיאות'},{n:d.avgLatency,l:'זמן תגובה'},{n:d.confidence,l:'ביטחון'},{n:d.lastActive,l:'פעיל'}];
-  return `<div class="ac-dash-grid">${ms.map(m=>`<div class="ac-metric"><div class="n ${m.n==='unknown'?'na':''}">${m.n==='unknown'?'—':m.n}</div><div class="l">${m.l}</div></div>`).join('')}</div>
-    <div class="ac-act-empty">אין נתוני פעילות — נדרשת אינסטרומנטציה</div>`;
+  const live = acMetrics[a.id];
+  const latency = live ? `${live.avgMs}ms` : d.avgLatency;
+  const calls = live ? live.count : d.tasksHandled;
+  const ms = [{n:calls,l:'פניות'},{n:d.failures,l:'שגיאות'},{n:latency,l:'זמן תגובה'},{n:d.confidence,l:'ביטחון'},{n:d.lastActive,l:'פעיל'}];
+  const footer = live
+    ? `<div class="ac-act-empty">מדדים חיים מ-24 השעות האחרונות (${live.count} פניות)</div>`
+    : `<div class="ac-act-empty">אין עדיין מדידות לסוכן זה</div>`;
+  return `<div class="ac-dash-grid">${ms.map(m=>`<div class="ac-metric"><div class="n ${m.n==='unknown'||m.n==null?'na':''}">${m.n==='unknown'||m.n==null?'—':m.n}</div><div class="l">${m.l}</div></div>`).join('')}</div>
+    ${footer}`;
 }
 
 function acBuilderHtml(a) {

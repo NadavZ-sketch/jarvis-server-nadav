@@ -365,6 +365,65 @@ class ApiService {
 
   // ─── Agents ───────────────────────────────────────────────────────────────
 
+  Future<Map<String, dynamic>> healthCheck() async {
+    final res = await _client.get(_uri('/health'), headers: _baseHeaders).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<void> triggerE2E() async {
+    final res = await _client.post(
+      _uri('/e2e/trigger'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({}),
+    ).timeout(_timeout);
+    _safeBody(res);
+  }
+
+  /// Enables/disables an agent. Pass [status] explicitly or omit to toggle.
+  Future<Map<String, dynamic>> toggleAgent(String id, {String? status}) async {
+    final res = await _client.post(
+      _uri('/progress-map/agents/$id/toggle'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode(status != null ? {'status': status} : {}),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> setAgentRisk(String id, String riskLevel) async {
+    final res = await _client.post(
+      _uri('/progress-map/agents/$id/risk'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'riskLevel': riskLevel}),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  /// Live per-agent latency (avgMs/count) + intent-classification ratio.
+  Future<Map<String, dynamic>> getAgentMetrics() async {
+    final res = await _client.get(_uri('/progress-map/metrics'), headers: _baseHeaders).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getBacklog() async {
+    final res = await _client.get(_uri('/dashboard/backlog'), headers: _baseHeaders).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res));
+    if (data is List) return List<Map<String, dynamic>>.from(data);
+    if (data is Map<String, dynamic>) {
+      return List<Map<String, dynamic>>.from(data['items'] ?? data['backlog'] ?? []);
+    }
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> generateBacklog() async {
+    final res = await _client.post(
+      _uri('/dashboard/backlog/generate'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({}),
+    ).timeout(const Duration(seconds: 45));
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+  }
+
   Future<List<Map<String, dynamic>>> getAgents() async {
     final res = await _client
         .get(_uri('/progress-map/agents'))

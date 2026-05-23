@@ -2,7 +2,7 @@
 
 const express = require('express');
 const path = require('path');
-const { getAgentRegistry, setAgentStatus } = require('../services/agentRegistryService');
+const { getAgentRegistry, setAgentStatus, setAgentRisk, isProtectedAgent } = require('../services/agentRegistryService');
 
 function detectCategory(text) {
   const t = text.toLowerCase();
@@ -40,7 +40,7 @@ const RISK_SIGNAL_LABELS = {
   high_risk_agent: 'סוכן בסיכון גבוה',
 };
 
-function createAgentCenterRouter({ callGemma4 }) {
+function createAgentCenterRouter({ callGemma4, agentMetrics }) {
   const router = express.Router();
 
   router.get('/', (_req, res) => {
@@ -76,6 +76,30 @@ function createAgentCenterRouter({ callGemma4 }) {
       res.json({ id: agentId, status: nextStatus, updatedAt: override.updatedAt });
     } catch (err) {
       res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Set an agent's risk level (low|medium|high). Persisted as an override.
+  router.post('/agents/:id/risk', (req, res) => {
+    try {
+      const agentId = req.params.id;
+      const registry = getAgentRegistry();
+      if (!registry.find(a => a.id === agentId)) return res.status(404).json({ error: 'agent not found' });
+      const riskLevel = req.body && req.body.riskLevel;
+      const override = setAgentRisk(agentId, riskLevel);
+      res.json({ id: agentId, riskLevel, updatedAt: override.updatedAt });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Live per-agent latency + intent-classification metrics.
+  router.get('/metrics', async (_req, res) => {
+    try {
+      const snap = agentMetrics ? await agentMetrics.snapshot() : { latency: [], intent: { fast: 0, llm: 0 } };
+      res.json(snap);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
   });
 

@@ -24,12 +24,33 @@ function writeStatusOverrides(map) {
   } catch (e) { return false; }
 }
 
+// Core agents whose dispatch path the whole app depends on — never disablable.
+const PROTECTED_AGENT_IDS = ['router', 'chatAgent'];
+
+function isProtectedAgent(agentId) {
+  return PROTECTED_AGENT_IDS.includes(agentId);
+}
+
 function setAgentStatus(agentId, status) {
   if (!agentId) throw new Error('agentId required');
   if (!['active', 'disabled'].includes(status)) throw new Error('status must be active|disabled');
+  if (status === 'disabled' && isProtectedAgent(agentId)) {
+    throw new Error('סוכן ליבה — לא ניתן לכיבוי');
+  }
   const overrides = readStatusOverrides();
-  overrides[agentId] = { status, updatedAt: new Date().toISOString() };
+  const prev = overrides[agentId] || {};
+  overrides[agentId] = { ...prev, status, updatedAt: new Date().toISOString() };
   if (!writeStatusOverrides(overrides)) throw new Error('failed to persist status override');
+  return overrides[agentId];
+}
+
+function setAgentRisk(agentId, riskLevel) {
+  if (!agentId) throw new Error('agentId required');
+  if (!['low', 'medium', 'high'].includes(riskLevel)) throw new Error('riskLevel must be low|medium|high');
+  const overrides = readStatusOverrides();
+  const prev = overrides[agentId] || {};
+  overrides[agentId] = { ...prev, riskLevel, updatedAt: new Date().toISOString() };
+  if (!writeStatusOverrides(overrides)) throw new Error('failed to persist risk override');
   return overrides[agentId];
 }
 
@@ -443,10 +464,16 @@ function getAgentRegistry() {
   const overrides = readStatusOverrides();
   const applyOverride = (agent) => {
     const ov = overrides[agent.id];
-    if (ov && (ov.status === 'active' || ov.status === 'disabled')) {
-      return { ...agent, status: ov.status, statusUpdatedAt: ov.updatedAt };
+    if (!ov) return agent;
+    const next = { ...agent };
+    if (ov.status === 'active' || ov.status === 'disabled') {
+      next.status = ov.status;
+      next.statusUpdatedAt = ov.updatedAt;
     }
-    return agent;
+    if (['low', 'medium', 'high'].includes(ov.riskLevel)) {
+      next.risk = ov.riskLevel;
+    }
+    return next;
   };
   const agents = STATIC_AGENTS.map(applyOverride);
   try {
@@ -478,6 +505,7 @@ function getAgentRegistry() {
           autonomy: c.autonomy || 40,
           status: (ov && (ov.status === 'active' || ov.status === 'disabled')) ? ov.status : baseStatus,
           statusUpdatedAt: ov ? ov.updatedAt : undefined,
+          ...(ov && ['low', 'medium', 'high'].includes(ov.riskLevel) ? { risk: ov.riskLevel } : {}),
           connections: c.connections || [],
           dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
           });
@@ -488,4 +516,4 @@ function getAgentRegistry() {
   return agents;
 }
 
-module.exports = { getAgentRegistry, setAgentStatus };
+module.exports = { getAgentRegistry, setAgentStatus, setAgentRisk, isProtectedAgent, PROTECTED_AGENT_IDS };

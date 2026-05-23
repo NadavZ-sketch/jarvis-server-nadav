@@ -1,3 +1,4 @@
 node_modules/
 .env
 .claude/worktrees/
+agents/custom/agent-status.json

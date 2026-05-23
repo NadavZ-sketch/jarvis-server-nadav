@@ -5,8 +5,6 @@ import '../app_settings.dart';
 import '../settings_screen.dart';
 import '../history_screen.dart';
 import '../transitions/slide_fade_route.dart';
-import 'control_center_preview_screen.dart';
-import 'smart_productivity_preview_screen.dart';
 import 'progress_map_screen.dart';
 import 'lists_screen.dart';
 
@@ -129,7 +127,7 @@ class AppDrawer extends StatelessWidget {
               children: [
                 _DrawerTile(
                   icon: Icons.insights_rounded,
-                  label: 'מרכז שליטה',
+                  label: 'מפת התקדמות',
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -194,56 +192,6 @@ class AppDrawer extends StatelessWidget {
                   label: 'יציאה',
                   onTap: () => _confirmExit(context),
                 ),
-
-                // ── מעבדת Jarvis ─────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-                  child: Row(
-                    textDirection: TextDirection.rtl,
-                    children: [
-                      const Icon(Icons.science_outlined, size: 13, color: Color(0xFF60A5FA)),
-                      const SizedBox(width: 6),
-                      const Text(
-                        'מעבדת Jarvis',
-                        style: TextStyle(
-                          color: Color(0xFF60A5FA),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          fontFamily: 'Heebo',
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _DrawerTile(
-                  icon: Icons.hub_rounded,
-                  label: 'מרכז שליטה · Preview',
-                  trailing: _PreviewBadge(),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      SlideFadeRoute(
-                        page: ControlCenterPreviewScreen(settings: settings),
-                      ),
-                    );
-                  },
-                ),
-                _DrawerTile(
-                  icon: Icons.auto_awesome_rounded,
-                  label: 'מנהל יום חכם · Preview',
-                  trailing: _PreviewBadge(),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      SlideFadeRoute(
-                        page: SmartProductivityPreviewScreen(settings: settings),
-                      ),
-                    );
-                  },
-                ),
               ],
             ),
           ),
@@ -268,29 +216,6 @@ class AppDrawer extends StatelessWidget {
           ),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
         ],
-      ),
-    );
-  }
-}
-
-class _PreviewBadge extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2E4A),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: JC.blue500, width: 0.6),
-      ),
-      child: const Text(
-        'Preview',
-        style: TextStyle(
-          color: Color(0xFF60A5FA),
-          fontSize: 10,
-          fontFamily: 'Heebo',
-          fontWeight: FontWeight.w600,
-        ),
       ),
     );
   }

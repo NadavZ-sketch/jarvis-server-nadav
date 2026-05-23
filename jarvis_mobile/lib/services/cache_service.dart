@@ -2,6 +2,24 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class CacheService {
+  static Future<void> save(String key, Map<String, dynamic> data) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cache_$key', jsonEncode(data));
+    } catch (_) {}
+  }
+
+  static Future<Map<String, dynamic>?> load(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final str = prefs.getString('cache_$key');
+      if (str == null) return null;
+      return Map<String, dynamic>.from(jsonDecode(str) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> saveList(
       String key, List<Map<String, dynamic>> items) async {
     try {

@@ -122,6 +122,13 @@ class ApiService {
   }
 
   // Smart Day Engine: scored, prioritized, load-aware day plan.
+  Future<Map<String, dynamic>> getDashboardContext() async {
+    final res = await _client
+        .get(_uri('/dashboard-context'), headers: _baseHeaders)
+        .timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> getDayPlan() async {
     final name = Uri.encodeQueryComponent(settings.userName);
     final res = await _client

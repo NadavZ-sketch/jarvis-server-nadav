@@ -5,7 +5,7 @@ import 'main.dart' show JC, ChatScreen;
 import 'app_settings.dart';
 import 'widgets/animated_indexed_stack.dart';
 import 'screens/app_drawer.dart';
-import 'screens/dashboard_screen.dart';
+import 'screens/smart_home_screen.dart';
 import 'screens/productivity_screen.dart';
 import 'screens/control_center_preview_screen.dart';
 import 'services/api_service.dart';
@@ -158,11 +158,12 @@ class _MainShellState extends State<MainShell> {
             index: _selectedIndex,
             enabled: _settings.animationsEnabled,
             children: [
-              // 0 — Dashboard (home)
-              DashboardScreen(
+              // 0 — Smart Home Dashboard
+              SmartHomeScreen(
                 settings: _settings,
                 onNavigate: _onTabTapped,
                 onOpenDrawer: _openDrawer,
+                onOpenChat: () => _onTabTapped(1),
               ),
               // 1 — Chat (main screen)
               ChatScreen(

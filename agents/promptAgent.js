@@ -26,80 +26,187 @@ function detectIntent(userMessage) {
     return 'create';
 }
 
-// ── Create: build a complete prompt from a use-case description ────────────
-async function createPrompt(userMessage, useLocal) {
-    const systemPrompt = `אתה מומחה הנדסת פרומפטים (Prompt Engineering) עם ניסיון ב-Claude, GPT-4 ו-Gemini.
-תפקידך: לקבל תיאור של מקרה שימוש וליצור פרומפט מקצועי, ברור ואפקטיבי.
-
-עקרונות שאתה מיישם בכל פרומפט שאתה בונה:
-1. פרסונה/תפקיד ברור ("אתה X עם ניסיון ב-Y...")
-2. הקשר ומטרה מוגדרים היטב
-3. הנחיות ספציפיות, ממוספרות
-4. פורמט פלט מדויק (מה ה-AI אמור להחזיר)
-5. אילוצים ומגבלות (מה לא לעשות)
-6. Chain-of-thought אם הבעיה מורכבת ("חשוב שלב אחר שלב...")
-7. דוגמאות (few-shot) כשיש ערך ממשי
-
-פורמט התגובה חייב להיות:
-📋 **[כותרת הפרומפט]**
-
-\`\`\`
-[הפרומפט המלא כאן — מוכן להעתקה]
-\`\`\`
-
-💡 **מה בניתי ולמה:** [הסבר קצר 2-3 משפטים על הבחירות שעשית]`;
-
-    const answer = await callGemma4([
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `בנה פרומפט מקצועי עבור: ${userMessage}` },
-    ], useLocal, 1200);
-
-    return { answer, action: { type: 'prompt_created' } };
+// ── Option extraction: read signals from the user's free-text request ──────
+// Inspired by the React UI's advanced strategy panel — but applied automatically
+// from natural language instead of requiring the user to toggle switches.
+function parseOptions(userMessage) {
+    const msg = userMessage.toLowerCase();
+    return {
+        // Target model → affects whether we use XML tags or bold markdown headings
+        targetClaude: /claude|קלוד|xml/i.test(msg),
+        // Prompt engineering techniques
+        fewShot:    /דוגמ|few.?shot|example|לדוגמ|instance/i.test(msg),
+        constraints:/אל ת|לא ת|ללא|אסור|הגבל|constrain|negative|קו אדום|avoid|without/i.test(msg),
+        scratchpad: /חשוב שלב|step.?by.?step|scratchpad|chain.?of.?thought|cot|נמק|פרט את/i.test(msg),
+        chaining:   /שרשור|שלבים|שני פרומפט|מספר פרומפט|pipeline|chain|מורכב מאוד|complex/i.test(msg),
+        multiRole:  /\+|ו?גם|יחד עם|שילוב.*תפקיד|multi.?persona/i.test(msg),
+    };
 }
 
-// ── Refine: improve an existing prompt ────────────────────────────────────
+// ── Build the dynamic system instruction based on detected options ──────────
+function buildCreateSystemPrompt(opts) {
+    const structureRule = opts.targetClaude
+        ? `השתמש בתגיות XML להפרדת סעיפים (<role>, <context>, <instructions>, <output_format>, <constraints>). זה קריטי — Claude מותאם ל-XML ומבצע הנחיות XML-structured טוב יותר.`
+        : `השתמש בכותרות מודגשות בעברית (למשל: **תפקיד:**, **מטרה:**, **הנחיות:**). אל תשתמש ב-XML.`;
+
+    const fewShotRule = opts.fewShot
+        ? `✅ חובה: ייצר ושתול 1-2 דוגמאות פלט (few-shot examples) שממחישות תוצאה טובה. הצג אותן תחת כותרת "דוגמאות:".`
+        : '';
+
+    const constraintRule = opts.constraints
+        ? `✅ חובה: כלול סעיף "אילוצים / מה לא לעשות:" עם לפחות 3 קווים אדומים ברורים.`
+        : '';
+
+    const scratchpadRule = opts.scratchpad
+        ? `✅ חובה: הוסף בסוף הפרומפט הנחיה מפורשת: "לפני תשובתך הסופית, פתח אזור חשיבה (<thinking> או ###) ונתח את הבעיה שלב אחר שלב."`
+        : '';
+
+    const chainingRule = opts.chaining
+        ? `✅ חובה: אל תייצר פרומפט אחד ארוך! חלק את המשימה לשרשרת פרומפטים (Prompt Chain) עם כותרות: "פרומפט 1:", "פרומפט 2:" וכו׳.`
+        : '';
+
+    const multiRoleRule = opts.multiRole
+        ? `✅ שים לב: יש לשלב יותר מפרסונה אחת. הצג אותן כ"צוות מומחים" ולא כאדם אחד כדי למנוע בלבול אצל המודל.`
+        : '';
+
+    const techApplied = [
+        opts.fewShot ? 'few-shot examples' : '',
+        opts.constraints ? 'negative constraints' : '',
+        opts.scratchpad ? 'CoT scratchpad' : '',
+        opts.chaining ? 'prompt chaining' : '',
+        opts.multiRole ? 'multi-persona blending' : '',
+    ].filter(Boolean);
+
+    return {
+        system: `אתה "Prompt Architect" — מהנדס פרומפטים ברמת מומחה-על.
+מטרתך: לבנות פרומפטים אטומי-טעויות, ברורים ומדויקים.
+
+─── כללי מבנה ───
+${structureRule}
+${fewShotRule}
+${constraintRule}
+${scratchpadRule}
+${chainingRule}
+${multiRoleRule}
+
+─── כללים נוספים (תמיד) ───
+- הוסף "נתיב מילוט" — הנחיות כיצד לנהוג במקרי קצה לא צפויים.
+- פרסונה ברורה: "אתה X עם ניסיון של Y שנים ב-Z..."
+- הנחיות ממוספרות, לא פסקאות גוש.
+- פורמט פלט מוגדר במדויק.
+
+─── פורמט תגובה (קשיח) ───
+<strategy>
+[ניתוח 3-4 משפטים: מהי הגישה שנבחרה ולמה, אילו טכניקות מיושמות]
+</strategy>
+<prompt>
+[הפרומפט הסופי המלא — מוכן להעתקה]
+</prompt>`,
+        techApplied,
+    };
+}
+
+// ── Parse strategy + prompt from LLM output ───────────────────────────────
+function parseStrategyAndPrompt(rawText) {
+    const strategyMatch = rawText.match(/<strategy>([\s\S]*?)<\/strategy>/i);
+    const promptMatch   = rawText.match(/<prompt>([\s\S]*?)<\/prompt>/i);
+    return {
+        strategy: strategyMatch?.[1]?.trim() || '',
+        prompt:   promptMatch?.[1]?.trim() || rawText.trim(),
+    };
+}
+
+// ── Format the final answer presented to the user ─────────────────────────
+function formatCreateAnswer(title, strategy, prompt, techApplied) {
+    const techLine = techApplied.length > 0
+        ? `\n⚙️ **טכניקות שיושמו:** ${techApplied.join(' · ')}`
+        : '';
+
+    const strategyBlock = strategy
+        ? `\n🧠 **אסטרטגיה:** ${strategy}\n`
+        : '';
+
+    return `📋 **${title || 'הפרומפט שלך'}**
+${strategyBlock}${techLine}
+
+\`\`\`
+${prompt}
+\`\`\``;
+}
+
+// ── Create: build a complete prompt from a use-case description ────────────
+async function createPrompt(userMessage, useLocal) {
+    const opts = parseOptions(userMessage);
+    const { system, techApplied } = buildCreateSystemPrompt(opts);
+
+    const raw = await callGemma4([
+        { role: 'system', content: system },
+        { role: 'user',   content: `בנה פרומפט מקצועי עבור המקרה הבא:\n\n${userMessage}` },
+    ], useLocal, 1400);
+
+    const { strategy, prompt } = parseStrategyAndPrompt(raw);
+
+    // Extract title: first meaningful line of the prompt
+    const titleLine = prompt.split('\n').find(l => l.trim().length > 3) || 'הפרומפט שלך';
+    const title = titleLine.replace(/^[#*\-<>]+/, '').slice(0, 50).trim();
+
+    return {
+        answer: formatCreateAnswer(title, strategy, prompt, techApplied),
+        action: { type: 'prompt_created' },
+    };
+}
+
+// ── Refine: Evaluate & Repair methodology ────────────────────────────────
+// Inspired by the React component's "improvePrompt" — not just "improve",
+// but explicitly find logical holes then patch them.
 async function refinePrompt(userMessage, useLocal) {
-    const systemPrompt = `אתה מומחה הנדסת פרומפטים. קיבלת פרומפט קיים לשיפור.
+    const opts = parseOptions(userMessage);
+    const structInstr = opts.targetClaude
+        ? 'השתמש בתגיות XML כנדרש ב-Claude.'
+        : 'השתמש בכותרות מודגשות בעברית. אל תשתמש ב-XML.';
 
-שפר אותו על ידי:
-1. הוספת פרסונה ברורה אם חסרה
-2. ביטול עמימות — כל הנחיה חייבת להיות חד-משמעית
-3. הגדרת פורמט פלט אם לא קיים
-4. הוספת Chain-of-thought אם הבעיה מורכבת
-5. הסרת כפילויות ומיותרות
-6. הוספת דוגמאות (few-shot) אם עוזרות
+    const system = `אתה מהנדס פרומפטים המיישם שיטת "Evaluate & Repair".
 
-פורמט התגובה:
-✅ **הפרומפט המשופר:**
+שלב 1 — הערכה: מצא בפרומפט הנתון:
+- עמימות (מה יכול להתפרש בטעות?)
+- חורים לוגיים (מה לא הוגדר ויגרום לסטייה?)
+- פרסונה חלשה / חסרת הקשר
+- היעדר פורמט פלט ברור
+- היעדר נתיב מילוט למקרי קצה
+
+שלב 2 — תיקון: שכתב את הפרומפט כך שיהיה אטום לכשלים שמצאת.
+${structInstr}
+
+פורמט תגובה:
+🔍 **חורים שמצאתי:**
+- [חור 1]
+- [חור 2]
+
+✅ **הפרומפט לאחר Evaluate & Repair:**
 
 \`\`\`
-[פרומפט משופר כאן]
-\`\`\`
-
-🔄 **השינויים שעשיתי:**
-- [שינוי 1 — למה]
-- [שינוי 2 — למה]`;
+[הפרומפט המתוקן]
+\`\`\``;
 
     const answer = await callGemma4([
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-    ], useLocal, 1200);
+        { role: 'system', content: system },
+        { role: 'user',   content: userMessage },
+    ], useLocal, 1400);
 
     return { answer };
 }
 
 // ── Evaluate: score and critique a prompt ─────────────────────────────────
 async function evaluatePrompt(userMessage, useLocal) {
-    const systemPrompt = `אתה מעריך פרומפטים מקצועי. נתח את הפרומפט שניתן לך.
+    const system = `אתה מעריך פרומפטים מקצועי. נתח את הפרומפט שניתן לך לפי חמישה קריטריונים (ציון 1-10):
 
-הערך לפי חמישה קריטריונים (ציון 1-10 לכל אחד):
 1. **בהירות** — האם ההנחיות ברורות וחד-משמעיות?
 2. **ספציפיות** — האם המטרה מוגדרת מספיק?
-3. **מבנה** — האם יש פרסונה, הנחיות, ופורמט פלט?
-4. **שלמות** — האם יש מספיק הקשר?
-5. **יעילות** — האם הפרומפט תמציתי אך מלא?
+3. **מבנה** — האם יש פרסונה, הנחיות ממוספרות, ופורמט פלט?
+4. **שלמות** — האם יש הקשר מספק ונתיב מילוט?
+5. **יעילות** — האם הפרומפט תמציתי אך מלא (ללא עודפות)?
 
-פורמט התגובה:
+פורמט תגובה:
 📊 **הערכת הפרומפט:**
 
 | קריטריון | ציון | הערה |
@@ -118,12 +225,12 @@ async function evaluatePrompt(userMessage, useLocal) {
 🟢 **נקודות חוזקה:**
 - ...
 
-💡 **המלצות לשיפור:**
+💡 **המלצות ספציפיות לשיפור:**
 - ...`;
 
     const answer = await callGemma4([
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `הערך את הפרומפט הבא:\n\n${userMessage}` },
+        { role: 'system', content: system },
+        { role: 'user',   content: `הערך את הפרומפט הבא:\n\n${userMessage}` },
     ], useLocal, 1000);
 
     return { answer };
@@ -151,7 +258,7 @@ Message: ${userMessage}`;
             promptText = parsed.prompt || promptText;
             category = parsed.category || category;
         }
-    } catch (parseErr) {
+    } catch {
         console.warn('PromptAgent save: JSON parse failed, using raw message');
     }
 
@@ -217,4 +324,4 @@ async function runPromptAgent(userMessage, supabase, useLocal, settings = {}) {
     }
 }
 
-module.exports = { runPromptAgent, detectIntent };
+module.exports = { runPromptAgent, detectIntent, parseOptions };

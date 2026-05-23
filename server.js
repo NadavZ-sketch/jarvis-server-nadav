@@ -926,12 +926,7 @@ app.get('/user-profile', async (_req, res) => {
 
 app.post('/user-profile', async (req, res) => {
     try {
-        const {
-            speaking_tone = 'friendly',
-            preferred_hours = [],
-            interests = [],
-            recurring_tasks = [],
-        } = req.body || {};
+        const rawBody = req.body || {};
 
         const sanitizeList = (v, max = 20) => Array.isArray(v)
             ? v.map(x => String(x).trim()).filter(Boolean).slice(0, max)
@@ -942,22 +937,54 @@ app.post('/user-profile', async (req, res) => {
         // Track which fields the user explicitly set, so auto-learning never
         // overwrites them. Accumulated across saves (a field stays user-owned
         // once touched).
-        const rawBody = req.body || {};
         const existingAuto = (existing && typeof existing.auto_learned === 'object' && existing.auto_learned) || {};
         const userOverridden = new Set(Array.isArray(existingAuto.user_overridden) ? existingAuto.user_overridden : []);
-        if (rawBody.speaking_tone && String(rawBody.speaking_tone).trim()) userOverridden.add('speaking_tone');
-        for (const key of ['preferred_hours', 'interests', 'recurring_tasks']) {
-            if (Array.isArray(rawBody[key]) && rawBody[key].length > 0) userOverridden.add(key);
+
+        // Only update fields that are explicitly present in the request body
+        // (partial update). This lets settings_screen sync only identity fields
+        // without wiping the learned profile fields, and vice-versa.
+        const payload = { updated_at: new Date().toISOString() };
+
+        if ('speaking_tone' in rawBody) {
+            const v = String(rawBody.speaking_tone || 'friendly').trim();
+            if (v) userOverridden.add('speaking_tone');
+            payload.speaking_tone = v.slice(0, 40) || 'friendly';
+        }
+        if ('preferred_hours' in rawBody) {
+            if (Array.isArray(rawBody.preferred_hours) && rawBody.preferred_hours.length > 0) userOverridden.add('preferred_hours');
+            payload.preferred_hours = sanitizeList(rawBody.preferred_hours, 8);
+        }
+        if ('interests' in rawBody) {
+            if (Array.isArray(rawBody.interests) && rawBody.interests.length > 0) userOverridden.add('interests');
+            payload.interests = sanitizeList(rawBody.interests, 20);
+        }
+        if ('recurring_tasks' in rawBody) {
+            if (Array.isArray(rawBody.recurring_tasks) && rawBody.recurring_tasks.length > 0) userOverridden.add('recurring_tasks');
+            payload.recurring_tasks = sanitizeList(rawBody.recurring_tasks, 20);
         }
 
-        const payload = {
-            speaking_tone: String(speaking_tone || 'friendly').trim().slice(0, 40),
-            preferred_hours: sanitizeList(preferred_hours, 8),
-            interests: sanitizeList(interests, 20),
-            recurring_tasks: sanitizeList(recurring_tasks, 20),
-            auto_learned: { ...existingAuto, user_overridden: Array.from(userOverridden) },
-            updated_at: new Date().toISOString(),
-        };
+        // Identity fields — synced from the mobile settings screen so they
+        // survive device reinstalls and device switches.
+        const VALID_GENDERS      = ['male', 'female'];
+        const VALID_PERSONALITIES = ['friendly', 'formal', 'concise', 'humorous'];
+        if ('user_name' in rawBody && rawBody.user_name) {
+            payload.user_name = String(rawBody.user_name).trim().slice(0, 50);
+            userOverridden.add('user_name');
+        }
+        if ('assistant_name' in rawBody && rawBody.assistant_name) {
+            payload.assistant_name = String(rawBody.assistant_name).trim().slice(0, 50);
+            userOverridden.add('assistant_name');
+        }
+        if ('gender' in rawBody && VALID_GENDERS.includes(rawBody.gender)) {
+            payload.gender = rawBody.gender;
+            userOverridden.add('gender');
+        }
+        if ('personality' in rawBody && VALID_PERSONALITIES.includes(rawBody.personality)) {
+            payload.personality = rawBody.personality;
+            userOverridden.add('personality');
+        }
+
+        payload.auto_learned = { ...existingAuto, user_overridden: Array.from(userOverridden) };
 
         let result;
         if (existing?.id) {

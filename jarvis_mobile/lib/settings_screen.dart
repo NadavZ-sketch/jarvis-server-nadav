@@ -194,6 +194,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
     _s.localModelName = _localModelCtrl.text.trim().isEmpty    ? 'llama3'                     : _localModelCtrl.text.trim();
     widget.onSave(_s);
+    // Fire-and-forget: sync identity fields to Supabase so they survive
+    // device reinstalls. SharedPreferences remains the source of truth locally.
+    ApiService(_s).saveUserProfile(
+      userName:      _s.userName,
+      assistantName: _s.assistantName,
+      gender:        _s.gender,
+      personality:   _s.personality,
+    ).catchError((_) {});
     Navigator.pop(context);
   }
 

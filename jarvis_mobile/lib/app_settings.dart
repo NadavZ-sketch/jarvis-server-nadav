@@ -1,4 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'theme/jarvis_theme.dart';
 
 class AppSettings {
@@ -74,14 +76,48 @@ class AppSettings {
     return AppTheme.navyDark;
   }
 
+  // Fetch identity fields from the server (best-effort, used on fresh install).
+  static Future<Map<String, String>?> _fetchServerIdentity(String serverUrl) async {
+    try {
+      final res = await http
+          .get(Uri.parse('$serverUrl/user-profile'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final profile = data['profile'] as Map<String, dynamic>?;
+      if (profile == null) return null;
+      return {
+        if (profile['user_name']      is String) 'userName':      profile['user_name']      as String,
+        if (profile['assistant_name'] is String) 'assistantName': profile['assistant_name'] as String,
+        if (profile['gender']         is String) 'gender':        profile['gender']         as String,
+        if (profile['personality']    is String) 'personality':   profile['personality']    as String,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<AppSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // On a fresh install none of the identity keys exist in SharedPreferences.
+    // In that case, try to recover them from the server profile so the user
+    // doesn't have to re-enter their name/personality after switching devices.
+    final isFirstLoad = prefs.getString('userName') == null;
+    Map<String, String>? serverIdentity;
+    if (isFirstLoad) {
+      final useLocal = prefs.getBool('useLocalServer') ?? false;
+      final localUrl = prefs.getString('localServerUrl') ?? 'http://192.168.1.100:3000';
+      const cloudUrl = cloudServerUrl;
+      serverIdentity = await _fetchServerIdentity(useLocal ? localUrl : cloudUrl);
+    }
+
     return AppSettings(
-      assistantName:    prefs.getString('assistantName')    ?? 'Jarvis',
-      gender:           prefs.getString('gender')           ?? 'male',
-      personality:      prefs.getString('personality')      ?? 'friendly',
+      assistantName:    prefs.getString('assistantName')    ?? serverIdentity?['assistantName'] ?? 'Jarvis',
+      gender:           prefs.getString('gender')           ?? serverIdentity?['gender']         ?? 'male',
+      personality:      prefs.getString('personality')      ?? serverIdentity?['personality']    ?? 'friendly',
       voiceEnabled:     prefs.getBool('voiceEnabled')       ?? true,
-      userName:         prefs.getString('userName')         ?? 'נדב',
+      userName:         prefs.getString('userName')         ?? serverIdentity?['userName']       ?? 'נדב',
       useLocalModel:    prefs.getBool('useLocalModel')      ?? false,
       useLocalServer:   prefs.getBool('useLocalServer')     ?? false,
       localServerUrl:   prefs.getString('localServerUrl')   ?? 'http://192.168.1.100:3000',

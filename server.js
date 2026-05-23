@@ -632,8 +632,11 @@ async function askJarvisHandler(req, res) {
         }
 
         // Follow-up override: if the user is continuing a previous conversation,
-        // route to chat even if keywords matched a specialized agent
-        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'task', 'insight', 'security', 'e2e', 'factory'];
+        // route to chat even if keywords matched a specialized agent.
+        // Actionable agents (task/reminder/notes) are intentionally excluded:
+        // "הוסף משימה" must always execute, never get re-routed to chat where
+        // it would only be discussed instead of performed.
+        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'insight', 'security', 'e2e', 'factory'];
         if (CONTEXT_OVERRIDE_AGENTS.includes(agentName)) {
             const tempHistory = await loadChatHistory(chatId); // uses TTL cache — cheap
             if (detectFollowUp(userMessage, tempHistory)) {
@@ -1025,8 +1028,9 @@ app.get('/survey-check', async (req, res) => {
         const calls = parseInt(agentCallCount) || 0;
         const forced = force === 'true' || force === '1';
 
-        // Trigger survey after 20+ minutes OR 3+ agent calls (or forced by user)
-        const shouldShowSurvey = forced || minutes >= 20 || calls >= 3;
+        // Trigger survey after 25+ minutes OR 8+ agent calls (or forced by user).
+        // Higher thresholds keep the survey from interrupting short, active sessions.
+        const shouldShowSurvey = forced || minutes >= 25 || calls >= 8;
         if (!shouldShowSurvey) return res.json({ showSurvey: false });
 
         // Cooldown + recent-question exclusion (requires userName).
@@ -2270,15 +2274,28 @@ async function streamJarvisHandler(req, res) {
             return;
         }
 
-        // Only chat/draft agents support streaming — others fall back to regular
+        // Only chat/draft agents stream token-by-token. Everything else runs to
+        // completion and is sent as a single chunk — including the actionable
+        // agents (task/reminder/notes/...), which MUST execute here too. Before,
+        // any agent without an explicit branch fell through to runChatAgent, so
+        // "הוסף משימה" got discussed by the chat model instead of being created.
         if (!['chat', 'draft'].includes(agentName)) {
             let result;
-            if (agentName === 'weather')   result = await runWeatherAgent(userMessage);
-            else if (agentName === 'news') result = await runNewsAgent(userMessage);
+            if (agentName === 'weather')   result = await runWeatherAgent(userMessage, settings);
+            else if (agentName === 'news') result = await runNewsAgent(userMessage, settings);
             else if (agentName === 'stocks') result = await runStocksAgent(userMessage);
             else if (agentName === 'translate') result = await runTranslationAgent(userMessage, supabase, useLocal);
             else if (agentName === 'factory') result = await runAgentFactoryAgent(userMessage, supabase, useLocal, settings);
             else if (agentName === 'insight') result = await runInsightAgent(userMessage, supabase, useLocal, settings);
+            else if (agentName === 'task') result = await runTaskAgent(userMessage, supabase, useLocal, settings);
+            else if (agentName === 'reminder') result = await runReminderAgent(userMessage, supabase);
+            else if (agentName === 'memory') { result = await runMemoryAgent(userMessage, supabase, useLocal, settings); cacheInvalidate('memories'); }
+            else if (agentName === 'shopping') result = await runShoppingAgent(userMessage, supabase, useLocal);
+            else if (agentName === 'notes') result = await runNotesAgent(userMessage, supabase, useLocal);
+            else if (agentName === 'music') result = await runMusicAgent(userMessage, supabase, useLocal, settings);
+            else if (agentName === 'sports') result = await runSportsAgent(userMessage);
+            else if (agentName === 'messaging') result = await runMessagingAgent(userMessage, supabase, useLocal);
+            else if (agentName === 'calendar') result = await runCalendarAgent(userMessage, supabase, settings);
             else {
                 const [chatHistory, longTermMemories] = await Promise.all([
                     loadChatHistory(chatId), fetchLongTermMemories()
@@ -2286,11 +2303,18 @@ async function streamJarvisHandler(req, res) {
                 result = await runChatAgent(userMessage, null, chatHistory, longTermMemories, settings);
             }
             const answer = result.answer || '';
-            send({ chunk: answer, done: true, chatId });
+
+            // Task auto-reminder: persist pending state (mirrors /ask-jarvis).
+            if (agentName === 'task' && result.pendingAction?.type === 'auto_reminder') {
+                await saveTaskReminderPending(result.pendingAction).catch(() => {});
+            }
+
+            send({ chunk: answer, done: true, chatId, action: result.action || null });
             await Promise.all([
                 saveChatMessage('user', originalMessage, chatId),
                 saveChatMessage('jarvis', answer, chatId),
             ]);
+            cacheInvalidate(`chatHistory:${chatId}`);
             return res.end();
         }
 

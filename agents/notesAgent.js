@@ -40,7 +40,10 @@ async function runNotesAgent(userMessage, supabase, useLocal = true) {
             }]).select().single();
             if (inserted) obsidianSync.dbToVault('notes', inserted);
             const label = parsed.title ? ` "${parsed.title}"` : '';
-            return { answer: `שמרתי את ההערה${label} 📝` };
+            return {
+                answer: `שמרתי את ההערה${label} 📝`,
+                action: { type: 'navigate', target: 'notes', label: 'פתח הערות' },
+            };
         }
 
         if (parsed.intent === 'list') {

@@ -305,12 +305,22 @@ class _SurveyModalState extends State<SurveyModal> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '✨ דוח סיכום',
+                '✅ תודה! המשוב נקלט',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: JC.blue400,
                   fontFamily: 'Heebo',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'אקח את זה בחשבון כדי להשתפר עבורך.',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: JC.textMuted,
+                  fontFamily: 'Heebo',
+                  height: 1.5,
                 ),
               ),
               const SizedBox(height: 16),

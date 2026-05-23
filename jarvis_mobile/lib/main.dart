@@ -323,8 +323,14 @@ class _ChatBubble extends StatefulWidget {
   final Map<String, String> msg;
   final int index;
   final ValueChanged<String>? onSpeak;
+  final void Function(String target)? onNavigate;
 
-  const _ChatBubble({required this.msg, required this.index, this.onSpeak});
+  const _ChatBubble({
+    required this.msg,
+    required this.index,
+    this.onSpeak,
+    this.onNavigate,
+  });
 
   @override
   State<_ChatBubble> createState() => _ChatBubbleState();
@@ -436,6 +442,10 @@ class _ChatBubbleState extends State<_ChatBubble> {
               fontWeight: FontWeight.w400,
             ),
           ),
+          if (!isUser && widget.msg['navTarget'] != null) ...[
+            const SizedBox(height: 10),
+            _navButton(widget.msg['navTarget']!, widget.msg['navLabel'] ?? 'פתח'),
+          ],
           if (_showTime) ...[
             const SizedBox(height: 6),
             Text(
@@ -448,6 +458,44 @@ class _ChatBubbleState extends State<_ChatBubble> {
             ),
           ],
         ],
+      );
+
+  Widget _navButton(String target, String label) => Align(
+        alignment: Alignment.centerRight,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => widget.onNavigate?.call(target),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: JC.blue500.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: JC.blue400.withValues(alpha: 0.5), width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.arrow_back_rounded,
+                      size: 16, color: JC.blue400),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: JC.blue400,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       );
 
   Widget _bubbleSurface({required bool isUser, required Widget child}) {
@@ -522,6 +570,7 @@ class ChatScreen extends StatefulWidget {
   final VoidCallback? onCommandConsumed;
   final VoidCallback? onBeforeUnfocus;
   final void Function(Future<void> Function())? onRegisterArchive;
+  final void Function(String target)? onNavigate;
 
   const ChatScreen({
     super.key,
@@ -532,6 +581,7 @@ class ChatScreen extends StatefulWidget {
     this.onCommandConsumed,
     this.onBeforeUnfocus,
     this.onRegisterArchive,
+    this.onNavigate,
   });
 
   @override
@@ -572,6 +622,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   DateTime? _sessionStartTime;
   int _agentCallCount = 0;
   bool _surveyShownThisSession = false;
+  // When eligible, the survey surfaces as a dismissible banner above the input
+  // (never a blocking modal) so it can't interrupt an active conversation.
+  List<Map<String, dynamic>>? _pendingSurveyQuestions;
 
   late AnimationController _orbBreathController;
   late Animation<double>   _orbBreath;
@@ -1131,12 +1184,23 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         final String answer = data['answer'];
         final action        = data['action'];
 
-        setState(() => messages.add(
-            {'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()}));
+        final isNav     = action is Map && action['type'] == 'navigate';
+        final navTarget = isNav ? action['target']?.toString() : null;
+        final navLabel  = isNav ? action['label']?.toString() : null;
+
+        setState(() => messages.add({
+              'sender': 'jarvis',
+              'text': answer,
+              'time': _getCurrentTime(),
+              if (navTarget != null) 'navTarget': navTarget,
+              if (navLabel != null) 'navLabel': navLabel,
+            }));
         _persistMessages();
         _checkForFinalPrompt(answer);
 
-        if (action != null && mounted) await _confirmAndSend(action);
+        // Navigate actions render an inline button in the bubble (see _ChatBubble);
+        // only whatsapp/email actions need the confirm-and-send dialog.
+        if (action != null && !isNav && mounted) await _confirmAndSend(action);
 
         // If the server started a background job, poll for the result automatically
         if (answer.contains('ברקע') && answer.contains('יופיע בשיחה')) {
@@ -1225,11 +1289,24 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             if (data['done'] == true) {
               if (!mounted) return;
               final answer = accumulated;
+              final action = data['action'];
+              final isNav     = action is Map && action['type'] == 'navigate';
+              final navTarget = isNav ? action['target']?.toString() : null;
+              final navLabel  = isNav ? action['label']?.toString() : null;
               setState(() {
-                messages.add({'sender': 'jarvis', 'text': answer, 'time': _getCurrentTime()});
+                messages.add({
+                  'sender': 'jarvis',
+                  'text': answer,
+                  'time': _getCurrentTime(),
+                  if (navTarget != null) 'navTarget': navTarget,
+                  if (navLabel != null) 'navLabel': navLabel,
+                });
               });
               _persistMessages();
               _checkForFinalPrompt(answer);
+              if (action != null && !isNav && mounted) {
+                await _confirmAndSend(Map<String, dynamic>.from(action as Map));
+              }
               _agentCallCount++;
               _checkSurveyEligibility();
               _speakText(answer);
@@ -1273,7 +1350,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ? DateTime.now().difference(_sessionStartTime!).inMinutes
         : 0;
 
-    if (sessionMinutes < 20 && _agentCallCount < 3) return;
+    if (sessionMinutes < 25 && _agentCallCount < 8) return;
 
     _surveyShownThisSession = true;
 
@@ -1289,7 +1366,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       if (data['showSurvey'] == true && mounted) {
         final questions = List<Map<String, dynamic>>.from(data['questions'] ?? []);
         if (questions.isNotEmpty) {
-          _showSurveyModal(questions);
+          // Surface as a gentle banner instead of a blocking modal — the user
+          // opens it when convenient, so it never cuts into the conversation.
+          setState(() => _pendingSurveyQuestions = questions);
         }
       }
     } catch (e) {
@@ -1298,6 +1377,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   void _showSurveyModal(List<Map<String, dynamic>> questions) {
+    setState(() => _pendingSurveyQuestions = null);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1313,6 +1393,60 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             questions: questions,
             settings: _settings,
             onDismiss: () {},
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSurveyBanner() {
+    final questions = _pendingSurveyQuestions;
+    if (questions == null) return const SizedBox.shrink();
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _showSurveyModal(questions),
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: JC.blue500.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                    color: JC.blue400.withValues(alpha: 0.4), width: 1),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.feedback_outlined, size: 20, color: JC.blue400),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'יש לך דקה? משוב קצר יעזור לי להשתפר',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: JC.textPrimary,
+                        fontFamily: 'Heebo',
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () =>
+                        setState(() => _pendingSurveyQuestions = null),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(Icons.close_rounded,
+                          size: 18, color: JC.textMuted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1671,11 +1805,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       msg: messages[index],
                       index: index,
                       onSpeak: _speakText,
+                      onNavigate: widget.onNavigate,
                     );
                   },
                 ),
               ),
 
+              // ── Survey banner (gentle, dismissible) ───────────────────────────
+              _buildSurveyBanner(),
 
               // ── Image preview ─────────────────────────────────────────────────
               if (_imageBytes != null)

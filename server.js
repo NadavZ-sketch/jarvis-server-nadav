@@ -1408,6 +1408,178 @@ app.get('/morning-briefing', async (_req, res) => {
     }
 });
 
+// ─── Dashboard Context ────────────────────────────────────────────────────────
+
+const TTL_DASHBOARD_WEATHER = 30 * 60 * 1000; // 30 min
+const TTL_DASHBOARD_NEWS    = 15 * 60 * 1000; // 15 min
+const TTL_DASHBOARD_HERO    =  5 * 60 * 1000; // 5 min
+
+function _getDashboardTimeSlot(dateJer) {
+    const h = dateJer.getHours();
+    if (h >= 6  && h < 9)  return 'morning';
+    if (h >= 9  && h < 12) return 'late_morning';
+    if (h >= 12 && h < 14) return 'noon';
+    if (h >= 14 && h < 18) return 'afternoon';
+    if (h >= 18 && h < 21) return 'evening';
+    return 'night';
+}
+
+const _SLOT_LABELS = {
+    morning:      'בוקר',
+    late_morning: 'בוקר מאוחר',
+    noon:         'צהריים',
+    afternoon:    'אחרי הצהריים',
+    evening:      'ערב',
+    night:        'לילה',
+};
+
+async function _buildHeroCard(slot, tasks, reminders, memories, settings, useLocal) {
+    const { callGemma4 } = require('./agents/models');
+    const userName = settings?.userName || settings?.userProfile?.name || 'שלי';
+    const memorySummary = Array.isArray(memories) && memories.length > 0
+        ? memories.slice(0, 3).map(m => `- ${m}`).join('\n')
+        : '';
+
+    const taskLines = (tasks || []).slice(0, 3).map(t =>
+        `- ${t.content}${t.priority === 'high' ? ' (דחוף)' : ''}`
+    ).join('\n');
+
+    const reminderLines = (reminders || []).slice(0, 3).map(r => {
+        const timeStr = new Date(r.scheduled_time).toLocaleTimeString('he-IL', {
+            timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit',
+        });
+        return `- ${r.text} ב-${timeStr}`;
+    }).join('\n');
+
+    const slotLabel = _SLOT_LABELS[slot] || slot;
+
+    const prompt = [
+        { role: 'system', content: 'אתה ג\'רוויס, עוזר אישי בעברית. כתוב תגובה קצרה ובהירה (עד 2 משפטים) המתאימה לשעה ביום ולמצב המשתמש. ללא כותרות וללא תבליטים.' },
+        { role: 'user', content: `שעת יום: ${slotLabel}\nמשתמש: ${userName}\n${taskLines ? `משימות פתוחות:\n${taskLines}\n` : ''}${reminderLines ? `תזכורות קרובות:\n${reminderLines}\n` : ''}${memorySummary ? `פרטים רלוונטיים על המשתמש:\n${memorySummary}\n` : ''}כתוב ברכה/סיכום קצר מתאים לשעה.` },
+    ];
+
+    try {
+        const text = await callGemma4(prompt, useLocal, 150);
+        return { text: typeof text === 'string' ? text.trim() : text, confidence: memorySummary ? 0.8 : 0.5 };
+    } catch {
+        const fallbacks = {
+            morning: `בוקר טוב, ${userName}! מוכן ליום?`,
+            late_morning: `שלום ${userName}, כיצד מתקדם הבוקר?`,
+            noon: `שלום ${userName}, איך מתקדם היום?`,
+            afternoon: `שלום ${userName}, מה הלאה?`,
+            evening: `ערב טוב, ${userName}! איך היה היום?`,
+            night: `לילה טוב, ${userName}! כדאי לסיים ולנוח.`,
+        };
+        return { text: fallbacks[slot] || `שלום, ${userName}!`, confidence: 0.0 };
+    }
+}
+
+app.get('/dashboard-context', _rl(30), async (req, res) => {
+    try {
+        const settings = {};
+        try {
+            const profile = await getUserProfile();
+            if (profile) {
+                settings.userName = profile.name || profile.userName;
+                settings.userProfile = profile;
+            }
+        } catch { /* non-fatal */ }
+
+        const useLocal = String(req.headers['x-use-local'] || '').toLowerCase() === 'true';
+        const nowJer = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+        const slot = _getDashboardTimeSlot(nowJer);
+
+        // ── Parallel data fetch ──────────────────────────────────────────────
+        const threeHoursLater = new Date(nowJer.getTime() + 3 * 60 * 60 * 1000).toISOString();
+
+        const [tasksRes, remindersRes, memoriesRaw, weatherData, newsData] = await Promise.all([
+            supabase.from('tasks').select('id,content,priority').eq('done', false)
+                .order('priority', { ascending: false }).limit(6),
+            supabase.from('reminders').select('id,text,scheduled_time').eq('fired', false)
+                .lte('scheduled_time', threeHoursLater)
+                .order('scheduled_time', { ascending: true }).limit(6),
+            (async () => {
+                try {
+                    if (pinecone.isReady()) {
+                        const hits = await pinecone.searchMemories(`שגרה ${_SLOT_LABELS[slot]}`, 3);
+                        if (hits) return hits;
+                    }
+                } catch { /* fall through */ }
+                const { data } = await supabase.from('memories').select('content').limit(5);
+                return (data || []).map(m => m.content);
+            })(),
+            (async () => {
+                const cacheKey = 'dashboard:weather';
+                const cached = cacheGet(cacheKey);
+                if (cached) return cached;
+                try {
+                    const { runWeatherAgent } = require('./agents/weatherAgent');
+                    const result = await runWeatherAgent('מה מזג האוויר עכשיו', supabase, useLocal, settings);
+                    const data = { summary: result.answer };
+                    cacheSet(cacheKey, data, TTL_DASHBOARD_WEATHER);
+                    return data;
+                } catch { return null; }
+            })(),
+            (async () => {
+                const cacheKey = 'dashboard:news';
+                const cached = cacheGet(cacheKey);
+                if (cached) return cached;
+                try {
+                    const { runNewsAgent } = require('./agents/newsAgent');
+                    const result = await runNewsAgent('חדשות עדכניות קצרות', supabase, useLocal, settings);
+                    const data = { summary: result.answer };
+                    cacheSet(cacheKey, data, TTL_DASHBOARD_NEWS);
+                    return data;
+                } catch { return null; }
+            })(),
+        ]);
+
+        const tasks     = tasksRes.data     || [];
+        const reminders = remindersRes.data  || [];
+        const memories  = memoriesRaw        || [];
+
+        // ── Hero card (cached per slot) ──────────────────────────────────────
+        const heroCacheKey = `dashboard:hero:${slot}`;
+        let heroCard = cacheGet(heroCacheKey);
+        if (!heroCard) {
+            const { text, confidence } = await _buildHeroCard(slot, tasks, reminders, memories, settings, useLocal);
+            heroCard = { text, confidence, slot };
+            cacheSet(heroCacheKey, heroCard, TTL_DASHBOARD_HERO);
+        }
+
+        // ── Build widget list ─────────────────────────────────────────────────
+        const widgets = [];
+
+        widgets.push({
+            type: 'tasks',
+            data: tasks.slice(0, 3),
+            badge: Math.max(0, tasks.length - 3),
+        });
+
+        const urgentReminders  = reminders.filter(r => (new Date(r.scheduled_time) - nowJer) < 30 * 60 * 1000);
+        const normalReminders  = reminders.filter(r => (new Date(r.scheduled_time) - nowJer) >= 30 * 60 * 1000);
+        const visibleReminders = [...urgentReminders, ...normalReminders].slice(0, 3);
+        widgets.push({
+            type: 'reminders',
+            data: visibleReminders,
+            badge: Math.max(0, reminders.length - 3),
+        });
+
+        if (weatherData) widgets.push({ type: 'weather', data: weatherData });
+        if (newsData)    widgets.push({ type: 'news',    data: newsData });
+
+        res.json({
+            heroCard,
+            widgets,
+            slot,
+            timestamp: new Date().toISOString(),
+        });
+    } catch (err) {
+        console.error('GET /dashboard-context error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ─── Google Calendar OAuth ────────────────────────────────────────────────────
 // Short-lived nonces for CSRF protection on the OAuth flow (TTL: 10 min).
 const _oauthNonces = new Map(); // nonce -> expiresAt

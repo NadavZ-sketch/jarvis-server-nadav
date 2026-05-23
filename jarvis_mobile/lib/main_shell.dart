@@ -55,6 +55,7 @@ class _MainShellState extends State<MainShell> {
 
   Future<void> _checkFiredReminders() async {
     if (_settings.serverUrl.isEmpty) return;
+    if (_settings.isInQuietHours()) return;
     try {
       final api = ApiService(_settings);
       final fired = await api.checkFiredReminders();

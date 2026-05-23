@@ -168,6 +168,18 @@ class AppSettings {
     await prefs.setInt('quietHoursEnd',     quietHoursEnd);
   }
 
+  // Returns true if [hour] (0-23) falls inside the quiet window.
+  // Handles overnight spans: start=22, end=8 → quiet from 22:00 to 07:59.
+  bool isInQuietHours([int? hour]) {
+    if (!notificationsEnabled) return false;
+    final h = hour ?? DateTime.now().hour;
+    if (quietHoursStart <= quietHoursEnd) {
+      return h >= quietHoursStart && h < quietHoursEnd;
+    }
+    // Overnight: e.g. start=22, end=8 → quiet if h>=22 OR h<8
+    return h >= quietHoursStart || h < quietHoursEnd;
+  }
+
   Map<String, dynamic> toJson() => {
     'assistantName':  assistantName,
     'gender':         gender,

@@ -111,7 +111,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }
           }
         }
-        setState(() => _voiceNames = names.toSet().toList()..sort());
+        final sorted = names.toSet().toList()..sort();
+        setState(() {
+          _voiceNames = sorted;
+          // Clear a stale voice name saved from a different device/OS version
+          if (_s.ttsVoiceName.isNotEmpty && !sorted.contains(_s.ttsVoiceName)) {
+            _s.ttsVoiceName = '';
+          }
+        });
       }
     } catch (_) {/* voices unavailable on this platform */}
   }

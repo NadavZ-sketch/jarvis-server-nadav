@@ -192,6 +192,14 @@ class _MainShellState extends State<MainShell> {
               _selectedIndex = 1;
             }),
           ),
+          floatingActionButton: _QuickSettingsFab(
+            settings: _settings,
+            onChanged: (updated) {
+              setState(() => _settings = updated);
+              updated.save();
+            },
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
           body: AnimatedIndexedStack(
             index: _selectedIndex,
             enabled: _settings.animationsEnabled,
@@ -291,4 +299,207 @@ class _MainShellState extends State<MainShell> {
       ),
     );
   }
+}
+
+// ─── Quick Settings FAB ───────────────────────────────────────────────────────
+
+class _QuickSettingsFab extends StatelessWidget {
+  final AppSettings settings;
+  final void Function(AppSettings) onChanged;
+
+  const _QuickSettingsFab({required this.settings, required this.onChanged});
+
+  static const _personalities = ['friendly', 'formal', 'concise', 'humorous'];
+  static const _personalityHe = {
+    'friendly': 'ידידותי', 'formal': 'רשמי',
+    'concise': 'קצר ולעניין', 'humorous': 'הומוריסטי',
+  };
+
+  void _show(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: JC.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _QuickSettingsSheet(settings: settings, onChanged: onChanged),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton.small(
+      backgroundColor: JC.blue500,
+      foregroundColor: Colors.white,
+      tooltip: 'הגדרות מהירות',
+      onPressed: () => _show(context),
+      child: const Icon(Icons.tune_rounded, size: 20),
+    );
+  }
+}
+
+class _QuickSettingsSheet extends StatefulWidget {
+  final AppSettings settings;
+  final void Function(AppSettings) onChanged;
+  const _QuickSettingsSheet({required this.settings, required this.onChanged});
+
+  @override
+  State<_QuickSettingsSheet> createState() => _QuickSettingsSheetState();
+}
+
+class _QuickSettingsSheetState extends State<_QuickSettingsSheet> {
+  late AppSettings _s;
+
+  static const _personalities = ['friendly', 'formal', 'concise', 'humorous'];
+  static const _personalityHe = {
+    'friendly': 'ידידותי', 'formal': 'רשמי',
+    'concise': 'קצר ולעניין', 'humorous': 'הומוריסטי',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _s = widget.settings;
+  }
+
+  void _update(AppSettings updated) {
+    setState(() => _s = updated);
+    widget.onChanged(updated);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: JC.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('הגדרות מהירות',
+                style: TextStyle(color: JC.textPrimary, fontSize: 16,
+                    fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
+            const SizedBox(height: 16),
+
+            // ── Personality ────────────────────────────────────────────────
+            Text('אופי', style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
+            const SizedBox(height: 8),
+            Row(
+              children: _personalities.map((p) {
+                final selected = _s.personality == p;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      final updated = AppSettings(
+                        assistantName: _s.assistantName, gender: _s.gender,
+                        personality: p, voiceEnabled: _s.voiceEnabled,
+                        userName: _s.userName, useLocalModel: _s.useLocalModel,
+                        useLocalServer: _s.useLocalServer, localServerUrl: _s.localServerUrl,
+                        obsidianAutoSync: _s.obsidianAutoSync, telemetryConsent: _s.telemetryConsent,
+                        bargeInEnabled: _s.bargeInEnabled, selectedTheme: _s.selectedTheme,
+                        animationsEnabled: _s.animationsEnabled, ttsSpeed: _s.ttsSpeed,
+                        ttsPitch: _s.ttsPitch, ttsLanguage: _s.ttsLanguage, ttsVoiceName: _s.ttsVoiceName,
+                        cloudProvider: _s.cloudProvider, localModelName: _s.localModelName,
+                        temperature: _s.temperature, responseLength: _s.responseLength,
+                        notificationsEnabled: _s.notificationsEnabled,
+                        quietHoursStart: _s.quietHoursStart, quietHoursEnd: _s.quietHoursEnd,
+                      );
+                      _update(updated);
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selected ? JC.blue500 : JC.bg,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: selected ? JC.blue500 : JC.border, width: 1),
+                      ),
+                      child: Text(
+                        _personalityHe[p] ?? p,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: selected ? Colors.white : JC.textSecondary,
+                          fontSize: 11, fontFamily: 'Heebo',
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 20),
+
+            // ── Voice toggle ───────────────────────────────────────────────
+            _toggleRow(
+              icon: _s.voiceEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+              label: 'קול',
+              subtitle: _s.voiceEnabled ? 'ג\'רוויס מדבר בקול' : 'ג\'רוויס כותב בלבד',
+              value: _s.voiceEnabled,
+              onChanged: (v) {
+                _s.voiceEnabled = v;
+                _update(_s);
+              },
+            ),
+            const Divider(height: 1),
+
+            // ── Server toggle ──────────────────────────────────────────────
+            _toggleRow(
+              icon: _s.useLocalServer ? Icons.home_rounded : Icons.cloud_outlined,
+              label: 'שרת',
+              subtitle: _s.useLocalServer ? 'מקומי (${_s.localServerUrl})' : 'ענן',
+              value: _s.useLocalServer,
+              onChanged: (v) {
+                _s.useLocalServer = v;
+                _update(_s);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _toggleRow({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required bool value,
+    required void Function(bool) onChanged,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: JC.textMuted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(color: JC.textPrimary, fontSize: 14, fontFamily: 'Heebo')),
+                  Text(subtitle, style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+                ],
+              ),
+            ),
+            Switch(
+              value: value,
+              onChanged: onChanged,
+              activeColor: JC.blue400,
+            ),
+          ],
+        ),
+      );
 }

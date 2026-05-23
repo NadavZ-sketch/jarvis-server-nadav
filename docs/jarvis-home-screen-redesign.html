@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jarvis — עיצוב מחדש מסך הבית</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', 'Arial Hebrew', Arial, sans-serif;
+    background: #0f0f13;
+    color: #e8e8f0;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Navigation ── */
+  nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 32px;
+    background: rgba(255,255,255,0.04);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+  .nav-brand { font-size: 14px; color: #7c6fe0; font-weight: 600; letter-spacing: 1px; }
+  .nav-controls { display: flex; gap: 12px; align-items: center; }
+  .nav-controls button {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #ccc;
+    padding: 6px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+  }
+  .nav-controls button:hover { background: rgba(255,255,255,0.15); }
+  .slide-counter { font-size: 13px; color: #666; min-width: 60px; text-align: center; }
+
+  /* ── Slides container ── */
+  .slides-viewport {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .slides-track {
+    display: flex;
+    height: 100%;
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .slide {
+    min-width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    padding: 48px 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  /* ── Slide types ── */
+  .slide-hero {
+    justify-content: center;
+    text-align: center;
+    background: radial-gradient(ellipse at 60% 40%, rgba(124,111,224,0.15) 0%, transparent 70%);
+  }
+
+  /* ── Typography ── */
+  .slide-number {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #7c6fe0;
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: clamp(28px, 4vw, 52px);
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #fff 0%, #b8b0f0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  h2 {
+    font-size: clamp(20px, 2.5vw, 32px);
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #e8e8f0;
+  }
+
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #7c6fe0;
+    margin: 20px 0 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .subtitle {
+    font-size: clamp(14px, 1.8vw, 20px);
+    color: #888;
+    max-width: 640px;
+    margin: 0 auto 32px;
+    line-height: 1.6;
+  }
+
+  p { line-height: 1.7; color: #bbb; margin-bottom: 10px; }
+
+  /* ── Tags ── */
+  .tag {
+    display: inline-block;
+    background: rgba(124,111,224,0.15);
+    border: 1px solid rgba(124,111,224,0.3);
+    color: #a89cf0;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    margin: 4px;
+  }
+
+  /* ── Cards grid ── */
+  .cards {
+    display: grid;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .cards-2 { grid-template-columns: 1fr 1fr; }
+  .cards-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cards-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 20px;
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(124,111,224,0.4); }
+  .card-icon { font-size: 28px; margin-bottom: 10px; }
+  .card h4 { font-size: 15px; font-weight: 600; color: #e8e8f0; margin-bottom: 6px; }
+  .card p { font-size: 13px; color: #888; margin: 0; }
+
+  /* ── KPI cards ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .kpi {
+    background: rgba(124,111,224,0.08);
+    border: 1px solid rgba(124,111,224,0.2);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .kpi-value { font-size: 28px; font-weight: 700; color: #a89cf0; }
+  .kpi-label { font-size: 12px; color: #777; margin-top: 4px; }
+
+  /* ── Table ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    font-size: 14px;
+  }
+  th {
+    text-align: right;
+    padding: 10px 14px;
+    background: rgba(124,111,224,0.12);
+    color: #a89cf0;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(124,111,224,0.2);
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    color: #bbb;
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── Code block ── */
+  pre {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 16px 20px;
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 12px;
+    color: #a8d8a8;
+    overflow-x: auto;
+    margin-top: 12px;
+    line-height: 1.6;
+    direction: ltr;
+    text-align: left;
+  }
+
+  /* ── Diagram ── */
+  .diagram {
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 20px 24px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #8ac;
+    line-height: 1.8;
+    direction: ltr;
+    text-align: left;
+    overflow-x: auto;
+    margin-top: 12px;
+  }
+
+  /* ── Timeline ── */
+  .timeline { margin-top: 16px; }
+  .timeline-item {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    align-items: flex-start;
+  }
+  .timeline-dot {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(124,111,224,0.2);
+    border: 2px solid #7c6fe0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #a89cf0;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .timeline-content h4 { font-size: 15px; color: #e8e8f0; margin-bottom: 4px; }
+  .timeline-content p { font-size: 13px; color: #888; margin: 0; }
+
+  /* ── Phase badges ── */
+  .phase { margin-bottom: 20px; }
+  .phase-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(124,111,224,0.15);
+    border: 1px solid rgba(124,111,224,0.3);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    color: #a89cf0;
+    margin-bottom: 10px;
+  }
+  .phase-items { display: flex; flex-wrap: wrap; gap: 8px; }
+  .phase-item {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: #ccc;
+  }
+
+  /* ── Urgency pills ── */
+  .pill-red   { background: rgba(239,68,68,0.15);  border: 1px solid rgba(239,68,68,0.3);  color: #fca5a5; border-radius: 12px; padding: 2px 10px; font-size: 12px; }
+  .pill-amber { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); color: #fcd34d; border-radius: 12px; padding: 2px 10px; font-size: 12px; }
+  .pill-green { background: rgba(34,197,94,0.15);  border: 1px solid rgba(34,197,94,0.3);  color: #86efac; border-radius: 12px; padding: 2px 10px; font-size: 12px; }
+
+  /* ── Wireframe mockup ── */
+  .mockup {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 20px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #7c8;
+    line-height: 1.9;
+    direction: ltr;
+    text-align: left;
+    max-width: 480px;
+  }
+
+  /* ── Two-column layout ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+
+  /* ── Progress bar ── */
+  .progress-row { margin-bottom: 14px; }
+  .progress-label { display: flex; justify-content: space-between; font-size: 13px; color: #bbb; margin-bottom: 5px; }
+  .progress-bar { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #7c6fe0, #a89cf0); border-radius: 3px; }
+
+  /* ── Footer ── */
+  .slide-footer {
+    margin-top: auto;
+    padding-top: 24px;
+    font-size: 11px;
+    color: #444;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ── Hero chip ── */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(124,111,224,0.12);
+    border: 1px solid rgba(124,111,224,0.25);
+    padding: 6px 16px;
+    border-radius: 24px;
+    font-size: 13px;
+    color: #a89cf0;
+    margin: 6px;
+  }
+
+  /* ── Keyboard hint ── */
+  .kbd-hint { text-align: center; font-size: 12px; color: #444; padding: 6px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-brand">JARVIS ✦ מסך הבית החכם</span>
+  <div class="nav-controls">
+    <button onclick="prev()">→ הקודם</button>
+    <span class="slide-counter" id="counter">1 / 10</span>
+    <button onclick="next()">← הבא</button>
+  </div>
+</nav>
+
+<div class="slides-viewport">
+<div class="slides-track" id="track">
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 1 -->
+  <div class="slide slide-hero">
+    <div class="slide-number">שקף 01 — חזון ומטרות</div>
+    <h1>מסך הבית החכם</h1>
+    <p class="subtitle">
+      מ-chatbot שמחכה לשאלה — לעוזר שמכין את התשובה לפני שנשאל.
+    </p>
+    <div style="margin: 16px 0;">
+      <span class="chip">⏱ Context-aware</span>
+      <span class="chip">🧠 Personalized</span>
+      <span class="chip">⚡ &lt; 800ms latency</span>
+      <span class="chip">🔒 Privacy-first</span>
+    </div>
+    <div class="kpi-grid" style="max-width: 700px; margin: 32px auto 0;">
+      <div class="kpi">
+        <div class="kpi-value">&lt;10s</div>
+        <div class="kpi-label">זמן לקבלת החלטה</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-value">3×</div>
+        <div class="kpi-label">פתיחות יומיות יעד</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-value">70%</div>
+        <div class="kpi-label">רלוונטיות ווידג'טים</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-value">2</div>
+        <div class="kpi-label">שאלות Cold Start</div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>Jarvis Smart Dashboard Redesign</span>
+      <span>נדב זרו — מאי 2026</span>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 2 -->
+  <div class="slide">
+    <div class="slide-number">שקף 02 — ארכיטקטורת מידע ופרסונליזציה</div>
+    <h2>Personalization Engine</h2>
+    <p>שלוש שכבות נתונים מתמזגות לניקוד ווידג'טים בזמן אמת.</p>
+    <div class="diagram">
+┌─────────────────────────────────────────────────────────┐
+│                  Personalization Engine                  │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
+│  │  Supabase    │  │   Pinecone   │  │  System Clock │  │
+│  │  tasks       │  │  memories    │  │  + Time Slot  │  │
+│  │  reminders   │  │  vectors     │  │               │  │
+│  │  chat_hist   │  │  top-3 hits  │  │               │  │
+│  └──────┬───────┘  └──────┬───────┘  └───────┬───────┘  │
+│         └─────────────────┼───────────────────┘          │
+│                    Context Aggregator                     │
+│           time slot · patterns · urgency                  │
+│                           │                              │
+│              Widget Priority Ranker                       │
+│         Score = urgency × recency × confidence            │
+│         Max 6 slots  /  min confidence: 0.65              │
+└─────────────────────────────────────────────────────────┘</div>
+    <h3>ציר הלמידה</h3>
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-dot">1</div>
+        <div class="timeline-content">
+          <h4>שבוע 1 — Cold Start</h4>
+          <p>Explicit onboarding: שם + 2 שאלות. ווידג'טים גנריים (Weather + Tasks).</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot">2</div>
+        <div class="timeline-content">
+          <h4>שבועות 2–4 — Implicit Learning</h4>
+          <p>Mining של chat_history לזיהוי patterns. confidence עולה בהדרגה מעל 0.65.</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot">3</div>
+        <div class="timeline-content">
+          <h4>חודש 2+ — Full Personalization</h4>
+          <p>Predictive widgets, anomaly detection לשינויי שגרה, weekly confidence decay 10%.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer"><span>ארכיטקטורת מידע</span><span>02 / 10</span></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 3 -->
+  <div class="slide">
+    <div class="slide-number">שקף 03 — מבנה מסך הבית</div>
+    <h2>Home Screen Layout — RTL</h2>
+    <div class="two-col">
+      <div>
+        <div class="mockup">
+┌──────────────────────────────────────┐
+│ [Avatar] שלום נדב, בוקר טוב [18°C ☁]│ ← Header
+│          יום שלישי, 23 מאי           │
+├──────────────────────────────────────┤
+│                                      │
+│  ┌────────────────────────────────┐  │
+│  │  🎯  HERO CARD (Contextual)   │  │ ← Primary (40%)
+│  │  "פגישה ב-10:00 עם דני.       │  │
+│  │   לאשר נוכחות?"               │  │
+│  │  [כן, שלח]  [פרטים נוספים]   │  │
+│  └────────────────────────────────┘  │
+│                                      │
+│  ┌──────────────┐ ┌───────────────┐  │
+│  │ 📋 משימות   │ │ 🔔 תזכורות   │  │ ← Secondary
+│  │  3 פתוחות  │ │  1 ב-2 שעות  │  │
+│  └──────────────┘ └───────────────┘  │
+│                                      │
+│  ┌──────────────────────────────┐    │
+│  │ 📰 חדשות │ 🎵 מוזיקה │ 📈 │    │ ← Tertiary strip
+│  └──────────────────────────────┘    │
+│                                      │
+│  [✦ שאל את ג'רוויס...]              │ ← Chat input
+└──────────────────────────────────────┘</div>
+      </div>
+      <div>
+        <h3>עקרונות עיצוביים</h3>
+        <div class="card" style="margin-bottom:12px;">
+          <h4>Primary Action אחד per card</h4>
+          <p>לא יותר מ-2 כפתורות בכרטיס. הפעולה הראשית בולטת.</p>
+        </div>
+        <div class="card" style="margin-bottom:12px;">
+          <h4>Swipe Gestures</h4>
+          <p>Swipe ימינה = Done (checkmark animation). Swipe שמאלה = Dismiss + Haptic Feedback.</p>
+        </div>
+        <div class="card" style="margin-bottom:12px;">
+          <h4>Long-press to Pin</h4>
+          <p>הצמדת ווידג'ט ידנית — מבטלת AI ranking עבורו.</p>
+        </div>
+        <div class="card">
+          <h4>Dark / Light Adaptive</h4>
+          <p>Surface elevation 1dp (light) / 8dp (dark). אוטומטי לפי OS.</p>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer"><span>מבנה מסך</span><span>03 / 10</span></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 4 -->
+  <div class="slide">
+    <div class="slide-number">שקף 04 — Hero Card הרכיב הדינמי המרכזי</div>
+    <h2>Contextual Hero Widget</h2>
+    <p>40% מגובה המסך. תוכנו מחושב מחדש כל 5 דקות לפי slot + נתוני משתמש.</p>
+    <h3>לוגיקת Time Slots</h3>
+    <table>
+      <tr><th>שעה</th><th>Slot</th><th>תוכן Hero Card</th></tr>
+      <tr><td>06:00–09:00</td><td><code>morning</code></td><td>בריפינג: מזג אוויר + 3 משימות + אירוע ראשון</td></tr>
+      <tr><td>09:00–12:00</td><td><code>late_morning</code></td><td>הכנה לפגישה הבאה (calendar event)</td></tr>
+      <tr><td>12:00–14:00</td><td><code>noon</code></td><td>משימה דחופה + suggestion</td></tr>
+      <tr><td>14:00–18:00</td><td><code>afternoon</code></td><td>התקדמות tasks + reminders קרובים</td></tr>
+      <tr><td>18:00–21:00</td><td><code>evening</code></td><td>סיכום יום + task review</td></tr>
+      <tr><td>21:00+</td><td><code>night</code></td><td>תזכורות למחר + playlist הירגעות</td></tr>
+    </table>
+    <h3>לוגיקה טכנית</h3>
+    <pre>// callGemma4 — 500 tokens input max, 150 tokens output
+// Pinecone: top-3 memories בלבד → latency budget &lt; 400ms
+
+const [tasks, reminders, memories] = await Promise.all([
+  supabase.from('tasks').select('*').eq('done', false).limit(3),
+  supabase.from('reminders').eq('fired', false)
+          .lte('scheduled_time', addHours(now, 3)),
+  pinecone.searchMemories(`שגרה ${slotLabel}`, 3),
+]);
+// Total P95 target: &lt; 800ms</pre>
+    <div class="slide-footer"><span>Hero Card</span><span>04 / 10</span></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 5 -->
+  <div class="slide">
+    <div class="slide-number">שקף 05 — ווידג'טים משניים</div>
+    <h2>Secondary Widget Library</h2>
+    <div class="cards cards-2" style="margin-top:16px;">
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <h4>Tasks Widget</h4>
+        <p>מקסימום 3 פריטים, ממוין לפי priority DESC.<br>
+        Swipe ימינה = Done (checkmark 250ms).<br>
+        Badge לשאר הפריטים.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔔</div>
+        <h4>Reminders Widget</h4>
+        <p>תזכורות ב-3 שעות הקרובות בלבד.<br>
+        <span class="pill-red">&lt;30 דק</span>
+        <span class="pill-amber">30–60 דק</span>
+        <span class="pill-green">&gt;60 דק</span><br>
+        Badge למה שמעבר ל-3.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🌤</div>
+        <h4>Weather Widget</h4>
+        <p>טמפרטורה + 3 שעות קדימה + אייקון.<br>
+        Cache TTL: 30 דקות.<br>
+        גשם = subtle particle animation.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📰</div>
+        <h4>News Widget</h4>
+        <p>Horizontal scroll — 3 כותרות.<br>
+        פרסונליזציה: topic filter ממ-memories.<br>
+        Cache TTL: 15 דקות.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎵</div>
+        <h4>Music Widget</h4>
+        <p>מוצג בערב ושישי אחרי-צהריים (לפי pattern).<br>
+        כפתור אחד: ▶ הפעל Playlist מומלץ.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📈</div>
+        <h4>Stocks Widget (Predictive)</h4>
+        <p>מוצג רק אם confidence &gt; 0.70.<br>
+        דפוס: שאל על מניות 4+ פעמים בבוקר.<br>
+        מופעל ביום ובשעה הרגיל.</p>
+      </div>
+    </div>
+    <div class="slide-footer"><span>ווידג'טים</span><span>05 / 10</span></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 6 -->
+  <div class="slide">
+    <div class="slide-number">שקף 06 — היבטים טכניים</div>
+    <h2>GET /dashboard-context</h2>
+    <p>Endpoint יחיד — ה-backend מטפל בכל ה-parallel fetching.</p>
+    <div class="two-col">
+      <div>
+        <h3>Response Schema</h3>
+        <pre>{
+  "heroCard": {
+    "text": "בוקר טוב! פגישה ב-10:00...",
+    "confidence": 0.85,
+    "slot": "morning"
+  },
+  "widgets": [
+    { "type": "tasks",
+      "data": [...], "badge": 2 },
+    { "type": "reminders",
+      "data": [...], "badge": 0 },
+    { "type": "weather",
+      "data": { "summary": "..." } },
+    { "type": "news",
+      "data": { "summary": "..." } }
+  ],
+  "slot": "morning",
+  "timestamp": "ISO"
+}</pre>
+      </div>
+      <div>
+        <h3>Caching Strategy</h3>
+        <table>
+          <tr><th>Layer</th><th>TTL</th></tr>
+          <tr><td>Weather</td><td>30 דקות</td></tr>
+          <tr><td>News</td><td>15 דקות</td></tr>
+          <tr><td>Tasks / Reminders</td><td>30 שניות</td></tr>
+          <tr><td>Hero Card (LLM)</td><td>5 דקות / slot</td></tr>
+          <tr><td>Pinecone memories</td><td>5 דקות</td></tr>
+        </table>
+        <h3 style="margin-top:20px;">Latency Budget (P95)</h3>
+        <div class="progress-row">
+          <div class="progress-label"><span>Supabase (parallel)</span><span>~100ms</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:12%"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>Pinecone search</span><span>~150ms</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:19%"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>LLM callGemma4 (short)</span><span>~400ms</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:50%"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span style="color:#a89cf0;font-weight:600;">Total target</span><span style="color:#a89cf0;font-weight:600;">&lt; 800ms</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:100%"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer"><span>טכנולוגיה</span><span>06 / 10</span></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 7 -->
+  <div class="slide">
+    <div class="slide-number">שקף 07 — טיפול במקרי קצה</div>
+    <h2>Edge Cases &amp; Resilience</h2>
+    <div class="cards cards-2">
+      <div class="card">
+        <div class="card-icon">🧊</div>
+        <h4>Cold Start — משתמש חדש</h4>
+        <p>Onboarding מוטמע ב-Hero Card (לא מסך נפרד): 2 שאלות בלבד. רק Weather + Tasks גלויים. לאחר 3 ימים — AI mode מלא.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📵</div>
+        <h4>Offline Mode</h4>
+        <p>Tasks + Reminders מ-local cache. Weather/News/LLM — greyed-out עם "זמין עם חיבור". Banner amber דיסקרטי (לא alert).</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🌊</div>
+        <h4>Information Overload</h4>
+        <p>Top-3 per category + badge counter. ≥3 תזכורות דחופות → "Urgent Mode": Hero Card הופך לרשימה בלבד. DND Mode: snooze 2 שעות.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔒</div>
+        <h4>Privacy Mode</h4>
+        <p>Long-press על Avatar. מסתיר: שמות, סכומים, תוכן הודעות. Auto-Privacy: חוסר מגע &gt;3 דק בשעות עבודה. נשמר ב-/user-profile.</p>
+      </div>
+    </div>
+    <h3>LLM Failure Fallback</h3>
+    <table>
+      <tr><th>תרחיש</th><th>Fallback</th><th>Confidence</th></tr>
+      <tr><td>שגיאת LLM</td><td>Template text לפי slot</td><td>0.0</td></tr>
+      <tr><td>Pinecone לא זמין</td><td>Keyword search מ-Supabase</td><td>—</td></tr>
+      <tr><td>Confidence &lt; 0.65</td><td>"בוקר טוב, [שם]! מה ברצונך לעשות?"</td><td>Generic</td></tr>
+    </table>
+    <div class="slide-footer"><span>Edge Cases</span><span>07 / 10</span></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 8 -->
+  <div class="slide">
+    <div class="slide-number">שקף 08 — Learning Engine</div>
+    <h2>Adaptive Pattern Mining</h2>
+    <div class="two-col">
+      <div>
+        <h3>דפוסים → ווידג'טים</h3>
+        <table>
+          <tr><th>דפוס שזוהה</th><th>ווידג'ט</th><th>Threshold</th></tr>
+          <tr><td>כל בוקר שואל על מניות</td><td>Stocks ב-07:30</td><td>&gt;0.70</td></tr>
+          <tr><td>שישי אחרי-צהריים — מוזיקה</td><td>Music ב-14:00</td><td>&gt;0.65</td></tr>
+          <tr><td>Tasks כל ראשון</td><td>Reminder שבועי</td><td>&gt;0.75</td></tr>
+        </table>
+        <h3>Feedback Loop</h3>
+        <div class="card" style="margin-top:12px;">
+          <p><strong style="color:#e8e8f0;">Implicit:</strong> Swipe dismiss → confidence −0.10</p>
+          <p><strong style="color:#e8e8f0;">Explicit:</strong> Long-press → "הסר / הצג פחות / הצג יותר"</p>
+          <p><strong style="color:#e8e8f0;">Weekly Decay:</strong> −10% בשבוע למניעת stale patterns</p>
+        </div>
+      </div>
+      <div>
+        <h3>Pattern Mining (insightAgent)</h3>
+        <pre>async function extractUserPatterns(supabase) {
+  const { data } = await supabase
+    .from('chat_history')
+    .select('text, intent, created_at')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  // cluster by hour + day + intent
+  return clusterByTimeAndIntent(data);
+  // { tuesday_morning: ['stocks'],
+  //   friday_afternoon: ['music'] }
+}</pre>
+        <h3>Micro-interactions</h3>
+        <table>
+          <tr><th>אינטראקציה</th><th>Duration</th></tr>
+          <tr><td>✅ Done (checkmark draw)</td><td>250ms</td></tr>
+          <tr><td>🔔 התראה חדשה (slide-in)</td><td>200ms</td></tr>
+          <tr><td>↕ Hero Card (cross-fade)</td><td>300ms</td></tr>
+          <tr><td>🔒 Privacy blur</td><td>200ms</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="slide-footer"><span>Learning Engine</span><span>08 / 10</span></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 9 -->
+  <div class="slide">
+    <div class="slide-number">שקף 09 — מפת דרכים</div>
+    <h2>Roadmap &amp; Prioritization</h2>
+    <div class="phase">
+      <div class="phase-label">✅ Phase 1 — MVP (שבועות 1–3)</div>
+      <div class="phase-items">
+        <span class="phase-item">GET /dashboard-context ✓</span>
+        <span class="phase-item">Hero Card × 6 slots ✓</span>
+        <span class="phase-item">Tasks + Reminders widgets ✓</span>
+        <span class="phase-item">Weather widget (cached) ✓</span>
+        <span class="phase-item">Cold Start onboarding</span>
+        <span class="phase-item">Offline Mode בסיסי</span>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="phase-label">🔧 Phase 2 — Enhanced (שבועות 4–6)</div>
+      <div class="phase-items">
+        <span class="phase-item">News + Music widgets</span>
+        <span class="phase-item">Privacy Mode</span>
+        <span class="phase-item">Pattern Mining</span>
+        <span class="phase-item">Skeleton loading screens</span>
+        <span class="phase-item">Badge counters</span>
+        <span class="phase-item">Urgent Mode</span>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="phase-label">🚀 Phase 3 — Advanced (חודש 2+)</div>
+      <div class="phase-items">
+        <span class="phase-item">Predictive widgets</span>
+        <span class="phase-item">Google Calendar integration</span>
+        <span class="phase-item">Confidence tuning</span>
+        <span class="phase-item">A/B testing framework</span>
+        <span class="phase-item">Anomaly detection</span>
+      </div>
+    </div>
+    <h3>KPIs למדידה</h3>
+    <div class="cards cards-4">
+      <div class="kpi">
+        <div class="kpi-value">&lt;10s</div>
+        <div class="kpi-label">Time-to-first-action</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-value">&lt;800ms</div>
+        <div class="kpi-label">Dashboard load P95</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-value">70%+</div>
+        <div class="kpi-label">Widget relevance score</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-value">+15%</div>
+        <div class="kpi-label">7-day retention uplift</div>
+      </div>
+    </div>
+    <div class="slide-footer"><span>Roadmap</span><span>09 / 10</span></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ SLIDE 10 -->
+  <div class="slide slide-hero">
+    <div class="slide-number">שקף 10 — סיכום</div>
+    <h1>From Reactive<br>to Proactive</h1>
+    <p class="subtitle">
+      הבסיס הטכני קיים במלואו — Supabase, Pinecone, כל ה-agents.<br>
+      נדרש: endpoint אחד + Flutter UI layer.
+    </p>
+    <div style="margin: 20px 0;">
+      <span class="chip">✅ GET /dashboard-context — ממוזג</span>
+    </div>
+    <div style="margin: 8px 0;">
+      <span class="chip">📋 7 טסטים עוברים</span>
+      <span class="chip">⚡ &lt;800ms P95</span>
+      <span class="chip">🛡 Graceful degradation</span>
+    </div>
+    <div style="margin-top: 32px; color: #555; font-size: 13px;">
+      PR #184 · nadavz-sketch/jarvis-server-nadav · מאי 2026
+    </div>
+    <div class="slide-footer" style="justify-content:center; border-top:none; padding-top:0; margin-top:32px;">
+      <span style="color:#7c6fe0;">Jarvis Smart Dashboard Redesign — נדב זרו</span>
+    </div>
+  </div>
+
+</div><!-- /slides-track -->
+</div><!-- /slides-viewport -->
+
+<div class="kbd-hint">← → לניווט בין שקפים</div>
+
+<script>
+  let current = 0;
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  const track = document.getElementById('track');
+  const counter = document.getElementById('counter');
+
+  function go(n) {
+    current = Math.max(0, Math.min(total - 1, n));
+    track.style.transform = `translateX(${current * 100}%)`;
+    counter.textContent = `${current + 1} / ${total}`;
+  }
+
+  function next() { go(current + 1); }
+  function prev() { go(current - 1); }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft')  next();
+    if (e.key === 'ArrowRight') prev();
+    if (e.key === 'ArrowUp' || e.key === 'Home') go(0);
+    if (e.key === 'ArrowDown' || e.key === 'End') go(total - 1);
+  });
+
+  // Touch / swipe support
+  let touchStartX = 0;
+  document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) dx < 0 ? next() : prev();
+  });
+</script>
+</body>
+</html>

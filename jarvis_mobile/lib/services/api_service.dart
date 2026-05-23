@@ -460,20 +460,28 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> saveUserProfile({
-    required String speakingTone,
-    required List<String> preferredHours,
-    required List<String> interests,
-    required List<String> recurringTasks,
+    String? speakingTone,
+    List<String>? preferredHours,
+    List<String>? interests,
+    List<String>? recurringTasks,
+    String? userName,
+    String? assistantName,
+    String? gender,
+    String? personality,
   }) async {
+    final body = <String, dynamic>{};
+    if (speakingTone  != null) body['speaking_tone']   = speakingTone;
+    if (preferredHours != null) body['preferred_hours'] = preferredHours;
+    if (interests      != null) body['interests']       = interests;
+    if (recurringTasks != null) body['recurring_tasks'] = recurringTasks;
+    if (userName       != null) body['user_name']       = userName;
+    if (assistantName  != null) body['assistant_name']  = assistantName;
+    if (gender         != null) body['gender']          = gender;
+    if (personality    != null) body['personality']     = personality;
     final res = await _client.post(
       _uri('/user-profile'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'speaking_tone': speakingTone,
-        'preferred_hours': preferredHours,
-        'interests': interests,
-        'recurring_tasks': recurringTasks,
-      }),
+      body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }

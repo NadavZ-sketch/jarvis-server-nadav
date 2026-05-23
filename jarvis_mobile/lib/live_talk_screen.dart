@@ -339,6 +339,10 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
   }
 
   void _onUtteranceFinal(String text) {
+    if (text.trim().isEmpty) {
+      _listen();
+      return;
+    }
     HapticFeedback.lightImpact();
     setState(() {
       _messages.add({'sender': 'user', 'text': text});
@@ -372,6 +376,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
       });
 
       final sr = await client.send(request).timeout(const Duration(seconds: 35));
+      if (sr.statusCode == 429) throw Exception('rate_limit');
       if (sr.statusCode != 200) throw Exception('server ${sr.statusCode}');
 
       String accumulated = '';
@@ -415,7 +420,10 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
       }
     } catch (e) {
       if (!mounted) return;
-      final msg = e.toString().contains('timeout') ? '⏱ זמן פג' : '⚠️ שגיאת חיבור';
+      final err = e.toString();
+      final msg = err.contains('rate_limit') ? '⏳ עמוס כרגע, נסה שוב'
+                : err.contains('timeout')    ? '⏱ זמן פג'
+                :                             '⚠️ שגיאת חיבור';
       setState(() {
         _hint = msg;
         _streamingReply = '';
@@ -503,6 +511,10 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
     _flutterTts.stop();
     _audioPlayer.stop();
     _audioPlayer.dispose();
+    if (_lastTtsPath != null) {
+      File(_lastTtsPath!).delete().catchError((_) => File(''));
+      _lastTtsPath = null;
+    }
     try {
       _sendWs({'type': 'bye'});
       _wsSub?.cancel();

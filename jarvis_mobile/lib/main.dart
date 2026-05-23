@@ -320,16 +320,18 @@ class _JarvisOrb extends StatelessWidget {
 
 // ─── Chat Bubble ─────────────────────────────────────────────────────────────
 class _ChatBubble extends StatefulWidget {
-  final Map<String, String> msg;
+  final Map<String, dynamic> msg;
   final int index;
   final ValueChanged<String>? onSpeak;
   final void Function(String target)? onNavigate;
+  final void Function(String text)? onSend;
 
   const _ChatBubble({
     required this.msg,
     required this.index,
     this.onSpeak,
     this.onNavigate,
+    this.onSend,
   });
 
   @override
@@ -446,6 +448,10 @@ class _ChatBubbleState extends State<_ChatBubble> {
             const SizedBox(height: 10),
             _navButton(widget.msg['navTarget']!, widget.msg['navLabel'] ?? 'פתח'),
           ],
+          if (!isUser && widget.msg['suggestions'] is List) ...[
+            const SizedBox(height: 10),
+            _suggestionChips(List<String>.from(widget.msg['suggestions'] as List)),
+          ],
           if (_showTime) ...[
             const SizedBox(height: 6),
             Text(
@@ -496,6 +502,26 @@ class _ChatBubbleState extends State<_ChatBubble> {
             ),
           ),
         ),
+      );
+
+  Widget _suggestionChips(List<String> items) => Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: items.map((s) => GestureDetector(
+          onTap: () => widget.onSend?.call(s),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: JC.blue500.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: JC.blue400.withValues(alpha: 0.4)),
+            ),
+            child: Text(
+              s,
+              style: TextStyle(fontSize: 12, color: JC.blue400, fontFamily: 'Heebo'),
+            ),
+          ),
+        )).toList(),
       );
 
   Widget _bubbleSurface({required bool isUser, required Widget child}) {
@@ -1188,12 +1214,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         final navTarget = isNav ? action['target']?.toString() : null;
         final navLabel  = isNav ? action['label']?.toString() : null;
 
+        final rawSug = data['suggestions'];
+        final suggestions = rawSug is List ? List<String>.from(rawSug.whereType<String>()) : <String>[];
         setState(() => messages.add({
               'sender': 'jarvis',
               'text': answer,
               'time': _getCurrentTime(),
               if (navTarget != null) 'navTarget': navTarget,
               if (navLabel != null) 'navLabel': navLabel,
+              if (suggestions.isNotEmpty) 'suggestions': suggestions,
             }));
         _persistMessages();
         _checkForFinalPrompt(answer);
@@ -1269,6 +1298,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       });
 
       final sr = await client.send(request).timeout(const Duration(seconds: 35));
+      if (sr.statusCode == 429) throw Exception('rate_limit');
       if (sr.statusCode != 200) throw Exception('server ${sr.statusCode}');
 
       String accumulated = '';
@@ -1327,10 +1357,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     } catch (e) {
       if (!mounted) return;
       final errStr = e.toString();
-      final isTimeout = errStr.contains('timeout') || errStr.contains('TimeoutException');
-      final msg = isTimeout
-          ? '⏱ זמן פג — נסה שוב'
-          : '⚠️ ${ApiService.friendlyError(e)}';
+      final isTimeout  = errStr.contains('timeout') || errStr.contains('TimeoutException');
+      final isRateLimit = errStr.contains('rate_limit') || errStr.contains('429');
+      final msg = isRateLimit ? '⏳ עמוס כרגע — נסה שוב עוד כמה שניות'
+                : isTimeout   ? '⏱ זמן פג — נסה שוב'
+                :               '⚠️ ${ApiService.friendlyError(e)}';
       setState(() {
         messages.add({'sender': 'jarvis', 'text': msg, 'time': _getCurrentTime()});
         _currentState          = JarvisState.idle;
@@ -1692,6 +1723,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ),
         actions: [
           IconButton(
+            icon: Icon(Icons.summarize_outlined,
+                color: JC.textSecondary, size: 22),
+            tooltip: 'סכם שיחה',
+            onPressed: () => _sendMessage('סכם לי את השיחה הנוכחית בנקודות עיקריות'),
+          ),
+          IconButton(
             icon: Icon(Icons.refresh_rounded,
                 color: JC.textSecondary, size: 22),
             tooltip: 'רענן שיחה',
@@ -1828,6 +1865,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       index: index,
                       onSpeak: _speakText,
                       onNavigate: widget.onNavigate,
+                      onSend: (text) => _sendMessage(text),
                     );
                   },
                 ),

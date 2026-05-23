@@ -280,23 +280,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final url = _localServerUrlCtrl.text.trim().isEmpty
         ? 'http://192.168.1.100:3000'
         : _localServerUrlCtrl.text.trim();
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      setState(() => _pingResult = '❌ כתובת לא תקינה — חייבת להתחיל ב-http:// או https://');
+      return;
+    }
+
     setState(() => _pingResult = '⏳ בודק...');
     try {
       final res = await http
           .get(Uri.parse('$url/health'))
           .timeout(const Duration(seconds: 5));
+      if (!mounted) return;
       if (res.statusCode == 200) {
         setState(() => _pingResult = '✅ השרת פעיל ב-$url');
       } else {
         setState(() => _pingResult = '⚠️ השרת ענה קוד ${res.statusCode} מ-$url');
       }
-    } on Exception catch (e) {
+    } catch (e) {
+      if (!mounted) return;
       final err = e.toString();
       final hint = err.contains('timeout')
           ? 'הבקשה פגה — השרת לא מגיב.\nוודא ש-node server.js רץ.'
           : err.contains('refused') || err.contains('Failed host lookup') || err.contains('NetworkError')
               ? 'חיבור נדחה — בדוק:\n1. node server.js רץ?\n2. ה-IP נכון?\n3. פורט 3000 פתוח?'
-              : ApiService.friendlyError(e);
+              : ApiService.friendlyError(e is Exception ? e : Exception(err));
       setState(() => _pingResult = '❌ $hint');
     }
   }

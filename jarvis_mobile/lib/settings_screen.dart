@@ -42,6 +42,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _pingResult;
   int _selectedPreset = -1; // index into _kPresets, -1 = custom
   String? _obsidianSyncStatus;
+  String? _personalityPreview;
+  bool _personalityPreviewLoading = false;
 
   // TTS preview
   final FlutterTts _tts = FlutterTts();
@@ -203,6 +205,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       personality:   _s.personality,
     ).catchError((_) {});
     Navigator.pop(context);
+  }
+
+  Future<void> _previewPersonality() async {
+    setState(() { _personalityPreviewLoading = true; _personalityPreview = null; });
+    try {
+      final result = await ApiService(_s).askJarvis('שלום! תציג את עצמך במשפט אחד.', _s);
+      if (!mounted) return;
+      setState(() => _personalityPreview = result['answer']?.toString() ?? '');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _personalityPreview = '❌ ${ApiService.friendlyError(e is Exception ? e : Exception(e.toString()))}');
+    } finally {
+      if (mounted) setState(() => _personalityPreviewLoading = false);
+    }
   }
 
   Future<void> _syncObsidian() async {
@@ -832,7 +848,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   DropdownMenuItem(value: 'concise',   child: Text('קצר ולעניין')),
                   DropdownMenuItem(value: 'humorous',  child: Text('הומוריסטי')),
                 ],
-                onChanged: (val) => setState(() => _s.personality = val!),
+                onChanged: (val) {
+                  setState(() { _s.personality = val!; _personalityPreview = null; });
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextButton.icon(
+                      onPressed: _personalityPreviewLoading ? null : _previewPersonality,
+                      icon: _personalityPreviewLoading
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.play_circle_outline, size: 16),
+                      label: const Text('תצוגה מקדימה — שמע איך ג\'רוויס ידבר'),
+                    ),
+                    if (_personalityPreview != null)
+                      Container(
+                        margin: const EdgeInsets.only(top: 6),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: JC.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: JC.blue400.withOpacity(0.4)),
+                        ),
+                        child: Text(
+                          _personalityPreview!,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(color: JC.textPrimary, fontSize: 13),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ]),
 
@@ -1103,6 +1151,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 divisions: 10,
                 display: (v) => v.toStringAsFixed(1),
                 onChanged: (v) => setState(() => _s.temperature = v),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  () {
+                    final t = _s.temperature;
+                    if (t <= 0.2) return '🎯 דטרמיניסטי — תשובות עקביות וצפויות';
+                    if (t <= 0.5) return '⚖️ מאוזן — אמין עם מעט גיוון';
+                    if (t <= 0.7) return '✨ יצירתי — מגוון עם שמירה על רלוונטיות';
+                    return '🎲 חופשי — מפתיע, לפעמים בלתי צפוי';
+                  }(),
+                  style: TextStyle(
+                    color: JC.textMuted,
+                    fontSize: 12,
+                    fontFamily: 'Heebo',
+                  ),
+                  textAlign: TextAlign.right,
+                ),
               ),
               _divider(),
               _rowDropdown<String>(

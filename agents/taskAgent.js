@@ -92,7 +92,7 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                 return { answer, pendingAction: { type: 'auto_reminder', taskContent: parsed.taskDetails, dueDate: parsed.dueDate } };
             }
 
-            return { answer };
+            return { answer, action: { type: 'navigate', target: 'tasks', label: 'פתח משימות' } };
         }
 
         if (parsed.intent === 'today') {

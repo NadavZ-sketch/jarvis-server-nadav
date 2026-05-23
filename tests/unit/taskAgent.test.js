@@ -44,6 +44,7 @@ describe('runTaskAgent', () => {
         expect(supabase.from).toHaveBeenCalledWith('tasks');
         expect(supabase._chain.insert).toHaveBeenCalledWith([{ content: 'buy milk' }]);
         expect(result.answer).toContain('הוספתי');
+        expect(result.action).toEqual({ type: 'navigate', target: 'tasks', label: 'פתח משימות' });
     });
 
     test('list intent queries tasks and returns list', async () => {

@@ -8,6 +8,7 @@ import 'screens/app_drawer.dart';
 import 'screens/smart_productivity_preview_screen.dart';
 import 'screens/productivity_screen.dart';
 import 'screens/control_center_preview_screen.dart';
+import 'screens/notes_screen.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
 
@@ -28,6 +29,10 @@ class _MainShellState extends State<MainShell> {
 
   Timer? _notifPollTimer;
   String? _pendingChatCommand;
+
+  // Drives the Productivity tab's inner sub-tab (1=tasks, 2=reminders) when the
+  // chat sends the user there via an inline navigate button.
+  final ValueNotifier<int> _productivityTab = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -65,7 +70,39 @@ class _MainShellState extends State<MainShell> {
   @override
   void dispose() {
     _notifPollTimer?.cancel();
+    _productivityTab.dispose();
     super.dispose();
+  }
+
+  // Navigate the user to the right place when the chat returns a navigate action.
+  void _navigateFromChat(String target) {
+    if (target == 'notes') {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => Scaffold(
+            backgroundColor: JC.bg,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              title: Text('הערות',
+                  style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Heebo')),
+              centerTitle: true,
+              iconTheme: IconThemeData(color: JC.textSecondary),
+            ),
+            body: NotesScreen(settings: _settings),
+          ),
+        ),
+      );
+      return;
+    }
+    // tasks/reminders live inside the Productivity tab (index 2).
+    final subTab = target == 'reminders' ? 2 : 1;
+    _productivityTab.value = subTab;
+    HapticFeedback.selectionClick();
+    setState(() => _selectedIndex = 2);
   }
 
   void _onSettingsChanged(AppSettings updated) {
@@ -168,11 +205,13 @@ class _MainShellState extends State<MainShell> {
                 onOpenDrawer: _openDrawer,
                 pendingCommand: _pendingChatCommand,
                 onCommandConsumed: () => setState(() => _pendingChatCommand = null),
+                onNavigate: _navigateFromChat,
               ),
               // 2 — Productivity (Tasks + Reminders + Calendar)
               ProductivityScreen(
                 settings: _settings,
                 onOpenDrawer: _openDrawer,
+                jumpToTab: _productivityTab,
               ),
               // 3 — Control Center
               ControlCenterPreviewScreen(settings: _settings),

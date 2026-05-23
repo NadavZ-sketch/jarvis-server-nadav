@@ -239,7 +239,10 @@ async function runReminderAgent(userMessage, supabase) {
         obsidianSync.dbToVault('reminders', { text: reminderText, scheduled_time: scheduledTime, title: reminderText, remind_at: scheduledTime });
 
         const recSuffix = recurrence ? ` (${RECURRENCE_LABELS[recurrence]})` : '';
-        return { answer: `בסדר, אזכיר לך "${reminderText}" ב${formatReminderTime(fireDate)}${recSuffix}.` };
+        return {
+            answer: `בסדר, אזכיר לך "${reminderText}" ב${formatReminderTime(fireDate)}${recSuffix}.`,
+            action: { type: 'navigate', target: 'reminders', label: 'פתח תזכורות' },
+        };
 
     } catch (err) {
         console.error('ReminderAgent Error:', err.message);

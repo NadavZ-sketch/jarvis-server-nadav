@@ -11,6 +11,7 @@ class ProductivityScreen extends StatefulWidget {
   final ValueChanged<int>? onTasksCountUpdate;
   final ValueChanged<int>? onRemindersCountUpdate;
   final VoidCallback? onOpenDrawer;
+  final ValueListenable<int>? jumpToTab;
 
   const ProductivityScreen({
     super.key,
@@ -18,6 +19,7 @@ class ProductivityScreen extends StatefulWidget {
     this.onTasksCountUpdate,
     this.onRemindersCountUpdate,
     this.onOpenDrawer,
+    this.jumpToTab,
   });
 
   @override
@@ -32,10 +34,17 @@ class _ProductivityScreenState extends State<ProductivityScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    widget.jumpToTab?.addListener(_onJumpToTab);
+  }
+
+  void _onJumpToTab() {
+    final i = widget.jumpToTab?.value ?? 0;
+    if (i >= 0 && i < _tabController.length) _tabController.animateTo(i);
   }
 
   @override
   void dispose() {
+    widget.jumpToTab?.removeListener(_onJumpToTab);
     _tabController.dispose();
     super.dispose();
   }

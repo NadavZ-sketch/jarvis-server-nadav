@@ -1199,8 +1199,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _checkForFinalPrompt(answer);
 
         // Navigate actions render an inline button in the bubble (see _ChatBubble);
-        // only whatsapp/email actions need the confirm-and-send dialog.
-        if (action != null && !isNav && mounted) await _confirmAndSend(action);
+        // settings_update actions are applied silently; whatsapp/email need dialog.
+        if (action != null && !isNav && mounted) {
+          if (action['type'] == 'settings_update') {
+            await _applySettingsUpdate(Map<String, dynamic>.from(action['data'] as Map));
+          } else {
+            await _confirmAndSend(action);
+          }
+        }
 
         // If the server started a background job, poll for the result automatically
         if (answer.contains('ברקע') && answer.contains('יופיע בשיחה')) {
@@ -1305,7 +1311,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               _persistMessages();
               _checkForFinalPrompt(answer);
               if (action != null && !isNav && mounted) {
-                await _confirmAndSend(Map<String, dynamic>.from(action as Map));
+                if (action['type'] == 'settings_update') {
+                  await _applySettingsUpdate(Map<String, dynamic>.from(action['data'] as Map));
+                } else {
+                  await _confirmAndSend(Map<String, dynamic>.from(action as Map));
+                }
               }
               _agentCallCount++;
               _checkSurveyEligibility();
@@ -1454,6 +1464,18 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   // ─── Confirm & Send ───────────────────────────────────────────────────────────
+  Future<void> _applySettingsUpdate(Map<String, dynamic> data) async {
+    if (data.containsKey('personality'))    _settings.personality    = data['personality'] as String;
+    if (data.containsKey('voiceEnabled'))   _settings.voiceEnabled   = data['voiceEnabled'] as bool;
+    if (data.containsKey('ttsSpeed'))       _settings.ttsSpeed       = (data['ttsSpeed'] as num).toDouble();
+    if (data.containsKey('responseLength')) _settings.responseLength = data['responseLength'] as String;
+    if (data.containsKey('userName'))       _settings.userName       = data['userName'] as String;
+    if (data.containsKey('assistantName'))  _settings.assistantName  = data['assistantName'] as String;
+    await _settings.save();
+    if (mounted) setState(() {});
+    widget.onSettingsChanged?.call(_settings);
+  }
+
   Future<void> _confirmAndSend(Map<String, dynamic> action) async {
     final type    = action['type'] as String;
     final message = action['message'] as String;

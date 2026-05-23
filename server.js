@@ -66,6 +66,7 @@ const proactiveEngine = require('./services/proactiveEngine');
 const profileLearner  = require('./services/profileLearner');
 const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
 const { runPromptAgent }      = require('./agents/promptAgent');
+const { runSettingsAgent }    = require('./agents/settingsAgent');
 const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
 const { createTasksRouter } = require('./routes/tasks');
@@ -770,6 +771,8 @@ async function askJarvisHandler(req, res) {
             result = await runCalendarAgent(userMessage, supabase, settings);
         } else if (agentName === 'prompt') {
             result = await runPromptAgent(userMessage, supabase, useLocal, settings);
+        } else if (agentName === 'settings') {
+            result = await runSettingsAgent(userMessage, supabase, useLocal, settings);
         } else {
             // ── Orchestrator: handle multi-intent requests before chat fallback ─
             if (!imageBase64 && userMessage.length > 15) {
@@ -2327,6 +2330,7 @@ async function streamJarvisHandler(req, res) {
             else if (agentName === 'messaging') result = await runMessagingAgent(userMessage, supabase, useLocal);
             else if (agentName === 'calendar') result = await runCalendarAgent(userMessage, supabase, settings);
             else if (agentName === 'prompt') result = await runPromptAgent(userMessage, supabase, useLocal, settings);
+            else if (agentName === 'settings') result = await runSettingsAgent(userMessage, supabase, useLocal, settings);
             else {
                 const [chatHistory, longTermMemories] = await Promise.all([
                     loadChatHistory(chatId), fetchLongTermMemories()
@@ -3500,6 +3504,22 @@ app.delete('/dashboard/smart-telemetry/history', async (req, res) => {
         const { error } = await supabase.from('smart_telemetry_events').delete().eq('user_id', userId);
         if (error) return res.status(500).json({ error: error.message });
         res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Called from the mobile settings screen "Reset Telemetry" button.
+// scope='user' (default) deletes all telemetry events for this installation.
+app.post('/dashboard/smart-telemetry/reset', async (req, res) => {
+    try {
+        const scope = String(req.body?.scope || 'user').trim();
+        if (scope !== 'user') {
+            return res.status(400).json({ error: `Unknown scope: ${scope}` });
+        }
+        const { error } = await supabase.from('smart_telemetry_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        if (error) return res.status(500).json({ error: error.message });
+        res.json({ ok: true, deleted: true, scope });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

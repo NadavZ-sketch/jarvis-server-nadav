@@ -221,6 +221,12 @@ Example gated endpoints:
 | `POST` | `/e2e-reports/:runId/prompt` | Re-analyze report | Re-run e2e analysis with new context |
 | `POST` | `/e2e-reports/:runId/mark-done` | Mark issue resolved | Clears report |
 | `GET` | `/scan/errors` | Scan codebase for errors | Rate-limited (5/min) |
+| `POST` | `/sync/obsidian` | Trigger manual Obsidian vault sync | Requires `OBSIDIAN_VAULT_PATH` env var |
+| `POST` | `/sync/obsidian/auto` | Enable/disable auto-sync | Body: `{"enabled": true\|false}`; persists to Supabase |
+| `POST` | `/dashboard/smart-telemetry` | Record a telemetry event | Body: `{event_type, payload?, user_id?}` |
+| `GET` | `/dashboard/smart-telemetry` | Fetch telemetry events | Optional `?user_id=` filter |
+| `DELETE` | `/dashboard/smart-telemetry/history` | Delete all telemetry events for a user | Body/query: `{userId}` |
+| `POST` | `/dashboard/smart-telemetry/reset` | Reset telemetry (from settings screen) | Body: `{"scope":"user"}`; deletes all events |
 | `GET` | `/agent-center` | Dashboard HTML | 7-tab control center: overview, agents, memory, tasks, reminders, settings, performance |
 | `ws` | `/ws-jarvis` | WebSocket stream | Real-time bidirectional agent chat |
 

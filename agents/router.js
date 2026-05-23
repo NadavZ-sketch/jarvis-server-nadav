@@ -24,6 +24,7 @@ const KEYWORDS = {
     stocks:    /מניה|מניות|בורסה|שוק ההון|נסד"ק|nasdaq|s&p|ביטקוין|bitcoin|קריפטו|crypto|דולר|אירו|שקל|מטבע|תל אביב 35|ת"א 35|אפל|גוגל|טסלה|אמזון|מיקרוסופט|מדד|תיק השקעות|ריבית|אינפלציה/i,
     translate: /תרגם|תרגום|translate|translation|כתוב.*אנגלית|כתוב.*עברית|בעברית|באנגלית|בצרפתית|בספרדית|בערבית|בגרמנית|מה פירוש|מה המשמעות/i,
     factory:   /צור אייג'נט|יצור אייג'נט|בנה אייג'נט|הוסף אייג'נט|תייצר אייג'נט|תבנה אייג'נט|רשימת אייג'נטים|הצג אייג'נטים|מחק אייג'נט|הסר אייג'נט/i,
+    settings:  /שנה.*אישיות|שנה.*אופי|דבר.*יותר.*לאט|דבר.*יותר.*מהר|האט|האץ|בטל קול|כבה קול|הפעל קול|אפשר קול|תשובות קצרות|תשובות ארוכות|שנה.*שם.*ל|קרא לי |קרא לעצמך|מה.*הגדרות.*שלי|הגדרות.*נוכחיות|שנה.*הגדרות/i,
     calendar:  /יומן|פגישות.*היום|פגישות.*מחר|מה יש לי.*ביומן|מה ביומן|קבע פגישה|קבע אירוע|הוסף.*ליומן|תקבע.*פגישה|אירועים.*היום|google calendar/i,
     prompt:    /צור פרומפט|תכתוב פרומפט|בנה פרומפט|שפר פרומפט|שדרג פרומפט|הערך פרומפט|נתח פרומפט|שמור פרומפט|רשימת פרומפטים|הצג פרומפטים|פרומפטים שמורים|הפרומפטים שלי|הנדסת פרומפטים|prompt engineering|כתוב.*פרומפט|פרומפט ל[א-ת]/i,
 };
@@ -91,7 +92,7 @@ function classifyIntent(userMessage) {
 const VALID_INTENTS = new Set([
     'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
     'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'insight', 'security', 'code_error', 'e2e', 'factory', 'past_conv', 'calendar', 'prompt', 'chat',
+    'insight', 'security', 'code_error', 'e2e', 'factory', 'past_conv', 'calendar', 'prompt', 'settings', 'chat',
 ]);
 
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
@@ -121,6 +122,7 @@ Rules:
 - calendar: Google Calendar — view events, create meetings/appointments
 - past_conv: asking about previous conversations with Jarvis
 - prompt: create, refine, evaluate, save, or list AI prompts (prompt engineering)
+- settings: change Jarvis settings via voice/chat (personality, voice speed, response length, name)
 - chat: general conversation, question, or anything that does not fit above
 
 Respond ONLY with valid JSON: {"intent": "NAME"}

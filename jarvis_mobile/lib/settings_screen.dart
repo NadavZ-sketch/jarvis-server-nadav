@@ -42,6 +42,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _pingResult;
   int _selectedPreset = -1; // index into _kPresets, -1 = custom
   String? _obsidianSyncStatus;
+  String? _personalityPreview;
+  bool _personalityPreviewLoading = false;
 
   // TTS preview
   final FlutterTts _tts = FlutterTts();
@@ -109,7 +111,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }
           }
         }
-        setState(() => _voiceNames = names.toSet().toList()..sort());
+        final sorted = names.toSet().toList()..sort();
+        setState(() {
+          _voiceNames = sorted;
+          // Clear a stale voice name saved from a different device/OS version
+          if (_s.ttsVoiceName.isNotEmpty && !sorted.contains(_s.ttsVoiceName)) {
+            _s.ttsVoiceName = '';
+          }
+        });
       }
     } catch (_) {/* voices unavailable on this platform */}
   }
@@ -205,6 +214,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Navigator.pop(context);
   }
 
+  Future<void> _previewPersonality() async {
+    setState(() { _personalityPreviewLoading = true; _personalityPreview = null; });
+    try {
+      final result = await ApiService(_s).askJarvis('שלום! תציג את עצמך במשפט אחד.', _s);
+      if (!mounted) return;
+      setState(() => _personalityPreview = result['answer']?.toString() ?? '');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _personalityPreview = '❌ ${ApiService.friendlyError(e is Exception ? e : Exception(e.toString()))}');
+    } finally {
+      if (mounted) setState(() => _personalityPreviewLoading = false);
+    }
+  }
+
   Future<void> _syncObsidian() async {
     setState(() => _obsidianSyncStatus = '⏳ מסנכרן...');
     try {
@@ -280,23 +303,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final url = _localServerUrlCtrl.text.trim().isEmpty
         ? 'http://192.168.1.100:3000'
         : _localServerUrlCtrl.text.trim();
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      setState(() => _pingResult = '❌ כתובת לא תקינה — חייבת להתחיל ב-http:// או https://');
+      return;
+    }
+
     setState(() => _pingResult = '⏳ בודק...');
     try {
       final res = await http
           .get(Uri.parse('$url/health'))
           .timeout(const Duration(seconds: 5));
+      if (!mounted) return;
       if (res.statusCode == 200) {
         setState(() => _pingResult = '✅ השרת פעיל ב-$url');
       } else {
         setState(() => _pingResult = '⚠️ השרת ענה קוד ${res.statusCode} מ-$url');
       }
-    } on Exception catch (e) {
+    } catch (e) {
+      if (!mounted) return;
       final err = e.toString();
       final hint = err.contains('timeout')
           ? 'הבקשה פגה — השרת לא מגיב.\nוודא ש-node server.js רץ.'
           : err.contains('refused') || err.contains('Failed host lookup') || err.contains('NetworkError')
               ? 'חיבור נדחה — בדוק:\n1. node server.js רץ?\n2. ה-IP נכון?\n3. פורט 3000 פתוח?'
-              : ApiService.friendlyError(e);
+              : ApiService.friendlyError(e is Exception ? e : Exception(err));
       setState(() => _pingResult = '❌ $hint');
     }
   }
@@ -824,7 +855,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   DropdownMenuItem(value: 'concise',   child: Text('קצר ולעניין')),
                   DropdownMenuItem(value: 'humorous',  child: Text('הומוריסטי')),
                 ],
-                onChanged: (val) => setState(() => _s.personality = val!),
+                onChanged: (val) {
+                  setState(() { _s.personality = val!; _personalityPreview = null; });
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextButton.icon(
+                      onPressed: _personalityPreviewLoading ? null : _previewPersonality,
+                      icon: _personalityPreviewLoading
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.play_circle_outline, size: 16),
+                      label: const Text('תצוגה מקדימה — שמע איך ג\'רוויס ידבר'),
+                    ),
+                    if (_personalityPreview != null)
+                      Container(
+                        margin: const EdgeInsets.only(top: 6),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: JC.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: JC.blue400.withOpacity(0.4)),
+                        ),
+                        child: Text(
+                          _personalityPreview!,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(color: JC.textPrimary, fontSize: 13),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ]),
 
@@ -1095,6 +1158,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 divisions: 10,
                 display: (v) => v.toStringAsFixed(1),
                 onChanged: (v) => setState(() => _s.temperature = v),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  () {
+                    final t = _s.temperature;
+                    if (t <= 0.2) return '🎯 דטרמיניסטי — תשובות עקביות וצפויות';
+                    if (t <= 0.5) return '⚖️ מאוזן — אמין עם מעט גיוון';
+                    if (t <= 0.7) return '✨ יצירתי — מגוון עם שמירה על רלוונטיות';
+                    return '🎲 חופשי — מפתיע, לפעמים בלתי צפוי';
+                  }(),
+                  style: TextStyle(
+                    color: JC.textMuted,
+                    fontSize: 12,
+                    fontFamily: 'Heebo',
+                  ),
+                  textAlign: TextAlign.right,
+                ),
               ),
               _divider(),
               _rowDropdown<String>(

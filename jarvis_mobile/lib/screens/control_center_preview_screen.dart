@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
-import '../widgets/preview_banner.dart';
+import 'e2e_reports_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -64,18 +64,10 @@ String _shortDate(String iso) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Demo data
+// Default survey (used when the server has no pending survey for the user)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const _demoFeatureIdeas = [
-  {'icon': Icons.auto_awesome, 'title': 'סיכום יום אוטומטי', 'desc': 'Jarvis מסכם כל יום ב-21:00 עם הישגים ומשימות פתוחות'},
-  {'icon': Icons.mic_none_rounded, 'title': 'בריגייד קולי', 'desc': 'הפעלת פקודות בלי לפתוח את האפליקציה'},
-  {'icon': Icons.hub_rounded, 'title': 'חיבור Google Calendar', 'desc': 'סנכרון דו-כיווני עם יומן Google'},
-  {'icon': Icons.trending_up_rounded, 'title': 'ניתוח מגמות', 'desc': 'Jarvis מזהה דפוסים בפעילות ומציע שיפורים'},
-  {'icon': Icons.group_rounded, 'title': 'שיתוף משימות', 'desc': 'שליחת משימות לחברי צוות דרך WhatsApp'},
-];
-
-const _demoSurveyQuestions = [
+const _defaultSurveyQuestions = [
   {
     'id': 'responseQuality',
     'question': 'איכות התשובות שקיבלת?',
@@ -114,11 +106,17 @@ class _ControlCenterPreviewScreenState
   List<Map<String, dynamic>> _agents = [];
   List<Map<String, dynamic>> _issues = [];
   List<Map<String, dynamic>> _survey = [];
+  List<Map<String, dynamic>> _backlog = [];
+  List<Map<String, dynamic>> _proposals = [];
+  List<Map<String, dynamic>> _metrics = [];
+  Map<String, dynamic> _intentRatio = const {'fast': 0, 'llm': 0};
 
   bool _loadingStats = true;
   bool _loadingAgents = true;
   bool _loadingIssues = true;
-  bool _useDemoSurvey = false;
+  bool _loadingBacklog = true;
+  bool _loadingMetrics = true;
+  bool _generatingBacklog = false;
 
   String _agentFilter = '';
   String? _statsError;
@@ -153,6 +151,8 @@ class _ControlCenterPreviewScreenState
       _loadingStats = true;
       _loadingAgents = true;
       _loadingIssues = true;
+      _loadingBacklog = true;
+      _loadingMetrics = true;
       _statsError = null;
       _agentsError = null;
     });
@@ -160,8 +160,36 @@ class _ControlCenterPreviewScreenState
   }
 
   Future<void> _load() async {
-    await Future.wait(
-        [_loadStats(), _loadAgents(), _loadIssues(), _loadSurvey()]);
+    await Future.wait([
+      _loadStats(),
+      _loadAgents(),
+      _loadIssues(),
+      _loadSurvey(),
+      _loadBacklog(),
+      _loadMetrics(),
+    ]);
+  }
+
+  Future<void> _loadBacklog() async {
+    try {
+      final b = await _api.getBacklog();
+      if (mounted) setState(() { _backlog = b; _loadingBacklog = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingBacklog = false);
+    }
+  }
+
+  Future<void> _loadMetrics() async {
+    try {
+      final m = await _api.getAgentMetrics();
+      if (mounted) setState(() {
+        _metrics = List<Map<String, dynamic>>.from(m['latency'] ?? []);
+        _intentRatio = Map<String, dynamic>.from(m['intent'] ?? const {'fast': 0, 'llm': 0});
+        _loadingMetrics = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingMetrics = false);
+    }
   }
 
   Future<void> _loadStats() async {
@@ -199,13 +227,11 @@ class _ControlCenterPreviewScreenState
       final s = await _api.getSurveyCheck(widget.settings.userName);
       if (mounted) {
         setState(() {
-          _survey = s.isNotEmpty ? s : _demoSurveyQuestions;
-          _useDemoSurvey = s.isEmpty;
+          _survey = s.isNotEmpty ? s : _defaultSurveyQuestions;
         });
       }
     } catch (_) {
-      if (mounted)
-        setState(() { _survey = _demoSurveyQuestions; _useDemoSurvey = true; });
+      if (mounted) setState(() { _survey = _defaultSurveyQuestions; });
     }
   }
 
@@ -214,6 +240,18 @@ class _ControlCenterPreviewScreenState
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) setState(() => _snackMessage = null);
     });
+  }
+
+  Future<void> _quickToggleAgent(Map<String, dynamic> agent) async {
+    final name = (agent['name'] ?? agent['id'] ?? 'סוכן').toString();
+    try {
+      final r = await _api.toggleAgent(agent['id'].toString());
+      final disabled = (r['status'] ?? '').toString() == 'disabled';
+      _showSnack('$name ${disabled ? 'כובה' : 'הופעל'} ✓');
+      await _loadAgents();
+    } catch (e) {
+      _showSnack(ApiService.friendlyError(e));
+    }
   }
 
   List<Map<String, dynamic>> get _activeAgents => _agents
@@ -290,7 +328,7 @@ class _ControlCenterPreviewScreenState
                 ),
               ),
               Text(
-                '$screenTitle · Preview',
+                screenTitle,
                 style: TextStyle(
                   color: JC.textMuted,
                   fontSize: 12,
@@ -331,7 +369,6 @@ class _ControlCenterPreviewScreenState
                   ],
                 ),
               ),
-              const PreviewBanner(),
             ]),
             if (_snackMessage != null)
               Positioned(
@@ -752,10 +789,24 @@ class _ControlCenterPreviewScreenState
   Widget _AgentActivityLog() {
     final usage = _stats?['agent_usage'] as Map<String, dynamic>?;
 
-    // Build activity entries: merge usage stats + current agent statuses
+    // Build activity entries: prefer live latency metrics (real call counts),
+    // then usage stats, then current agent statuses.
     final entries = <Map<String, dynamic>>[];
 
-    if (usage != null && usage.isNotEmpty) {
+    if (_metrics.isNotEmpty) {
+      for (final m in _metrics.take(8)) {
+        final id = (m['agent'] ?? '').toString();
+        final matching = _agents
+            .where((a) => (a['id'] ?? a['name'] ?? '').toString() == id)
+            .firstOrNull;
+        entries.add({
+          'name': matching?['name'] ?? id,
+          'count': m['count'],
+          'status': matching?['status'] ?? 'active',
+          'source': 'metrics',
+        });
+      }
+    } else if (usage != null && usage.isNotEmpty) {
       final sorted = usage.entries.toList()
         ..sort((a, b) => (b.value as num).compareTo(a.value as num));
       for (final e in sorted.take(8)) {
@@ -783,7 +834,6 @@ class _ControlCenterPreviewScreenState
       title: 'לוג פעילות סוכנים',
       icon: Icons.history_rounded,
       iconColor: const Color(0xFF3B82F6),
-      headerTrailing: usage == null ? const DemoChip() : null,
       child: _loadingAgents || _loadingStats
           ? _SectionLoader()
           : entries.isEmpty
@@ -828,22 +878,25 @@ class _ControlCenterPreviewScreenState
 
   // ── Tab 3: Backlog AI ──────────────────────────────────────────────────────
 
-  static const _demoBacklogItems = [
-    {'priority': 'high', 'title': 'תיקון intent routing לשאלות מורכבות', 'status': 'open', 'estimate': '2d'},
-    {'priority': 'medium', 'title': 'שיפור זיכרון ארוך טווח עם Pinecone', 'status': 'in_progress', 'estimate': '3d'},
-    {'priority': 'medium', 'title': 'הוספת תמיכה ב-WebSocket streaming', 'status': 'open', 'estimate': '1d'},
-    {'priority': 'low', 'title': 'ממשק ניהול לסוכנים מותאמים', 'status': 'open', 'estimate': '5d'},
-    {'priority': 'low', 'title': 'שילוב Google Calendar דו-כיווני', 'status': 'planned', 'estimate': '4d'},
-  ];
+  Future<void> _generateBacklogProposals() async {
+    setState(() => _generatingBacklog = true);
+    try {
+      final p = await _api.generateBacklog();
+      if (mounted) setState(() { _proposals = p; _generatingBacklog = false; });
+      _showSnack('Jarvis הציע ${p.length} פריטים חדשים ✓');
+    } catch (e) {
+      if (mounted) setState(() => _generatingBacklog = false);
+      _showSnack(ApiService.friendlyError(e));
+    }
+  }
 
   Widget _BacklogAICard() {
     return _SectionCard(
       title: 'Backlog AI',
       icon: Icons.view_kanban_rounded,
       iconColor: const Color(0xFF6366F1),
-      headerTrailing: const DemoChip(),
       child: Column(children: [
-        // AI recommendation
+        // AI generation
         Container(
           padding: const EdgeInsets.all(12),
           margin: const EdgeInsets.only(bottom: 14),
@@ -860,73 +913,88 @@ class _ControlCenterPreviewScreenState
                   style: TextStyle(color: const Color(0xFF6366F1), fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
             ]),
             const SizedBox(height: 6),
-            Text(
-              'הפריט בעדיפות הגבוהה ביותר הוא תיקון routing. אם נתקן את זה קודם, נצפה לשיפור של ~30% בדיוק הכוונות. הפריט השני (Pinecone) כבר בביצוע ויגדיל את זיכרון הדפוסים.',
-              style: TextStyle(color: JC.textSecondary, fontSize: 11, fontFamily: 'Heebo'),
-            ),
+            if (_proposals.isEmpty)
+              Text(
+                'בקש מ-Jarvis לנתח את המערכת ולהציע פריטי פיתוח מתועדפים.',
+                style: TextStyle(color: JC.textSecondary, fontSize: 11, fontFamily: 'Heebo'),
+              )
+            else
+              ..._proposals.take(3).map((p) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('• ${p['title'] ?? p['text'] ?? ''}',
+                    style: TextStyle(color: JC.textSecondary, fontSize: 11, fontFamily: 'Heebo'),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+              )),
             const SizedBox(height: 8),
             GestureDetector(
-              onTap: () => _showSnack('שואל את Jarvis... (Preview)'),
+              onTap: _generatingBacklog ? null : _generateBacklogProposals,
               child: Row(children: [
-                Icon(Icons.send_rounded, color: const Color(0xFF6366F1), size: 12),
+                if (_generatingBacklog)
+                  const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF6366F1)))
+                else
+                  Icon(Icons.send_rounded, color: const Color(0xFF6366F1), size: 12),
                 const SizedBox(width: 4),
-                Text('שאל את Jarvis על הבאקלוג',
+                Text(_generatingBacklog ? 'Jarvis חושב...' : 'בקש מ-Jarvis הצעות פיתוח',
                     style: TextStyle(color: const Color(0xFF6366F1), fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
               ]),
             ),
           ]),
         ),
-        // Backlog list
-        ..._demoBacklogItems.map((item) {
-          final priority = item['priority'] as String;
-          final statusStr = item['status'] as String;
-          final priorityColor = priority == 'high'
-              ? const Color(0xFFEF4444)
-              : priority == 'medium'
-                  ? const Color(0xFFF59E0B)
-                  : const Color(0xFF22C55E);
-          final statusLabel = statusStr == 'in_progress' ? 'בביצוע' : statusStr == 'planned' ? 'מתוכנן' : 'פתוח';
-          final statusColor = statusStr == 'in_progress'
-              ? const Color(0xFF3B82F6)
-              : statusStr == 'planned'
-                  ? const Color(0xFFA78BFA)
-                  : const Color(0xFF475569);
+        // Backlog list (real committed items)
+        if (_loadingBacklog)
+          _SectionLoader()
+        else if (_backlog.isEmpty)
+          const _EmptyState(message: 'אין פריטים בבאקלוג')
+        else
+          ..._backlog.take(8).map((item) {
+            final priority = (item['priority'] ?? 'medium').toString();
+            final done = item['done'] == true;
+            final priorityColor = priority == 'high'
+                ? const Color(0xFFEF4444)
+                : priority == 'medium'
+                    ? const Color(0xFFF59E0B)
+                    : const Color(0xFF22C55E);
+            final statusLabel = done ? 'הושלם' : 'פתוח';
+            final statusColor = done ? const Color(0xFF22C55E) : const Color(0xFF475569);
+            final title = (item['title'] ?? item['text'] ?? '').toString();
 
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(children: [
-              Container(
-                width: 3, height: 36,
-                decoration: BoxDecoration(
-                  color: priorityColor,
-                  borderRadius: BorderRadius.circular(2),
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                Container(
+                  width: 3, height: 36,
+                  decoration: BoxDecoration(
+                    color: priorityColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(item['title'] as String,
-                    style: TextStyle(color: JC.textPrimary, fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w600),
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                Row(children: [
-                  Text('${item['estimate']}', style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
-                  const SizedBox(width: 6),
-                  Container(width: 1, height: 10, color: JC.border),
-                  const SizedBox(width: 6),
-                  Text(priority == 'high' ? 'דחוף' : priority == 'medium' ? 'בינוני' : 'נמוך',
-                      style: TextStyle(color: priorityColor, fontSize: 10, fontFamily: 'Heebo')),
-                ]),
-              ])),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
+                const SizedBox(width: 10),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title,
+                      style: TextStyle(color: JC.textPrimary, fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w600),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Row(children: [
+                    if (item['added'] != null) ...[
+                      Text('${item['added']}', style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
+                      const SizedBox(width: 6),
+                      Container(width: 1, height: 10, color: JC.border),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(priority == 'high' ? 'דחוף' : priority == 'medium' ? 'בינוני' : 'נמוך',
+                        style: TextStyle(color: priorityColor, fontSize: 10, fontFamily: 'Heebo')),
+                  ]),
+                ])),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(statusLabel, style: TextStyle(color: statusColor, fontSize: 9, fontFamily: 'Heebo')),
                 ),
-                child: Text(statusLabel, style: TextStyle(color: statusColor, fontSize: 9, fontFamily: 'Heebo')),
-              ),
-            ]),
-          );
-        }),
+              ]),
+            );
+          }),
       ]),
     );
   }
@@ -1029,60 +1097,63 @@ class _ControlCenterPreviewScreenState
   // ── Tab 3: Latency Bars ────────────────────────────────────────────────────
 
   Widget _LatencyBarsCard() {
-    const data = [
-      ('chatAgent', 87),
-      ('memoryAgent', 143),
-      ('weatherAgent', 342),
-      ('taskAgent', 65),
-      ('e2eAgent', 489),
-    ];
-    const maxMs = 500;
+    final data = [..._metrics]..sort((a, b) => ((b['avgMs'] ?? 0) as num).compareTo((a['avgMs'] ?? 0) as num));
+    final top = data.take(6).toList();
+    final maxMs = top.isEmpty
+        ? 500
+        : top.map((e) => (e['avgMs'] ?? 0) as num).reduce((a, b) => a > b ? a : b).toDouble().clamp(1, double.infinity);
 
     return _SectionCard(
       title: 'זמן תגובה לפי סוכן',
       icon: Icons.speed_rounded,
       iconColor: const Color(0xFF3B82F6),
-      headerTrailing: const DemoChip(),
-      child: Column(
-        children: data.map((entry) {
-          final frac = (entry.$2 / maxMs).clamp(0.0, 1.0);
-          final color = entry.$2 < 100
-              ? const Color(0xFF22C55E)
-              : entry.$2 < 300
-                  ? const Color(0xFFF59E0B)
-                  : const Color(0xFFEF4444);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(children: [
-              SizedBox(
-                width: 80,
-                child: Text(entry.$1, style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
-                    overflow: TextOverflow.ellipsis),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: Stack(children: [
-                    Container(height: 8, color: color.withOpacity(0.1)),
-                    FractionallySizedBox(
-                      widthFactor: frac,
-                      child: Container(height: 8, color: color.withOpacity(0.8)),
-                    ),
-                  ]),
+      child: _loadingMetrics
+          ? _SectionLoader()
+          : top.isEmpty
+              ? const _EmptyState(message: 'עדיין אין מדידות — שלח כמה הודעות לג׳רוויס')
+              : Column(
+                  children: top.map((entry) {
+                    final agent = (entry['agent'] ?? '').toString();
+                    final ms = ((entry['avgMs'] ?? 0) as num).toInt();
+                    final count = ((entry['count'] ?? 0) as num).toInt();
+                    final frac = (ms / maxMs).clamp(0.0, 1.0);
+                    final color = ms < 1000
+                        ? const Color(0xFF22C55E)
+                        : ms < 3000
+                            ? const Color(0xFFF59E0B)
+                            : const Color(0xFFEF4444);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(children: [
+                        SizedBox(
+                          width: 84,
+                          child: Text(agent, style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: Stack(children: [
+                              Container(height: 8, color: color.withOpacity(0.1)),
+                              FractionallySizedBox(
+                                widthFactor: frac,
+                                child: Container(height: 8, color: color.withOpacity(0.8)),
+                              ),
+                            ]),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 64,
+                          child: Text('${ms}ms·$count',
+                              textAlign: TextAlign.end,
+                              style: TextStyle(color: color, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                        ),
+                      ]),
+                    );
+                  }).toList(),
                 ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 48,
-                child: Text('${entry.$2}ms',
-                    textAlign: TextAlign.end,
-                    style: TextStyle(color: color, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
-              ),
-            ]),
-          );
-        }).toList(),
-      ),
     );
   }
 
@@ -1108,7 +1179,6 @@ class _ControlCenterPreviewScreenState
               Text('התשובות שלך מעצבות את האופן שבו ג׳רוויס לומד ומשתפר',
                   style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
             ])),
-            if (_useDemoSurvey) const DemoChip(),
           ]),
         ),
         Divider(color: JC.border, height: 1),
@@ -1181,37 +1251,67 @@ class _ControlCenterPreviewScreenState
 
   // ── Tab 4: Improvement Feedback Loop ──────────────────────────────────────
 
-  Widget _ImprovementFeedbackLoopCard() {
-    final qualityFrac = _surveyAnswers['responseQuality'] == 'מעולה'
-        ? 0.92 : _surveyAnswers['responseQuality'] == 'טובה'
-            ? 0.72 : _surveyAnswers['responseQuality'] == 'בינונית'
-                ? 0.50 : 0.75;
+  // Response speed: faster average latency → higher score (5s+ ≈ 0).
+  double get _speedScore {
+    if (_metrics.isEmpty) return 0;
+    final avg = _metrics
+            .map((m) => (m['avgMs'] ?? 0) as num)
+            .fold<num>(0, (a, b) => a + b) /
+        _metrics.length;
+    return (1 - (avg / 5000)).clamp(0.0, 1.0).toDouble();
+  }
 
+  // Intent detection confidence: share resolved by the fast keyword path.
+  double get _intentScore {
+    final fast = (_intentRatio['fast'] ?? 0) as num;
+    final llm = (_intentRatio['llm'] ?? 0) as num;
+    final total = fast + llm;
+    if (total == 0) return 0;
+    return (fast / total).toDouble();
+  }
+
+  // Memory depth: long-term memories accumulated (≥50 ≈ full).
+  double get _memoryScore {
+    final mem = (_stats?['memories']?['total'] ?? 0) as num;
+    return (mem / 50).clamp(0.0, 1.0).toDouble();
+  }
+
+  // Answer quality from the user's own survey rating (null until answered).
+  double? get _qualityScore {
+    switch (_surveyAnswers['responseQuality']) {
+      case 'מעולה': return 0.92;
+      case 'טובה': return 0.72;
+      case 'בינונית': return 0.50;
+      case 'יש מקום לשיפור': return 0.32;
+      default: return null;
+    }
+  }
+
+  Widget _ImprovementFeedbackLoopCard() {
+    final quality = _qualityScore;
     return _SectionCard(
       title: 'תחומים בפיתוח פעיל',
       icon: Icons.trending_up_rounded,
       iconColor: const Color(0xFF22C55E),
       child: Column(children: [
-        _FeedbackBar('דיוק תשובות', qualityFrac, const Color(0xFF22C55E), false),
+        if (quality != null) ...[
+          _FeedbackBar('דיוק תשובות', quality, const Color(0xFF22C55E)),
+          const SizedBox(height: 10),
+        ],
+        _FeedbackBar('מהירות תגובה', _speedScore, const Color(0xFFF59E0B)),
         const SizedBox(height: 10),
-        _FeedbackBar('מהירות תגובה', 0.68, const Color(0xFFF59E0B), true),
+        _FeedbackBar('זיהוי כוונות', _intentScore, const Color(0xFF3B82F6)),
         const SizedBox(height: 10),
-        _FeedbackBar('זיהוי כוונות', 0.81, const Color(0xFF3B82F6), true),
-        const SizedBox(height: 10),
-        _FeedbackBar('זיכרון והקשר', 0.59, const Color(0xFFA78BFA), true),
+        _FeedbackBar('זיכרון והקשר', _memoryScore, const Color(0xFFA78BFA)),
       ]),
     );
   }
 
-  Widget _FeedbackBar(String label, double frac, Color color, bool isDemo) {
+  Widget _FeedbackBar(String label, double frac, Color color) {
     final pct = (frac * 100).round();
     return Row(children: [
       SizedBox(width: 100,
-          child: Row(children: [
-            Expanded(child: Text(label, style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'))),
-            if (isDemo) const SizedBox(width: 4),
-            if (isDemo) const DemoChip(),
-          ])),
+          child: Text(label, style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'))),
       const SizedBox(width: 8),
       Expanded(
         child: ClipRRect(
@@ -1331,11 +1431,11 @@ class _ControlCenterPreviewScreenState
                     ],
                     const SizedBox(height: 8),
                     Row(children: [
-                      _ActionButton('הפעל E2E', Icons.play_circle_outline_rounded, const Color(0xFF3B82F6)),
+                      _ActionButton('הפעל E2E', Icons.play_circle_outline_rounded, const Color(0xFF3B82F6), _runE2E),
                       const SizedBox(width: 8),
-                      _ActionButton('סמן נפתר', Icons.check_circle_outline_rounded, const Color(0xFF22C55E)),
+                      _ActionButton('פתח דוח', Icons.check_circle_outline_rounded, const Color(0xFF22C55E), _openReports),
                       const SizedBox(width: 8),
-                      _ActionButton('בדוק לוגים', Icons.receipt_long_rounded, const Color(0xFF475569)),
+                      _ActionButton('בדוק לוגים', Icons.receipt_long_rounded, const Color(0xFF475569), _openReports),
                     ]),
                   ]),
                 );
@@ -1344,9 +1444,9 @@ class _ControlCenterPreviewScreenState
     );
   }
 
-  Widget _ActionButton(String label, IconData icon, Color color) {
+  Widget _ActionButton(String label, IconData icon, Color color, VoidCallback onTap) {
     return GestureDetector(
-      onTap: () => _showSnack('$label · Preview'),
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
@@ -1478,12 +1578,41 @@ class _ControlCenterPreviewScreenState
 
   // ── Quick Actions ──────────────────────────────────────────────────────────
 
+  Future<void> _checkSystem() async {
+    _showSnack('בודק מערכת...');
+    try {
+      final h = await _api.healthCheck();
+      final ok = (h['status'] ?? h['ok'] ?? 'ok').toString();
+      _showSnack('המערכת תקינה ✓ ($ok)');
+    } catch (e) {
+      _showSnack(ApiService.friendlyError(e));
+    }
+  }
+
+  Future<void> _runE2E() async {
+    _showSnack('מפעיל בדיקות E2E ברקע...');
+    try {
+      await _api.triggerE2E();
+      _showSnack('בדיקות E2E הופעלו ✓ — הדוחות יתעדכנו בקרוב');
+      await _loadIssues();
+    } catch (e) {
+      _showSnack(ApiService.friendlyError(e));
+    }
+  }
+
+  void _openReports() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => E2eReportsScreen(settings: widget.settings)),
+    );
+  }
+
   Widget _QuickActionsRow() {
     final actions = [
-      {'icon': Icons.health_and_safety_outlined, 'label': 'בדוק מערכת', 'color': const Color(0xFF22C55E)},
-      {'icon': Icons.play_circle_outline_rounded, 'label': 'הפעל E2E', 'color': const Color(0xFF3B82F6)},
-      {'icon': Icons.hub_rounded, 'label': 'טען סוכנים', 'color': const Color(0xFFA5B4FC)},
-      {'icon': Icons.bar_chart_rounded, 'label': 'צפה בדוחות', 'color': const Color(0xFFF59E0B)},
+      {'icon': Icons.health_and_safety_outlined, 'label': 'בדוק מערכת', 'color': const Color(0xFF22C55E), 'onTap': _checkSystem},
+      {'icon': Icons.play_circle_outline_rounded, 'label': 'הפעל E2E', 'color': const Color(0xFF3B82F6), 'onTap': _runE2E},
+      {'icon': Icons.hub_rounded, 'label': 'טען סוכנים', 'color': const Color(0xFFA5B4FC), 'onTap': () { setState(() => _loadingAgents = true); _loadAgents(); _loadMetrics(); }},
+      {'icon': Icons.bar_chart_rounded, 'label': 'צפה בדוחות', 'color': const Color(0xFFF59E0B), 'onTap': _openReports},
     ];
     return SizedBox(
       height: 76,
@@ -1499,7 +1628,7 @@ class _ControlCenterPreviewScreenState
             icon: a['icon'] as IconData,
             label: a['label'] as String,
             color: a['color'] as Color,
-            onTap: () => _showSnack('${a['label']} · בקרוב (Preview)'),
+            onTap: a['onTap'] as VoidCallback,
           );
         },
       ),
@@ -1746,7 +1875,7 @@ class _ControlCenterPreviewScreenState
         Row(children: [
           Expanded(
             child: GestureDetector(
-              onTap: () => _showSnack('${name} · ${_statusLabel(status)} (Preview)'),
+              onTap: () => _showAgentSettings(agent),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 decoration: BoxDecoration(
@@ -1818,7 +1947,7 @@ class _ControlCenterPreviewScreenState
             ),
             const SizedBox(width: 6),
             GestureDetector(
-              onTap: () => _showSnack('${_statusLabel(status)} · שינוי (Preview)'),
+              onTap: () => _quickToggleAgent(a),
               child: Container(
                 width: 28, height: 16,
                 decoration: BoxDecoration(
@@ -1895,9 +2024,16 @@ class _ControlCenterPreviewScreenState
                   style: TextStyle(color: JC.textMuted, fontSize: 13, fontFamily: 'Heebo')),
               const Spacer(),
               GestureDetector(
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(ctx);
-                  _showSnack('${isActive ? 'כיבוי' : 'הפעלה'} $name · Preview');
+                  try {
+                    final r = await _api.toggleAgent(agent['id'].toString());
+                    final disabled = (r['status'] ?? '').toString() == 'disabled';
+                    _showSnack('$name ${disabled ? 'כובה' : 'הופעל'} ✓');
+                    await _loadAgents();
+                  } catch (e) {
+                    _showSnack(ApiService.friendlyError(e));
+                  }
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -1926,9 +2062,15 @@ class _ControlCenterPreviewScreenState
               return Padding(
                 padding: const EdgeInsets.only(left: 8),
                 child: GestureDetector(
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(ctx);
-                    _showSnack('רמת סיכון $label עודכנה (Preview)');
+                    try {
+                      await _api.setAgentRisk(agent['id'].toString(), r);
+                      _showSnack('רמת סיכון $label עודכנה ✓');
+                      await _loadAgents();
+                    } catch (e) {
+                      _showSnack(ApiService.friendlyError(e));
+                    }
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1950,7 +2092,7 @@ class _ControlCenterPreviewScreenState
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _showSnack('הגדרות $name נשמרו (Preview)');
+                  _loadAgents();
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: JC.blue500,
@@ -1958,7 +2100,7 @@ class _ControlCenterPreviewScreenState
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                child: const Text('שמור הגדרות',
+                child: const Text('סגור',
                     style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
               ),
             ),
@@ -2102,29 +2244,56 @@ class _ControlCenterPreviewScreenState
 
   // ── Features ───────────────────────────────────────────────────────────────
 
+  List<Map<String, dynamic>> get _featureIdeas {
+    final ideas = <Map<String, dynamic>>[];
+    for (final p in _proposals) {
+      final title = (p['title'] ?? p['text'] ?? '').toString();
+      if (title.isEmpty) continue;
+      ideas.add({
+        'icon': Icons.auto_awesome_rounded,
+        'title': title,
+        'desc': (p['why_now'] ?? p['plan'] ?? 'הצעת AI לפיתוח').toString(),
+      });
+    }
+    for (final b in _backlog.where((b) => b['done'] != true)) {
+      final title = (b['title'] ?? b['text'] ?? '').toString();
+      if (title.isEmpty) continue;
+      ideas.add({
+        'icon': Icons.lightbulb_outline_rounded,
+        'title': title,
+        'desc': 'עדיפות: ${b['priority'] ?? 'בינונית'}',
+      });
+    }
+    return ideas;
+  }
+
   Widget _FeaturesSection() {
+    final ideas = _featureIdeas;
     return _SectionCard(
       title: 'שיפורים ופיתוח',
       icon: Icons.lightbulb_outline_rounded,
       iconColor: const Color(0xFFA5B4FC),
-      headerTrailing: const DemoChip(),
-      child: SizedBox(
-        height: 130,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          reverse: true,
-          itemCount: _demoFeatureIdeas.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 10),
-          itemBuilder: (_, i) {
-            final f = _demoFeatureIdeas[i];
-            return _FeatureIdeaCard(
-              icon: f['icon'] as IconData,
-              title: f['title'] as String,
-              desc: f['desc'] as String,
-            );
-          },
-        ),
-      ),
+      child: (_loadingBacklog && ideas.isEmpty)
+          ? _SectionLoader()
+          : ideas.isEmpty
+              ? const _EmptyState(message: 'אין רעיונות פיתוח כרגע — בקש מ-Jarvis הצעות')
+              : SizedBox(
+                  height: 130,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    reverse: true,
+                    itemCount: ideas.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (_, i) {
+                      final f = ideas[i];
+                      return _FeatureIdeaCard(
+                        icon: f['icon'] as IconData,
+                        title: f['title'] as String,
+                        desc: f['desc'] as String,
+                      );
+                    },
+                  ),
+                ),
     );
   }
 

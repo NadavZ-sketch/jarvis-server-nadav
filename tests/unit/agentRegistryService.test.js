@@ -23,7 +23,10 @@ realFs.readFileSync = (p, ...rest) => isStatusFile(p) ? origRead(fakeStatusPath,
 realFs.writeFileSync = (p, data, opts) => isStatusFile(p) ? origWrite(fakeStatusPath, data, opts) : origWrite(p, data, opts);
 realFs.mkdirSync = (p, opts) => isStatusFile(p) ? undefined : origMkdir(p, opts);
 
-const { getAgentRegistry, setAgentStatus } = require('../../services/agentRegistryService');
+const { getAgentRegistry, setAgentStatus, setAgentRisk } = require('../../services/agentRegistryService');
+
+// router/chatAgent are protected core agents; use a regular one for toggle tests.
+const TOGGLE_TARGET = 'weatherAgent';
 
 afterAll(() => {
     realFs.existsSync = origExists;
@@ -46,20 +49,16 @@ describe('agentRegistryService', () => {
     });
 
     it('persists and applies a disabled override', () => {
-        const before = getAgentRegistry();
-        const target = before[0].id;
-        setAgentStatus(target, 'disabled');
-        const after = getAgentRegistry();
-        const updated = after.find(a => a.id === target);
+        setAgentStatus(TOGGLE_TARGET, 'disabled');
+        const updated = getAgentRegistry().find(a => a.id === TOGGLE_TARGET);
         expect(updated.status).toBe('disabled');
         expect(updated.statusUpdatedAt).toBeTruthy();
     });
 
     it('toggles back to active', () => {
-        const id = getAgentRegistry()[0].id;
-        setAgentStatus(id, 'disabled');
-        setAgentStatus(id, 'active');
-        const updated = getAgentRegistry().find(a => a.id === id);
+        setAgentStatus(TOGGLE_TARGET, 'disabled');
+        setAgentStatus(TOGGLE_TARGET, 'active');
+        const updated = getAgentRegistry().find(a => a.id === TOGGLE_TARGET);
         expect(updated.status).toBe('active');
     });
 
@@ -69,5 +68,33 @@ describe('agentRegistryService', () => {
 
     it('rejects missing agent id', () => {
         expect(() => setAgentStatus('', 'active')).toThrow();
+    });
+
+    it('refuses to disable a protected core agent (router)', () => {
+        expect(() => setAgentStatus('router', 'disabled')).toThrow();
+        const router = getAgentRegistry().find(a => a.id === 'router');
+        expect(router.status).toBe('active');
+    });
+
+    it('allows re-activating a protected core agent', () => {
+        expect(() => setAgentStatus('chatAgent', 'active')).not.toThrow();
+    });
+
+    it('persists and applies a risk-level override', () => {
+        setAgentRisk(TOGGLE_TARGET, 'high');
+        const updated = getAgentRegistry().find(a => a.id === TOGGLE_TARGET);
+        expect(updated.risk).toBe('high');
+    });
+
+    it('rejects invalid risk levels', () => {
+        expect(() => setAgentRisk(TOGGLE_TARGET, 'extreme')).toThrow();
+    });
+
+    it('keeps status and risk overrides independent', () => {
+        setAgentStatus(TOGGLE_TARGET, 'disabled');
+        setAgentRisk(TOGGLE_TARGET, 'high');
+        const updated = getAgentRegistry().find(a => a.id === TOGGLE_TARGET);
+        expect(updated.status).toBe('disabled');
+        expect(updated.risk).toBe('high');
     });
 });

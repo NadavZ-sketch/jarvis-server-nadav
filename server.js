@@ -38,6 +38,8 @@ const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator } = require('./agents/memoryAgent');
 const { cleanupExpiredMemories } = require('./services/memoryCleanup');
+const { getAgentRegistry } = require('./services/agentRegistryService');
+const agentMetrics = require('./services/agentMetrics');
 const { runChatAgent, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, buildSystemPrompt } = require('./agents/chatAgent');
 const conversationSummary = require('./services/conversationSummary');
 const { runSportsAgent }      = require('./agents/sportsAgent');
@@ -239,6 +241,24 @@ const supabaseAdmin = (SUPABASE_SERVICE_ROLE_KEY === SUPABASE_ANON_KEY)
     ? supabasePublic
     : createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const supabase = supabaseAdmin;
+
+// Persist per-agent latency/intent metrics to Supabase (degrades to in-memory).
+agentMetrics.init(supabase);
+
+// Intent → registry agent id (e.g. 'task' → 'taskAgent'). Core agents are never
+// disablable, so they are exempt from the disabled check below.
+const EXEMPT_FROM_DISABLE = new Set(['chat', 'router', 'draft', 'memory', 'past_conv']);
+function isAgentDisabled(agentName) {
+    if (!agentName || EXEMPT_FROM_DISABLE.has(agentName)) return false;
+    try {
+        const id = `${agentName}Agent`;
+        const rec = getAgentRegistry().find(a => a.id === id);
+        return !!(rec && rec.status === 'disabled');
+    } catch (_) {
+        return false;
+    }
+}
+const AGENT_DISABLED_REPLY = { answer: 'הסוכן הזה כבוי כרגע במרכז השליטה. אפשר להפעיל אותו שם מחדש.', skipTts: true };
 
 app.use('/tasks', createTasksRouter({ supabase }));
 app.use('/reminders', createRemindersRouter({ supabase, pinecone, requirePolicy }));
@@ -604,9 +624,11 @@ async function askJarvisHandler(req, res) {
         }
 
         // ── Routing ───────────────────────────────────────────────────────────
+        let intentMode = 'fast';
         let agentName = imageBase64 ? 'chat' : classifyIntent(userMessage);
         if (agentName === 'chat' && !imageBase64 && userMessage.trim().length > 12) {
             agentName = await classifyIntentWithLLM(userMessage);
+            intentMode = 'llm';
         }
 
         // Follow-up override: if the user is continuing a previous conversation,
@@ -671,7 +693,10 @@ async function askJarvisHandler(req, res) {
 
         // ── Dispatch ──────────────────────────────────────────────────────────
         let result;
-        if (agentName === 'task') {
+        if (isAgentDisabled(agentName)) {
+            console.log(`⛔ Agent "${agentName}" is disabled — skipping dispatch`);
+            result = { ...AGENT_DISABLED_REPLY };
+        } else if (agentName === 'task') {
             result = await runTaskAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'reminder') {
             result = await runReminderAgent(userMessage, supabase);
@@ -777,6 +802,7 @@ async function askJarvisHandler(req, res) {
             }
         }
         const tAgent = Date.now();
+        agentMetrics.record(agentName, tAgent - tRoute, intentMode);
 
         // ── Task auto-reminder: save pending state when task has due date ──────
         if (agentName === 'task' && result.pendingAction?.type === 'auto_reminder') {
@@ -2205,6 +2231,17 @@ async function streamJarvisHandler(req, res) {
 
         const agentName = await classifyIntent(userMessage);
 
+        // Disabled-agent guard: respect the on/off toggle from the Control Center.
+        if (isAgentDisabled(agentName)) {
+            console.log(`⛔ Agent "${agentName}" is disabled — skipping stream dispatch`);
+            send({ chunk: AGENT_DISABLED_REPLY.answer, done: true, chatId });
+            await Promise.all([
+                saveChatMessage('user', originalMessage, chatId),
+                saveChatMessage('jarvis', AGENT_DISABLED_REPLY.answer, chatId),
+            ]);
+            return res.end();
+        }
+
         // Background agents: respond immediately and run in background via setImmediate
         const backgroundAgents = { e2e: runE2EAgent, code_error: runCodeErrorAgent, security: runSecurityAgent };
         if (backgroundAgents[agentName]) {
@@ -2550,7 +2587,7 @@ app.get('/chart.js', (_req, res) => {
 });
 
 const { createAgentCenterRouter } = require('./routes/agentCenter');
-app.use('/progress-map', createAgentCenterRouter({ callGemma4 }));
+app.use('/progress-map', createAgentCenterRouter({ callGemma4, agentMetrics }));
 app.get('/agent-center', (_req, res) => res.redirect(301, '/progress-map'));
 
 app.get('/notes.json', (_req, res) => {

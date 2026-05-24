@@ -663,7 +663,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 
-  late List<Map<String, String>> messages = [
+  late List<Map<String, dynamic>> messages = [
     {'sender': 'jarvis', 'text': 'מערכת מחוברת. מוכן לעזור, ${_settings.userName}.', 'time': _getCurrentTime()}
   ];
 
@@ -743,9 +743,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     if (cached != null && cached.isNotEmpty && mounted) {
       try {
         final List decoded = jsonDecode(cached);
-        final loaded = decoded.cast<Map<String, dynamic>>()
-            .map((m) => m.map((k, v) => MapEntry(k, v.toString())))
-            .toList();
+        final loaded = decoded.cast<Map<String, dynamic>>().toList();
         if (loaded.isNotEmpty) {
           setState(() => messages = loaded);
         }
@@ -1079,7 +1077,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _audioPlayer.stop();
     if (_chatId.isEmpty) await _loadChatHistory();
     if (!mounted) return;
-    final returned = await Navigator.of(context).push<List<Map<String, String>>>(
+    final returned = await Navigator.of(context).push<List<Map<String, dynamic>>>(
       MaterialPageRoute(
         builder: (_) => LiveTalkScreen(
           chatId: _chatId,
@@ -1602,9 +1600,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             if (!mounted) return;
             setState(() {
               _chatId = chatId;
-              messages = msgs
-                  .map((m) => m.map((k, v) => MapEntry(k, v.toString())))
-                  .toList();
+              messages = msgs.cast<Map<String, dynamic>>();
             });
             _scrollToBottom();
           },
@@ -1726,7 +1722,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             icon: Icon(Icons.summarize_outlined,
                 color: JC.textSecondary, size: 22),
             tooltip: 'סכם שיחה',
-            onPressed: () => _sendMessage('סכם לי את השיחה הנוכחית בנקודות עיקריות'),
+            onPressed: () => _sendCommandStreaming('סכם לי את השיחה הנוכחית בנקודות עיקריות'),
           ),
           IconButton(
             icon: Icon(Icons.refresh_rounded,
@@ -1865,7 +1861,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       index: index,
                       onSpeak: _speakText,
                       onNavigate: widget.onNavigate,
-                      onSend: (text) => _sendMessage(text),
+                      onSend: (text) => _sendCommandStreaming(text),
                     );
                   },
                 ),

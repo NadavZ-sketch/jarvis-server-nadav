@@ -16,13 +16,14 @@ let _flushTimer = null;
 // Rows recorded since the last successful flush (disjoint from what's in the DB).
 let pending = [];
 // All-time aggregate for this process — the fallback used when the DB is down.
-const lifetime = new Map(); // agent -> { sum, count }
+const lifetime = new Map(); // agent -> { sum, count, lastCalledAt }
 const lifetimeIntent = { fast: 0, llm: 0 };
 
 function _bumpLifetime(agent, ms, intentMode) {
-  const cur = lifetime.get(agent) || { sum: 0, count: 0 };
+  const cur = lifetime.get(agent) || { sum: 0, count: 0, lastCalledAt: null };
   cur.sum += ms;
   cur.count += 1;
+  cur.lastCalledAt = new Date().toISOString();
   lifetime.set(agent, cur);
   if (intentMode === 'fast') lifetimeIntent.fast += 1;
   else if (intentMode === 'llm') lifetimeIntent.llm += 1;
@@ -68,9 +69,10 @@ function _aggregateRows(rows) {
   for (const r of rows) {
     const agent = r.agent;
     const ms = Number(r.ms) || 0;
-    const cur = byAgent.get(agent) || { sum: 0, count: 0 };
+    const cur = byAgent.get(agent) || { sum: 0, count: 0, lastCalledAt: null };
     cur.sum += ms;
     cur.count += 1;
+    if (!cur.lastCalledAt || r.created_at > cur.lastCalledAt) cur.lastCalledAt = r.created_at;
     byAgent.set(agent, cur);
     if (r.intent_mode === 'fast') intent.fast += 1;
     else if (r.intent_mode === 'llm') intent.llm += 1;
@@ -80,7 +82,12 @@ function _aggregateRows(rows) {
 
 function _format(byAgent, intent) {
   const latency = [...byAgent.entries()]
-    .map(([agent, { sum, count }]) => ({ agent, avgMs: Math.round(sum / count), count }))
+    .map(([agent, { sum, count, lastCalledAt }]) => ({
+      agent,
+      avgMs: Math.round(sum / count),
+      count,
+      lastCalledAt: lastCalledAt || null,
+    }))
     .sort((a, b) => b.count - a.count);
   return { latency, intent };
 }
@@ -95,7 +102,7 @@ async function snapshot() {
     const sinceISO = new Date(Date.now() - WINDOW_MS).toISOString();
     const { data, error } = await _supabase
       .from('agent_metrics')
-      .select('agent, ms, intent_mode')
+      .select('agent, ms, intent_mode, created_at')
       .gte('created_at', sinceISO)
       .order('created_at', { ascending: false })
       .limit(READ_LIMIT);
@@ -104,9 +111,10 @@ async function snapshot() {
     const { byAgent, intent } = _aggregateRows(data || []);
     // Merge unflushed pending rows so the snapshot reflects the very latest calls.
     for (const r of pending) {
-      const cur = byAgent.get(r.agent) || { sum: 0, count: 0 };
+      const cur = byAgent.get(r.agent) || { sum: 0, count: 0, lastCalledAt: null };
       cur.sum += r.ms;
       cur.count += 1;
+      if (!cur.lastCalledAt || r.created_at > cur.lastCalledAt) cur.lastCalledAt = r.created_at;
       byAgent.set(r.agent, cur);
       if (r.intent_mode === 'fast') intent.fast += 1;
       else if (r.intent_mode === 'llm') intent.llm += 1;

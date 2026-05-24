@@ -40,6 +40,30 @@ const RISK_SIGNAL_LABELS = {
   high_risk_agent: 'סוכן בסיכון גבוה',
 };
 
+// P2: Agent health score 0-100. Higher is healthier.
+function _computeHealthScore(agent) {
+  let score = 100;
+  if (agent.status === 'disabled') return 0;
+  const m = agent.metrics;
+  if (m) {
+    if (m.avgMs !== null) {
+      if (m.avgMs > 3000) score -= 30;
+      else if (m.avgMs > 1500) score -= 15;
+      else if (m.avgMs > 800) score -= 5;
+    }
+    // Never called = unknown; slight penalty for observer agents that never fired
+    if (m.count === 0 && agent.mode !== 'guard') score -= 10;
+    // Stale: last call over 7 days ago
+    if (m.lastCalledAt) {
+      const daysSince = (Date.now() - new Date(m.lastCalledAt).getTime()) / 86400000;
+      if (daysSince > 14) score -= 20;
+      else if (daysSince > 7) score -= 10;
+    }
+  }
+  if (agent.risk === 'high') score -= 5;
+  return Math.max(0, Math.min(100, score));
+}
+
 function createAgentCenterRouter({ callGemma4, agentMetrics }) {
   const router = express.Router();
 
@@ -53,9 +77,24 @@ function createAgentCenterRouter({ callGemma4, agentMetrics }) {
       err => { if (err && !res.headersSent) res.status(404).send('progress-map.html not found'); });
   });
 
-  router.get('/agents', (_req, res) => {
+  router.get('/agents', async (_req, res) => {
     try {
-      res.json({ agents: getAgentRegistry() });
+      const agents = getAgentRegistry();
+      // Attach live metrics + health scores if available.
+      if (agentMetrics) {
+        const snap = await agentMetrics.snapshot().catch(() => ({ latency: [], intent: { fast: 0, llm: 0 } }));
+        const byAgent = new Map(snap.latency.map(r => [r.agent, r]));
+        for (const a of agents) {
+          const m = byAgent.get(a.id);
+          if (m) {
+            a.metrics = { avgMs: m.avgMs, count: m.count, lastCalledAt: m.lastCalledAt || null };
+          } else {
+            a.metrics = { avgMs: null, count: 0, lastCalledAt: null };
+          }
+          a.healthScore = _computeHealthScore(a);
+        }
+      }
+      res.json({ agents });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -98,6 +137,32 @@ function createAgentCenterRouter({ callGemma4, agentMetrics }) {
     try {
       const snap = agentMetrics ? await agentMetrics.snapshot() : { latency: [], intent: { fast: 0, llm: 0 } };
       res.json(snap);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // P2: Natural-language metrics query. POST { question } → { answer }
+  router.post('/metrics/query', async (req, res) => {
+    try {
+      const { question } = req.body || {};
+      if (!question) return res.status(400).json({ error: 'question required' });
+      const snap = agentMetrics ? await agentMetrics.snapshot().catch(() => ({ latency: [], intent: { fast: 0, llm: 0 } })) : { latency: [], intent: { fast: 0, llm: 0 } };
+      const metricsText = snap.latency.length
+        ? snap.latency.map(r => `${r.agent}: ${r.avgMs}ms avg, ${r.count} calls${r.lastCalledAt ? ', last: ' + r.lastCalledAt : ''}`).join('\n')
+        : 'אין נתוני מדדים זמינים';
+      const prompt = `נתוני מדדי סוכנים (24 שעות אחרונות):
+${metricsText}
+סיווג intent: fast=${snap.intent.fast}, llm=${snap.intent.llm}
+
+שאלה: "${question}"
+
+ענה בעברית בקצרה ובצורה ברורה על בסיס הנתונים בלבד.`;
+      const answer = await callGemma4([
+        { role: 'system', content: 'אתה מנתח מדדי ביצועים של סוכני AI. ענה בעברית.' },
+        { role: 'user', content: prompt },
+      ], false, 300).catch(() => 'לא ניתן לעבד את השאלה');
+      res.json({ answer, metrics: snap });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

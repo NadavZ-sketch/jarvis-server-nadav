@@ -2600,6 +2600,30 @@ if (!isTestEnv) cron.schedule('0 13 * * *', async () => {
     }
 }, { timezone: 'Asia/Jerusalem' });
 
+// P2: Daily cron — 09:00 Jerusalem — flag agents inactive for 7+ days
+if (!isTestEnv) cron.schedule('0 9 * * *', async () => {
+    try {
+        const snap = await agentMetrics.snapshot();
+        const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+        const inactive = snap.latency.filter(r =>
+            r.lastCalledAt && r.lastCalledAt < sevenDaysAgo && r.count > 0);
+        if (inactive.length === 0) return;
+        const names = inactive.map(r => r.agent).join(', ');
+        console.log(`⚠️ Inactive agents (7+ days): ${names}`);
+        await supabase.from('agent_metrics_alerts').upsert(
+            inactive.map(r => ({
+                agent: r.agent,
+                alert_type: 'inactive',
+                last_called_at: r.lastCalledAt,
+                checked_at: new Date().toISOString(),
+            })),
+            { onConflict: 'agent' }
+        ).catch(() => {}); // table may not exist; best-effort
+    } catch (err) {
+        console.error('Inactive agent cron error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
+
 // ─── Obsidian sync endpoints ──────────────────────────────────────────────────
 let obsidianAutoSync = true;
 
@@ -2669,7 +2693,7 @@ app.get('/chart.js', (_req, res) => {
 });
 
 const { createAgentCenterRouter } = require('./routes/agentCenter');
-app.use('/progress-map', createAgentCenterRouter({ callGemma4, agentMetrics }));
+app.use('/progress-map', _rl(20), createAgentCenterRouter({ callGemma4, agentMetrics }));
 app.get('/agent-center', (_req, res) => res.redirect(301, '/progress-map'));
 
 app.get('/notes.json', (_req, res) => {

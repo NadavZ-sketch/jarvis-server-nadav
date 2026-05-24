@@ -16,13 +16,17 @@ const KEYWORDS = {
     notes:     /תרשום לי|רשום לי|שמור פתק|שמור הערה|הצג הערות|מה כתבת|פתקים|הערות שלי|חפש הערה|מחק הערה/i,
     music:     /מוזיקה|מוסיקה|פלייליסט|להשמיע|תנגן|תשמיע|ספוטיפיי|spotify/i,
     messaging: /שלח.*ווצאפ|שלח.*וואטסאפ|שלח.*מייל|ווצאפ ל|וואטסאפ ל|מייל ל|שלח הודעה ל|שמור.*קשר|הוסף.*קשר|שמור.*טלפון|שמור.*מספר/i,
-    draft:     /נסח לי|תנסח|עזור לי לנסח|כתוב לי|תכתוב לי|תכין לי|הכן לי.*הודעה|תעזור לי לכתוב|נוסח ל/i,
+    // "כתוב לי" alone is too broad (catches "כתוב לי בדיחה" → chat).
+    // Require explicit messaging/document context before routing to draft.
+    draft:     /נסח לי|תנסח|עזור לי לנסח|תכין לי.*הודעה|הכן לי.*הודעה|תכין לי.*מייל|הכן לי.*מייל|תעזור לי לכתוב.*הודע|תעזור לי לכתוב.*מייל|נוסח ל|כתוב לי.*הודע|כתוב לי.*מייל|כתוב לי.*מכתב|תכתוב לי.*הודע|תכתוב לי.*מייל|תכתוב לי.*מכתב/i,
     insight:   /תן לי טיפים|מה אפשר לשפר|ניתוח שלי|דוח שימוש|עצות לשיפור|התייעלות|תובנות|איך אני משתמש/i,
     e2e:        /בצע בדיקות קצה|בדיקות קצה לקצה|בדיקות קצה|בדיקת e2e|הרץ בדיקות|דוח בדיקות|end[- ]?to[- ]?end/i,
     code_error: /סרוק שגיאות קוד|מצא שגיאות קוד|בדיקת שגיאות|שגיאות בקוד|code error|error scan|סרוק שגיאות|בדוק שגיאות קוד|code scan errors/i,
     security:   /סריקת אבטחה|בדיקת אבטחה|מצא באגים|דוח באגים|דוח אבטחה|סרוק קוד|חפש בעיות|security scan/i,
     stocks:    /מניה|מניות|בורסה|שוק ההון|נסד"ק|nasdaq|s&p|ביטקוין|bitcoin|קריפטו|crypto|דולר|אירו|שקל|מטבע|תל אביב 35|ת"א 35|אפל|גוגל|טסלה|אמזון|מיקרוסופט|מדד|תיק השקעות|ריבית|אינפלציה/i,
-    translate: /תרגם|תרגום|translate|translation|כתוב.*אנגלית|כתוב.*עברית|בעברית|באנגלית|בצרפתית|בספרדית|בערבית|בגרמנית|מה פירוש|מה המשמעות/i,
+    // "מה פירוש / מה המשמעות" removed — too broad, steals philosophical/memory questions.
+    // Kept explicit language directives (תרגם, translate, "כתוב באנגלית" etc.)
+    translate: /תרגם|תרגום|translate|translation|כתוב.*אנגלית|כתוב.*עברית|תכתוב.*אנגלית|תכתוב.*עברית|בצרפתית|בספרדית|בערבית|בגרמנית|מה פירוש המילה|מה המשמעות של המילה/i,
     factory:   /צור אייג'נט|יצור אייג'נט|בנה אייג'נט|הוסף אייג'נט|תייצר אייג'נט|תבנה אייג'נט|רשימת אייג'נטים|הצג אייג'נטים|מחק אייג'נט|הסר אייג'נט/i,
     settings:  /שנה.*אישיות|שנה.*אופי|דבר.*יותר.*לאט|דבר.*יותר.*מהר|האט|האץ|בטל קול|כבה קול|הפעל קול|אפשר קול|תשובות קצרות|תשובות ארוכות|שנה.*שם.*ל|קרא לי |קרא לעצמך|מה.*הגדרות.*שלי|הגדרות.*נוכחיות|שנה.*הגדרות/i,
     calendar:  /יומן|פגישות.*היום|פגישות.*מחר|מה יש לי.*ביומן|מה ביומן|קבע פגישה|קבע אירוע|הוסף.*ליומן|תקבע.*פגישה|אירועים.*היום|google calendar/i,
@@ -98,7 +102,8 @@ const VALID_INTENTS = new Set([
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
 Given a user message, classify it into exactly one of these intents:
 task, reminder, memory, weather, news, shopping, notes, music, stocks, translate,
-sports, messaging, draft, insight, security, code_error, e2e, factory, past_conv, chat
+sports, messaging, draft, insight, security, code_error, e2e, factory, past_conv,
+calendar, prompt, settings, chat
 
 Rules:
 - task: add/delete/list/complete personal tasks or to-dos
@@ -110,10 +115,10 @@ Rules:
 - notes: save/retrieve free-form notes or memos
 - music: play music or manage playlists
 - stocks: stock prices, crypto, currency, financial markets
-- translate: translate text between languages
+- translate: translate text between languages (explicit translation request)
 - sports: sports results, leagues, teams, players
 - messaging: send WhatsApp/email messages or manage contacts
-- draft: compose a message/email/text for the user
+- draft: compose a message, email, or letter for the user to send
 - insight: analyze the user's habits or provide usage tips
 - security: code security scan, OWASP vulnerability or bug report
 - code_error: scan source code for runtime errors, logic bugs, anti-patterns, missing error handling
@@ -122,7 +127,7 @@ Rules:
 - calendar: Google Calendar — view events, create meetings/appointments
 - past_conv: asking about previous conversations with Jarvis
 - prompt: create, refine, evaluate, save, or list AI prompts (prompt engineering)
-- settings: change Jarvis settings via voice/chat (personality, voice speed, response length, name)
+- settings: change Jarvis personality, voice speed, response length, or assistant name
 - chat: general conversation, question, or anything that does not fit above
 
 Respond ONLY with valid JSON: {"intent": "NAME"}

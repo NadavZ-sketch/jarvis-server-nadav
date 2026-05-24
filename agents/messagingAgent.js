@@ -8,7 +8,7 @@ async function findContact(name, supabase) {
     const { data } = await supabase
         .from('contacts')
         .select('*')
-        .ilike('name', `%${nameLower}%`);
+        .ilike('name', `%${sanitizeLike(nameLower)}%`);
     if (!data || data.length === 0) return null;
     return data.find(c =>
         c.name.toLowerCase().includes(nameLower) ||
@@ -33,7 +33,9 @@ Message: "${userMessage}"`;
         const raw = await callGemma4(parsePrompt, useLocal);
         let parsed;
         try {
-            parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+            const jsonMatch = raw.match(/\{[\s\S]*\}/);
+            const cleaned = jsonMatch ? jsonMatch[0] : raw.replace(/```json|```/g, '').trim();
+            parsed = JSON.parse(cleaned);
         } catch {
             return { answer: 'לא הצלחתי להבין את הבקשה. נסה לנסח אחרת.', action: null };
         }
@@ -82,12 +84,15 @@ Message: "${userMessage}"`;
 נמען: ${contact.name}`;
 
         const draftedMessage = await callGemma4(draftPrompt, useLocal);
+        if (!draftedMessage || !draftedMessage.trim()) {
+            return { answer: 'לא הצלחתי לנסח הודעה. נסה לתאר בצורה ברורה יותר מה לכתוב.', action: null };
+        }
         const channel = parsed.channel || (contact.phone ? 'whatsapp' : 'email');
 
         let action = null;
         if (channel === 'whatsapp' && contact.phone) {
             const digits = contact.phone.replace(/[\s\-\(\)\+]/g, '');
-            if (digits.length < 8) {
+            if (digits.length < 9) {
                 return { answer: `מספר הטלפון של ${contact.name} לא תקין (${contact.phone}). עדכן: "שמור ${contact.name} — [מספר]"`, action: null };
             }
             const intlPhone = digits.startsWith('0') ? '972' + digits.slice(1) : digits;

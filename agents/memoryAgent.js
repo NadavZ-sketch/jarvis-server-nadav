@@ -94,7 +94,7 @@ User message: `;
 async function autoExtractMemory(userMessage, assistantAnswer, supabase, settings = {}) {
     try {
         if (!userMessage || userMessage.trim().length < 8) return;
-        if (/מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת|מחק זיכרון|הסר זיכרון|שכח ש/i.test(userMessage)) return;
+        if (/מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת|מחק זיכרון|הסר זיכרון|שכח ש|מזג האוויר|תחזית|חדשות|כותרות|ספורט|תוצאות|מניות|שוק המניות|שוק|מניה/i.test(userMessage)) return;
 
         const prompt = AUTO_EXTRACT_PROMPT + userMessage
             + `\nAssistant reply: ${(assistantAnswer || '').slice(0, 200)}`;
@@ -161,7 +161,7 @@ async function deleteMemory(userMessage, supabase) {
     const { data, error } = await supabase
         .from('memories')
         .delete()
-        .ilike('content', `%${textToDelete}%`)
+        .ilike('content', `%${sanitizeLike(textToDelete)}%`)
         .select('id, content');
 
     if (error) throw error;

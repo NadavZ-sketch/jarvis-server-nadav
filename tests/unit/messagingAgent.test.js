@@ -147,5 +147,39 @@ describe('runMessagingAgent', () => {
             expect(result.answer).toContain('לא הצלחתי להבין');
             expect(result.action).toBeNull();
         });
+
+        test('empty draft from LLM → returns error, no action', async () => {
+            callGemma4
+                .mockResolvedValueOnce(JSON.stringify({
+                    action: 'send',
+                    channel: 'whatsapp',
+                    recipient_name: 'רון',
+                    recipient_phone: null,
+                    recipient_email: null,
+                    message_intent: 'שלום',
+                }))
+                .mockResolvedValueOnce('');  // empty draft
+            const supabase = makeSupabase([{ id: 1, name: 'רון', phone: '0501234567' }]);
+            const result = await runMessagingAgent('שלח לרון', supabase);
+            expect(result.action).toBeNull();
+            expect(result.answer).toContain('לא הצלחתי לנסח');
+        });
+
+        test('8-digit phone → rejected as invalid', async () => {
+            callGemma4
+                .mockResolvedValueOnce(JSON.stringify({
+                    action: 'send',
+                    channel: 'whatsapp',
+                    recipient_name: 'רון',
+                    recipient_phone: null,
+                    recipient_email: null,
+                    message_intent: 'שלום',
+                }))
+                .mockResolvedValueOnce('שלום רון');
+            const supabase = makeSupabase([{ id: 1, name: 'רון', phone: '12345678' }]);
+            const result = await runMessagingAgent('שלח ווצאפ לרון', supabase);
+            expect(result.action).toBeNull();
+            expect(result.answer).toContain('לא תקין');
+        });
     });
 });

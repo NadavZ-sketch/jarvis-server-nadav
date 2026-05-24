@@ -5,35 +5,66 @@ const { callGemma4 } = require('./models');
 
 const BASE_DIR = path.join(__dirname, '..');
 
-// Files to scan — only JS source, never .env or secrets
-const SCAN_FILES = [
-    'server.js',
-    'agents/router.js',
-    'agents/models.js',
-    'agents/chatAgent.js',
-    'agents/taskAgent.js',
-    'agents/reminderAgent.js',
-    'agents/memoryAgent.js',
-    'agents/sportsAgent.js',
-    'agents/messagingAgent.js',
-    'agents/draftAgent.js',
-    'agents/securityAgent.js',
-    'agents/agentFactoryAgent.js',
+const MAX_CHARS_PER_FILE = 3000; // per-file cap to avoid token overflow
+const MAX_TOTAL_CHARS    = 60000; // total context budget across all files
+
+// Directories to scan, in priority order (high-value code first).
+const SCAN_DIRS = [
+    { dir: '',           pattern: /^server\.js$/ },
+    { dir: 'agents',     pattern: /^(?!.*\.test\.js$)[^/]+\.js$/ },
+    { dir: 'services',   pattern: /^(?!.*\.test\.js$)[^/]+\.js$/ },
+    { dir: 'routes',     pattern: /^(?!.*\.test\.js$)[^/]+\.js$/ },
+    { dir: 'controllers',pattern: /^(?!.*\.test\.js$)[^/]+\.js$/ },
 ];
 
-const MAX_CHARS_PER_FILE = 4000; // avoid token overflow on smaller models
+// Files that must never be read (secrets, generated output, huge bundles).
+const EXCLUDE_NAMES = new Set(['.env', '.env.local', '.env.production', 'package-lock.json']);
+const EXCLUDE_DIRS  = new Set(['node_modules', 'tests', '.git', 'coverage']);
+
+async function _listJs(relDir, pattern) {
+    const abs = path.join(BASE_DIR, relDir);
+    try {
+        const entries = await fs.promises.readdir(abs, { withFileTypes: true });
+        return entries
+            .filter(e => e.isFile() && pattern.test(e.name) && !EXCLUDE_NAMES.has(e.name))
+            .map(e => relDir ? path.join(relDir, e.name) : e.name);
+    } catch { return []; }
+}
 
 async function readProjectFiles() {
+    // Collect candidates in priority order
+    const candidates = [];
+    for (const { dir, pattern } of SCAN_DIRS) {
+        // Skip excluded directories
+        if (dir && EXCLUDE_DIRS.has(dir)) continue;
+        const files = await _listJs(dir, pattern);
+        candidates.push(...files);
+    }
+
+    // Read files, honour per-file and total-budget caps
     const result = {};
-    await Promise.all(SCAN_FILES.map(async (file) => {
+    let totalChars = 0;
+    await Promise.all(candidates.map(async (relPath) => {
         try {
-            const content = await fs.promises.readFile(path.join(BASE_DIR, file), 'utf8');
-            result[file] = content.length > MAX_CHARS_PER_FILE
-                ? content.slice(0, MAX_CHARS_PER_FILE) + '\n// ... (truncated)'
-                : content;
-        } catch (err) { console.warn(`⚠️ SecurityAgent: could not read ${file}: ${err.message}`); }
+            const raw = await fs.promises.readFile(path.join(BASE_DIR, relPath), 'utf8');
+            const content = raw.length > MAX_CHARS_PER_FILE
+                ? raw.slice(0, MAX_CHARS_PER_FILE) + '\n// ... (truncated)'
+                : raw;
+            result[relPath] = { content, size: content.length };
+        } catch (err) {
+            console.warn(`⚠️ SecurityAgent: could not read ${relPath}: ${err.message}`);
+        }
     }));
-    return result;
+
+    // Apply total budget in priority order (candidates already ordered)
+    const final = {};
+    for (const relPath of candidates) {
+        if (!result[relPath]) continue;
+        if (totalChars + result[relPath].size > MAX_TOTAL_CHARS) break;
+        final[relPath] = result[relPath].content;
+        totalChars += result[relPath].size;
+    }
+    return final;
 }
 
 function buildScanPrompt(codeBlock) {

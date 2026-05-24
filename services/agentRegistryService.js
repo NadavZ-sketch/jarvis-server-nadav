@@ -19,7 +19,9 @@ function writeStatusOverrides(map) {
   try {
     const dir = path.dirname(STATUS_OVERRIDE_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(STATUS_OVERRIDE_PATH, JSON.stringify(map, null, 2), 'utf8');
+    const tmp = STATUS_OVERRIDE_PATH + '.tmp.' + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(map, null, 2), 'utf8');
+    fs.renameSync(tmp, STATUS_OVERRIDE_PATH); // atomic on POSIX — prevents partial-read corruption
     return true;
   } catch (e) { return false; }
 }

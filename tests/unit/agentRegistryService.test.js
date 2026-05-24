@@ -8,20 +8,29 @@ const fakeStatusPath = path.join(tmpDir, 'agent-status.json');
 
 // Replace the real path constant by intercepting fs writes. The service
 // derives its path from __dirname, so we patch fs.* to redirect any
-// access to '*agent-status.json' to our tmp file.
+// access to '*agent-status.json' (and its .tmp.* variants) to our tmp file.
 const realFs = require('fs');
 const origExists = realFs.existsSync;
 const origRead = realFs.readFileSync;
 const origWrite = realFs.writeFileSync;
 const origMkdir = realFs.mkdirSync;
+const origRename = realFs.renameSync;
 
 function isStatusFile(p) {
-    return typeof p === 'string' && p.endsWith('agent-status.json');
+    return typeof p === 'string' && (p.endsWith('agent-status.json') || p.includes('agent-status.json.tmp.'));
 }
-realFs.existsSync = (p, ...rest) => isStatusFile(p) ? origExists(fakeStatusPath) : origExists(p, ...rest);
-realFs.readFileSync = (p, ...rest) => isStatusFile(p) ? origRead(fakeStatusPath, ...rest) : origRead(p, ...rest);
-realFs.writeFileSync = (p, data, opts) => isStatusFile(p) ? origWrite(fakeStatusPath, data, opts) : origWrite(p, data, opts);
+function statusRedirect(p) {
+    // Map .tmp.* variants to a matching tmp path so rename works within tmpDir
+    if (typeof p === 'string' && p.includes('agent-status.json.tmp.')) {
+        return fakeStatusPath + '.tmp.' + p.split('.tmp.').pop();
+    }
+    return fakeStatusPath;
+}
+realFs.existsSync = (p, ...rest) => isStatusFile(p) ? origExists(statusRedirect(p)) : origExists(p, ...rest);
+realFs.readFileSync = (p, ...rest) => isStatusFile(p) ? origRead(statusRedirect(p), ...rest) : origRead(p, ...rest);
+realFs.writeFileSync = (p, data, opts) => isStatusFile(p) ? origWrite(statusRedirect(p), data, opts) : origWrite(p, data, opts);
 realFs.mkdirSync = (p, opts) => isStatusFile(p) ? undefined : origMkdir(p, opts);
+realFs.renameSync = (src, dst) => (isStatusFile(src) || isStatusFile(dst)) ? origRename(statusRedirect(src), statusRedirect(dst)) : origRename(src, dst);
 
 const { getAgentRegistry, setAgentStatus, setAgentRisk } = require('../../services/agentRegistryService');
 
@@ -33,6 +42,7 @@ afterAll(() => {
     realFs.readFileSync = origRead;
     realFs.writeFileSync = origWrite;
     realFs.mkdirSync = origMkdir;
+    realFs.renameSync = origRename;
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
 });
 

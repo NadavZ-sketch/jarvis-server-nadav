@@ -2,6 +2,7 @@ require('dotenv').config();
 const fs   = require('fs');
 const path = require('path');
 const { callGemma4 } = require('./models');
+const { invalidateRouterCache } = require('./router');
 
 const CUSTOM_DIR  = path.join(__dirname, 'custom');
 const REGISTRY    = path.join(CUSTOM_DIR, 'registry.json');
@@ -47,6 +48,7 @@ async function confirmPendingAgent() {
     else registry.push(pending.entry);
     await saveRegistry(registry);
     await clearPending();
+    invalidateRouterCache(); // flush 30s TTL so new agent keywords take effect immediately
 
     const keywords = pending.entry.keywords.join(' | ') || '—';
     return {
@@ -198,7 +200,12 @@ async function runAgentFactoryAgent(userMessage, supabase, useLocal) {
         catch { throw new Error('תכנון האייג\'נט הגיע בפורמט לא תקין'); }
 
         design.agentName = design.agentName.replace(/[^a-zA-Z0-9]/g, '').replace(/^./, c => c.toLowerCase());
-        if (!design.agentName) throw new Error('שם האייג\'נט לא תקין');
+        if (!design.agentName || design.agentName.length < 3) throw new Error('שם האייג\'נט לא תקין');
+        // P0: prevent path traversal — name must be pure alphanumeric, 3-50 chars
+        if (!/^[a-z][a-zA-Z0-9]{2,49}$/.test(design.agentName)) throw new Error('שם האייג\'נט מכיל תווים לא חוקיים');
+        const resolvedCustomDir = path.resolve(CUSTOM_DIR);
+        const resolvedFilePath = path.resolve(path.join(CUSTOM_DIR, `${design.agentName}.js`));
+        if (!resolvedFilePath.startsWith(resolvedCustomDir + path.sep)) throw new Error('ניסיון גישה לנתיב לא מורשה');
 
         console.log(`🏭 AgentFactory: generating code for "${design.agentName}"...`);
 
@@ -211,7 +218,7 @@ async function runAgentFactoryAgent(userMessage, supabase, useLocal) {
 
         // Step 3: Write file (pending — not in registry yet)
         await fs.promises.mkdir(CUSTOM_DIR, { recursive: true });
-        const filePath = path.join(CUSTOM_DIR, `${design.agentName}.js`);
+        const filePath = resolvedFilePath;
         await fs.promises.writeFile(filePath, cleanCode, 'utf8');
         console.log(`🏭 AgentFactory: wrote ${filePath} (pending approval)`);
 

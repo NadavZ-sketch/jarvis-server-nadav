@@ -794,7 +794,16 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   Future<void> _toggleAgent(Map<String, dynamic> agent) async {
     final id = agent['id']?.toString() ?? '';
     if (id.isEmpty || _togglingAgents.contains(id)) return;
-    setState(() => _togglingAgents.add(id));
+
+    final idx = _agents.indexWhere((a) => a['id']?.toString() == id);
+    final oldStatus = agent['status']?.toString() ?? 'active';
+    final optimisticStatus = oldStatus == 'disabled' ? 'active' : 'disabled';
+
+    // Optimistic update — immediately reflect change in UI
+    setState(() {
+      _togglingAgents.add(id);
+      if (idx != -1) _agents[idx] = {..._agents[idx], 'status': optimisticStatus};
+    });
     try {
       final res = await http.post(
         Uri.parse('$_base/progress-map/agents/$id/toggle'),
@@ -803,18 +812,28 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       ).timeout(const Duration(seconds: 8));
       if (!mounted) return;
       if (res.statusCode != 200) {
+        // Revert optimistic update on failure
+        setState(() {
+          if (idx != -1) _agents[idx] = {..._agents[idx], 'status': oldStatus};
+        });
         _showSnack('שגיאה בשינוי סטטוס סוכן');
         return;
       }
       final d = jsonDecode(res.body);
-      final newStatus = d['status']?.toString() ?? agent['status']?.toString() ?? 'active';
+      final serverStatus = d['status']?.toString() ?? optimisticStatus;
+      // Sync with server-confirmed status
       setState(() {
-        final idx = _agents.indexWhere((a) => a['id']?.toString() == id);
-        if (idx != -1) _agents[idx] = {..._agents[idx], 'status': newStatus};
+        if (idx != -1) _agents[idx] = {..._agents[idx], 'status': serverStatus};
       });
-      _showSnack(newStatus == 'disabled' ? 'הסוכן הושבת' : 'הסוכן הופעל');
+      _showSnack(serverStatus == 'disabled' ? 'הסוכן הושבת' : 'הסוכן הופעל');
     } catch (_) {
-      if (mounted) _showSnack('שגיאת רשת');
+      if (mounted) {
+        // Revert optimistic update on network error
+        setState(() {
+          if (idx != -1) _agents[idx] = {..._agents[idx], 'status': oldStatus};
+        });
+        _showSnack('שגיאת רשת');
+      }
     } finally {
       if (mounted) setState(() => _togglingAgents.remove(id));
     }
@@ -3349,6 +3368,20 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     final status = (agent['status'] ?? 'active').toString();
     final isDisabled = status == 'disabled';
     final isToggling = _togglingAgents.contains(id);
+
+    // P1: Metrics from server
+    final metrics = agent['metrics'] as Map<String, dynamic>?;
+    final avgMs = metrics?['avgMs'] as num?;
+    final callCount = (metrics?['count'] as num?)?.toInt() ?? 0;
+    final healthScore = (agent['healthScore'] as num?)?.toInt();
+
+    Color _healthColor(int? score) {
+      if (score == null) return JC.textMuted;
+      if (score >= 80) return const Color(0xFF22C55E);
+      if (score >= 50) return const Color(0xFFF59E0B);
+      return const Color(0xFFEF4444);
+    }
+
     return Opacity(
       opacity: isDisabled ? 0.55 : 1.0,
       child: GestureDetector(
@@ -3397,16 +3430,45 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                           textAlign: TextAlign.right,
                           style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
                           overflow: TextOverflow.ellipsis),
+                    // P1: Show live metrics below name
+                    if (callCount > 0 || avgMs != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            if (avgMs != null)
+                              Text('${avgMs.toInt()}ms',
+                                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                            if (avgMs != null && callCount > 0)
+                              Text(' · ', style: TextStyle(color: JC.textMuted, fontSize: 10)),
+                            if (callCount > 0)
+                              Text('$callCount קריאות',
+                                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Wrap(
-                spacing: 4,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _badge(_riskLabel(risk), _riskColor(risk)),
-                  if (mode.isNotEmpty) _badge(mode, JC.blue400),
-                  _badge('${autonomy.toInt()}%', JC.textMuted),
+                  Wrap(
+                    spacing: 4,
+                    children: [
+                      _badge(_riskLabel(risk), _riskColor(risk)),
+                      if (mode.isNotEmpty) _badge(mode, JC.blue400),
+                      _badge('${autonomy.toInt()}%', JC.textMuted),
+                    ],
+                  ),
+                  // P2: Health score badge
+                  if (healthScore != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: _badge('❤️ $healthScore', _healthColor(healthScore)),
+                    ),
                 ],
               ),
               const SizedBox(width: 6),

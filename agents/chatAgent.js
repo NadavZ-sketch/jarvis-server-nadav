@@ -339,7 +339,27 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
             answer = await callGemma4([{ role: 'user', content: systemPrompt + userMessage }], false, maxTokens);
         }
 
-        return { answer: answer || 'לא הצלחתי לגבש תשובה.' };
+        const finalAnswer = answer || 'לא הצלחתי לגבש תשובה.';
+
+        // Generate 2-3 follow-up suggestions (skipped in voice mode to keep latency low)
+        let suggestions = [];
+        if (!voiceMode && !imageBase64 && finalAnswer.length > 20) {
+            try {
+                const sugPrompt = `בהתבסס על השיחה הבאה, הצע 2-3 שאלות המשך קצרות בעברית שהמשתמש עשוי לרצות לשאול. החזר JSON בלבד: {"suggestions":["...","..."]}
+שאלת המשתמש: "${userMessage.slice(0, 100)}"
+תשובת ג'רוויס: "${finalAnswer.slice(0, 150)}"`;
+                const raw = await Promise.race([
+                    callGemma4([{ role: 'user', content: sugPrompt }], useLocal, 80),
+                    new Promise(resolve => setTimeout(() => resolve(null), 1500)),
+                ]);
+                if (raw) {
+                    const match = raw.match(/\{[\s\S]*\}/);
+                    if (match) suggestions = JSON.parse(match[0]).suggestions || [];
+                }
+            } catch (_) { /* never block on suggestions */ }
+        }
+
+        return { answer: finalAnswer, ...(suggestions.length ? { suggestions } : {}) };
 
     } catch (err) {
         console.error('ChatAgent Error:', err.response ? JSON.stringify(err.response.data, null, 2) : err.message);

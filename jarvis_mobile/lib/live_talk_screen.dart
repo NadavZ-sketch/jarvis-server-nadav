@@ -18,7 +18,7 @@ import 'main.dart' show JC, JarvisState;
 class LiveTalkScreen extends StatefulWidget {
   final String chatId;
   final AppSettings settings;
-  final List<Map<String, String>>? initialMessages;
+  final List<Map<String, dynamic>>? initialMessages;
 
   const LiveTalkScreen({
     super.key,
@@ -44,7 +44,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
   bool _sseMode = false; // SSE fallback when WS unavailable
   Timer? _wsAckTimer;
 
-  List<Map<String, String>> _messages = [];
+  List<Map<String, dynamic>> _messages = [];
   String _partialUser = '';     // STT in-flight
   String _streamingReply = '';  // assistant in-flight (from WS chunks)
 
@@ -339,6 +339,10 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
   }
 
   void _onUtteranceFinal(String text) {
+    if (text.trim().isEmpty) {
+      _listen();
+      return;
+    }
     HapticFeedback.lightImpact();
     setState(() {
       _messages.add({'sender': 'user', 'text': text});
@@ -372,6 +376,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
       });
 
       final sr = await client.send(request).timeout(const Duration(seconds: 35));
+      if (sr.statusCode == 429) throw Exception('rate_limit');
       if (sr.statusCode != 200) throw Exception('server ${sr.statusCode}');
 
       String accumulated = '';
@@ -415,7 +420,10 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
       }
     } catch (e) {
       if (!mounted) return;
-      final msg = e.toString().contains('timeout') ? '⏱ זמן פג' : '⚠️ שגיאת חיבור';
+      final err = e.toString();
+      final msg = err.contains('rate_limit') ? '⏳ עמוס כרגע, נסה שוב'
+                : err.contains('timeout')    ? '⏱ זמן פג'
+                :                             '⚠️ שגיאת חיבור';
       setState(() {
         _hint = msg;
         _streamingReply = '';
@@ -489,7 +497,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
 
   Future<void> _endCall() async {
     HapticFeedback.mediumImpact();
-    if (mounted) Navigator.of(context).pop(List<Map<String, String>>.from(_messages));
+    if (mounted) Navigator.of(context).pop(List<Map<String, dynamic>>.from(_messages));
   }
 
   @override
@@ -503,6 +511,10 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
     _flutterTts.stop();
     _audioPlayer.stop();
     _audioPlayer.dispose();
+    if (_lastTtsPath != null) {
+      File(_lastTtsPath!).delete().catchError((_) => File(''));
+      _lastTtsPath = null;
+    }
     try {
       _sendWs({'type': 'bye'});
       _wsSub?.cancel();
@@ -643,7 +655,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
 
 // ─── Live bubble (minimal, matches main.dart style) ─────────────────────────
 class _LiveBubble extends StatelessWidget {
-  final Map<String, String> msg;
+  final Map<String, dynamic> msg;
   const _LiveBubble({required this.msg});
 
   @override

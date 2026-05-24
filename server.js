@@ -301,6 +301,7 @@ obsidianSync.initSync({
 // ─── In-memory TTL Cache ──────────────────────────────────────────────────────
 
 const _cache = new Map(); // key → { value, expiresAt }
+const _sessionState = new Map(); // chatId-scoped ephemeral state (mood, counters)
 
 function cacheGet(key) {
     const entry = _cache.get(key);
@@ -653,6 +654,23 @@ async function askJarvisHandler(req, res) {
             console.log('🔍 Past-conv: remapped to chat');
         }
 
+        // ── Mid-session mood adaptation: 3+ consecutive short replies → concise ─
+        // "Short" = under 10 chars. Resets when user sends a long message.
+        if (!settings.voiceMode && agentName === 'chat') {
+            const _shortMsgKey = `shortMsgCount:${chatId}`;
+            let shortCount = (_sessionState.get(_shortMsgKey) || 0);
+            if (userMessage.trim().length < 10) {
+                shortCount++;
+            } else {
+                shortCount = 0;
+            }
+            _sessionState.set(_shortMsgKey, shortCount);
+            if (shortCount >= 3 && settings.responseLength !== 'short') {
+                settings.responseLength = 'short';
+                console.log(`⚡ Mood adapt: ${shortCount} short msgs → concise mode`);
+            }
+        }
+
         console.log(`🎯 Dispatching to: ${agentName} (+${Date.now() - t0}ms)`);
         const tRoute = Date.now();
 
@@ -820,6 +838,7 @@ async function askJarvisHandler(req, res) {
 
         let answer = result.answer || 'לא הצלחתי לגבש תשובה.';
         const action = result.action || null;
+        const suggestions = Array.isArray(result.suggestions) ? result.suggestions : [];
 
         // ── Proactive inline nudge (text chat only, hard-throttled) ───────────
         // Skip in voice mode (markdown/emoji would be spoken), when the user is
@@ -864,7 +883,7 @@ async function askJarvisHandler(req, res) {
 
         // For WhatsApp — pass action to Flutter to open deep link
         // Return chatId so client can use it for subsequent messages
-        res.json({ answer, audio: audioBase64, action, chatId });
+        res.json({ answer, audio: audioBase64, action, chatId, suggestions });
 
         // ── Fire-and-forget: passive memory extraction + summary update ────────
         if (agentName === 'chat' && !imageBase64) {
@@ -2313,6 +2332,10 @@ async function streamJarvisHandler(req, res) {
         // any agent without an explicit branch fell through to runChatAgent, so
         // "הוסף משימה" got discussed by the chat model instead of being created.
         if (!['chat', 'draft'].includes(agentName)) {
+            // Inject recent history into settings so agents have conversation context
+            const recentHistory = await loadChatHistory(chatId).catch(() => []);
+            settings.recentHistory = recentHistory.slice(-6);
+
             let result;
             if (agentName === 'weather')   result = await runWeatherAgent(userMessage, settings);
             else if (agentName === 'news') result = await runNewsAgent(userMessage, settings);
@@ -2577,6 +2600,30 @@ if (!isTestEnv) cron.schedule('0 13 * * *', async () => {
     }
 }, { timezone: 'Asia/Jerusalem' });
 
+// P2: Daily cron — 09:00 Jerusalem — flag agents inactive for 7+ days
+if (!isTestEnv) cron.schedule('0 9 * * *', async () => {
+    try {
+        const snap = await agentMetrics.snapshot();
+        const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+        const inactive = snap.latency.filter(r =>
+            r.lastCalledAt && r.lastCalledAt < sevenDaysAgo && r.count > 0);
+        if (inactive.length === 0) return;
+        const names = inactive.map(r => r.agent).join(', ');
+        console.log(`⚠️ Inactive agents (7+ days): ${names}`);
+        await supabase.from('agent_metrics_alerts').upsert(
+            inactive.map(r => ({
+                agent: r.agent,
+                alert_type: 'inactive',
+                last_called_at: r.lastCalledAt,
+                checked_at: new Date().toISOString(),
+            })),
+            { onConflict: 'agent' }
+        ).catch(() => {}); // table may not exist; best-effort
+    } catch (err) {
+        console.error('Inactive agent cron error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
+
 // ─── Obsidian sync endpoints ──────────────────────────────────────────────────
 let obsidianAutoSync = true;
 
@@ -2646,7 +2693,7 @@ app.get('/chart.js', (_req, res) => {
 });
 
 const { createAgentCenterRouter } = require('./routes/agentCenter');
-app.use('/progress-map', createAgentCenterRouter({ callGemma4, agentMetrics }));
+app.use('/progress-map', _rl(20), createAgentCenterRouter({ callGemma4, agentMetrics }));
 app.get('/agent-center', (_req, res) => res.redirect(301, '/progress-map'));
 
 app.get('/notes.json', (_req, res) => {

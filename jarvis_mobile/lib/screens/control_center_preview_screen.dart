@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
+import '../widgets/agent_detail_sheet.dart';
 import 'e2e_reports_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1982,131 +1983,14 @@ class _ControlCenterPreviewScreenState
   }
 
   void _showAgentSettings(Map<String, dynamic> agent) {
-    final name = agent['name'] ?? agent['id'] ?? 'סוכן';
-    final role = (agent['description'] ?? agent['role'] ?? '').toString();
-    final status = (agent['status'] ?? '').toString();
-    final currentRisk = (agent['riskLevel'] ?? agent['risk_level'] ?? 'low').toString();
-    final isActive = status == 'active' || status == 'online';
-
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
-      backgroundColor: JC.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: const Color(0xFF0D1B2E),
       isScrollControlled: true,
-      builder: (ctx) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: 20, right: 20, top: 16,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Center(child: Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: JC.border, borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 16),
-            Row(children: [
-              Icon(Icons.smart_toy_rounded, color: JC.blue400, size: 20),
-              const SizedBox(width: 8),
-              Expanded(child: Text(name.toString(),
-                  style: TextStyle(color: JC.textPrimary, fontSize: 16, fontWeight: FontWeight.w700, fontFamily: 'Heebo'))),
-              _StatusChip(status),
-            ]),
-            if (role.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(role, style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
-            ],
-            const SizedBox(height: 16),
-            Text('סטטוס', style: TextStyle(color: JC.textSecondary, fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
-            const SizedBox(height: 8),
-            Row(children: [
-              Text(isActive ? 'סוכן פעיל' : 'סוכן כבוי',
-                  style: TextStyle(color: JC.textMuted, fontSize: 13, fontFamily: 'Heebo')),
-              const Spacer(),
-              GestureDetector(
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  try {
-                    final r = await _api.toggleAgent(agent['id'].toString());
-                    final disabled = (r['status'] ?? '').toString() == 'disabled';
-                    _showSnack('$name ${disabled ? 'כובה' : 'הופעל'} ✓');
-                    await _loadAgents();
-                  } catch (e) {
-                    _showSnack(ApiService.friendlyError(e));
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: isActive ? const Color(0xFFEF4444).withOpacity(0.15) : const Color(0xFF22C55E).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isActive ? const Color(0xFFEF4444).withOpacity(0.4) : const Color(0xFF22C55E).withOpacity(0.4),
-                    ),
-                  ),
-                  child: Text(isActive ? 'כבה סוכן' : 'הפעל סוכן',
-                      style: TextStyle(
-                        color: isActive ? const Color(0xFFEF4444) : const Color(0xFF22C55E),
-                        fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w600,
-                      )),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 16),
-            Text('רמת סיכון', style: TextStyle(color: JC.textSecondary, fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
-            const SizedBox(height: 8),
-            Row(children: ['low', 'medium', 'high'].map((r) {
-              final isSelected = currentRisk == r;
-              final color = _riskColor(r);
-              final label = _riskLabel(r);
-              return Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: GestureDetector(
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    try {
-                      await _api.setAgentRisk(agent['id'].toString(), r);
-                      _showSnack('רמת סיכון $label עודכנה ✓');
-                      await _loadAgents();
-                    } catch (e) {
-                      _showSnack(ApiService.friendlyError(e));
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: isSelected ? color.withOpacity(0.2) : color.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: isSelected ? color : color.withOpacity(0.2), width: isSelected ? 1.2 : 0.8),
-                    ),
-                    child: Text(label,
-                        style: TextStyle(color: isSelected ? color : JC.textMuted, fontSize: 12, fontFamily: 'Heebo',
-                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal)),
-                  ),
-                ),
-              );
-            }).toList()),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _loadAgents();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: JC.blue500,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                child: const Text('סגור',
-                    style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
-              ),
-            ),
-          ]),
-        ),
-      ),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => AgentDetailSheet(
+          agent: agent, base: widget.settings.serverUrl),
     );
   }
 

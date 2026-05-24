@@ -106,8 +106,13 @@ const _hebrewMonths = [
 
 class SmartProductivityPreviewScreen extends StatefulWidget {
   final AppSettings settings;
+  final VoidCallback? onNavigateToChat;
 
-  const SmartProductivityPreviewScreen({super.key, required this.settings});
+  const SmartProductivityPreviewScreen({
+    super.key,
+    required this.settings,
+    this.onNavigateToChat,
+  });
 
   @override
   State<SmartProductivityPreviewScreen> createState() =>
@@ -615,7 +620,7 @@ class _SmartProductivityPreviewScreenState
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => Navigator.pop(context),
+            onTap: () => Scaffold.of(context).openEndDrawer(),
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
@@ -627,7 +632,7 @@ class _SmartProductivityPreviewScreenState
                   offset: const Offset(0, 2),
                 )],
               ),
-              child: Icon(Icons.arrow_back_ios_new_rounded,
+              child: Icon(Icons.menu_rounded,
                   color: JC.textSecondary, size: 18),
             ),
           ),
@@ -810,7 +815,7 @@ class _SmartProductivityPreviewScreenState
         'icon': Icons.chat_bubble_outline_rounded,
         'label': 'שיחה עם ג׳רוויס',
         'color': const Color(0xFFF59E0B),
-        'onTap': () => Navigator.pop(context),
+        'onTap': () => widget.onNavigateToChat?.call(),
       },
     ];
 

@@ -205,7 +205,10 @@ class _MainShellState extends State<MainShell> {
             enabled: _settings.animationsEnabled,
             children: [
               // 0 — Smart Day Manager (home)
-              SmartProductivityPreviewScreen(settings: _settings),
+              SmartProductivityPreviewScreen(
+                settings: _settings,
+                onNavigateToChat: () => _onTabTapped(1),
+              ),
               // 1 — Chat (main screen)
               ChatScreen(
                 onRegisterArchive: (fn) => _archiveChatFn = fn,

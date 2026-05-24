@@ -2271,52 +2271,45 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
             onTap: () => setState(() => _expanded = !_expanded),
             behavior: HitTestBehavior.opaque,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(
                 children: [
+                  // Pulsing dot for active group
                   Container(
-                    width: 9,
-                    height: 9,
+                    width: 10, height: 10,
                     decoration: BoxDecoration(
                       color: widget.dotColor,
                       shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: widget.dotColor.withOpacity(0.5),
+                            blurRadius: 6, spreadRadius: 1),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 10),
+                  Text(widget.label,
+                    style: const TextStyle(
+                      color: Color(0xFFE2E8F0), fontSize: 13,
+                      fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
                   const SizedBox(width: 8),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                  const SizedBox(width: 6),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: widget.dotColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: widget.dotColor.withOpacity(0.3)),
                     ),
-                    child: Text(
-                      '${widget.count}',
+                    child: Text('${widget.count}',
                       style: TextStyle(
-                        color: widget.dotColor,
-                        fontSize: 10,
-                        fontFamily: 'Heebo',
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                        color: widget.dotColor, fontSize: 11,
+                        fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
                   ),
                   const Spacer(),
-                  Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: JC.textMuted,
-                    size: 18,
+                  AnimatedRotation(
+                    turns: _expanded ? 0 : -0.5,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.keyboard_arrow_up_rounded,
+                        color: const Color(0xFF475569), size: 20),
                   ),
                 ],
               ),
@@ -2325,24 +2318,19 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
           if (_expanded) ...[
             Divider(color: JC.border, height: 1),
             Padding(
-              padding: const EdgeInsets.all(10),
-              child: GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 1.6,
-                ),
-                itemCount: widget.agents.length,
-                itemBuilder: (_, i) => _AgentMiniCard(
-                  widget.agents[i],
-                  onTap: widget.onAgentTap != null
-                      ? () => widget.onAgentTap!(widget.agents[i])
-                      : null,
-                ),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(
+                children: [
+                  for (int i = 0; i < widget.agents.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 6),
+                    _AgentMiniCard(
+                      widget.agents[i],
+                      onTap: widget.onAgentTap != null
+                          ? () => widget.onAgentTap!(widget.agents[i])
+                          : null,
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
@@ -2352,6 +2340,17 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
   }
 }
 
+// ── Agent icon emoji map (mirrors AgentDetailSheet) ──────────────────────────
+const _kAgentEmojiMap = {
+  'router': '🔀', 'chatAgent': '💬', 'taskAgent': '✅', 'reminderAgent': '⏰',
+  'memoryAgent': '🧠', 'weatherAgent': '🌤', 'newsAgent': '📰', 'stocksAgent': '📈',
+  'translationAgent': '🌐', 'sportsAgent': '⚽', 'shoppingAgent': '🛒',
+  'notesAgent': '📝', 'musicAgent': '🎵', 'messagingAgent': '📨',
+  'draftAgent': '✍️', 'insightAgent': '💡', 'securityAgent': '🛡',
+  'codeErrorAgent': '🐛', 'e2eAgent': '🧪', 'agentFactoryAgent': '🏭',
+  'surveyAgent': '📋',
+};
+
 class _AgentMiniCard extends StatelessWidget {
   final Map<String, dynamic> agent;
   final VoidCallback? onTap;
@@ -2360,86 +2359,149 @@ class _AgentMiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = agent['name'] ?? agent['id'] ?? 'סוכן';
-    final role = agent['description'] ?? agent['role'] ?? '';
-    final risk = agent['riskLevel'] ?? agent['risk_level'] ?? 'low';
+    final id     = (agent['id'] ?? '').toString();
+    final name   = (agent['nameHe'] ?? agent['name'] ?? agent['id'] ?? 'סוכן').toString();
+    final role   = (agent['description'] ?? agent['role'] ?? '').toString();
+    final risk   = (agent['riskLevel'] ?? agent['risk_level'] ?? agent['risk'] ?? 'low').toString();
     final status = (agent['status'] ?? '').toString();
-    final riskColor = _riskColor(risk);
+    final health = (agent['healthScore'] as num?)?.toInt();
+    final metrics = agent['metrics'] as Map<String, dynamic>?;
+    final avgMs  = (metrics?['avgMs'] as num?)?.toInt();
+    final emoji  = _kAgentEmojiMap[id] ?? '🤖';
+
     final statusColor = _statusColor(status);
+    final isActive = status == 'active' || status == 'online';
+
+    Color healthColor(int? s) {
+      if (s == null) return const Color(0xFF475569);
+      if (s >= 80) return const Color(0xFF22C55E);
+      if (s >= 50) return const Color(0xFFF59E0B);
+      return const Color(0xFFEF4444);
+    }
+
+    String latencyLabel(int? ms) {
+      if (ms == null) return '';
+      if (ms <= 800) return '⚡ מהיר';
+      if (ms <= 2000) return '⏱ בינוני';
+      return '🐢 איטי';
+    }
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1929),
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-        border: Border.all(color: onTap != null ? statusColor.withOpacity(0.3) : statusColor.withOpacity(0.15), width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.smart_toy_outlined, color: JC.blue400, size: 14),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  name.toString(),
-                  style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Heebo',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D1829),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive
+                ? statusColor.withOpacity(0.35)
+                : const Color(0xFF1E3A5F).withOpacity(0.6),
+            width: 0.9,
+          ),
+          boxShadow: isActive
+              ? [BoxShadow(color: statusColor.withOpacity(0.08), blurRadius: 10, spreadRadius: 0)]
+              : [],
+        ),
+        child: Row(
+          children: [
+            // Emoji icon
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.25)),
+              ),
+              child: Center(child: Text(emoji, style: const TextStyle(fontSize: 20))),
+            ),
+            const SizedBox(width: 12),
+            // Name + role + metrics
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(name,
+                          style: const TextStyle(
+                            color: Color(0xFFE2E8F0), fontFamily: 'Heebo',
+                            fontWeight: FontWeight.w700, fontSize: 13),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                      // Status pill
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: statusColor.withOpacity(0.3)),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                            width: 5, height: 5,
+                            decoration: BoxDecoration(
+                              color: statusColor, shape: BoxShape.circle,
+                              boxShadow: isActive
+                                  ? [BoxShadow(color: statusColor.withOpacity(0.7), blurRadius: 4)]
+                                  : [],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(_statusLabel(status),
+                            style: TextStyle(
+                              color: statusColor, fontFamily: 'Heebo',
+                              fontSize: 10, fontWeight: FontWeight.w600)),
+                        ]),
+                      ),
+                    ],
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: statusColor.withOpacity(0.6),
-                      blurRadius: 4,
-                      spreadRadius: 1,
-                    )
+                  if (role.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(role,
+                      style: const TextStyle(
+                        color: Color(0xFF64748B), fontFamily: 'Heebo', fontSize: 11),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                   ],
-                ),
+                  const SizedBox(height: 5),
+                  // Badges row
+                  Wrap(
+                    spacing: 5, runSpacing: 4,
+                    children: [
+                      if (health != null)
+                        _miniChip('$health%', healthColor(health)),
+                      if (avgMs != null)
+                        _miniChip(latencyLabel(avgMs), const Color(0xFF38BDF8)),
+                      _miniChip(_riskLabel(risk), _riskColor(risk)),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Expanded(
-            child: Text(
-              role.toString(),
-              style: TextStyle(
-                  color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: riskColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              _riskLabel(risk),
-              style: TextStyle(
-                  color: riskColor, fontSize: 9, fontFamily: 'Heebo'),
-            ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            // Chevron
+            if (onTap != null)
+              Icon(Icons.chevron_left_rounded,
+                  color: const Color(0xFF475569), size: 18),
+          ],
+        ),
       ),
-    ));
+    );
   }
+
+  Widget _miniChip(String text, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(5),
+      border: Border.all(color: color.withOpacity(0.25), width: 0.7),
+    ),
+    child: Text(text,
+      style: TextStyle(color: color, fontFamily: 'Heebo',
+          fontSize: 10, fontWeight: FontWeight.w600)),
+  );
 }
 
 class _SectionCard extends StatelessWidget {

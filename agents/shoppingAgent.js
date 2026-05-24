@@ -1,6 +1,5 @@
 const { sanitizeLike } = require('./utils');
 require('dotenv').config();
-const { callGemma4 } = require('./models');
 
 // ── Supabase table required ────────────────────────────────────────────────────
 // CREATE TABLE shopping_items (
@@ -11,24 +10,34 @@ const { callGemma4 } = require('./models');
 // );
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SHOPPING_PROMPT = `אתה עוזר רשימת קניות. נתח את בקשת המשתמש בעברית.
-Allowed intents: 'add', 'list', 'delete'.
-- 'add': המשתמש רוצה להוסיף פריט לרשימה
-- 'list': המשתמש רוצה לראות את הרשימה
-- 'delete': המשתמש רוצה למחוק/להסיר פריט שנקנה
-Return ONLY valid JSON: {"intent":"add|list|delete","item":"item name or empty string"}
+// Regex-based intent parser — no LLM needed for simple CRUD classification.
+function _parseIntent(msg) {
+    const m = msg.trim();
 
-User message: `;
+    // list
+    if (/מה יש ברשימה|הצג רשימ|ראה רשימ|רשימת קניות|מה ברשימה|מה צריך לקנות|כל הרשימה/i.test(m)) {
+        return { intent: 'list', item: '' };
+    }
+
+    // delete / mark-bought
+    const delMatch = m.match(/(?:מחק|הסר|הורד|סיימתי לקנות|קניתי|מחקי|הסירי)\s+(?:את\s+)?(.+)/i);
+    if (delMatch) return { intent: 'delete', item: delMatch[1].replace(/\s+מהרשימה$/i, '').trim() };
+
+    // add — strip leading verb, strip trailing "לרשימה"
+    const addMatch = m.match(/^(?:הוסף|תוסיף|קנה|תקנה|הכנס|תכניס|צריך|צריכה|נצטרך)\s+(?:את\s+)?(.+?)(?:\s+לרשימה)?$/i);
+    if (addMatch) return { intent: 'add', item: addMatch[1].trim() };
+
+    // "X לרשימה" shorthand
+    const toListMatch = m.match(/^(.+?)\s+לרשימה$/i);
+    if (toListMatch) return { intent: 'add', item: toListMatch[1].trim() };
+
+    // fallback — treat whole message as item name to add
+    return { intent: 'add', item: m };
+}
 
 async function runShoppingAgent(userMessage, supabase, useLocal = true) {
     try {
-        const aiText = await callGemma4(SHOPPING_PROMPT + userMessage, useLocal);
-
-        const lastOpen  = aiText.lastIndexOf('{');
-        const lastClose = aiText.lastIndexOf('}');
-        if (lastOpen === -1 || lastClose === -1) throw new Error('No JSON in response');
-
-        const parsed = JSON.parse(aiText.substring(lastOpen, lastClose + 1));
+        const parsed = _parseIntent(userMessage);
         console.log('🛒 ShoppingAgent:', parsed);
 
         if (parsed.intent === 'add') {

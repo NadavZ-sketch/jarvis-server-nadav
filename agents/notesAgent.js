@@ -1,6 +1,5 @@
 const { sanitizeLike } = require('./utils');
 require('dotenv').config();
-const { callGemma4 }  = require('./models');
 const obsidianSync    = require('../services/obsidianSync');
 
 // ── Supabase table required ────────────────────────────────────────────────────
@@ -12,25 +11,35 @@ const obsidianSync    = require('../services/obsidianSync');
 // );
 // ─────────────────────────────────────────────────────────────────────────────
 
-const NOTES_PROMPT = `אתה עוזר הערות. נתח את בקשת המשתמש בעברית.
-Allowed intents: 'add', 'list', 'search', 'delete'.
-- 'add': שמור הערה/פתק חדש
-- 'list': הצג את כל ההערות
-- 'search': חפש הערה לפי תוכן
-- 'delete': מחק הערה
-Return ONLY valid JSON: {"intent":"add|list|search|delete","content":"note text or search query","title":"short title or empty string"}
+// Regex-based intent parser — no LLM needed for simple CRUD classification.
+function _parseIntent(msg) {
+    const m = msg.trim();
 
-User message: `;
+    // list
+    if (/הצג הערות|מה כתבת|הערות שלי|פתקים שלי|כל ההערות|הראה הערות|רשימת הערות|הצג פתקים/i.test(m)) {
+        return { intent: 'list', content: '', title: '' };
+    }
+
+    // search
+    if (/חפש הערה|חפש בהערות|חפש פתק|חפש ב/i.test(m)) {
+        const q = m.replace(/^(?:חפש\s+(?:הערה|בהערות|פתק|ב)?)\s*/i, '').trim();
+        return { intent: 'search', content: q, title: '' };
+    }
+
+    // delete
+    if (/מחק הערה|הסר הערה|מחק פתק|הסר פתק/i.test(m)) {
+        const q = m.replace(/^(?:מחק|הסר)\s+(?:הערה|פתק)?\s*/i, '').trim();
+        return { intent: 'delete', content: q, title: '' };
+    }
+
+    // add — strip leading verb, rest is note content
+    const content = m.replace(/^(?:תרשום לי|רשום לי|שמור פתק|שמור הערה|הוסף הערה|הוסף פתק|כתוב פתק|תכתוב פתק)\s*/i, '').trim();
+    return { intent: 'add', content: content || m, title: '' };
+}
 
 async function runNotesAgent(userMessage, supabase, useLocal = true) {
     try {
-        const aiText = await callGemma4(NOTES_PROMPT + userMessage, useLocal);
-
-        const lastOpen  = aiText.lastIndexOf('{');
-        const lastClose = aiText.lastIndexOf('}');
-        if (lastOpen === -1 || lastClose === -1) throw new Error('No JSON in response');
-
-        const parsed = JSON.parse(aiText.substring(lastOpen, lastClose + 1));
+        const parsed = _parseIntent(userMessage);
         console.log('📝 NotesAgent:', parsed);
 
         if (parsed.intent === 'add') {

@@ -130,26 +130,15 @@ class _SmartProductivityPreviewScreenState
   bool _loading = true;
   String? _error;
 
-  // Morning brief
-  String _morningBrief = '';
-  bool _morningBriefLoading = true;
-  bool _morningBriefCached = false;
-  String? _morningBriefError;
-
   // Jarvis insight
   String _jarvisInsight = '';
   bool _jarvisInsightLoading = true;
   String? _jarvisInsightError;
 
-  // Smart Day Plan (priority engine)
-  Map<String, dynamic>? _dayPlan;
-  bool _dayPlanLoading = true;
-  String? _dayPlanError;
-  bool _focusMode = true; // collapse to top items when overloaded
-
   // UI state
   Set<String> _postponed = {};
   Set<String> _markedImportant = {};
+  Set<String> _completing = {};
   String? _snackMessage;
   int _selectedDayOffset = 0;
 
@@ -176,9 +165,7 @@ class _SmartProductivityPreviewScreenState
           _todayMessage = (msg['message'] ?? msg['text'] ?? '') as String;
           _loading = false;
         });
-        _loadMorningBrief();
         _loadJarvisInsight();
-        _loadDayPlan();
       }
     } catch (e) {
       if (mounted) {
@@ -187,23 +174,6 @@ class _SmartProductivityPreviewScreenState
           _loading = false;
         });
       }
-    }
-  }
-
-  Future<void> _loadMorningBrief() async {
-    setState(() { _morningBriefLoading = true; _morningBriefError = null; });
-    try {
-      final r = await _api.getMorningBrief();
-      if (mounted) setState(() {
-        _morningBrief = r['briefing'] as String? ?? '';
-        _morningBriefCached = r['cached'] as bool? ?? false;
-        _morningBriefLoading = false;
-      });
-    } catch (e) {
-      if (mounted) setState(() {
-        _morningBriefError = ApiService.friendlyError(e);
-        _morningBriefLoading = false;
-      });
     }
   }
 
@@ -236,22 +206,6 @@ class _SmartProductivityPreviewScreenState
     }
   }
 
-  Future<void> _loadDayPlan() async {
-    setState(() { _dayPlanLoading = true; _dayPlanError = null; });
-    try {
-      final r = await _api.getDayPlan();
-      if (mounted) setState(() {
-        _dayPlan = r;
-        _dayPlanLoading = false;
-      });
-    } catch (e) {
-      if (mounted) setState(() {
-        _dayPlanError = ApiService.friendlyError(e);
-        _dayPlanLoading = false;
-      });
-    }
-  }
-
   Future<void> _postponeTask(Map<String, dynamic> task) async {
     final id = task['id'].toString();
     setState(() => _postponed.add(id));
@@ -269,6 +223,21 @@ class _SmartProductivityPreviewScreenState
   void _markImportant(Map<String, dynamic> task) {
     setState(() => _markedImportant.add(task['id'].toString()));
     _showSnack('סומנה כחשובה ✓');
+  }
+
+  Future<void> _completeTask(Map<String, dynamic> task) async {
+    final id = task['id'].toString();
+    if (_completing.contains(id)) return;
+    setState(() => _completing.add(id));
+    try {
+      await _api.updateTask(id, done: true);
+      await Future.delayed(const Duration(milliseconds: 600));
+      _loadData();
+      _showSnack('משימה הושלמה ✓');
+    } catch (e) {
+      setState(() => _completing.remove(id));
+      _showSnack(ApiService.friendlyError(e));
+    }
   }
 
   void _showSnack(String msg) {
@@ -483,33 +452,6 @@ class _SmartProductivityPreviewScreenState
 
   // ── Computed Getters ────────────────────────────────────────────────────────
 
-  List<Map<String, dynamic>> get _importantTasks => _tasks.where((t) =>
-      t['done'] != true &&
-      ((t['priority'] ?? '').toString().toLowerCase() == 'high' ||
-       _markedImportant.contains(t['id'].toString()))).toList();
-
-  List<Map<String, dynamic>> get _inProgressTasks => _tasks
-      .where((t) =>
-          t['done'] != true &&
-          _markedImportant.contains(t['id'].toString()) &&
-          (t['priority'] ?? '').toString().toLowerCase() != 'high')
-      .toList();
-
-  List<Map<String, dynamic>> get _toDoTasks => _tasks
-      .where((t) =>
-          t['done'] != true &&
-          !_markedImportant.contains(t['id'].toString()) &&
-          (t['priority'] ?? '').toString().toLowerCase() != 'high' &&
-          (t['priority'] ?? '').toString().toLowerCase() != 'low')
-      .toList();
-
-  List<Map<String, dynamic>> get _upcomingTasks => _tasks
-      .where((t) =>
-          t['done'] != true &&
-          !_markedImportant.contains(t['id'].toString()) &&
-          (t['priority'] ?? '').toString().toLowerCase() == 'low')
-      .toList();
-
   // One-line snapshot of the user's day, injected into the insight prompt so the
   // tip is grounded in their actual load instead of being generic.
   String get _dayContextLine {
@@ -580,11 +522,9 @@ class _SmartProductivityPreviewScreenState
                                   _ScrollHeader('מנהל היום החכם', () { setState(() { _loading = true; _error = null; }); _loadData(); }),
                                   _GreetingCard(),
                                   const SizedBox(height: 16),
-                                  _MorningBriefCard(),
-                                  const SizedBox(height: 16),
                                   _QuickActionsRow(),
                                   const SizedBox(height: 16),
-                                  _DayPlanCard(),
+                                  _JarvisAdvisorCard(),
                                   const SizedBox(height: 16),
                                   _TasksCard(),
                                   const SizedBox(height: 16),
@@ -691,6 +631,10 @@ class _SmartProductivityPreviewScreenState
     final dateStr =
         'יום ${_hebrewDays[now.weekday % 7]}, ${now.day} ב${_hebrewMonths[now.month - 1]}';
 
+    final openCount = _totalTasks - _doneTasks;
+    final urgentCount = _highPriorityCount;
+    final todayRemCount = _todayReminders.length;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -733,46 +677,92 @@ class _SmartProductivityPreviewScreenState
                   ],
                 ),
               ),
-              GestureDetector(
-                onTap: _loadJarvisInsight,
-                child: Icon(Icons.refresh_rounded,
-                    color: JC.textMuted.withOpacity(0.6), size: 16),
-              ),
             ],
           ),
-          if (_jarvisInsightLoading || _jarvisInsight.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0B1929),
-                borderRadius: BorderRadius.circular(12),
-                border: Border(
-                  right: BorderSide(color: JC.blue400.withOpacity(0.5), width: 2),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              // Open tasks chip (always shown)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: JC.blue400.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: JC.blue400.withOpacity(0.35), width: 0.8),
                 ),
-              ),
-              child: _jarvisInsightLoading
-                  ? const _CardSkeleton(lines: 1)
-                  : Row(
-                      children: [
-                        const Text('💡', style: TextStyle(fontSize: 13)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _jarvisInsight.isNotEmpty ? _jarvisInsight : '...',
-                            style: TextStyle(
-                              color: JC.blue400,
-                              fontSize: 12,
-                              height: 1.4,
-                              fontFamily: 'Heebo',
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                      ],
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                    width: 6, height: 6,
+                    decoration: BoxDecoration(color: JC.blue400, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    '$openCount משימות פתוחות',
+                    style: TextStyle(
+                      color: JC.blue400,
+                      fontSize: 11,
+                      fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w600,
                     ),
-            ),
-          ],
+                  ),
+                ]),
+              ),
+              // Urgent chip (only if > 0)
+              if (urgentCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.35), width: 0.8),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 6, height: 6,
+                      decoration: const BoxDecoration(color: Color(0xFFEF4444), shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$urgentCount דחופות',
+                      style: const TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontSize: 11,
+                        fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ]),
+                ),
+              // Today reminders chip (only if > 0)
+              if (todayRemCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.35), width: 0.8),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 6, height: 6,
+                      decoration: const BoxDecoration(color: Color(0xFFF59E0B), shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$todayRemCount תזכורות היום',
+                      style: const TextStyle(
+                        color: Color(0xFFF59E0B),
+                        fontSize: 11,
+                        fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ]),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -840,45 +830,31 @@ class _SmartProductivityPreviewScreenState
     );
   }
 
-  // ── Morning Brief Card ─────────────────────────────────────────────────────
+  // ── Jarvis Advisor Card ────────────────────────────────────────────────────
 
-  Widget _MorningBriefCard() {
+  Widget _JarvisAdvisorCard() {
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF1C2D1A),
-            const Color(0xFF1A2E3A),
-          ],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color: const Color(0xFFF59E0B).withOpacity(0.2), width: 0.8),
-        boxShadow: [
-          BoxShadow(
-              color: const Color(0xFFF59E0B).withOpacity(0.08),
-              blurRadius: 16,
-              offset: const Offset(0, 4))
-        ],
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
             child: Row(
               children: [
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF59E0B).withOpacity(0.15),
+                    color: const Color(0xFF6366F1).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Center(
-                    child: Text('☀️', style: TextStyle(fontSize: 20)),
+                    child: Text('✨', style: TextStyle(fontSize: 18)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -887,16 +863,16 @@ class _SmartProductivityPreviewScreenState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'בריף היום',
+                        'תובנה מג׳רוויס',
                         style: TextStyle(
                           color: JC.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                           fontFamily: 'Heebo',
                         ),
                       ),
                       Text(
-                        'מה חשוב לדעת להיום',
+                        'טיפ יומי לפרודוקטיביות',
                         style: TextStyle(
                           color: JC.textMuted,
                           fontSize: 11,
@@ -906,308 +882,66 @@ class _SmartProductivityPreviewScreenState
                     ],
                   ),
                 ),
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (_morningBriefCached)
-                    Container(
-                      margin: const EdgeInsets.only(left: 6),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF475569).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text('מטמון',
-                          style: TextStyle(
-                              color: Color(0xFF94A3B8),
-                              fontSize: 9,
-                              fontFamily: 'Heebo')),
+                GestureDetector(
+                  onTap: _loadJarvisInsight,
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  const SizedBox(width: 4),
-                  GestureDetector(
-                    onTap: _loadMorningBrief,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF59E0B).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.refresh_rounded,
-                          color: Color(0xFFF59E0B), size: 14),
-                    ),
+                    child: const Icon(Icons.refresh_rounded,
+                        color: Color(0xFF6366F1), size: 14),
                   ),
-                ]),
+                ),
               ],
             ),
           ),
-          Container(
-            height: 1,
-            color: const Color(0xFFF59E0B).withOpacity(0.12),
-          ),
+          Divider(color: JC.border, height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            child: _morningBriefLoading
-                ? const _CardSkeleton(lines: 4)
-                : _morningBriefError != null
-                    ? Row(children: [
-                        const Icon(Icons.error_outline_rounded,
-                            color: Color(0xFFEF4444), size: 14),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(_morningBriefError!,
-                              style: const TextStyle(
-                                  color: Color(0xFFEF4444),
-                                  fontSize: 12,
-                                  fontFamily: 'Heebo')),
-                        ),
-                        TextButton(
-                          onPressed: _loadMorningBrief,
-                          child: Text('נסה שוב',
-                              style: TextStyle(
-                                  color: JC.blue400,
-                                  fontFamily: 'Heebo',
-                                  fontSize: 12)),
-                        ),
-                      ])
+            padding: const EdgeInsets.all(14),
+            child: _jarvisInsightLoading
+                ? const _CardSkeleton(lines: 2)
+                : _jarvisInsightError != null
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            const Icon(Icons.error_outline_rounded,
+                                color: Color(0xFFEF4444), size: 14),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(_jarvisInsightError!,
+                                  style: const TextStyle(
+                                      color: Color(0xFFEF4444),
+                                      fontSize: 12,
+                                      fontFamily: 'Heebo')),
+                            ),
+                          ]),
+                          const SizedBox(height: 6),
+                          TextButton(
+                            onPressed: _loadJarvisInsight,
+                            child: Text('נסה שוב',
+                                style: TextStyle(
+                                    color: JC.blue400, fontFamily: 'Heebo')),
+                          ),
+                        ],
+                      )
                     : Text(
-                        _morningBrief.isNotEmpty
-                            ? _morningBrief
-                            : 'אין בריף זמין כרגע',
-                        style: TextStyle(
-                          color: JC.textSecondary,
+                        _jarvisInsight.isNotEmpty
+                            ? _jarvisInsight
+                            : 'לא ניתן לטעון תובנה כרגע',
+                        style: const TextStyle(
+                          color: Color(0xFF818CF8),
                           fontSize: 13.5,
-                          height: 1.6,
+                          height: 1.55,
                           fontFamily: 'Heebo',
+                          fontStyle: FontStyle.italic,
                         ),
                       ),
           ),
         ],
       ),
-    );
-  }
-
-  // ── Smart Day Plan Card ──────────────────────────────────────────────────
-
-  Widget _DayPlanCard() {
-    if (_dayPlanLoading) {
-      return _SectionCard(
-        title: 'תוכנית היום החכמה',
-        icon: Icons.insights_rounded,
-        iconColor: const Color(0xFF6366F1),
-        child: const _CardSkeleton(lines: 4),
-      );
-    }
-    if (_dayPlanError != null || _dayPlan == null) {
-      return _SectionCard(
-        title: 'תוכנית היום החכמה',
-        icon: Icons.insights_rounded,
-        iconColor: const Color(0xFF6366F1),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_dayPlanError ?? 'לא ניתן לטעון את תוכנית היום',
-              style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: _loadDayPlan,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.refresh_rounded, color: const Color(0xFF6366F1), size: 14),
-              const SizedBox(width: 4),
-              Text('נסה שוב', style: TextStyle(color: const Color(0xFF6366F1), fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
-            ]),
-          ),
-        ]),
-      );
-    }
-
-    final plan = _dayPlan!;
-    final items = List<Map<String, dynamic>>.from(plan['items'] ?? []);
-    if (items.isEmpty) {
-      return _SectionCard(
-        title: 'תוכנית היום החכמה',
-        icon: Icons.insights_rounded,
-        iconColor: const Color(0xFF6366F1),
-        child: const _EmptyState(message: 'היום פנוי 🎉 אין משימות או תזכורות'),
-      );
-    }
-
-    final load = Map<String, dynamic>.from(plan['load'] ?? {});
-    final status = (load['status'] ?? 'ok').toString();
-    final peak = plan['peak_window'] as Map<String, dynamic>?;
-    final narrative = (plan['narrative'] ?? '').toString();
-    final aiAvailable = plan['ai_available'] == true;
-    final conflicts = List<Map<String, dynamic>>.from(plan['conflicts'] ?? []);
-    final quadrants = Map<String, dynamic>.from(plan['quadrants'] ?? {});
-
-    final nowItems   = List<Map<String, dynamic>>.from(quadrants['now'] ?? []);
-    final planItems  = List<Map<String, dynamic>>.from(quadrants['plan'] ?? []);
-    final quickItems = List<Map<String, dynamic>>.from(quadrants['quick'] ?? []);
-    final laterItems = List<Map<String, dynamic>>.from(quadrants['later'] ?? []);
-
-    final isOverload = status == 'overload';
-    final collapsed = isOverload && _focusMode;
-
-    final statusColor = status == 'overload'
-        ? const Color(0xFFEF4444)
-        : status == 'tight'
-            ? const Color(0xFFF59E0B)
-            : const Color(0xFF22C55E);
-    final statusLabel = status == 'overload'
-        ? 'עומס יתר'
-        : status == 'tight'
-            ? 'צפוף'
-            : 'מאוזן';
-
-    return _SectionCard(
-      title: 'תוכנית היום החכמה',
-      icon: Icons.insights_rounded,
-      iconColor: const Color(0xFF6366F1),
-      headerTrailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: statusColor.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: statusColor.withOpacity(0.5), width: 0.8),
-        ),
-        child: Text(statusLabel,
-            style: TextStyle(color: statusColor, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Capacity + peak window row
-        Row(children: [
-          Icon(Icons.schedule_rounded, color: JC.textMuted, size: 13),
-          const SizedBox(width: 4),
-          Text('${load['mustDoMinutes'] ?? 0}/${load['capacityMinutes'] ?? 0} דק׳',
-              style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-          if (peak != null) ...[
-            const SizedBox(width: 12),
-            Icon(Icons.bolt_rounded, color: const Color(0xFFF59E0B), size: 13),
-            const SizedBox(width: 4),
-            Text('שיא: ${peak['label']} ${peak['start']}:00–${peak['end']}:00',
-                style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-          ],
-        ]),
-
-        // Overload focus-mode banner
-        if (isOverload) ...[
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEF4444).withOpacity(0.08),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.25), width: 0.8),
-            ),
-            child: Row(children: [
-              Icon(Icons.warning_amber_rounded, color: const Color(0xFFEF4444), size: 16),
-              const SizedBox(width: 8),
-              Expanded(child: Text(
-                'יותר מדי משימות דחופות להיום. התמקד ב-3 המובילות ושקול לדחות את השאר.',
-                style: TextStyle(color: JC.textSecondary, fontSize: 11, fontFamily: 'Heebo'))),
-              GestureDetector(
-                onTap: () => setState(() => _focusMode = !_focusMode),
-                child: Text(_focusMode ? 'הצג הכל' : 'מצב מיקוד',
-                    style: TextStyle(color: const Color(0xFFEF4444), fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
-              ),
-            ]),
-          ),
-        ],
-
-        // AI narrative
-        if (aiAvailable && narrative.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withOpacity(0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.auto_awesome_rounded, color: const Color(0xFF6366F1), size: 14),
-              const SizedBox(width: 6),
-              Expanded(child: Text(narrative,
-                  style: TextStyle(color: JC.textSecondary, fontSize: 12, fontFamily: 'Heebo', height: 1.4))),
-            ]),
-          ),
-        ],
-
-        // Conflicts
-        if (conflicts.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          ...conflicts.map((c) => Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.event_busy_rounded, color: const Color(0xFFF59E0B), size: 13),
-              const SizedBox(width: 6),
-              Expanded(child: Text((c['reason'] ?? '').toString(),
-                  style: TextStyle(color: const Color(0xFFF59E0B), fontSize: 11, fontFamily: 'Heebo'))),
-            ]),
-          )),
-        ],
-
-        // Quadrants
-        const SizedBox(height: 12),
-        _quadrantSection('עכשיו', const Color(0xFFEF4444),
-            collapsed ? nowItems.take(3).toList() : nowItems),
-        if (!collapsed) ...[
-          _quadrantSection('לתכנן', const Color(0xFF3B82F6), planItems),
-          _quadrantSection('מהיר', const Color(0xFFF59E0B), quickItems),
-          _quadrantSection('מאוחר יותר', const Color(0xFF475569), laterItems),
-        ],
-      ]),
-    );
-  }
-
-  Widget _quadrantSection(String label, Color color, List<Map<String, dynamic>> items) {
-    if (items.isEmpty) return const SizedBox.shrink();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(
-        padding: const EdgeInsets.only(top: 6, bottom: 4),
-        child: Row(children: [
-          Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: color, fontSize: 12, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
-          const SizedBox(width: 6),
-          Text('${items.length}', style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-        ]),
-      ),
-      ...items.map(_dayPlanItemRow),
-    ]);
-  }
-
-  Widget _dayPlanItemRow(Map<String, dynamic> item) {
-    final isReminder = item['type'] == 'reminder';
-    final score = (item['score'] ?? 0).toString();
-    final title = (item['title'] ?? '').toString();
-    String when = '';
-    if (isReminder && item['scheduled_time'] != null) {
-      final dt = DateTime.tryParse(item['scheduled_time'].toString())?.toLocal();
-      if (dt != null) {
-        when = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-      }
-    } else if (item['due_date'] != null) {
-      when = item['due_date'].toString();
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6, right: 13),
-      child: Row(children: [
-        Icon(isReminder ? Icons.notifications_active_rounded : Icons.check_circle_outline_rounded,
-            color: isReminder ? const Color(0xFF3B82F6) : JC.textMuted, size: 14),
-        const SizedBox(width: 8),
-        Expanded(child: Text(title,
-            style: TextStyle(color: JC.textPrimary, fontSize: 12, fontFamily: 'Heebo'),
-            maxLines: 1, overflow: TextOverflow.ellipsis)),
-        if (when.isNotEmpty) ...[
-          Text(when, style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
-          const SizedBox(width: 8),
-        ],
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-          decoration: BoxDecoration(
-            color: JC.surfaceAlt,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(score, style: TextStyle(color: JC.textSecondary, fontSize: 10, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
-        ),
-      ]),
     );
   }
 
@@ -1357,204 +1091,6 @@ class _SmartProductivityPreviewScreenState
     );
   }
 
-  // ── Progress Card ──────────────────────────────────────────────────────────
-
-  Widget _ProgressCard() {
-    final done = _doneTasks;
-    final total = _totalTasks;
-    final progress = total == 0 ? 0.0 : done / total;
-    final openCount = total - done;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.pie_chart_outline_rounded,
-                  color: Color(0xFF22C55E), size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'התקדמות משימות',
-                  style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Heebo',
-                  ),
-                ),
-              ),
-              Text(
-                '$done / $total',
-                style: TextStyle(
-                  color: JC.textMuted,
-                  fontSize: 13,
-                  fontFamily: 'Heebo',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 84,
-                height: 84,
-                child: CustomPaint(
-                  painter: _DonutProgressPainter(
-                    progress: progress,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _PriorityBar('גבוה', _highPriorityCount, _totalTasks, const Color(0xFFEF4444)),
-                    const SizedBox(height: 7),
-                    _PriorityBar('בינוני', _medPriorityCount, _totalTasks, const Color(0xFFF59E0B)),
-                    const SizedBox(height: 7),
-                    _PriorityBar('רגיל', _lowPriorityCount, _totalTasks, const Color(0xFF475569)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _MiniStat(
-                label: 'הושלמו',
-                value: '$done',
-                color: const Color(0xFF22C55E),
-              ),
-              const SizedBox(width: 12),
-              _MiniStat(
-                label: 'פתוחות',
-                value: '$openCount',
-                color: const Color(0xFFF59E0B),
-              ),
-              const SizedBox(width: 12),
-              _MiniStat(
-                label: 'חשובות',
-                value: '${_importantTasks.length}',
-                color: const Color(0xFFEF4444),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Important Tasks Card ───────────────────────────────────────────────────
-
-  Widget _ImportantTasksCard() {
-    final important = _importantTasks;
-    final shown = important.take(5).toList();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: Row(
-              children: [
-                const Icon(Icons.priority_high_rounded,
-                    color: Color(0xFFEF4444), size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'משימות חשובות',
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                ),
-                if (important.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${important.length}',
-                      style: const TextStyle(
-                        color: Color(0xFFEF4444),
-                        fontSize: 12,
-                        fontFamily: 'Heebo',
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Divider(color: JC.border.withOpacity(0.5), height: 1),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: important.isEmpty
-                ? Column(
-                    children: [
-                      const Text('🎯', style: TextStyle(fontSize: 28)),
-                      const SizedBox(height: 8),
-                      Text(
-                        'אין משימות בעדיפות גבוהה',
-                        style: TextStyle(
-                          color: JC.textMuted,
-                          fontSize: 13,
-                          fontFamily: 'Heebo',
-                        ),
-                      ),
-                    ],
-                  )
-                : Column(
-                    children: [
-                      ...shown.map((task) => _ImportantTaskRow(
-                            task: task,
-                            isImportant: _markedImportant
-                                .contains(task['id'].toString()),
-                          )),
-                      if (important.length > 5)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '+${important.length - 5} משימות נוספות',
-                            style: TextStyle(
-                                color: JC.textMuted,
-                                fontSize: 11,
-                                fontFamily: 'Heebo'),
-                          ),
-                        ),
-                    ],
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _ImportantTaskRow(
       {required Map<String, dynamic> task, required bool isImportant}) {
     final content = task['content'] as String? ?? '—';
@@ -1579,6 +1115,28 @@ class _SmartProductivityPreviewScreenState
       ),
       child: Row(
         children: [
+          GestureDetector(
+            onTap: () => _completeTask(task),
+            child: Container(
+              width: 22, height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _completing.contains(task['id'].toString())
+                      ? const Color(0xFF22C55E)
+                      : (isHigh ? const Color(0xFFEF4444) : const Color(0xFFF59E0B)),
+                  width: 1.5,
+                ),
+                color: _completing.contains(task['id'].toString())
+                    ? const Color(0xFF22C55E).withOpacity(0.15)
+                    : Colors.transparent,
+              ),
+              child: _completing.contains(task['id'].toString())
+                  ? const Icon(Icons.check_rounded, size: 13, color: Color(0xFF22C55E))
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               content,
@@ -1600,304 +1158,6 @@ class _SmartProductivityPreviewScreenState
             ),
         ],
       ),
-    );
-  }
-
-  // ── Jarvis Insight Card ────────────────────────────────────────────────────
-
-  Widget _JarvisInsightCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-        gradient: LinearGradient(
-          colors: [
-            JC.surface,
-            const Color(0xFF3B82F6).withOpacity(0.05),
-          ],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
-            child: Row(
-              children: [
-                const Text('💡', style: TextStyle(fontSize: 18)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'תובנה מג׳רוויס',
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(Icons.refresh_rounded,
-                      color: JC.textMuted, size: 18),
-                  onPressed: _loadJarvisInsight,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ),
-          Divider(color: JC.border, height: 1),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: _jarvisInsightLoading
-                ? const _CardSkeleton(lines: 2)
-                : _jarvisInsightError != null
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_jarvisInsightError!,
-                              style: const TextStyle(
-                                  color: Color(0xFFEF4444),
-                                  fontSize: 12,
-                                  fontFamily: 'Heebo')),
-                          const SizedBox(height: 6),
-                          TextButton(
-                            onPressed: _loadJarvisInsight,
-                            child: Text('נסה שוב',
-                                style: TextStyle(
-                                    color: JC.blue400, fontFamily: 'Heebo')),
-                          ),
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _jarvisInsight.isNotEmpty
-                                ? _jarvisInsight
-                                : 'לא ניתן לטעון תובנה כרגע',
-                            style: TextStyle(
-                              color: JC.blue400,
-                              fontSize: 14,
-                              height: 1.55,
-                              fontFamily: 'Heebo',
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'מופעל על ידי AI ✨',
-                            style: TextStyle(
-                              color: JC.textMuted,
-                              fontSize: 10,
-                              fontFamily: 'Heebo',
-                            ),
-                          ),
-                        ],
-                      ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Important + To-Do Merged Card ─────────────────────────────────────────
-
-  Widget _ImportantAndToDoCard() {
-    final important = _importantTasks;
-    final toDo = _toDoTasks;
-    if (important.isEmpty && toDo.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: Row(
-              children: [
-                const Icon(Icons.checklist_rounded, color: Color(0xFFEF4444), size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'משימות לטיפול',
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                ),
-                if (important.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444).withOpacity(0.14),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text('${important.length}',
-                        style: const TextStyle(
-                            color: Color(0xFFEF4444), fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
-                  ),
-                if (toDo.isNotEmpty) ...[
-                  const SizedBox(width: 5),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF59E0B).withOpacity(0.14),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text('${toDo.length}',
-                        style: const TextStyle(
-                            color: Color(0xFFF59E0B), fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Divider(color: JC.border.withOpacity(0.5), height: 1),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (important.isNotEmpty) ...[
-                  Row(children: [
-                    Container(width: 3, height: 12,
-                        decoration: BoxDecoration(
-                            color: const Color(0xFFEF4444),
-                            borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(width: 7),
-                    Text('חשובות',
-                        style: TextStyle(
-                            color: const Color(0xFFEF4444),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Heebo')),
-                  ]),
-                  const SizedBox(height: 8),
-                  ...important.take(4).map((task) => _ImportantTaskRow(
-                        task: task,
-                        isImportant: _markedImportant.contains(task['id'].toString()),
-                      )),
-                  if (important.length > 4)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text('+${important.length - 4} נוספות',
-                          style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-                    ),
-                ],
-                if (toDo.isNotEmpty) ...[
-                  if (important.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Divider(color: JC.border.withOpacity(0.25), height: 1),
-                    const SizedBox(height: 10),
-                  ],
-                  Row(children: [
-                    Container(width: 3, height: 12,
-                        decoration: BoxDecoration(
-                            color: const Color(0xFFF59E0B),
-                            borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(width: 7),
-                    Text('לביצוע',
-                        style: TextStyle(
-                            color: const Color(0xFFF59E0B),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Heebo')),
-                  ]),
-                  const SizedBox(height: 8),
-                  ...toDo.take(4).map((task) => _ImportantTaskRow(
-                        task: task,
-                        isImportant: false,
-                      )),
-                  if (toDo.length > 4)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text('+${toDo.length - 4} נוספות',
-                          style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-                    ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Grouped Tasks ──────────────────────────────────────────────────────────
-
-  Widget _GroupedTasksSection() {
-    final inProgress = _inProgressTasks;
-    final upcoming = _upcomingTasks;
-
-    if (inProgress.isEmpty && upcoming.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: JC.surface,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-        ),
-        child: Center(
-          child: Column(
-            children: [
-              const Icon(Icons.task_alt_rounded,
-                  color: Color(0xFF22C55E), size: 40),
-              const SizedBox(height: 10),
-              Text(
-                'כל המשימות הושלמו! 🎉',
-                style: TextStyle(
-                  color: JC.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Heebo',
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      children: [
-        if (inProgress.isNotEmpty) ...[
-          _TaskGroup(
-            label: 'בביצוע',
-            count: inProgress.length,
-            dotColor: const Color(0xFF3B82F6),
-            tasks: inProgress,
-            postponed: _postponed,
-            important: _markedImportant,
-            onPostpone: _postponeTask,
-            onMarkImportant: _markImportant,
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (upcoming.isNotEmpty)
-          _TaskGroup(
-            label: 'הבא בתור',
-            count: upcoming.length,
-            dotColor: const Color(0xFF475569),
-            tasks: upcoming,
-            postponed: _postponed,
-            important: _markedImportant,
-            onPostpone: _postponeTask,
-            onMarkImportant: _markImportant,
-          ),
-      ],
     );
   }
 

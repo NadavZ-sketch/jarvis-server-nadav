@@ -1,3 +1,4 @@
+import 'dart:math' show max;
 import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
@@ -1709,6 +1710,7 @@ class _ControlCenterPreviewScreenState
             count: active.length,
             dotColor: const Color(0xFF22C55E),
             agents: active,
+            onAgentTap: _showAgentSettings,
           ),
         if (active.isNotEmpty && (idle.isNotEmpty || offline.isNotEmpty))
           const SizedBox(height: 10),
@@ -1718,6 +1720,7 @@ class _ControlCenterPreviewScreenState
             count: idle.length,
             dotColor: const Color(0xFFF59E0B),
             agents: idle,
+            onAgentTap: _showAgentSettings,
           ),
         if (idle.isNotEmpty && offline.isNotEmpty)
           const SizedBox(height: 10),
@@ -1727,6 +1730,7 @@ class _ControlCenterPreviewScreenState
             count: offline.length,
             dotColor: const Color(0xFF475569),
             agents: offline,
+            onAgentTap: _showAgentSettings,
           ),
       ],
     );
@@ -1788,121 +1792,146 @@ class _ControlCenterPreviewScreenState
   }
 
   Widget _AgentMapView() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(
-        height: 220,
-        child: LayoutBuilder(builder: (context, constraints) {
-          final sz = Size(constraints.maxWidth, 220);
-          return Row(children: [
-            Expanded(
-              flex: _selectedAgentIdx != null ? 2 : 1,
-              child: GestureDetector(
-                onTapUp: (details) {
-                  final positions = _AgentTreePainter.agentPositions(_agents, sz);
-                  int? closest;
-                  double minDist = 22;
-                  for (final p in positions) {
-                    final d = (p.$2 - details.localPosition).distance;
-                    if (d < minDist) { minDist = d; closest = p.$1; }
-                  }
-                  setState(() => _selectedAgentIdx =
-                      closest == _selectedAgentIdx ? null : closest);
-                },
-                child: AnimatedBuilder(
-                  animation: _pulseController,
-                  builder: (_, __) => CustomPaint(
-                    size: sz,
-                    painter: _AgentTreePainter(
-                      agents: _agents,
-                      selectedIdx: _selectedAgentIdx,
-                      pulseValue: _pulseController.value,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (_selectedAgentIdx != null && _selectedAgentIdx! < _agents.length)
-              Expanded(
-                flex: 1,
-                child: _AgentSidePanel(_agents[_selectedAgentIdx!]),
-              ),
-          ]);
-        }),
-      ),
-    ]);
-  }
+    const double mapW    = 380.0;
+    const double nodeW   = 82.0;
+    const double nodeH   = 50.0;
+    const double nodeGap = 6.0;
+    const double agentStartY = 202.0;
 
-  Widget _AgentSidePanel(Map<String, dynamic> agent) {
-    final name = agent['name'] ?? agent['id'] ?? 'סוכן';
-    final role = agent['description'] ?? agent['role'] ?? '';
-    final status = (agent['status'] ?? '').toString();
-    final risk = agent['riskLevel'] ?? agent['risk_level'] ?? 'low';
-    final statusColor = _statusColor(status);
+    final core    = <Map<String, dynamic>>[];
+    final domain  = <Map<String, dynamic>>[];
+    final quality = <Map<String, dynamic>>[];
+    for (final a in _agents) {
+      switch (_agentCat(a)) {
+        case 'core':    core.add(a);    break;
+        case 'quality': quality.add(a); break;
+        default:        domain.add(a);  break;
+      }
+    }
+    final cols      = [core, domain, quality];
+    final catColors = [const Color(0xFF22C55E), const Color(0xFFF59E0B), const Color(0xFFA78BFA)];
+    final catLabels = ['ליבה', 'דומיין', 'איכות'];
+    final colX      = [62.0, mapW / 2, mapW - 62.0];
 
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1929),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withOpacity(0.3), width: 0.8),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(width: 7, height: 7,
-              decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
-          const SizedBox(width: 5),
-          Expanded(child: Text(name.toString(),
-              style: TextStyle(color: JC.textPrimary, fontSize: 11, fontWeight: FontWeight.w700, fontFamily: 'Heebo'),
-              maxLines: 2, overflow: TextOverflow.ellipsis)),
-        ]),
-        const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-          decoration: BoxDecoration(
-            color: _riskColor(risk).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Text(_agentCat(agent),
-              style: TextStyle(color: _riskColor(risk), fontSize: 8, fontFamily: 'Heebo')),
+    final maxRows = cols.fold(0, (m, c) => max(m, c.length));
+    final mapH = agentStartY + maxRows * (nodeH + nodeGap) + 28.0;
+
+    // ── Build edges (from-center, to-center, color) ──────────────────────────
+    const routerCY  = 88.0;
+    const catCY     = 152.0;
+
+    final edges = <(Offset, Offset, Color)>[];
+    // User → Router
+    edges.add((const Offset(mapW / 2, 30), const Offset(mapW / 2, routerCY - 16),
+        const Color(0xFF6366F1)));
+    // Router → category hubs
+    for (int c = 0; c < 3; c++) {
+      if (cols[c].isNotEmpty) {
+        edges.add((const Offset(mapW / 2, routerCY + 16),
+            Offset(colX[c], catCY - 13), catColors[c]));
+      }
+    }
+    // Category hubs → agent nodes
+    for (int c = 0; c < 3; c++) {
+      for (int i = 0; i < cols[c].length; i++) {
+        final agentTopY = agentStartY + i * (nodeH + nodeGap);
+        edges.add((Offset(colX[c], catCY + 13),
+            Offset(colX[c], agentTopY), catColors[c]));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Hint
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(children: [
+            Icon(Icons.pinch_rounded, color: JC.textMuted, size: 12),
+            const SizedBox(width: 4),
+            Text('גרור לגלילה • צבוט לזום • לחץ לפרטים',
+              style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
+          ]),
         ),
-        if (role.toString().isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(role.toString(),
-              style: TextStyle(color: JC.textMuted, fontSize: 9, fontFamily: 'Heebo'),
-              maxLines: 2, overflow: TextOverflow.ellipsis),
-        ],
-        const Spacer(),
-        Row(children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _showAgentSettings(agent),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            height: 310,
+            child: InteractiveViewer(
+              minScale: 0.45,
+              maxScale: 3.0,
+              boundaryMargin: const EdgeInsets.all(60),
+              child: SizedBox(
+                width: mapW,
+                height: mapH,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Background
+                    Container(
+                      width: mapW, height: mapH,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFF060D1A), Color(0xFF0A1628)],
+                        ),
+                      ),
+                    ),
+                    // Animated connection lines + flow particles
+                    AnimatedBuilder(
+                      animation: _pulseController,
+                      builder: (_, __) => CustomPaint(
+                        size: Size(mapW, mapH),
+                        painter: _AgentFlowLinePainter(
+                          edges: edges,
+                          pulseValue: _pulseController.value,
+                        ),
+                      ),
+                    ),
+                    // User entry node
+                    Positioned(
+                      left: mapW / 2 - 44, top: 10,
+                      child: _MapSpecialNode(label: '📱 משתמש',
+                          color: const Color(0xFF6366F1), w: 88, h: 28),
+                    ),
+                    // Router node
+                    Positioned(
+                      left: mapW / 2 - 50, top: routerCY - 16,
+                      child: _MapSpecialNode(label: '🔀 Router',
+                          color: const Color(0xFF3B82F6), w: 100, h: 32,
+                          isRouter: true),
+                    ),
+                    // Category hub nodes
+                    for (int c = 0; c < 3; c++)
+                      Positioned(
+                        left: colX[c] - 36, top: catCY - 13,
+                        child: _MapCategoryNode(
+                          label: catLabels[c], color: catColors[c],
+                          count: cols[c].length),
+                      ),
+                    // Agent nodes
+                    for (int c = 0; c < 3; c++)
+                      for (int i = 0; i < cols[c].length; i++)
+                        Positioned(
+                          left: colX[c] - nodeW / 2,
+                          top: agentStartY + i * (nodeH + nodeGap),
+                          child: GestureDetector(
+                            onTap: () => _showAgentSettings(cols[c][i]),
+                            child: _AgentMapNodeWidget(
+                              agent: cols[c][i],
+                              w: nodeW, h: nodeH,
+                              catColor: catColors[c],
+                            ),
+                          ),
+                        ),
+                  ],
                 ),
-                child: Text(_statusLabel(status),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: statusColor, fontSize: 9, fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
               ),
             ),
           ),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: () => _showAgentSettings(agent),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: JC.textMuted.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Icon(Icons.settings_rounded, color: JC.textMuted, size: 12),
-            ),
-          ),
-        ]),
-      ]),
+        ),
+      ],
     );
   }
 
@@ -2237,12 +2266,14 @@ class _AgentStatusGroup extends StatefulWidget {
   final int count;
   final Color dotColor;
   final List<Map<String, dynamic>> agents;
+  final void Function(Map<String, dynamic>)? onAgentTap;
 
   const _AgentStatusGroup({
     required this.label,
     required this.count,
     required this.dotColor,
     required this.agents,
+    this.onAgentTap,
   });
 
   @override
@@ -2266,52 +2297,45 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
             onTap: () => setState(() => _expanded = !_expanded),
             behavior: HitTestBehavior.opaque,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               child: Row(
                 children: [
+                  // Pulsing dot for active group
                   Container(
-                    width: 9,
-                    height: 9,
+                    width: 10, height: 10,
                     decoration: BoxDecoration(
                       color: widget.dotColor,
                       shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: widget.dotColor.withOpacity(0.5),
+                            blurRadius: 6, spreadRadius: 1),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 10),
+                  Text(widget.label,
+                    style: const TextStyle(
+                      color: Color(0xFFE2E8F0), fontSize: 13,
+                      fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
                   const SizedBox(width: 8),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-                  const SizedBox(width: 6),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: widget.dotColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: widget.dotColor.withOpacity(0.3)),
                     ),
-                    child: Text(
-                      '${widget.count}',
+                    child: Text('${widget.count}',
                       style: TextStyle(
-                        color: widget.dotColor,
-                        fontSize: 10,
-                        fontFamily: 'Heebo',
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                        color: widget.dotColor, fontSize: 11,
+                        fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
                   ),
                   const Spacer(),
-                  Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: JC.textMuted,
-                    size: 18,
+                  AnimatedRotation(
+                    turns: _expanded ? 0 : -0.5,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.keyboard_arrow_up_rounded,
+                        color: const Color(0xFF475569), size: 20),
                   ),
                 ],
               ),
@@ -2320,19 +2344,19 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
           if (_expanded) ...[
             Divider(color: JC.border, height: 1),
             Padding(
-              padding: const EdgeInsets.all(10),
-              child: GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 1.6,
-                ),
-                itemCount: widget.agents.length,
-                itemBuilder: (_, i) => _AgentMiniCard(widget.agents[i]),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(
+                children: [
+                  for (int i = 0; i < widget.agents.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 6),
+                    _AgentMiniCard(
+                      widget.agents[i],
+                      onTap: widget.onAgentTap != null
+                          ? () => widget.onAgentTap!(widget.agents[i])
+                          : null,
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
@@ -2342,91 +2366,168 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
   }
 }
 
+// ── Agent icon emoji map (mirrors AgentDetailSheet) ──────────────────────────
+const _kAgentEmojiMap = {
+  'router': '🔀', 'chatAgent': '💬', 'taskAgent': '✅', 'reminderAgent': '⏰',
+  'memoryAgent': '🧠', 'weatherAgent': '🌤', 'newsAgent': '📰', 'stocksAgent': '📈',
+  'translationAgent': '🌐', 'sportsAgent': '⚽', 'shoppingAgent': '🛒',
+  'notesAgent': '📝', 'musicAgent': '🎵', 'messagingAgent': '📨',
+  'draftAgent': '✍️', 'insightAgent': '💡', 'securityAgent': '🛡',
+  'codeErrorAgent': '🐛', 'e2eAgent': '🧪', 'agentFactoryAgent': '🏭',
+  'surveyAgent': '📋',
+};
+
 class _AgentMiniCard extends StatelessWidget {
   final Map<String, dynamic> agent;
+  final VoidCallback? onTap;
 
-  const _AgentMiniCard(this.agent);
+  const _AgentMiniCard(this.agent, {this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final name = agent['name'] ?? agent['id'] ?? 'סוכן';
-    final role = agent['description'] ?? agent['role'] ?? '';
-    final risk = agent['riskLevel'] ?? agent['risk_level'] ?? 'low';
+    final id     = (agent['id'] ?? '').toString();
+    final name   = (agent['nameHe'] ?? agent['name'] ?? agent['id'] ?? 'סוכן').toString();
+    final role   = (agent['description'] ?? agent['role'] ?? '').toString();
+    final risk   = (agent['riskLevel'] ?? agent['risk_level'] ?? agent['risk'] ?? 'low').toString();
     final status = (agent['status'] ?? '').toString();
-    final riskColor = _riskColor(risk);
-    final statusColor = _statusColor(status);
+    final health = (agent['healthScore'] as num?)?.toInt();
+    final metrics = agent['metrics'] as Map<String, dynamic>?;
+    final avgMs  = (metrics?['avgMs'] as num?)?.toInt();
+    final emoji  = _kAgentEmojiMap[id] ?? '🤖';
 
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1929),
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-        border: Border.all(color: statusColor.withOpacity(0.15), width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.smart_toy_outlined, color: JC.blue400, size: 14),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  name.toString(),
-                  style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Heebo',
+    final statusColor = _statusColor(status);
+    final isActive = status == 'active' || status == 'online';
+
+    Color healthColor(int? s) {
+      if (s == null) return const Color(0xFF475569);
+      if (s >= 80) return const Color(0xFF22C55E);
+      if (s >= 50) return const Color(0xFFF59E0B);
+      return const Color(0xFFEF4444);
+    }
+
+    String latencyLabel(int? ms) {
+      if (ms == null) return '';
+      if (ms <= 800) return '⚡ מהיר';
+      if (ms <= 2000) return '⏱ בינוני';
+      return '🐢 איטי';
+    }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D1829),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive
+                ? statusColor.withOpacity(0.35)
+                : const Color(0xFF1E3A5F).withOpacity(0.6),
+            width: 0.9,
+          ),
+          boxShadow: isActive
+              ? [BoxShadow(color: statusColor.withOpacity(0.08), blurRadius: 10, spreadRadius: 0)]
+              : [],
+        ),
+        child: Row(
+          children: [
+            // Emoji icon
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.25)),
+              ),
+              child: Center(child: Text(emoji, style: const TextStyle(fontSize: 20))),
+            ),
+            const SizedBox(width: 12),
+            // Name + role + metrics
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(name,
+                          style: const TextStyle(
+                            color: Color(0xFFE2E8F0), fontFamily: 'Heebo',
+                            fontWeight: FontWeight.w700, fontSize: 13),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                      // Status pill
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: statusColor.withOpacity(0.3)),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                            width: 5, height: 5,
+                            decoration: BoxDecoration(
+                              color: statusColor, shape: BoxShape.circle,
+                              boxShadow: isActive
+                                  ? [BoxShadow(color: statusColor.withOpacity(0.7), blurRadius: 4)]
+                                  : [],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(_statusLabel(status),
+                            style: TextStyle(
+                              color: statusColor, fontFamily: 'Heebo',
+                              fontSize: 10, fontWeight: FontWeight.w600)),
+                        ]),
+                      ),
+                    ],
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: statusColor.withOpacity(0.6),
-                      blurRadius: 4,
-                      spreadRadius: 1,
-                    )
+                  if (role.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(role,
+                      style: const TextStyle(
+                        color: Color(0xFF64748B), fontFamily: 'Heebo', fontSize: 11),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
                   ],
-                ),
+                  const SizedBox(height: 5),
+                  // Badges row
+                  Wrap(
+                    spacing: 5, runSpacing: 4,
+                    children: [
+                      if (health != null)
+                        _miniChip('$health%', healthColor(health)),
+                      if (avgMs != null)
+                        _miniChip(latencyLabel(avgMs), const Color(0xFF38BDF8)),
+                      _miniChip(_riskLabel(risk), _riskColor(risk)),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Expanded(
-            child: Text(
-              role.toString(),
-              style: TextStyle(
-                  color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: riskColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              _riskLabel(risk),
-              style: TextStyle(
-                  color: riskColor, fontSize: 9, fontFamily: 'Heebo'),
-            ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            // Chevron
+            if (onTap != null)
+              Icon(Icons.chevron_left_rounded,
+                  color: const Color(0xFF475569), size: 18),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _miniChip(String text, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(5),
+      border: Border.all(color: color.withOpacity(0.25), width: 0.7),
+    ),
+    child: Text(text,
+      style: TextStyle(color: color, fontFamily: 'Heebo',
+          fontSize: 10, fontWeight: FontWeight.w600)),
+  );
 }
 
 class _SectionCard extends StatelessWidget {
@@ -2755,188 +2856,191 @@ class _StabilityDonutPainter extends CustomPainter {
       old.fraction != fraction || old.color != color;
 }
 
-// ── Agent Tree CustomPainter ──────────────────────────────────────────────────
+// ── Agent Map: flow line painter + node widgets ───────────────────────────────
 
-class _AgentTreePainter extends CustomPainter {
-  final List<Map<String, dynamic>> agents;
-  final int? selectedIdx;
+class _AgentFlowLinePainter extends CustomPainter {
+  final List<(Offset, Offset, Color)> edges;
   final double pulseValue;
 
-  static const _catGreen  = Color(0xFF22C55E);
-  static const _catAmber  = Color(0xFFF59E0B);
-  static const _catPurple = Color(0xFFA78BFA);
-  static const _rootBlue  = Color(0xFF3B82F6);
-  static const _edgeColor = Color(0x22FFFFFF);
-
-  const _AgentTreePainter({required this.agents, this.selectedIdx, required this.pulseValue});
-
-  // Returns list of (agentIndex, canvasPosition) for tap-hit-testing
-  static List<(int, Offset)> agentPositions(
-      List<Map<String, dynamic>> agents, Size size) {
-    final w = size.width;
-
-    final core    = <int>[];
-    final domain  = <int>[];
-    final quality = <int>[];
-
-    for (var i = 0; i < agents.length; i++) {
-      switch (_agentCat(agents[i])) {
-        case 'core':    core.add(i);    break;
-        case 'quality': quality.add(i); break;
-        default:        domain.add(i);  break;
-      }
-    }
-
-    final catAgents  = [core, domain, quality];
-    final catCentersX = [w * 0.78, w * 0.50, w * 0.22];
-    const agentY = 175.0;
-    const spread = 72.0;
-
-    final result = <(int, Offset)>[];
-    for (var c = 0; c < 3; c++) {
-      final list = catAgents[c].take(7).toList();
-      if (list.isEmpty) continue;
-      final cx = catCentersX[c];
-      final step = list.length == 1 ? 0.0 : spread / (list.length - 1);
-      final startX = cx - spread / 2;
-      for (var j = 0; j < list.length; j++) {
-        result.add((list[j], Offset(startX + step * j, agentY)));
-      }
-    }
-    return result;
-  }
+  const _AgentFlowLinePainter({required this.edges, required this.pulseValue});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width;
+    for (int i = 0; i < edges.length; i++) {
+      final from  = edges[i].$1;
+      final to    = edges[i].$2;
+      final color = edges[i].$3;
 
-    final core    = <int>[];
-    final domain  = <int>[];
-    final quality = <int>[];
-    for (var i = 0; i < agents.length; i++) {
-      switch (_agentCat(agents[i])) {
-        case 'core':    core.add(i);    break;
-        case 'quality': quality.add(i); break;
-        default:        domain.add(i);  break;
-      }
+      // Base line
+      canvas.drawLine(from, to, Paint()
+        ..color = color.withOpacity(0.22)
+        ..strokeWidth = 1.2
+        ..strokeCap = StrokeCap.round);
+
+      // Animated particle — stagger by edge index so they don't all sync
+      final t = (pulseValue + i * 0.13) % 1.0;
+      final pos  = Offset.lerp(from, to, t)!;
+      final pos2 = Offset.lerp(from, to, (t - 0.12).clamp(0.0, 1.0))!;
+
+      canvas.drawCircle(pos,  2.8, Paint()..color = color.withOpacity(0.9));
+      canvas.drawCircle(pos2, 1.6, Paint()..color = color.withOpacity(0.45));
     }
-
-    final rootPt = Offset(w * 0.5, 28);
-
-    final catDefs = [
-      (pt: Offset(w * 0.78, 95), label: 'ליבה',   color: _catGreen,  idxs: core),
-      (pt: Offset(w * 0.50, 95), label: 'דומיין', color: _catAmber,  idxs: domain),
-      (pt: Offset(w * 0.22, 95), label: 'איכות',  color: _catPurple, idxs: quality),
-    ];
-
-    final edgePaint = Paint()
-      ..color = _edgeColor
-      ..strokeWidth = 1.0;
-
-    // Root → category edges
-    for (final cat in catDefs) {
-      canvas.drawLine(rootPt, cat.pt, edgePaint);
-    }
-
-    // Category → agent edges and agent nodes
-    final positions = agentPositions(agents, size);
-    final posMap = {for (final p in positions) p.$1: p.$2};
-
-    for (final cat in catDefs) {
-      for (final idx in cat.idxs.take(7)) {
-        final agentPt = posMap[idx];
-        if (agentPt == null) continue;
-        canvas.drawLine(cat.pt, agentPt, edgePaint);
-
-        final a = agents[idx];
-        final status = (a['status'] ?? '').toString().toLowerCase();
-        final agentColor = (status == 'active' || status == 'online')
-            ? const Color(0xFF22C55E)
-            : status == 'idle'
-                ? const Color(0xFFF59E0B)
-                : const Color(0xFF475569);
-
-        final isActive = agentColor == const Color(0xFF22C55E);
-        final isSelected = idx == selectedIdx;
-
-        // Pulse ring for active agents
-        if (isActive) {
-          final pRadius = 5.5 + pulseValue * 9;
-          final pOpacity = (1.0 - pulseValue) * 0.45;
-          canvas.drawCircle(agentPt, pRadius, Paint()..color = agentColor.withOpacity(pOpacity));
-        }
-        if (isSelected) {
-          canvas.drawCircle(agentPt, 11, Paint()..color = agentColor.withOpacity(0.3));
-        }
-        canvas.drawCircle(agentPt, 5.5, Paint()..color = agentColor);
-
-        // Agent name label — always visible, larger font
-        final agentName = (a['name'] ?? a['id'] ?? '').toString();
-        final short = agentName.length > 9 ? '${agentName.substring(0, 8)}…' : agentName;
-        final labelTp = TextPainter(
-          text: TextSpan(
-            text: short,
-            style: TextStyle(
-              color: isSelected ? Colors.white : const Color(0xFF94A3B8),
-              fontSize: 8,
-              fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal,
-              fontFamily: 'Heebo',
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout(maxWidth: 68);
-        labelTp.paint(canvas, agentPt.translate(-labelTp.width / 2, 8));
-      }
-    }
-
-    // Category nodes (drawn on top of edges)
-    for (final cat in catDefs) {
-      canvas.drawCircle(cat.pt, 16, Paint()..color = cat.color.withOpacity(0.15));
-      canvas.drawCircle(cat.pt, 11, Paint()..color = cat.color);
-
-      final tp = TextPainter(
-        text: TextSpan(
-          text: cat.label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 8,
-            fontWeight: FontWeight.w700,
-            fontFamily: 'Heebo',
-          ),
-        ),
-        textDirection: TextDirection.rtl,
-      )..layout();
-      tp.paint(canvas, cat.pt.translate(-tp.width / 2, 13));
-
-      // Agent count badge
-      final cnt = cat.idxs.length;
-      if (cnt > 0) {
-        final cntTp = TextPainter(
-          text: TextSpan(
-            text: '$cnt',
-            style: TextStyle(color: cat.color, fontSize: 7, fontWeight: FontWeight.w700, fontFamily: 'Heebo'),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        cntTp.paint(canvas, cat.pt.translate(-cntTp.width / 2, -11 - cntTp.height / 2));
-      }
-    }
-
-    // Root node
-    canvas.drawCircle(rootPt, 21, Paint()..color = _rootBlue.withOpacity(0.2));
-    canvas.drawCircle(rootPt, 15, Paint()..color = _rootBlue);
-
-    final rootTp = TextPainter(
-      text: const TextSpan(
-        text: 'Jarvis',
-        style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700, fontFamily: 'Heebo'),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    rootTp.paint(canvas, rootPt.translate(-rootTp.width / 2, 17));
   }
 
   @override
-  bool shouldRepaint(covariant _AgentTreePainter old) =>
-      old.agents != agents || old.selectedIdx != selectedIdx || old.pulseValue != pulseValue;
+  bool shouldRepaint(_AgentFlowLinePainter old) => old.pulseValue != pulseValue;
+}
+
+class _MapSpecialNode extends StatelessWidget {
+  final String label;
+  final Color color;
+  final double w, h;
+  final bool isRouter;
+
+  const _MapSpecialNode({
+    required this.label, required this.color,
+    required this.w, required this.h, this.isRouter = false,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: w, height: h,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+          colors: [color.withOpacity(0.35), color.withOpacity(0.18)]),
+      borderRadius: BorderRadius.circular(h / 2),
+      border: Border.all(color: color.withOpacity(0.55), width: 1),
+      boxShadow: [BoxShadow(color: color.withOpacity(0.25), blurRadius: 10)],
+    ),
+    child: Center(child: Text(label,
+      style: TextStyle(color: Colors.white, fontFamily: 'Heebo',
+          fontSize: isRouter ? 12 : 11, fontWeight: FontWeight.w700))),
+  );
+}
+
+class _MapCategoryNode extends StatelessWidget {
+  final String label;
+  final Color color;
+  final int count;
+
+  const _MapCategoryNode({required this.label, required this.color, required this.count});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 72, height: 26,
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.14),
+      borderRadius: BorderRadius.circular(13),
+      border: Border.all(color: color.withOpacity(0.45), width: 0.8),
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(label, style: TextStyle(color: color, fontSize: 11,
+            fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+        const SizedBox(width: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(6)),
+          child: Text('$count', style: TextStyle(color: color, fontSize: 9,
+              fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+        ),
+      ],
+    ),
+  );
+}
+
+class _AgentMapNodeWidget extends StatelessWidget {
+  final Map<String, dynamic> agent;
+  final double w, h;
+  final Color catColor;
+
+  const _AgentMapNodeWidget({
+    required this.agent, required this.w,
+    required this.h, required this.catColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final id      = (agent['id'] ?? '').toString();
+    final name    = (agent['nameHe'] ?? agent['name'] ?? id).toString();
+    final status  = (agent['status'] ?? '').toString();
+    final health  = (agent['healthScore'] as num?)?.toInt();
+    final metrics = agent['metrics'] as Map<String, dynamic>?;
+    final avgMs   = (metrics?['avgMs'] as num?)?.toInt();
+    final emoji   = _kAgentEmojiMap[id] ?? '🤖';
+    final isActive = status == 'active' || status == 'online';
+    final statusColor = _statusColor(status);
+
+    Color healthColor(int? s) {
+      if (s == null) return const Color(0xFF475569);
+      if (s >= 80) return const Color(0xFF22C55E);
+      if (s >= 50) return const Color(0xFFF59E0B);
+      return const Color(0xFFEF4444);
+    }
+
+    return Container(
+      width: w, height: h,
+      decoration: BoxDecoration(
+        color: isActive ? const Color(0xFF0D1829) : const Color(0xFF090F1C),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isActive ? catColor.withOpacity(0.45) : const Color(0xFF1E3A5F).withOpacity(0.45),
+          width: 0.8,
+        ),
+        boxShadow: isActive
+            ? [BoxShadow(color: catColor.withOpacity(0.18), blurRadius: 8)]
+            : [],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text(emoji, style: const TextStyle(fontSize: 15)),
+            const SizedBox(width: 3),
+            Container(
+              width: 6, height: 6,
+              decoration: BoxDecoration(
+                color: statusColor, shape: BoxShape.circle,
+                boxShadow: isActive
+                    ? [BoxShadow(color: statusColor.withOpacity(0.7), blurRadius: 5)]
+                    : [],
+              ),
+            ),
+          ]),
+          const SizedBox(height: 3),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Text(
+              name.length > 11 ? '${name.substring(0, 10)}…' : name,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: isActive ? const Color(0xFFCBD5E1) : const Color(0xFF4B5A6E),
+                fontFamily: 'Heebo', fontSize: 9,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            if (health != null) _chip('$health%', healthColor(health)),
+            if (health != null && avgMs != null) const SizedBox(width: 3),
+            if (avgMs != null)
+              _chip(avgMs <= 800 ? '⚡' : avgMs <= 2000 ? '⏱' : '🐢',
+                  const Color(0xFF38BDF8)),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(String t, Color c) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+    decoration: BoxDecoration(
+      color: c.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+    child: Text(t, style: TextStyle(color: c, fontSize: 8,
+        fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
+  );
 }

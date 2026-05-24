@@ -1709,6 +1709,7 @@ class _ControlCenterPreviewScreenState
             count: active.length,
             dotColor: const Color(0xFF22C55E),
             agents: active,
+            onAgentTap: _showAgentSettings,
           ),
         if (active.isNotEmpty && (idle.isNotEmpty || offline.isNotEmpty))
           const SizedBox(height: 10),
@@ -1718,6 +1719,7 @@ class _ControlCenterPreviewScreenState
             count: idle.length,
             dotColor: const Color(0xFFF59E0B),
             agents: idle,
+            onAgentTap: _showAgentSettings,
           ),
         if (idle.isNotEmpty && offline.isNotEmpty)
           const SizedBox(height: 10),
@@ -1727,6 +1729,7 @@ class _ControlCenterPreviewScreenState
             count: offline.length,
             dotColor: const Color(0xFF475569),
             agents: offline,
+            onAgentTap: _showAgentSettings,
           ),
       ],
     );
@@ -2237,12 +2240,14 @@ class _AgentStatusGroup extends StatefulWidget {
   final int count;
   final Color dotColor;
   final List<Map<String, dynamic>> agents;
+  final void Function(Map<String, dynamic>)? onAgentTap;
 
   const _AgentStatusGroup({
     required this.label,
     required this.count,
     required this.dotColor,
     required this.agents,
+    this.onAgentTap,
   });
 
   @override
@@ -2332,7 +2337,12 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
                   childAspectRatio: 1.6,
                 ),
                 itemCount: widget.agents.length,
-                itemBuilder: (_, i) => _AgentMiniCard(widget.agents[i]),
+                itemBuilder: (_, i) => _AgentMiniCard(
+                  widget.agents[i],
+                  onTap: widget.onAgentTap != null
+                      ? () => widget.onAgentTap!(widget.agents[i])
+                      : null,
+                ),
               ),
             ),
           ],
@@ -2344,8 +2354,9 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
 
 class _AgentMiniCard extends StatelessWidget {
   final Map<String, dynamic> agent;
+  final VoidCallback? onTap;
 
-  const _AgentMiniCard(this.agent);
+  const _AgentMiniCard(this.agent, {this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -2356,13 +2367,15 @@ class _AgentMiniCard extends StatelessWidget {
     final riskColor = _riskColor(risk);
     final statusColor = _statusColor(status);
 
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xFF0F1929),
         borderRadius: BorderRadius.circular(10),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
-        border: Border.all(color: statusColor.withOpacity(0.15), width: 0.8),
+        border: Border.all(color: onTap != null ? statusColor.withOpacity(0.3) : statusColor.withOpacity(0.15), width: 0.8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2425,7 +2438,7 @@ class _AgentMiniCard extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

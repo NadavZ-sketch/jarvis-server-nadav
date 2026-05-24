@@ -282,7 +282,7 @@ class _ControlCenterPreviewScreenState
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => Navigator.pop(context),
+            onTap: () => Scaffold.of(context).openEndDrawer(),
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
@@ -294,7 +294,7 @@ class _ControlCenterPreviewScreenState
                   offset: const Offset(0, 2),
                 )],
               ),
-              child: Icon(Icons.arrow_back_ios_new_rounded,
+              child: Icon(Icons.menu_rounded,
                   color: JC.textSecondary, size: 18),
             ),
           ),
@@ -1853,11 +1853,18 @@ class _ControlCenterPreviewScreenState
               style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
           ]),
         ),
-        ClipRRect(
+        GestureDetector(
+          // Absorb horizontal drags so the parent tab-swipe detector
+          // doesn't steal pan gestures from the InteractiveViewer.
+          onHorizontalDragStart: (_) {},
+          onHorizontalDragUpdate: (_) {},
+          onHorizontalDragEnd: (_) {},
+          child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: SizedBox(
             height: 310,
             child: InteractiveViewer(
+              constrained: false,
               minScale: 0.45,
               maxScale: 3.0,
               boundaryMargin: const EdgeInsets.all(60),
@@ -1930,6 +1937,7 @@ class _ControlCenterPreviewScreenState
               ),
             ),
           ),
+        ),
         ),
       ],
     );
@@ -2281,7 +2289,7 @@ class _AgentStatusGroup extends StatefulWidget {
 }
 
 class _AgentStatusGroupState extends State<_AgentStatusGroup> {
-  bool _expanded = true;
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {

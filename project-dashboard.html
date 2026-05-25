@@ -1,0 +1,1628 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Jarvis — ניהול פרויקטים</title>
+<script src="/chart.js"></script>
+<style>
+:root{
+  --bg:#0a0f1e;--surface:#111827;--card:#1a2235;--card2:#1e2a3d;--border:#1e3a5f;
+  --text:#e2e8f0;--muted:#64748b;--muted2:#94a3b8;
+  --accent:#6366f1;--accent2:#818cf8;
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--blue:#38bdf8;
+  --violet:#a78bfa;--pink:#f472b6;--cyan:#06b6d4;
+  --radius:12px;--radius-sm:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);direction:rtl}
+body{display:flex;flex-direction:column;min-height:100vh;overflow-x:hidden}
+button{font-family:inherit;cursor:pointer}
+input,textarea,select{font-family:inherit}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ══ HEADER ══ */
+.header{
+  display:flex;align-items:center;gap:12px;padding:0 20px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  flex-shrink:0;height:54px;position:sticky;top:0;z-index:200;
+}
+.logo{display:flex;align-items:center;gap:8px;font-size:1.05rem;font-weight:800;letter-spacing:-.3px;white-space:nowrap}
+.logo-icon{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--violet));display:flex;align-items:center;justify-content:center;font-size:1rem}
+.logo span{color:var(--accent2)}
+.header-nav{display:flex;align-items:center;gap:2px;flex:1;overflow-x:auto;padding:0 8px;-webkit-overflow-scrolling:touch}
+.header-nav::-webkit-scrollbar{display:none}
+.nav-tab{display:flex;align-items:center;gap:5px;padding:6px 14px;background:none;border:none;color:var(--muted2);font-size:.82rem;font-weight:600;border-radius:var(--radius-sm);transition:all .15s;white-space:nowrap;position:relative}
+.nav-tab:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.nav-tab.active{color:var(--accent2);background:rgba(99,102,241,.12)}
+.nav-tab.active::after{content:'';position:absolute;bottom:-15px;right:50%;transform:translateX(50%);width:20px;height:2px;background:var(--accent);border-radius:1px}
+.header-end{display:flex;align-items:center;gap:10px;margin-right:auto}
+.server-pill{display:flex;align-items:center;gap:5px;padding:4px 10px;background:var(--card);border:1px solid var(--border);border-radius:20px;font-size:.72rem;color:var(--muted2)}
+.server-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.server-dot.online{animation:pulse 2s infinite}
+.server-dot.offline{background:var(--red)}
+.refresh-btn{background:none;border:none;color:var(--muted2);font-size:.9rem;padding:4px 8px;border-radius:var(--radius-sm);transition:all .15s}
+.refresh-btn:hover{color:var(--accent2);background:rgba(99,102,241,.1)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.refresh-btn.spinning{animation:spin .7s linear infinite}
+
+/* ══ PAGES ══ */
+.page{flex:1;display:none;flex-direction:column;overflow:hidden}
+.page.active{display:flex}
+.page-scroll{flex:1;overflow-y:auto;padding-bottom:24px}
+
+/* ══ BUTTONS ══ */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:none;border-radius:var(--radius-sm);font-size:.8rem;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent2)}
+.btn-secondary{background:var(--card2);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:var(--card)}
+.btn-danger{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.btn-danger:hover{background:rgba(239,68,68,.2)}
+.btn-sm{padding:4px 10px;font-size:.73rem}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-icon{padding:5px 8px;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--muted2);font-size:.85rem;transition:all .15s}
+.btn-icon:hover{color:var(--text);border-color:var(--accent);background:rgba(99,102,241,.08)}
+
+/* ══ BADGES ══ */
+.badge{display:inline-flex;align-items:center;gap:3px;font-size:.68rem;font-weight:700;border-radius:5px;padding:2px 7px;letter-spacing:.2px}
+.badge-green{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.badge-amber{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
+.badge-red{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.badge-blue{background:rgba(56,189,248,.1);color:var(--blue);border:1px solid rgba(56,189,248,.2)}
+.badge-violet{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.2)}
+.badge-muted{background:rgba(100,116,139,.1);color:var(--muted2);border:1px solid rgba(100,116,139,.2)}
+.badge-pink{background:rgba(244,114,182,.1);color:var(--pink);border:1px solid rgba(244,114,182,.2)}
+
+/* ══ SECTION HEADER ══ */
+.section-hdr{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 12px;flex-wrap:wrap;gap:8px}
+.section-hdr h2{font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:7px}
+
+/* ══ LOADING SKELETON ══ */
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skeleton{background:linear-gradient(90deg,var(--card) 25%,var(--card2) 50%,var(--card) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:var(--radius-sm)}
+
+/* ══ STAT CARDS ══ */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:0 22px 16px}
+@media(max-width:900px){.stats-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.stats-grid{grid-template-columns:1fr}}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;display:flex;flex-direction:column;gap:6px;position:relative;overflow:hidden;transition:transform .15s,border-color .15s}
+.stat-card:hover{transform:translateY(-2px);border-color:var(--accent)}
+.stat-card::before{content:'';position:absolute;right:0;top:0;bottom:0;width:3px;border-radius:2px 0 0 2px}
+.stat-card.s-blue::before{background:var(--blue)}
+.stat-card.s-green::before{background:var(--green)}
+.stat-card.s-amber::before{background:var(--amber)}
+.stat-card.s-violet::before{background:var(--violet)}
+.stat-card.s-red::before{background:var(--red)}
+.stat-num{font-size:2rem;font-weight:800;line-height:1}
+.stat-num.s-blue{color:var(--blue)}
+.stat-num.s-green{color:var(--green)}
+.stat-num.s-amber{color:var(--amber)}
+.stat-num.s-violet{color:var(--violet)}
+.stat-num.s-red{color:var(--red)}
+.stat-label{font-size:.74rem;color:var(--muted2);font-weight:600}
+.stat-sub{font-size:.68rem;color:var(--muted)}
+.stat-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:1.6rem;opacity:.15}
+
+/* ══ PROJECT CARDS GRID ══ */
+.projects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;padding:0 22px 16px}
+.project-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;position:relative;overflow:hidden}
+.project-card:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 4px 24px rgba(99,102,241,.12)}
+.project-card::before{content:'';position:absolute;top:0;right:0;left:0;height:3px;border-radius:var(--radius) var(--radius) 0 0}
+.card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+.card-ring-wrap{flex-shrink:0}
+.card-title-area{flex:1;min-width:0}
+.card-title{font-size:.9rem;font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-desc{font-size:.74rem;color:var(--muted2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-badges{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.card-dates{display:flex;align-items:center;justify-content:space-between;font-size:.71rem;color:var(--muted2);margin-bottom:8px}
+.card-due{font-weight:600}
+.card-due.overdue{color:var(--red)}
+.card-due.soon{color:var(--amber)}
+.milestone-bar-wrap{margin-top:6px}
+.milestone-bar-label{display:flex;justify-content:space-between;font-size:.68rem;color:var(--muted);margin-bottom:4px}
+.milestone-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.milestone-bar-fill{height:100%;border-radius:2px;transition:width .4s}
+
+/* ══ OVERVIEW PANELS ══ */
+.panels-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 22px 16px}
+@media(max-width:760px){.panels-row{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.panel-hdr{padding:11px 14px;border-bottom:1px solid var(--border);font-size:.8rem;font-weight:700;display:flex;align-items:center;gap:6px;color:var(--muted2)}
+.panel-body{padding:10px 0}
+.panel-row{display:flex;align-items:center;gap:10px;padding:7px 14px;font-size:.78rem;transition:background .1s}
+.panel-row:hover{background:rgba(255,255,255,.03)}
+.panel-row-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.panel-row-name{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panel-row-val{color:var(--muted2);font-size:.72rem}
+.empty-state{text-align:center;padding:32px 20px;color:var(--muted)}
+.empty-state .empty-icon{font-size:2.5rem;margin-bottom:8px;opacity:.4}
+.empty-state p{font-size:.82rem}
+
+/* ══ KANBAN ══ */
+.kanban-wrap{display:flex;gap:14px;padding:0 22px 16px;overflow-x:auto;-webkit-overflow-scrolling:touch;align-items:flex-start}
+.kanban-col{flex:0 0 300px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;min-height:300px}
+.kanban-col-hdr{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px;font-size:.82rem;font-weight:700}
+.kanban-col-hdr .col-count{background:var(--card2);border:1px solid var(--border);border-radius:20px;font-size:.68rem;padding:1px 7px;color:var(--muted2)}
+.kanban-body{padding:10px;display:flex;flex-direction:column;gap:8px;min-height:200px;transition:background .15s}
+.kanban-body.drag-over{background:rgba(99,102,241,.06);border-radius:8px}
+.kanban-card{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;cursor:grab;transition:all .15s;position:relative;user-select:none}
+.kanban-card:hover{border-color:var(--accent);box-shadow:0 2px 12px rgba(99,102,241,.1)}
+.kanban-card.dragging{opacity:.5;transform:scale(.97)}
+.kanban-card-title{font-size:.82rem;font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kanban-card-meta{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.kanban-card-due{font-size:.68rem;color:var(--muted2)}
+.kanban-card-due.overdue{color:var(--red)}
+.kanban-card-progress{font-size:.68rem;color:var(--muted2)}
+
+/* ══ CHARTS PAGE ══ */
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 22px 16px}
+@media(max-width:760px){.charts-grid{grid-template-columns:1fr}}
+.chart-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.chart-panel h3{font-size:.85rem;font-weight:700;color:var(--muted2);margin-bottom:14px;display:flex;align-items:center;gap:6px}
+.chart-wrap{position:relative;height:220px;display:flex;align-items:center;justify-content:center}
+.gantt-wrap{padding:0 22px 16px}
+.gantt-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;overflow-x:auto}
+.gantt-panel h3{font-size:.85rem;font-weight:700;color:var(--muted2);margin-bottom:14px;display:flex;align-items:center;gap:6px}
+.gantt-header{display:grid;gap:0;margin-bottom:4px;margin-right:160px}
+.gantt-row{display:flex;align-items:center;margin-bottom:6px;gap:0}
+.gantt-label{width:160px;flex-shrink:0;font-size:.74rem;font-weight:600;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:8px}
+.gantt-track{flex:1;background:var(--card2);border-radius:4px;height:22px;position:relative;border:1px solid var(--border)}
+.gantt-bar{position:absolute;height:100%;border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:.64rem;font-weight:700;color:#fff;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:4px;transition:all .4s}
+.gantt-today-line{position:absolute;top:0;bottom:0;width:2px;background:var(--red);opacity:.6;z-index:2}
+.gantt-today-line::before{content:'היום';position:absolute;top:-18px;right:-10px;font-size:.6rem;color:var(--red);white-space:nowrap}
+
+/* ══ AI INSIGHTS PAGE ══ */
+.insights-wrap{padding:0 22px 16px;display:flex;flex-direction:column;gap:14px}
+.alerts-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+@media(max-width:900px){.alerts-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.alerts-grid{grid-template-columns:1fr}}
+.alert-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;gap:10px}
+.alert-card.alert-red{border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.04)}
+.alert-card.alert-amber{border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.04)}
+.alert-card.alert-blue{border-color:rgba(56,189,248,.3);background:rgba(56,189,248,.04)}
+.alert-icon{font-size:1.4rem;flex-shrink:0;margin-top:1px}
+.alert-body h4{font-size:.8rem;font-weight:700;margin-bottom:4px}
+.alert-body p{font-size:.74rem;color:var(--muted2);line-height:1.5}
+.ai-response-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;border-left:3px solid var(--accent)}
+.ai-response-card h3{font-size:.85rem;font-weight:700;color:var(--accent2);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.ai-response-text{font-size:.82rem;line-height:1.7;color:var(--text);white-space:pre-wrap}
+.ai-btn-row{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ══ SIDEBAR ══ */
+.sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;opacity:0;pointer-events:none;transition:opacity .25s}
+.sidebar-overlay.open{opacity:1;pointer-events:all}
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:420px;max-width:100vw;background:var(--surface);border-right:1px solid var(--border);z-index:301;transform:translateX(-100%);transition:transform .3s cubic-bezier(.4,0,.2,1);overflow-y:auto;display:flex;flex-direction:column}
+.sidebar.open{transform:translateX(0)}
+@media(max-width:500px){.sidebar{width:100vw}}
+.sidebar-hdr{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--surface);z-index:2}
+.sidebar-color-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+.sidebar-title{font-size:1rem;font-weight:800;flex:1}
+.sidebar-close{background:none;border:none;color:var(--muted2);font-size:1.2rem;padding:4px 8px;border-radius:var(--radius-sm);transition:all .15s;cursor:pointer}
+.sidebar-close:hover{color:var(--text);background:rgba(255,255,255,.07)}
+.sidebar-body{padding:16px 18px;flex:1}
+.sidebar-section{margin-bottom:20px}
+.sidebar-section-hdr{font-size:.74rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+.sidebar-ring-wrap{display:flex;justify-content:center;margin-bottom:16px}
+.sb-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.sb-meta-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px}
+.sb-meta-label{font-size:.68rem;color:var(--muted);margin-bottom:3px}
+.sb-meta-val{font-size:.82rem;font-weight:700}
+.sb-desc{font-size:.8rem;color:var(--muted2);line-height:1.6;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;min-height:50px}
+.milestone-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;transition:border-color .15s}
+.milestone-item:hover{border-color:var(--accent)}
+.milestone-check{width:16px;height:16px;border-radius:4px;border:2px solid var(--border);background:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.milestone-check.done{background:var(--green);border-color:var(--green)}
+.milestone-check.done::after{content:'✓';color:#fff;font-size:.65rem;font-weight:900}
+.milestone-text{flex:1;font-size:.78rem;font-weight:600}
+.milestone-text.done{text-decoration:line-through;color:var(--muted)}
+.milestone-due{font-size:.68rem;color:var(--muted2)}
+.milestone-del{background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;padding:2px 5px;border-radius:3px;transition:all .15s}
+.milestone-del:hover{color:var(--red)}
+.add-milestone-form{display:flex;gap:6px;margin-top:8px}
+.task-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px}
+.task-check{width:16px;height:16px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.task-check.done{background:var(--blue);border-color:var(--blue)}
+.task-check.done::after{content:'✓';color:#fff;font-size:.6rem;font-weight:900}
+.task-text{flex:1;font-size:.78rem}
+.task-text.done{text-decoration:line-through;color:var(--muted)}
+.note-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:6px;font-size:.78rem;color:var(--muted2);line-height:1.5}
+.reminder-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;font-size:.78rem}
+.reminder-time{font-size:.68rem;color:var(--muted);flex-shrink:0}
+
+/* ══ MODAL ══ */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;display:none;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:480px;max-height:90vh;overflow-y:auto}
+.modal-hdr{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.modal-hdr h3{font-size:.95rem;font-weight:800}
+.modal-close{background:none;border:none;color:var(--muted2);font-size:1.2rem;cursor:pointer;padding:4px 8px;border-radius:var(--radius-sm);transition:all .15s}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:18px}
+.form-group{margin-bottom:14px}
+.form-label{font-size:.76rem;font-weight:700;color:var(--muted2);margin-bottom:5px;display:block}
+.form-input{width:100%;padding:8px 11px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:.82rem;transition:border-color .15s}
+.form-input:focus{outline:none;border-color:var(--accent)}
+.form-input::placeholder{color:var(--muted)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.color-presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.color-preset{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .15s}
+.color-preset:hover,.color-preset.selected{border-color:#fff;transform:scale(1.15)}
+.modal-footer{padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+
+/* ══ EDIT INLINE ══ */
+.editable-field{cursor:pointer;padding:2px 5px;border-radius:4px;transition:background .15s;display:inline-flex;align-items:center;gap:5px}
+.editable-field:hover{background:rgba(255,255,255,.06)}
+.editable-field::after{content:'✎';font-size:.65rem;color:var(--muted);margin-right:3px}
+.inline-edit-input{background:var(--card2);border:1px solid var(--accent);border-radius:4px;color:var(--text);font-size:inherit;padding:2px 8px;width:100%}
+.inline-edit-input:focus{outline:none}
+
+/* ══ TOAST ══ */
+#toast-container{position:fixed;bottom:20px;left:20px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{padding:10px 16px;border-radius:var(--radius-sm);font-size:.8rem;font-weight:600;pointer-events:all;display:flex;align-items:center;gap:8px;min-width:220px;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:slideIn .2s ease}
+.toast-success{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:var(--green)}
+.toast-error{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--red)}
+.toast-info{background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.3);color:var(--accent2)}
+@keyframes slideIn{from{transform:translateX(-20px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes fadeOut{to{opacity:0;transform:translateX(-10px)}}
+
+/* ══ MISC ══ */
+.divider{height:1px;background:var(--border);margin:10px 0}
+.text-muted{color:var(--muted2);font-size:.78rem}
+.loading-row{display:flex;gap:12px;margin-bottom:10px}
+.sk-card{height:120px;border-radius:var(--radius)}
+.sk-text{height:14px;border-radius:4px;margin-bottom:6px}
+.sk-text.w60{width:60%}
+.sk-text.w40{width:40%}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">🚀</div>
+    <span>Jarvis</span>&nbsp;<span>פרויקטים</span>
+  </div>
+  <nav class="header-nav">
+    <button class="nav-tab active" data-tab="overview" onclick="switchTab('overview',this)">
+      <span>🏠</span> סקירה
+    </button>
+    <button class="nav-tab" data-tab="projects" onclick="switchTab('projects',this)">
+      <span>📋</span> פרויקטים
+    </button>
+    <button class="nav-tab" data-tab="charts" onclick="switchTab('charts',this)">
+      <span>📊</span> גרפים
+    </button>
+    <button class="nav-tab" data-tab="insights" onclick="switchTab('insights',this)">
+      <span>🤖</span> תובנות AI
+    </button>
+  </nav>
+  <div class="header-end">
+    <button class="refresh-btn" id="refresh-btn" title="רענן נתונים" onclick="refreshAll()">⟳</button>
+    <div class="server-pill">
+      <span class="server-dot online" id="server-dot"></span>
+      <span id="server-status">מחובר</span>
+    </div>
+  </div>
+</header>
+
+<!-- TOAST CONTAINER -->
+<div id="toast-container"></div>
+
+<!-- ══════════════════════════════════════════ PAGE: OVERVIEW ══ -->
+<div class="page active" id="page-overview">
+  <div class="page-scroll">
+    <div class="section-hdr">
+      <h2><span>🏠</span> סקירה כללית</h2>
+      <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ פרויקט חדש</button>
+    </div>
+    <!-- Stat cards -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card s-blue skeleton" style="height:90px"></div>
+      <div class="stat-card s-green skeleton" style="height:90px"></div>
+      <div class="stat-card s-amber skeleton" style="height:90px"></div>
+      <div class="stat-card s-violet skeleton" style="height:90px"></div>
+    </div>
+    <!-- Project cards -->
+    <div class="section-hdr">
+      <h2><span>📁</span> כל הפרויקטים</h2>
+      <span class="text-muted" id="last-updated"></span>
+    </div>
+    <div class="projects-grid" id="overview-cards">
+      <div class="project-card skeleton sk-card"></div>
+      <div class="project-card skeleton sk-card"></div>
+      <div class="project-card skeleton sk-card"></div>
+    </div>
+    <!-- Panels row -->
+    <div class="panels-row">
+      <div class="panel">
+        <div class="panel-hdr">🔴 פרויקטים באיחור</div>
+        <div class="panel-body" id="overdue-panel"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hdr">⏰ מועדי סיום קרובים</div>
+        <div class="panel-body" id="upcoming-panel"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ PAGE: PROJECTS BOARD ══ -->
+<div class="page" id="page-projects">
+  <div class="page-scroll">
+    <div class="section-hdr">
+      <h2><span>📋</span> לוח פרויקטים</h2>
+      <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ פרויקט חדש</button>
+    </div>
+    <div class="kanban-wrap" id="kanban-wrap">
+      <div class="kanban-col">
+        <div class="kanban-col-hdr">
+          <span style="color:var(--green)">●</span> פעיל
+          <span class="col-count" id="cnt-active">0</span>
+        </div>
+        <div class="kanban-body" id="col-active" data-status="active"
+          ondragover="onDragOver(event)" ondrop="onDrop(event,'active')" ondragleave="onDragLeave(event)">
+        </div>
+      </div>
+      <div class="kanban-col">
+        <div class="kanban-col-hdr">
+          <span style="color:var(--amber)">●</span> מושהה
+          <span class="col-count" id="cnt-paused">0</span>
+        </div>
+        <div class="kanban-body" id="col-paused" data-status="paused"
+          ondragover="onDragOver(event)" ondrop="onDrop(event,'paused')" ondragleave="onDragLeave(event)">
+        </div>
+      </div>
+      <div class="kanban-col">
+        <div class="kanban-col-hdr">
+          <span style="color:var(--blue)">●</span> הושלם
+          <span class="col-count" id="cnt-completed">0</span>
+        </div>
+        <div class="kanban-body" id="col-completed" data-status="completed"
+          ondragover="onDragOver(event)" ondrop="onDrop(event,'completed')" ondragleave="onDragLeave(event)">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ PAGE: CHARTS ══ -->
+<div class="page" id="page-charts">
+  <div class="page-scroll">
+    <div class="section-hdr">
+      <h2><span>📊</span> ניתוח גרפי</h2>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-panel">
+        <h3>🟣 פרויקטים לפי סטטוס</h3>
+        <div class="chart-wrap"><canvas id="chart-status"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <h3>🎯 פרויקטים לפי עדיפות</h3>
+        <div class="chart-wrap"><canvas id="chart-priority"></canvas></div>
+      </div>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-panel" style="grid-column:1/-1">
+        <h3>📈 התקדמות לפי פרויקט</h3>
+        <div class="chart-wrap" style="height:300px"><canvas id="chart-progress"></canvas></div>
+      </div>
+    </div>
+    <div class="gantt-wrap">
+      <div class="gantt-panel">
+        <h3>📅 ציר זמן פרויקטים (Gantt)</h3>
+        <div id="gantt-container"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ PAGE: AI INSIGHTS ══ -->
+<div class="page" id="page-insights">
+  <div class="page-scroll">
+    <div class="section-hdr">
+      <h2><span>🤖</span> תובנות AI</h2>
+    </div>
+    <div class="insights-wrap">
+      <div class="ai-btn-row">
+        <button class="btn btn-primary" id="analyze-btn" onclick="runAIAnalysis()">🔍 נתח פרויקטים</button>
+        <button class="btn btn-secondary" onclick="runAIAnalysis('focus')">🎯 מה לעשות עכשיו?</button>
+        <button class="btn btn-secondary" onclick="runAIAnalysis('risks')">⚠️ סיכונים ואתגרים</button>
+      </div>
+      <div id="ai-response-area"></div>
+      <div>
+        <div class="section-hdr" style="padding:0 0 10px">
+          <h2 style="font-size:.9rem"><span>🚨</span> התראות אוטומטיות</h2>
+        </div>
+        <div class="alerts-grid" id="alerts-grid">
+          <div class="skeleton" style="height:80px;border-radius:var(--radius)"></div>
+          <div class="skeleton" style="height:80px;border-radius:var(--radius)"></div>
+          <div class="skeleton" style="height:80px;border-radius:var(--radius)"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ SIDEBAR ══ -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-hdr">
+    <span class="sidebar-color-dot" id="sb-color-dot"></span>
+    <span class="sidebar-title" id="sb-title">פרויקט</span>
+    <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+  </div>
+  <div class="sidebar-body" id="sidebar-body">
+    <div class="skeleton" style="height:180px;border-radius:var(--radius);margin-bottom:14px"></div>
+    <div class="skeleton sk-text"></div>
+    <div class="skeleton sk-text w60"></div>
+  </div>
+</aside>
+
+<!-- ══════════════════════════════════════════ CREATE MODAL ══ -->
+<div class="modal-overlay" id="create-modal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h3 id="modal-title">✨ פרויקט חדש</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">שם הפרויקט *</label>
+        <input class="form-input" id="f-name" placeholder="לדוגמה: פיתוח אפליקציה" required/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">תיאור</label>
+        <textarea class="form-input" id="f-desc" rows="2" placeholder="תיאור קצר של הפרויקט..."></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">עדיפות</label>
+          <select class="form-input" id="f-priority">
+            <option value="low">נמוכה</option>
+            <option value="medium" selected>בינונית</option>
+            <option value="high">גבוהה</option>
+            <option value="critical">קריטית</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">סטטוס</label>
+          <select class="form-input" id="f-status">
+            <option value="active" selected>פעיל</option>
+            <option value="paused">מושהה</option>
+            <option value="completed">הושלם</option>
+            <option value="archived">בארכיון</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">תאריך התחלה</label>
+          <input class="form-input" type="date" id="f-start"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">תאריך סיום</label>
+          <input class="form-input" type="date" id="f-due"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">צבע</label>
+        <input class="form-input" type="color" id="f-color" value="#6366f1" style="height:36px;padding:2px 4px;cursor:pointer"/>
+        <div class="color-presets" id="color-presets"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">ביטול</button>
+      <button class="btn btn-primary" id="modal-save-btn" onclick="saveProject()">✨ צור פרויקט</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════
+let allProjects = [];
+let projectDetails = {}; // cache: id -> {project, milestones, tasks, reminders, notes}
+let currentSidebarId = null;
+let editingProjectId = null;
+let charts = {};
+let draggedId = null;
+let autoRefreshTimer = null;
+
+const COLOR_PRESETS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#38bdf8','#a78bfa','#f472b6','#06b6d4','#fb923c','#84cc16'];
+
+// ══════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  initColorPresets();
+  loadProjects().then(() => {
+    renderOverview();
+    renderKanban();
+    renderAlerts();
+  });
+  autoRefreshTimer = setInterval(refreshAll, 60000);
+  checkServer();
+});
+
+// ══════════════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════════════
+function switchTab(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'charts') setTimeout(renderCharts, 50);
+}
+
+// ══════════════════════════════════════════════════════════════
+// DATA LOADING
+// ══════════════════════════════════════════════════════════════
+async function loadProjects() {
+  try {
+    const res = await fetch('/projects');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    allProjects = data.projects || [];
+    updateServerStatus(true);
+  } catch(e) {
+    updateServerStatus(false);
+    showToast('שגיאה בטעינת פרויקטים: ' + e.message, 'error');
+    allProjects = [];
+  }
+}
+
+async function loadProjectDetail(id) {
+  try {
+    const res = await fetch('/projects/' + id);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    projectDetails[id] = data;
+    // Merge progress back into allProjects
+    const proj = allProjects.find(p => p.id === id);
+    if (proj) proj._detail = data;
+    return data;
+  } catch(e) {
+    showToast('שגיאה בטעינת פרטי פרויקט', 'error');
+    return null;
+  }
+}
+
+async function refreshAll() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  await loadProjects();
+  renderOverview();
+  renderKanban();
+  renderAlerts();
+  const chartsPage = document.getElementById('page-charts');
+  if (chartsPage.classList.contains('active')) renderCharts();
+  btn.classList.remove('spinning');
+  document.getElementById('last-updated').textContent = 'עודכן: ' + new Date().toLocaleTimeString('he-IL');
+}
+
+function updateServerStatus(online) {
+  const dot = document.getElementById('server-dot');
+  const lbl = document.getElementById('server-status');
+  dot.className = 'server-dot ' + (online ? 'online' : 'offline');
+  lbl.textContent = online ? 'מחובר' : 'לא מחובר';
+}
+
+async function checkServer() {
+  try {
+    const r = await fetch('/health');
+    updateServerStatus(r.ok);
+  } catch { updateServerStatus(false); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// PROGRESS COMPUTATION
+// ══════════════════════════════════════════════════════════════
+function computeProgress(detail) {
+  if (!detail) return 0;
+  const tasks = detail.tasks || [];
+  const milestones = detail.milestones || [];
+  const total = tasks.length + milestones.length;
+  if (total === 0) return 0;
+  const done = tasks.filter(t => t.done).length + milestones.filter(m => m.completed).length;
+  return Math.round((done / total) * 100);
+}
+
+function computeProgressFromProject(p) {
+  if (p._detail) return computeProgress(p._detail);
+  // if no detail loaded, return 0 or cached
+  return p._progress || 0;
+}
+
+// ══════════════════════════════════════════════════════════════
+// DATE HELPERS
+// ══════════════════════════════════════════════════════════════
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const due = new Date(dateStr);
+  const now = new Date();
+  now.setHours(0,0,0,0); due.setHours(0,0,0,0);
+  return Math.round((due - now) / 86400000);
+}
+
+function formatDateHe(dateStr) {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleDateString('he-IL', {day:'numeric',month:'short',year:'numeric'});
+}
+
+function dueDateLabel(dateStr) {
+  if (!dateStr) return {label:'', cls:''};
+  const d = daysUntil(dateStr);
+  if (d < 0) return {label:`איחור ${Math.abs(d)} ימים`, cls:'overdue'};
+  if (d === 0) return {label:'היום!', cls:'overdue'};
+  if (d <= 7) return {label:`${d} ימים`, cls:'soon'};
+  return {label:formatDateHe(dateStr), cls:''};
+}
+
+// ══════════════════════════════════════════════════════════════
+// BADGE HELPERS
+// ══════════════════════════════════════════════════════════════
+const STATUS_MAP = {
+  active: {label:'פעיל', cls:'badge-green'},
+  paused: {label:'מושהה', cls:'badge-amber'},
+  completed: {label:'הושלם', cls:'badge-blue'},
+  archived: {label:'בארכיון', cls:'badge-muted'}
+};
+const PRIORITY_MAP = {
+  low: {label:'נמוכה', cls:'badge-muted'},
+  medium: {label:'בינונית', cls:'badge-blue'},
+  high: {label:'גבוהה', cls:'badge-amber'},
+  critical: {label:'קריטית', cls:'badge-red'}
+};
+
+function statusBadge(s) {
+  const m = STATUS_MAP[s] || {label:s, cls:'badge-muted'};
+  return `<span class="badge ${m.cls}">${m.label}</span>`;
+}
+function priorityBadge(p) {
+  const m = PRIORITY_MAP[p] || {label:p, cls:'badge-muted'};
+  return `<span class="badge ${m.cls}">${m.label}</span>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// SVG PROGRESS RING
+// ══════════════════════════════════════════════════════════════
+function progressRing(pct, color, size=56, strokeW=5) {
+  const r = (size - strokeW * 2) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - pct / 100);
+  const cx = size / 2, cy = size / 2;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform:rotate(-90deg)">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border)" stroke-width="${strokeW}"/>
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color || 'var(--accent)'}"
+      stroke-width="${strokeW}" stroke-linecap="round"
+      stroke-dasharray="${circ.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"
+      style="transition:stroke-dashoffset .5s ease"/>
+    <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central"
+      style="transform:rotate(90deg);transform-origin:${cx}px ${cy}px;font-size:${size<50?'9':'11'}px;font-weight:800;fill:var(--text)">${pct}%</text>
+  </svg>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// OVERVIEW PAGE
+// ══════════════════════════════════════════════════════════════
+function renderOverview() {
+  renderStats();
+  renderProjectCards();
+  renderPanels();
+}
+
+function renderStats() {
+  const total = allProjects.length;
+  const active = allProjects.filter(p => p.status === 'active').length;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const overdue = allProjects.filter(p => p.due_date && new Date(p.due_date) < today && p.status !== 'completed' && p.status !== 'archived').length;
+  // avg completion - use loaded details
+  const withDetail = allProjects.filter(p => p._detail);
+  const avgPct = withDetail.length > 0
+    ? Math.round(withDetail.reduce((s,p) => s + computeProgress(p._detail), 0) / withDetail.length)
+    : 0;
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card s-blue">
+      <div class="stat-num s-blue">${total}</div>
+      <div class="stat-label">סה"כ פרויקטים</div>
+      <div class="stat-sub">${allProjects.filter(p=>p.status==='archived').length} בארכיון</div>
+      <span class="stat-icon">📁</span>
+    </div>
+    <div class="stat-card s-green">
+      <div class="stat-num s-green">${active}</div>
+      <div class="stat-label">פרויקטים פעילים</div>
+      <div class="stat-sub">${allProjects.filter(p=>p.status==='paused').length} מושהים</div>
+      <span class="stat-icon">▶️</span>
+    </div>
+    <div class="stat-card s-${overdue>0?'red':'amber'}">
+      <div class="stat-num s-${overdue>0?'red':'amber'}">${overdue}</div>
+      <div class="stat-label">באיחור</div>
+      <div class="stat-sub">${allProjects.filter(p=>p.due_date&&daysUntil(p.due_date)<=7&&daysUntil(p.due_date)>=0).length} קרובים לפקיעה</div>
+      <span class="stat-icon">🚨</span>
+    </div>
+    <div class="stat-card s-violet">
+      <div class="stat-num s-violet">${avgPct}%</div>
+      <div class="stat-label">השלמה ממוצעת</div>
+      <div class="stat-sub">${allProjects.filter(p=>p.status==='completed').length} הושלמו</div>
+      <span class="stat-icon">✅</span>
+    </div>
+  `;
+}
+
+function renderProjectCards() {
+  const el = document.getElementById('overview-cards');
+  if (!allProjects.length) {
+    el.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+      <div class="empty-icon">📁</div><p>אין פרויקטים עדיין. צור פרויקט חדש!</p>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = allProjects.map(p => {
+    const pct = computeProgressFromProject(p);
+    const detail = p._detail;
+    const milestones = detail ? (detail.milestones||[]) : [];
+    const mTotal = milestones.length;
+    const mDone = milestones.filter(m => m.completed).length;
+    const mPct = mTotal > 0 ? Math.round((mDone/mTotal)*100) : 0;
+    const due = dueDateLabel(p.due_date);
+    return `
+      <div class="project-card" onclick="openSidebar('${p.id}')" style="--card-color:${p.color||'var(--accent)'}">
+        <div style="position:absolute;top:0;right:0;left:0;height:3px;border-radius:12px 12px 0 0;background:${p.color||'var(--accent)'}"></div>
+        <div class="card-top">
+          <div class="card-ring-wrap">${progressRing(pct, p.color||'var(--accent)', 52, 5)}</div>
+          <div class="card-title-area">
+            <div class="card-title">${escHtml(p.name)}</div>
+            <div class="card-desc">${escHtml(p.description||'')}</div>
+          </div>
+        </div>
+        <div class="card-badges">
+          ${statusBadge(p.status)}
+          ${priorityBadge(p.priority)}
+        </div>
+        <div class="card-dates">
+          <span>📅 ${p.start_date ? formatDateHe(p.start_date) : 'ללא התחלה'}</span>
+          ${p.due_date ? `<span class="card-due ${due.cls}">⏰ ${due.label}</span>` : ''}
+        </div>
+        ${mTotal > 0 ? `
+        <div class="milestone-bar-wrap">
+          <div class="milestone-bar-label">
+            <span>אבני דרך</span><span>${mDone}/${mTotal}</span>
+          </div>
+          <div class="milestone-bar">
+            <div class="milestone-bar-fill" style="width:${mPct}%;background:${p.color||'var(--accent)'}"></div>
+          </div>
+        </div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function renderPanels() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const overdue = allProjects.filter(p => p.due_date && new Date(p.due_date) < today && p.status !== 'completed' && p.status !== 'archived');
+  const upcoming = allProjects.filter(p => {
+    const d = daysUntil(p.due_date);
+    return d !== null && d >= 0 && d <= 14 && p.status !== 'completed' && p.status !== 'archived';
+  }).sort((a,b) => new Date(a.due_date)-new Date(b.due_date));
+
+  const overdueEl = document.getElementById('overdue-panel');
+  if (!overdue.length) {
+    overdueEl.innerHTML = `<div class="empty-state"><div class="empty-icon">🎉</div><p>אין פרויקטים באיחור</p></div>`;
+  } else {
+    overdueEl.innerHTML = overdue.map(p => `
+      <div class="panel-row" onclick="openSidebar('${p.id}')" style="cursor:pointer">
+        <span class="panel-row-dot" style="background:${p.color||'var(--accent)'}"></span>
+        <span class="panel-row-name">${escHtml(p.name)}</span>
+        <span class="panel-row-val" style="color:var(--red)">${Math.abs(daysUntil(p.due_date))} ימים</span>
+      </div>`).join('');
+  }
+
+  const upcomingEl = document.getElementById('upcoming-panel');
+  if (!upcoming.length) {
+    upcomingEl.innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div><p>אין מועדים קרובים</p></div>`;
+  } else {
+    upcomingEl.innerHTML = upcoming.map(p => {
+      const d = daysUntil(p.due_date);
+      const cls = d === 0 ? 'color:var(--red)' : d <= 3 ? 'color:var(--amber)' : 'color:var(--muted2)';
+      return `
+        <div class="panel-row" onclick="openSidebar('${p.id}')" style="cursor:pointer">
+          <span class="panel-row-dot" style="background:${p.color||'var(--accent)'}"></span>
+          <span class="panel-row-name">${escHtml(p.name)}</span>
+          <span class="panel-row-val" style="${cls}">${d === 0 ? 'היום' : d + ' ימים'}</span>
+        </div>`;
+    }).join('');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// KANBAN
+// ══════════════════════════════════════════════════════════════
+function renderKanban() {
+  ['active','paused','completed'].forEach(status => {
+    const col = document.getElementById('col-' + status);
+    const cnt = document.getElementById('cnt-' + status);
+    const filtered = allProjects.filter(p => p.status === status);
+    cnt.textContent = filtered.length;
+    if (!filtered.length) {
+      col.innerHTML = `<div style="text-align:center;padding:20px;color:var(--muted);font-size:.75rem">אין פרויקטים</div>`;
+      return;
+    }
+    col.innerHTML = filtered.map(p => {
+      const pct = computeProgressFromProject(p);
+      const due = dueDateLabel(p.due_date);
+      return `
+        <div class="kanban-card" draggable="true" data-id="${p.id}"
+          ondragstart="onDragStart(event,'${p.id}')"
+          ondragend="onDragEnd(event)"
+          onclick="openSidebar('${p.id}')">
+          <div style="position:absolute;top:0;right:0;left:0;height:2px;border-radius:4px 4px 0 0;background:${p.color||'var(--accent)'}"></div>
+          <div class="kanban-card-title">${escHtml(p.name)}</div>
+          <div class="kanban-card-meta">
+            ${priorityBadge(p.priority)}
+            <span class="kanban-card-due ${due.cls}">${p.due_date ? due.label : ''}</span>
+            <span class="kanban-card-progress">${pct}%</span>
+          </div>
+        </div>`;
+    }).join('');
+  });
+}
+
+function onDragStart(e, id) {
+  draggedId = id;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  draggedId = null;
+}
+function onDragOver(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add('drag-over');
+}
+function onDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+async function onDrop(e, status) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!draggedId) return;
+  const proj = allProjects.find(p => p.id === draggedId);
+  if (!proj || proj.status === status) return;
+  proj.status = status;
+  renderKanban();
+  try {
+    await fetch('/projects/' + draggedId, {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({status})
+    });
+    showToast(`סטטוס עודכן ל"${STATUS_MAP[status]?.label||status}"`, 'success');
+    renderOverview();
+  } catch(e) {
+    showToast('שגיאה בעדכון סטטוס', 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// CHARTS
+// ══════════════════════════════════════════════════════════════
+function renderCharts() {
+  if (!window.Chart) { showToast('Chart.js לא נטען', 'error'); return; }
+  renderStatusChart();
+  renderPriorityChart();
+  renderProgressChart();
+  renderGantt();
+}
+
+function destroyChart(key) {
+  if (charts[key]) { try { charts[key].destroy(); } catch{} delete charts[key]; }
+}
+
+function renderStatusChart() {
+  destroyChart('status');
+  const counts = {active:0,paused:0,completed:0,archived:0};
+  allProjects.forEach(p => counts[p.status] = (counts[p.status]||0) + 1);
+  const ctx = document.getElementById('chart-status');
+  charts.status = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:['פעיל','מושהה','הושלם','בארכיון'],
+      datasets:[{data:[counts.active,counts.paused,counts.completed,counts.archived],
+        backgroundColor:['#22c55e88','#f59e0b88','#38bdf888','#64748b88'],
+        borderColor:['#22c55e','#f59e0b','#38bdf8','#64748b'],
+        borderWidth:2}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#94a3b8',font:{size:12}},position:'bottom'},
+        tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw} פרויקטים`}}}
+    }
+  });
+}
+
+function renderPriorityChart() {
+  destroyChart('priority');
+  const counts = {low:0,medium:0,high:0,critical:0};
+  allProjects.forEach(p => counts[p.priority] = (counts[p.priority]||0) + 1);
+  const ctx = document.getElementById('chart-priority');
+  charts.priority = new Chart(ctx, {
+    type:'pie',
+    data:{
+      labels:['נמוכה','בינונית','גבוהה','קריטית'],
+      datasets:[{data:[counts.low,counts.medium,counts.high,counts.critical],
+        backgroundColor:['#64748b88','#38bdf888','#f59e0b88','#ef444488'],
+        borderColor:['#64748b','#38bdf8','#f59e0b','#ef4444'],
+        borderWidth:2}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#94a3b8',font:{size:12}},position:'bottom'}}
+    }
+  });
+}
+
+function renderProgressChart() {
+  destroyChart('progress');
+  const sorted = [...allProjects].map(p => ({
+    name: p.name,
+    pct: computeProgressFromProject(p),
+    color: p.color || '#6366f1'
+  })).sort((a,b) => b.pct - a.pct);
+
+  const ctx = document.getElementById('chart-progress');
+  charts.progress = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: sorted.map(p => p.name),
+      datasets:[{
+        label:'התקדמות %',
+        data: sorted.map(p => p.pct),
+        backgroundColor: sorted.map(p => p.color + 'aa'),
+        borderColor: sorted.map(p => p.color),
+        borderWidth:2,
+        borderRadius:6
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,maintainAspectRatio:false,
+      scales:{
+        x:{min:0,max:100,grid:{color:'#1e3a5f'},ticks:{color:'#94a3b8',callback:v=>v+'%'}},
+        y:{grid:{color:'#1e3a5f'},ticks:{color:'#94a3b8',font:{size:11}}}
+      },
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.raw}%`}}}
+    }
+  });
+}
+
+function renderGantt() {
+  const el = document.getElementById('gantt-container');
+  const withDates = allProjects.filter(p => p.start_date || p.due_date);
+  if (!withDates.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div><p>אין פרויקטים עם תאריכים</p></div>`;
+    return;
+  }
+
+  // Find min/max dates
+  const dates = [];
+  withDates.forEach(p => {
+    if (p.start_date) dates.push(new Date(p.start_date));
+    if (p.due_date) dates.push(new Date(p.due_date));
+  });
+  dates.push(new Date()); // always include today
+  const minD = new Date(Math.min(...dates));
+  const maxD = new Date(Math.max(...dates));
+  // Expand range slightly
+  minD.setDate(minD.getDate() - 5);
+  maxD.setDate(maxD.getDate() + 5);
+  const totalDays = (maxD - minD) / 86400000;
+
+  const todayOffset = ((new Date() - minD) / 86400000 / totalDays * 100).toFixed(2);
+
+  // Build month header
+  const months = [];
+  let cur = new Date(minD);
+  while (cur <= maxD) {
+    months.push({label: cur.toLocaleDateString('he-IL',{month:'short',year:'2-digit'}), d: new Date(cur)});
+    cur.setMonth(cur.getMonth() + 1);
+  }
+
+  let html = `<div style="margin-right:160px;display:flex;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px">`;
+  months.forEach(m => {
+    const startPct = ((m.d - minD) / 86400000 / totalDays * 100).toFixed(1);
+    html += `<div style="position:absolute;right:${startPct}%;font-size:.64rem;color:var(--muted)">${m.label}</div>`;
+  });
+  html += `</div>`;
+
+  html = `<div style="position:relative;min-width:500px">`;
+  // Month labels
+  html += `<div style="margin-right:160px;position:relative;height:20px;border-bottom:1px solid var(--border);margin-bottom:8px">`;
+  months.forEach(m => {
+    const startPct = ((m.d - minD) / 86400000 / totalDays * 100).toFixed(1);
+    html += `<span style="position:absolute;right:${startPct}%;font-size:.62rem;color:var(--muted);white-space:nowrap">${m.label}</span>`;
+  });
+  html += `</div>`;
+
+  withDates.forEach(p => {
+    const start = p.start_date ? new Date(p.start_date) : new Date(p.due_date||new Date());
+    const end = p.due_date ? new Date(p.due_date) : new Date(start); end.setDate(end.getDate()+14);
+    const left = Math.max(0, ((start - minD) / 86400000 / totalDays * 100));
+    const width = Math.max(1, ((end - start) / 86400000 / totalDays * 100));
+    const pct = computeProgressFromProject(p);
+    html += `
+      <div class="gantt-row" style="margin-bottom:8px">
+        <div class="gantt-label" title="${escHtml(p.name)}">${escHtml(p.name)}</div>
+        <div class="gantt-track">
+          <div class="gantt-bar" style="right:${left.toFixed(2)}%;width:${Math.min(width, 100-left).toFixed(2)}%;background:${p.color||'var(--accent)'}cc"
+            title="${escHtml(p.name)} — ${pct}%">
+            ${pct > 0 ? pct+'%' : ''}
+          </div>
+          <div class="gantt-today-line" style="right:${todayOffset}%"></div>
+        </div>
+      </div>`;
+  });
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ALERTS
+// ══════════════════════════════════════════════════════════════
+function renderAlerts() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const overdue = allProjects.filter(p => p.due_date && new Date(p.due_date) < today && p.status !== 'completed' && p.status !== 'archived');
+  const nearDeadline = allProjects.filter(p => {
+    const d = daysUntil(p.due_date);
+    return d !== null && d >= 0 && d <= 7 && p.status !== 'completed';
+  });
+
+  const alerts = [];
+  if (overdue.length > 0) {
+    alerts.push({
+      cls:'alert-red', icon:'🔴',
+      title:`${overdue.length} פרויקטים באיחור`,
+      text: overdue.map(p=>p.name).join(', ')
+    });
+  }
+  if (nearDeadline.length > 0) {
+    alerts.push({
+      cls:'alert-amber', icon:'⚠️',
+      title:`${nearDeadline.length} פרויקטים מתקרבים למועד סיום`,
+      text: nearDeadline.map(p=>`${p.name} (${daysUntil(p.due_date)} ימים)`).join(', ')
+    });
+  }
+  const active = allProjects.filter(p => p.status === 'active');
+  if (active.length > 0) {
+    alerts.push({
+      cls:'alert-blue', icon:'✅',
+      title:`${active.length} פרויקטים פעילים`,
+      text:`מתוכם ${allProjects.filter(p=>p.status==='completed').length} הושלמו בסה"כ`
+    });
+  }
+  if (alerts.length === 0) {
+    alerts.push({cls:'alert-blue',icon:'🎉',title:'הכל בסדר!',text:'אין התראות כרגע. המשך כך!'});
+  }
+
+  document.getElementById('alerts-grid').innerHTML = alerts.map(a => `
+    <div class="alert-card ${a.cls}">
+      <div class="alert-icon">${a.icon}</div>
+      <div class="alert-body">
+        <h4>${a.title}</h4>
+        <p>${a.text}</p>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// AI INSIGHTS
+// ══════════════════════════════════════════════════════════════
+async function runAIAnalysis(mode='general') {
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ מנתח...';
+
+  const summary = allProjects.map(p => {
+    const d = p.due_date ? `מועד: ${p.due_date}` : '';
+    const pct = computeProgressFromProject(p);
+    return `- ${p.name} (${STATUS_MAP[p.status]?.label||p.status}, עדיפות: ${PRIORITY_MAP[p.priority]?.label||p.priority}, התקדמות: ${pct}%${d?', '+d:''})`;
+  }).join('\n');
+
+  const prompts = {
+    general: `תן לי תובנות מקיפות על הפרויקטים שלי:\n${summary}\n\nנתח: מה מתקדם טוב? מה תקוע? מה הסיכונים?`,
+    focus: `לפי הפרויקטים שלי:\n${summary}\n\nמה הדבר הכי חשוב שאני צריך לעשות עכשיו? תן לי 3 פעולות עדיפות.`,
+    risks: `לפי הפרויקטים שלי:\n${summary}\n\nזהה סיכונים, בעיות פוטנציאליות ואתגרים שכדאי לשים לב אליהם.`
+  };
+
+  const msg = prompts[mode] || prompts.general;
+
+  const area = document.getElementById('ai-response-area');
+  area.innerHTML = `<div class="ai-response-card">
+    <h3>🤖 ניתוח AI <span class="skeleton" style="height:12px;width:80px;display:inline-block;border-radius:4px"></span></h3>
+    <div class="skeleton sk-text"></div><div class="skeleton sk-text w60"></div><div class="skeleton sk-text w40"></div>
+  </div>`;
+
+  try {
+    const res = await fetch('/ask-jarvis', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message: msg, settings:{userName:'נדב'}})
+    });
+    const data = await res.json();
+    area.innerHTML = `<div class="ai-response-card">
+      <h3>🤖 ניתוח AI — ${new Date().toLocaleTimeString('he-IL')}</h3>
+      <div class="ai-response-text">${escHtml(data.answer||'אין תשובה')}</div>
+    </div>`;
+  } catch(e) {
+    area.innerHTML = `<div class="ai-response-card" style="border-color:var(--red)">
+      <h3 style="color:var(--red)">⚠️ שגיאה</h3>
+      <div class="ai-response-text">לא ניתן לקבל תובנות כרגע: ${escHtml(e.message)}</div>
+    </div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 נתח פרויקטים';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// SIDEBAR
+// ══════════════════════════════════════════════════════════════
+async function openSidebar(id) {
+  currentSidebarId = id;
+  const proj = allProjects.find(p => p.id === id);
+  if (!proj) return;
+
+  document.getElementById('sb-title').textContent = proj.name;
+  document.getElementById('sb-color-dot').style.background = proj.color || 'var(--accent)';
+  document.getElementById('sidebar-overlay').classList.add('open');
+  document.getElementById('sidebar').classList.add('open');
+
+  // Show loading state
+  document.getElementById('sidebar-body').innerHTML = `
+    <div class="skeleton" style="height:120px;border-radius:var(--radius);margin-bottom:14px"></div>
+    <div class="skeleton sk-text"></div><div class="skeleton sk-text w60"></div>
+    <div class="skeleton sk-text w40" style="margin-top:14px"></div>`;
+
+  const detail = await loadProjectDetail(id);
+  renderSidebarContent(proj, detail);
+}
+
+function renderSidebarContent(p, detail) {
+  const pct = detail ? computeProgress(detail) : 0;
+  const milestones = detail?.milestones || [];
+  const tasks = detail?.tasks || [];
+  const notes = detail?.notes || [];
+  const reminders = detail?.reminders || [];
+  const due = dueDateLabel(p.due_date);
+
+  let html = `
+    <!-- Ring -->
+    <div class="sidebar-ring-wrap">${progressRing(pct, p.color||'var(--accent)', 100, 8)}</div>
+
+    <!-- Badges -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:14px">
+      ${statusBadge(p.status)} ${priorityBadge(p.priority)}
+    </div>
+
+    <!-- Meta -->
+    <div class="sb-meta-grid">
+      <div class="sb-meta-item">
+        <div class="sb-meta-label">תאריך התחלה</div>
+        <div class="sb-meta-val">${p.start_date ? formatDateHe(p.start_date) : '—'}</div>
+      </div>
+      <div class="sb-meta-item">
+        <div class="sb-meta-label">מועד סיום</div>
+        <div class="sb-meta-val ${due.cls}">${p.due_date ? due.label : '—'}</div>
+      </div>
+      <div class="sb-meta-item">
+        <div class="sb-meta-label">משימות</div>
+        <div class="sb-meta-val">${tasks.filter(t=>t.done).length}/${tasks.length}</div>
+      </div>
+      <div class="sb-meta-item">
+        <div class="sb-meta-label">אבני דרך</div>
+        <div class="sb-meta-val">${milestones.filter(m=>m.completed).length}/${milestones.length}</div>
+      </div>
+    </div>
+
+    <!-- Description -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-hdr">תיאור
+        <button class="btn-icon btn-sm" onclick="editProjectField('${p.id}','description')">✎</button>
+      </div>
+      <div class="sb-desc" id="sb-desc-text">${escHtml(p.description||'אין תיאור')}</div>
+    </div>
+
+    <!-- Edit buttons -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="btn btn-secondary btn-sm" onclick="editProjectField('${p.id}','name')">✎ שם</button>
+      <button class="btn btn-secondary btn-sm" onclick="openEditProjectModal('${p.id}')">⚙️ ערוך</button>
+      <button class="btn btn-secondary btn-sm" onclick="aiProjectAnalysis('${p.id}')">🤖 AI</button>
+    </div>
+
+    <!-- AI response for this project -->
+    <div id="sb-ai-area"></div>
+
+    <!-- MILESTONES -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-hdr">🏁 אבני דרך</div>
+      <div id="sb-milestones">
+        ${milestones.length === 0 ? '<p class="text-muted">אין אבני דרך</p>' :
+          milestones.map(m => renderMilestoneItem(p.id, m)).join('')}
+      </div>
+      <div class="add-milestone-form" style="margin-top:8px">
+        <input class="form-input" id="new-ms-title" placeholder="אבן דרך חדשה..." style="flex:1"/>
+        <input class="form-input" type="date" id="new-ms-date" style="width:130px"/>
+        <button class="btn btn-primary btn-sm" onclick="addMilestone('${p.id}')">+</button>
+      </div>
+    </div>
+
+    <!-- TASKS -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-hdr">✅ משימות (${tasks.length})</div>
+      <div id="sb-tasks">
+        ${tasks.length === 0 ? '<p class="text-muted">אין משימות</p>' :
+          tasks.map(t => `
+            <div class="task-item">
+              <div class="task-check ${t.done?'done':''}" onclick="markTaskDone('${p.id}','${t.id}','${escAttr(t.content||'')}','${p.name}')"></div>
+              <span class="task-text ${t.done?'done':''}">${escHtml(t.content||'')}</span>
+            </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- REMINDERS -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-hdr">🔔 תזכורות (${reminders.length})</div>
+      ${reminders.length === 0 ? '<p class="text-muted">אין תזכורות</p>' :
+        reminders.map(r => `
+          <div class="reminder-item">
+            <span>🔔</span>
+            <span style="flex:1">${escHtml(r.text||'')}</span>
+            <span class="reminder-time">${r.scheduled_time ? formatDateHe(r.scheduled_time) : ''}</span>
+          </div>`).join('')}
+    </div>
+
+    <!-- NOTES -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-hdr">📝 הערות (${notes.length})</div>
+      ${notes.length === 0 ? '<p class="text-muted">אין הערות</p>' :
+        notes.map(n => `
+          <div class="note-item">${escHtml(n.content||n.body||'')}</div>`).join('')}
+    </div>
+
+    <div class="divider"></div>
+    <div style="display:flex;gap:8px;padding-top:6px">
+      <button class="btn btn-danger btn-sm" onclick="deleteProject('${p.id}','${escAttr(p.name)}')">🗑️ מחק פרויקט</button>
+    </div>`;
+
+  document.getElementById('sidebar-body').innerHTML = html;
+}
+
+function renderMilestoneItem(projId, m) {
+  return `<div class="milestone-item" id="ms-${m.id}">
+    <div class="milestone-check ${m.completed?'done':''}" onclick="toggleMilestone('${projId}','${m.id}',${!m.completed})"></div>
+    <span class="milestone-text ${m.completed?'done':''}">${escHtml(m.title)}</span>
+    <span class="milestone-due">${m.due_date?formatDateHe(m.due_date):''}</span>
+    <button class="milestone-del" onclick="deleteMilestone('${projId}','${m.id}')">✕</button>
+  </div>`;
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+  currentSidebarId = null;
+}
+
+async function aiProjectAnalysis(id) {
+  const proj = allProjects.find(p => p.id === id);
+  if (!proj) return;
+  const area = document.getElementById('sb-ai-area');
+  area.innerHTML = `<div class="ai-response-card" style="margin-bottom:14px">
+    <h3>🤖 ניתוח...</h3>
+    <div class="skeleton sk-text"></div><div class="skeleton sk-text w60"></div>
+  </div>`;
+  const detail = projectDetails[id];
+  const tasks = detail?.tasks||[];
+  const milestones = detail?.milestones||[];
+  const pct = computeProgress(detail);
+  const msg = `נתח את הפרויקט "${proj.name}": סטטוס ${STATUS_MAP[proj.status]?.label||proj.status}, עדיפות ${PRIORITY_MAP[proj.priority]?.label||proj.priority}, התקדמות ${pct}%, ${tasks.length} משימות (${tasks.filter(t=>t.done).length} הושלמו), ${milestones.length} אבני דרך (${milestones.filter(m=>m.completed).length} הושלמו)${proj.due_date?', מועד סיום: '+proj.due_date:''}. תן המלצות ספציפיות.`;
+  try {
+    const res = await fetch('/ask-jarvis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg,settings:{userName:'נדב'}})});
+    const data = await res.json();
+    area.innerHTML = `<div class="ai-response-card" style="margin-bottom:14px">
+      <h3>🤖 ניתוח פרויקט</h3>
+      <div class="ai-response-text">${escHtml(data.answer||'')}</div>
+    </div>`;
+  } catch(e) {
+    area.innerHTML = `<div class="ai-response-card" style="border-color:var(--red);margin-bottom:14px">
+      <h3 style="color:var(--red)">שגיאה</h3><p class="text-muted">${escHtml(e.message)}</p></div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// MILESTONES
+// ══════════════════════════════════════════════════════════════
+async function toggleMilestone(projId, msId, completed) {
+  try {
+    await fetch(`/projects/${projId}/milestones/${msId}`, {
+      method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({completed})
+    });
+    const detail = projectDetails[projId];
+    if (detail) {
+      const ms = detail.milestones.find(m => m.id === msId);
+      if (ms) { ms.completed = completed; ms.completed_at = completed ? new Date().toISOString() : null; }
+    }
+    const el = document.getElementById('ms-' + msId);
+    if (el) {
+      el.outerHTML = renderMilestoneItem(projId, detail?.milestones.find(m=>m.id===msId) || {id:msId,completed,title:''});
+    }
+    updateProgressRing(projId);
+    showToast(completed ? '✅ אבן דרך הושלמה' : 'אבן דרך סומנה כלא הושלמה', 'success');
+  } catch(e) { showToast('שגיאה', 'error'); }
+}
+
+async function addMilestone(projId) {
+  const title = document.getElementById('new-ms-title').value.trim();
+  const due_date = document.getElementById('new-ms-date').value || null;
+  if (!title) { showToast('נא להזין כותרת', 'error'); return; }
+  try {
+    const res = await fetch(`/projects/${projId}/milestones`, {
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title, due_date})
+    });
+    const data = await res.json();
+    const ms = data.milestone || data;
+    const detail = projectDetails[projId];
+    if (detail) detail.milestones.push(ms);
+    document.getElementById('new-ms-title').value = '';
+    document.getElementById('new-ms-date').value = '';
+    const container = document.getElementById('sb-milestones');
+    if (container) container.insertAdjacentHTML('beforeend', renderMilestoneItem(projId, ms));
+    updateProgressRing(projId);
+    showToast('אבן דרך נוספה', 'success');
+  } catch(e) { showToast('שגיאה בהוספת אבן דרך', 'error'); }
+}
+
+async function deleteMilestone(projId, msId) {
+  try {
+    await fetch(`/projects/${projId}/milestones/${msId}`, {method:'DELETE'});
+    const detail = projectDetails[projId];
+    if (detail) detail.milestones = detail.milestones.filter(m => m.id !== msId);
+    document.getElementById('ms-' + msId)?.remove();
+    updateProgressRing(projId);
+    showToast('אבן דרך נמחקה', 'success');
+  } catch(e) { showToast('שגיאה', 'error'); }
+}
+
+function updateProgressRing(projId) {
+  const detail = projectDetails[projId];
+  if (!detail) return;
+  const pct = computeProgress(detail);
+  const proj = allProjects.find(p => p.id === projId);
+  const ringWrap = document.querySelector('.sidebar-ring-wrap');
+  if (ringWrap && proj) ringWrap.innerHTML = progressRing(pct, proj.color||'var(--accent)', 100, 8);
+}
+
+// ══════════════════════════════════════════════════════════════
+// TASKS
+// ══════════════════════════════════════════════════════════════
+async function markTaskDone(projId, taskId, taskContent, projName) {
+  const msg = `סמן משימה "${taskContent}" כהושלמה בפרויקט ${projName}`;
+  try {
+    await fetch('/ask-jarvis', {
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message: msg, settings:{userName:'נדב'}})
+    });
+    const detail = projectDetails[projId];
+    if (detail) {
+      const t = detail.tasks.find(t => t.id === taskId);
+      if (t) t.done = true;
+    }
+    // Re-render tasks
+    const container = document.getElementById('sb-tasks');
+    if (container && detail) {
+      container.innerHTML = (detail.tasks||[]).map(t => `
+        <div class="task-item">
+          <div class="task-check ${t.done?'done':''}" onclick="markTaskDone('${projId}','${t.id}','${escAttr(t.content||'')}','${escAttr(projName)}')"></div>
+          <span class="task-text ${t.done?'done':''}">${escHtml(t.content||'')}</span>
+        </div>`).join('');
+    }
+    updateProgressRing(projId);
+    showToast('משימה סומנה כהושלמה', 'success');
+  } catch(e) { showToast('שגיאה', 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// CREATE / EDIT PROJECT MODAL
+// ══════════════════════════════════════════════════════════════
+function initColorPresets() {
+  const container = document.getElementById('color-presets');
+  container.innerHTML = COLOR_PRESETS.map(c =>
+    `<div class="color-preset" style="background:${c}" data-color="${c}" onclick="selectColorPreset('${c}')"></div>`
+  ).join('');
+}
+
+function selectColorPreset(c) {
+  document.getElementById('f-color').value = c;
+  document.querySelectorAll('.color-preset').forEach(el => el.classList.toggle('selected', el.dataset.color === c));
+}
+
+function openCreateModal() {
+  editingProjectId = null;
+  document.getElementById('modal-title').textContent = '✨ פרויקט חדש';
+  document.getElementById('modal-save-btn').textContent = '✨ צור פרויקט';
+  ['f-name','f-desc'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-priority').value = 'medium';
+  document.getElementById('f-status').value = 'active';
+  document.getElementById('f-start').value = '';
+  document.getElementById('f-due').value = '';
+  selectColorPreset('#6366f1');
+  document.getElementById('create-modal').classList.add('open');
+  document.getElementById('f-name').focus();
+}
+
+function openEditProjectModal(id) {
+  const proj = allProjects.find(p => p.id === id);
+  if (!proj) return;
+  editingProjectId = id;
+  document.getElementById('modal-title').textContent = '✎ עריכת פרויקט';
+  document.getElementById('modal-save-btn').textContent = '💾 שמור שינויים';
+  document.getElementById('f-name').value = proj.name || '';
+  document.getElementById('f-desc').value = proj.description || '';
+  document.getElementById('f-priority').value = proj.priority || 'medium';
+  document.getElementById('f-status').value = proj.status || 'active';
+  document.getElementById('f-start').value = proj.start_date || '';
+  document.getElementById('f-due').value = proj.due_date || '';
+  selectColorPreset(proj.color || '#6366f1');
+  document.getElementById('create-modal').classList.add('open');
+  closeSidebar();
+}
+
+function closeModal() {
+  document.getElementById('create-modal').classList.remove('open');
+  editingProjectId = null;
+}
+
+async function saveProject() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { showToast('שם הפרויקט נדרש', 'error'); return; }
+
+  const payload = {
+    name,
+    description: document.getElementById('f-desc').value.trim() || null,
+    priority: document.getElementById('f-priority').value,
+    status: document.getElementById('f-status').value,
+    start_date: document.getElementById('f-start').value || null,
+    due_date: document.getElementById('f-due').value || null,
+    color: document.getElementById('f-color').value
+  };
+
+  const btn = document.getElementById('modal-save-btn');
+  btn.disabled = true;
+
+  try {
+    if (editingProjectId) {
+      const res = await fetch('/projects/' + editingProjectId, {
+        method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+      });
+      const data = await res.json();
+      const updated = data.project || data;
+      const idx = allProjects.findIndex(p => p.id === editingProjectId);
+      if (idx !== -1) allProjects[idx] = {...allProjects[idx], ...updated};
+      showToast('פרויקט עודכן', 'success');
+    } else {
+      const res = await fetch('/projects', {
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+      });
+      const data = await res.json();
+      const created = data.project || data;
+      allProjects.push(created);
+      showToast('פרויקט נוצר!', 'success');
+    }
+    closeModal();
+    renderOverview();
+    renderKanban();
+    renderAlerts();
+  } catch(e) {
+    showToast('שגיאה: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// EDIT PROJECT FIELD INLINE
+// ══════════════════════════════════════════════════════════════
+async function editProjectField(id, field) {
+  const proj = allProjects.find(p => p.id === id);
+  if (!proj) return;
+  const current = proj[field] || '';
+  const val = prompt(`ערוך ${field === 'name' ? 'שם' : 'תיאור'}:`, current);
+  if (val === null) return;
+  try {
+    const res = await fetch('/projects/' + id, {
+      method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({[field]:val})
+    });
+    const data = await res.json();
+    const updated = data.project || data;
+    const idx = allProjects.findIndex(p => p.id === id);
+    if (idx !== -1) allProjects[idx] = {...allProjects[idx], ...updated};
+    if (field === 'name') {
+      document.getElementById('sb-title').textContent = val;
+      proj.name = val;
+    } else if (field === 'description') {
+      const el = document.getElementById('sb-desc-text');
+      if (el) el.textContent = val || 'אין תיאור';
+    }
+    renderOverview();
+    showToast('עודכן', 'success');
+  } catch(e) { showToast('שגיאה', 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// DELETE PROJECT
+// ══════════════════════════════════════════════════════════════
+async function deleteProject(id, name) {
+  if (!confirm(`האם למחוק את "${name}"? פעולה זו אינה הפיכה.`)) return;
+  try {
+    await fetch('/projects/' + id, {method:'DELETE'});
+    allProjects = allProjects.filter(p => p.id !== id);
+    delete projectDetails[id];
+    closeSidebar();
+    renderOverview();
+    renderKanban();
+    renderAlerts();
+    showToast('פרויקט נמחק', 'success');
+  } catch(e) { showToast('שגיאה במחיקה', 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════════════════
+function showToast(msg, type='info') {
+  const icons = {success:'✅',error:'❌',info:'ℹ️'};
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<span>${icons[type]||'ℹ️'}</span><span>${escHtml(msg)}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.animation = 'fadeOut .3s forwards';
+    setTimeout(() => toast.remove(), 300);
+  }, 3200);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ESCAPE HELPERS
+// ══════════════════════════════════════════════════════════════
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return String(s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/\n/g,' ');
+}
+
+// ══════════════════════════════════════════════════════════════
+// KEYBOARD
+// ══════════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeModal();
+    closeSidebar();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+    e.preventDefault();
+    openCreateModal();
+  }
+});
+</script>
+</body>
+</html>

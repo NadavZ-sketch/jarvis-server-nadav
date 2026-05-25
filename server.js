@@ -67,6 +67,7 @@ const profileLearner  = require('./services/profileLearner');
 const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
 const { runPromptAgent }      = require('./agents/promptAgent');
 const { runSettingsAgent }    = require('./agents/settingsAgent');
+const { runProjectAgent }     = require('./agents/projectAgent');
 const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
 const { createTasksRouter } = require('./routes/tasks');
@@ -791,6 +792,8 @@ async function askJarvisHandler(req, res) {
             result = await runPromptAgent(userMessage, supabase, useLocal, settings);
         } else if (agentName === 'settings') {
             result = await runSettingsAgent(userMessage, supabase, useLocal, settings);
+        } else if (agentName === 'project') {
+            result = await runProjectAgent(userMessage, supabase, useLocal, settings);
         } else {
             // ── Orchestrator: handle multi-intent requests before chat fallback ─
             if (!imageBase64 && userMessage.length > 15) {
@@ -1853,6 +1856,154 @@ app.delete('/notes/:id', async (req, res) => {
     }
 });
 
+// ─── Projects REST API ────────────────────────────────────────────────────────
+
+app.get('/projects', async (_req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('projects')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json({ projects: data || [] });
+    } catch (err) {
+        console.error('GET /projects error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/projects', async (req, res) => {
+    try {
+        const { name, description, status, priority, start_date, due_date, color } = req.body;
+        if (!name) return res.status(400).json({ error: 'name is required' });
+        const { data, error } = await supabase
+            .from('projects')
+            .insert([{ name, description, status: status || 'active', priority: priority || 'medium', start_date, due_date, color: color || '#6366f1' }])
+            .select()
+            .single();
+        if (error) throw error;
+        res.json({ project: data });
+    } catch (err) {
+        console.error('POST /projects error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/projects/:id', async (req, res) => {
+    try {
+        const { data: project, error } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('id', req.params.id)
+            .single();
+        if (error || !project) return res.status(404).json({ error: 'Not found' });
+
+        const [{ data: milestones }, { data: tasks }, { data: reminders }, { data: notes }] = await Promise.all([
+            supabase.from('project_milestones').select('*').eq('project_id', project.id).order('due_date'),
+            supabase.from('tasks').select('*').eq('project_id', project.id).order('created_at'),
+            supabase.from('reminders').select('*').eq('project_id', project.id).order('scheduled_time'),
+            supabase.from('notes').select('*').eq('project_id', project.id).order('created_at'),
+        ]);
+
+        res.json({ project, milestones: milestones || [], tasks: tasks || [], reminders: reminders || [], notes: notes || [] });
+    } catch (err) {
+        console.error('GET /projects/:id error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.put('/projects/:id', async (req, res) => {
+    try {
+        const updates = { ...req.body, updated_at: new Date().toISOString() };
+        delete updates.id;
+        const { data, error } = await supabase
+            .from('projects')
+            .update(updates)
+            .eq('id', req.params.id)
+            .select()
+            .single();
+        if (error) throw error;
+        res.json({ project: data });
+    } catch (err) {
+        console.error('PUT /projects/:id error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.delete('/projects/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('projects').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /projects/:id error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/projects/:id/milestones', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('project_milestones')
+            .select('*')
+            .eq('project_id', req.params.id)
+            .order('due_date');
+        if (error) throw error;
+        res.json({ milestones: data || [] });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/projects/:id/milestones', async (req, res) => {
+    try {
+        const { title, due_date } = req.body;
+        if (!title) return res.status(400).json({ error: 'title is required' });
+        const { data, error } = await supabase
+            .from('project_milestones')
+            .insert([{ project_id: req.params.id, title, due_date: due_date || null }])
+            .select()
+            .single();
+        if (error) throw error;
+        res.json({ milestone: data });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.put('/projects/:id/milestones/:mId', async (req, res) => {
+    try {
+        const updates = { ...req.body };
+        if (updates.completed && !updates.completed_at) updates.completed_at = new Date().toISOString();
+        if (!updates.completed) updates.completed_at = null;
+        const { data, error } = await supabase
+            .from('project_milestones')
+            .update(updates)
+            .eq('id', req.params.mId)
+            .eq('project_id', req.params.id)
+            .select()
+            .single();
+        if (error) throw error;
+        res.json({ milestone: data });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.delete('/projects/:id/milestones/:mId', async (req, res) => {
+    try {
+        const { error } = await supabase
+            .from('project_milestones')
+            .delete()
+            .eq('id', req.params.mId)
+            .eq('project_id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ─── E2E Reports — list / detail / delete ────────────────────────────────────
 
 app.get('/e2e-reports', async (_req, res) => {
@@ -2354,6 +2505,7 @@ async function streamJarvisHandler(req, res) {
             else if (agentName === 'calendar') result = await runCalendarAgent(userMessage, supabase, settings);
             else if (agentName === 'prompt') result = await runPromptAgent(userMessage, supabase, useLocal, settings);
             else if (agentName === 'settings') result = await runSettingsAgent(userMessage, supabase, useLocal, settings);
+            else if (agentName === 'project') result = await runProjectAgent(userMessage, supabase, useLocal, settings);
             else {
                 const [chatHistory, longTermMemories] = await Promise.all([
                     loadChatHistory(chatId), fetchLongTermMemories()

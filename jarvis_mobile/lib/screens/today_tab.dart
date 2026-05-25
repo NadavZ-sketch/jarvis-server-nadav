@@ -21,6 +21,7 @@ class _TodayTabState extends State<TodayTab> {
   Map<String, dynamic>? _todayMsg;
   bool _loading = true;
   String? _error;
+  final Set<String> _completing = {};
 
   @override
   void initState() {
@@ -33,6 +34,29 @@ class _TodayTabState extends State<TodayTab> {
     final cached = await CacheService.loadList('today_items');
     if (cached != null && mounted && _items.isEmpty) {
       setState(() { _items = cached; _loading = false; });
+    }
+  }
+
+  Future<void> _completeTask(Map<String, dynamic> item) async {
+    final id = item['id']?.toString();
+    if (id == null || _completing.contains(id)) return;
+    setState(() => _completing.add(id));
+    try {
+      await ApiService(widget.settings).updateTask(id, done: true);
+      if (!mounted) return;
+      setState(() {
+        _items.removeWhere((i) => i['id']?.toString() == id);
+        _completing.remove(id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('משימה הושלמה ✓',
+            textDirection: TextDirection.rtl,
+            style: TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
+        backgroundColor: JC.surfaceAlt,
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (_) {
+      if (mounted) setState(() => _completing.remove(id));
     }
   }
 
@@ -107,7 +131,11 @@ class _TodayTabState extends State<TodayTab> {
               _SectionHeader(label: '⚠️ מאוחרות (${overdue.length})'),
               ...overdue.asMap().entries.map((e) => AnimatedListItem(
                 index: e.key,
-                child: _TodayItemTile(item: e.value, context: context),
+                child: _TodayItemTile(
+  item: e.value,
+  isCompleting: _completing.contains(e.value['id']?.toString() ?? ''),
+  onComplete: () => _completeTask(e.value),
+),
               )),
               const SizedBox(height: 8),
             ],
@@ -115,7 +143,11 @@ class _TodayTabState extends State<TodayTab> {
               _SectionHeader(label: '📅 להיום (${today.length})'),
               ...today.asMap().entries.map((e) => AnimatedListItem(
                 index: e.key,
-                child: _TodayItemTile(item: e.value, context: context),
+                child: _TodayItemTile(
+  item: e.value,
+  isCompleting: _completing.contains(e.value['id']?.toString() ?? ''),
+  onComplete: () => _completeTask(e.value),
+),
               )),
               const SizedBox(height: 8),
             ],
@@ -123,7 +155,11 @@ class _TodayTabState extends State<TodayTab> {
               _SectionHeader(label: '🔔 תזכורות (${reminders.length})'),
               ...reminders.asMap().entries.map((e) => AnimatedListItem(
                 index: e.key,
-                child: _TodayItemTile(item: e.value, context: context),
+                child: _TodayItemTile(
+  item: e.value,
+  isCompleting: _completing.contains(e.value['id']?.toString() ?? ''),
+  onComplete: () => _completeTask(e.value),
+),
               )),
             ],
           ],
@@ -304,34 +340,43 @@ class _SectionHeader extends StatelessWidget {
 
 class _TodayItemTile extends StatelessWidget {
   final Map<String, dynamic> item;
-  final BuildContext context;
-  const _TodayItemTile({required this.item, required this.context});
+  final bool isCompleting;
+  final VoidCallback? onComplete;
+  const _TodayItemTile({
+    required this.item,
+    this.isCompleting = false,
+    this.onComplete,
+  });
 
   Color get _priorityColor => switch (item['priority']?.toString()) {
-    'high'   => JC.cancelRed,
-    'low'    => JC.green500,
-    _        => JC.amber400,
+    'high' => JC.cancelRed,
+    'low'  => JC.green500,
+    _      => JC.amber400,
   };
 
   String _formatTime(dynamic iso) {
     if (iso == null) return '';
     try {
-      final dt  = DateTime.parse(iso.toString()).toLocal();
-      final now = DateTime.now();
-      final day = DateTime(dt.year, dt.month, dt.day);
+      final dt    = DateTime.parse(iso.toString()).toLocal();
+      final now   = DateTime.now();
+      final day   = DateTime(dt.year, dt.month, dt.day);
       final today = DateTime(now.year, now.month, now.day);
-      final timeStr = '${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
-      if (day == today) return 'היום $timeStr';
+      final hhmm  = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      if (day == today) return 'היום $hhmm';
       if (day == today.subtract(const Duration(days: 1))) return 'אתמול';
-      return '${dt.day.toString().padLeft(2,'0')}/${dt.month.toString().padLeft(2,'0')} $timeStr';
-    } catch (_) { return ''; }
+      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} $hhmm';
+    } catch (_) {
+      return '';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final isReminder = item['type'] == 'reminder';
+    final hasId      = item['id'] != null;
     final timeLabel  = _formatTime(item['time']);
     final isOverdue  = item['section'] == 'overdue';
+    final canComplete = !isReminder && hasId;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -340,20 +385,38 @@ class _TodayItemTile extends StatelessWidget {
         color: JC.surfaceAlt,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isOverdue
-              ? JC.cancelRed.withValues(alpha: 0.35)
-              : JC.border,
+          color: isOverdue ? JC.cancelRed.withValues(alpha: 0.35) : JC.border,
           width: 0.8,
         ),
       ),
       child: Row(
         textDirection: TextDirection.rtl,
         children: [
-          Icon(
-            isReminder ? Icons.notifications_outlined : Icons.check_circle_outline_rounded,
-            color: isReminder ? JC.amber400 : JC.blue500,
-            size: 20,
-          ),
+          // Leading icon / complete button
+          if (canComplete)
+            GestureDetector(
+              onTap: isCompleting ? null : onComplete,
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: isCompleting
+                    ? CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: JC.green500,
+                      )
+                    : Icon(
+                        Icons.radio_button_unchecked_rounded,
+                        color: _priorityColor,
+                        size: 22,
+                      ),
+              ),
+            )
+          else
+            Icon(
+              Icons.notifications_outlined,
+              color: JC.amber400,
+              size: 20,
+            ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -381,10 +444,11 @@ class _TodayItemTile extends StatelessWidget {
               ],
             ),
           ),
-          if (!isReminder) ...[
+          if (canComplete) ...[
             const SizedBox(width: 6),
             Container(
-              width: 8, height: 8,
+              width: 8,
+              height: 8,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _priorityColor,

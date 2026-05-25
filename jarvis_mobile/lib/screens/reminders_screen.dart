@@ -87,12 +87,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
     (value: 'monthly',  label: 'חודשי',   icon: Icons.calendar_month_rounded),
   ];
 
-  static const _recurrenceLabel = {
-    'daily':   'יומי',
-    'weekly':  'שבועי',
-    'monthly': 'חודשי',
-  };
-
   String _formatTime(dynamic iso) {
     if (iso == null) return '';
     try {
@@ -473,87 +467,10 @@ class _RemindersScreenState extends State<RemindersScreen> {
                                       direction: DismissDirection.endToStart,
                                       background: _remDismissBg(),
                                       onDismissed: (_) => _onDismissed(item),
-                                      child: GestureDetector(
-                                        onTap: () =>
-                                            _showReminderSheet(existing: item),
-                                        child: Container(
-                                        margin:
-                                            const EdgeInsets.only(bottom: 10),
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 16, vertical: 14),
-                                        decoration: BoxDecoration(
-                                          color: JC.surfaceAlt,
-                                          borderRadius:
-                                              BorderRadius.circular(14),
-                                          border: Border.all(
-                                              color: JC.border, width: 0.8),
-                                        ),
-                                        child: Row(
-                                          textDirection: TextDirection.rtl,
-                                          children: [
-                                            Container(
-                                              width: 40,
-                                              height: 40,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: JC.blue500
-                                                    .withValues(alpha: 0.15),
-                                              ),
-                                              child: Icon(
-                                                  Icons.access_time_rounded,
-                                                  color: JC.blue400,
-                                                  size: 20),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.end,
-                                                children: [
-                                                  Text(
-                                                    item['text']?.toString() ??
-                                                        '',
-                                                    textDirection:
-                                                        TextDirection.rtl,
-                                                    style: TextStyle(
-                                                        color: JC.textPrimary,
-                                                        fontSize: 15,
-                                                        fontFamily: 'Heebo'),
-                                                  ),
-                                                  const SizedBox(height: 3),
-                                                  Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      if (item['recurrence'] != null) ...[
-                                                        Icon(Icons.repeat_rounded,
-                                                            size: 11, color: JC.blue400),
-                                                        const SizedBox(width: 3),
-                                                        Text(
-                                                          _recurrenceLabel[item['recurrence']] ?? '',
-                                                          style: TextStyle(
-                                                              color: JC.blue400,
-                                                              fontSize: 11,
-                                                              fontFamily: 'Heebo',
-                                                              fontWeight: FontWeight.w600),
-                                                        ),
-                                                        const SizedBox(width: 6),
-                                                      ],
-                                                      Text(
-                                                        _formatTime(item['scheduled_time']),
-                                                        textDirection: TextDirection.rtl,
-                                                        style: TextStyle(
-                                                            color: JC.textMuted,
-                                                            fontSize: 12,
-                                                            fontFamily: 'Heebo'),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
+                                      child: _ReminderItem(
+                                        item: item,
+                                        formatTime: _formatTime,
+                                        onTap: () => _showReminderSheet(existing: item),
                                       ),
                                     ),
                                   );
@@ -566,6 +483,106 @@ class _RemindersScreenState extends State<RemindersScreen> {
     );
   }
 }
+
+// ─── Reminder item ────────────────────────────────────────────────────────────
+
+class _ReminderItem extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final String Function(dynamic) formatTime;
+  final VoidCallback onTap;
+
+  static const _recurrenceLabel = {
+    'daily':   'יומי',
+    'weekly':  'שבועי',
+    'monthly': 'חודשי',
+  };
+
+  const _ReminderItem({
+    required this.item,
+    required this.formatTime,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final recurrence = item['recurrence'] as String?;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: JC.surfaceAlt,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: JC.blue500.withValues(alpha: 0.15),
+              ),
+              child: Icon(Icons.access_time_rounded, color: JC.blue400, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    item['text']?.toString() ?? '',
+                    textDirection: TextDirection.rtl,
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 15,
+                      fontFamily: 'Heebo',
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (recurrence != null) ...[
+                        Icon(Icons.repeat_rounded, size: 11, color: JC.blue400),
+                        const SizedBox(width: 3),
+                        Text(
+                          _recurrenceLabel[recurrence] ?? '',
+                          style: TextStyle(
+                            color: JC.blue400,
+                            fontSize: 11,
+                            fontFamily: 'Heebo',
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        formatTime(item['scheduled_time']),
+                        textDirection: TextDirection.rtl,
+                        style: TextStyle(
+                          color: JC.textMuted,
+                          fontSize: 12,
+                          fontFamily: 'Heebo',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Dismiss background ───────────────────────────────────────────────────────
 
 Widget _remDismissBg() => Container(
       alignment: Alignment.centerLeft,

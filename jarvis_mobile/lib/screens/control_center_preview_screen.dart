@@ -418,10 +418,115 @@ class _ControlCenterPreviewScreenState
         children: [
           _JarvisHeroCard(),
           const SizedBox(height: 16),
+          _SystemHealthRow(),
+          const SizedBox(height: 16),
+          if (_loadingIssues || _issues.isNotEmpty) ...[
+            _IssuesSection(),
+            const SizedBox(height: 16),
+          ],
           _ActivityDomainsCard(),
           const SizedBox(height: 16),
           _QuickActionsRow(),
         ],
+      ),
+    );
+  }
+
+  Widget _SystemHealthRow() {
+    final avgMs = _metrics.isEmpty
+        ? null
+        : (_metrics
+                .map((m) => (m['avgMs'] ?? 0) as num)
+                .fold<num>(0, (a, b) => a + b) /
+            _metrics.length)
+            .round();
+    final stabilityScore = (100 - _issues.length * 15).clamp(0, 100);
+    final fast = (_intentRatio['fast'] ?? 0) as num;
+    final llm  = (_intentRatio['llm']  ?? 0) as num;
+    final intentPct = (fast + llm) > 0 ? (fast / (fast + llm) * 100).round() : null;
+
+    final latencyColor = _loadingMetrics || avgMs == null
+        ? JC.textMuted
+        : avgMs < 1000
+            ? const Color(0xFF22C55E)
+            : avgMs < 3000
+                ? const Color(0xFFF59E0B)
+                : const Color(0xFFEF4444);
+
+    final stabilityColor = _loadingIssues
+        ? JC.textMuted
+        : stabilityScore > 80
+            ? const Color(0xFF22C55E)
+            : stabilityScore >= 50
+                ? const Color(0xFFF59E0B)
+                : const Color(0xFFEF4444);
+
+    final intentColor = _loadingMetrics || intentPct == null
+        ? JC.textMuted
+        : intentPct >= 70
+            ? const Color(0xFF22C55E)
+            : const Color(0xFFF59E0B);
+
+    return Row(children: [
+      _HealthChip(
+        icon: Icons.speed_rounded,
+        label: 'מהירות ממוצעת',
+        value: _loadingMetrics || avgMs == null ? '—' : '${avgMs}ms',
+        color: latencyColor,
+      ),
+      const SizedBox(width: 8),
+      _HealthChip(
+        icon: Icons.shield_rounded,
+        label: 'יציבות',
+        value: _loadingIssues ? '—' : '$stabilityScore%',
+        color: stabilityColor,
+      ),
+      const SizedBox(width: 8),
+      _HealthChip(
+        icon: Icons.track_changes_rounded,
+        label: 'זיהוי כוונות',
+        value: _loadingMetrics || intentPct == null ? '—' : '$intentPct%',
+        color: intentColor,
+      ),
+    ]);
+  }
+
+  Widget _HealthChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: JC.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.25), width: 0.8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(icon, color: color, size: 13),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
+              ),
+            ]),
+            const SizedBox(height: 5),
+            Text(value,
+                style: TextStyle(
+                    color: color,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'Heebo',
+                    height: 1)),
+          ],
+        ),
       ),
     );
   }
@@ -1526,7 +1631,7 @@ class _ControlCenterPreviewScreenState
                 final type = e['type'] as String;
                 final status = e['status'] as String;
                 final statusColor = _statusColor(status);
-                final statusLabel = status == 'unknown' ? 'Status: Unknown' : _statusLabel(status);
+                final statusLabel = status == 'unknown' ? 'לא ידוע' : _statusLabel(status);
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 9),
                   child: Row(children: [
@@ -2028,78 +2133,6 @@ class _ControlCenterPreviewScreenState
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (_) => AgentDetailSheet(
           agent: agent, base: widget.settings.serverUrl),
-    );
-  }
-
-  Widget _AgentDetailStrip(Map<String, dynamic> agent) {
-    final name = agent['name'] ?? agent['id'] ?? 'סוכן';
-    final role = agent['description'] ?? agent['role'] ?? '';
-    final status = (agent['status'] ?? '').toString();
-    final risk = agent['riskLevel'] ?? agent['risk_level'] ?? 'low';
-    final statusColor = _statusColor(status);
-    final riskColor = _riskColor(risk);
-
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1929),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: statusColor,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: statusColor.withOpacity(0.5),
-                  blurRadius: 5,
-                  spreadRadius: 1,
-                )
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name.toString(),
-                  style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Heebo',
-                  ),
-                ),
-                if (role.toString().isNotEmpty)
-                  Text(
-                    role.toString(),
-                    style: TextStyle(color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: riskColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              _riskLabel(risk),
-              style: TextStyle(color: riskColor, fontSize: 9, fontFamily: 'Heebo'),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

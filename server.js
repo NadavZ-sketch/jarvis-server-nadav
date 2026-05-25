@@ -2848,6 +2848,15 @@ const { createAgentCenterRouter } = require('./routes/agentCenter');
 app.use('/progress-map', _rl(20), createAgentCenterRouter({ callGemma4, agentMetrics }));
 app.get('/agent-center', (_req, res) => res.redirect(301, '/progress-map'));
 
+app.get('/projects-dashboard', (_req, res) => {
+    res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:",
+    );
+    res.sendFile(path.join(__dirname, 'project-dashboard.html'),
+        err => { if (err && !res.headersSent) res.status(404).send('project-dashboard.html not found'); });
+});
+
 app.get('/notes.json', (_req, res) => {
     res.sendFile(path.join(__dirname, 'notes.json'),
         err => { if (err && !res.headersSent) res.status(404).json({ notes: [], lastUpdated: null }); });

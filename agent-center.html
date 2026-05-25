@@ -309,6 +309,9 @@ input,textarea,select{font-family:inherit}
     <button class="nav-tab" data-page="reminders" onclick="switchPage('reminders',this)">
       <span class="tab-icon">⏰</span><span class="tab-text">תזכורות</span>
     </button>
+    <button class="nav-tab" data-page="projects" onclick="switchPage('projects',this)">
+      <span class="tab-icon">📁</span><span class="tab-text">פרויקטים</span>
+    </button>
     <button class="nav-tab" data-page="settings" onclick="switchPage('settings',this)">
       <span class="tab-icon">⚙️</span><span class="tab-text">הגדרות</span>
     </button>
@@ -498,6 +501,68 @@ input,textarea,select{font-family:inherit}
   <div class="data-list" id="reminders-list"></div>
 </div>
 
+<!-- ══ PAGE: PROJECTS ══ -->
+<div class="page" id="page-projects">
+  <div class="section-hdr">
+    <h2><span class="icon">📁</span> פרויקטים <span id="projects-count" style="font-size:.8rem;color:var(--muted2);font-weight:400"></span></h2>
+    <div style="display:flex;gap:7px;align-items:center">
+      <button class="btn btn-secondary btn-sm" id="proj-view-btn" onclick="cycleProjectView()" title="החלף תצוגה">🗂️ כרטיסים</button>
+      <button class="btn btn-primary btn-sm" onclick="toggleForm('project-form')">＋ פרויקט חדש</button>
+    </div>
+  </div>
+
+  <!-- Create form -->
+  <div class="add-form" id="project-form" style="display:none">
+    <div class="settings-field">
+      <label>שם הפרויקט</label>
+      <input type="text" id="proj-name" placeholder="שם הפרויקט..."/>
+    </div>
+    <div class="settings-field">
+      <label>תיאור (אופציונלי)</label>
+      <input type="text" id="proj-desc" placeholder="תיאור קצר..."/>
+    </div>
+    <div class="add-form-row">
+      <div class="settings-field">
+        <label>עדיפות</label>
+        <select id="proj-priority">
+          <option value="low">🟢 נמוכה</option>
+          <option value="medium" selected>🟡 בינונית</option>
+          <option value="high">🔴 גבוהה</option>
+          <option value="critical">🚨 קריטית</option>
+        </select>
+      </div>
+      <div class="settings-field">
+        <label>תאריך יעד</label>
+        <input type="date" id="proj-due"/>
+      </div>
+      <div class="settings-field">
+        <label>צבע</label>
+        <input type="color" id="proj-color" value="#6366f1" style="height:36px;padding:2px 4px;border-radius:6px;cursor:pointer"/>
+      </div>
+    </div>
+    <div class="add-form-actions">
+      <button class="btn btn-secondary btn-sm" onclick="toggleForm('project-form')">ביטול</button>
+      <button class="btn btn-primary btn-sm" onclick="saveProject()">שמור פרויקט</button>
+    </div>
+  </div>
+
+  <!-- AI Insights bar -->
+  <div id="proj-insights-bar" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;font-size:.85rem;line-height:1.6;white-space:pre-line"></div>
+
+  <!-- Project cards / timeline toggle -->
+  <div id="projects-cards" class="data-list"></div>
+  <div id="projects-timeline" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;padding:16px"></div>
+
+  <!-- Project detail drawer -->
+  <div id="proj-detail-drawer" style="display:none;background:var(--card);border:1px solid var(--accent);border-radius:var(--radius);padding:0;margin-top:12px;overflow:hidden">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-weight:700;font-size:1rem" id="proj-detail-title">פרטי פרויקט</div>
+      <button class="btn btn-secondary btn-sm" onclick="closeProjectDetail()">✕ סגור</button>
+    </div>
+    <div id="proj-detail-body" style="padding:16px;display:flex;flex-direction:column;gap:14px"></div>
+  </div>
+</div>
+
 <!-- ══ PAGE: SETTINGS ══ -->
 <div class="page" id="page-settings">
   <div class="section-hdr">
@@ -676,6 +741,7 @@ function switchPage(id, btn) {
   if (id === 'memory') loadMemories();
   if (id === 'tasks') loadTasks();
   if (id === 'reminders') loadReminders();
+  if (id === 'projects') loadProjects();
   if (id === 'settings') loadSettings();
   if (id === 'performance') loadPerformance();
 }
@@ -1248,6 +1314,326 @@ async function deleteReminder(id) {
     showToast('נמחק ✓', 'success');
     loadReminders();
   } catch { showToast('שגיאה במחיקה', 'error'); }
+}
+
+/* ═══════════════════════════════════════════════
+   PROJECTS
+═══════════════════════════════════════════════ */
+let projectsData = [];
+let projectViewMode = 'cards'; // 'cards' | 'timeline'
+let openProjectId = null;
+
+const PRIORITY_EMOJI = { low:'🟢', medium:'🟡', high:'🔴', critical:'🚨' };
+const STATUS_LABEL   = { active:'פעיל', paused:'מושהה', completed:'הושלם', archived:'בארכיון' };
+const STATUS_COLOR   = { active:'#22c55e', paused:'#f59e0b', completed:'#6366f1', archived:'#6b7280' };
+
+async function loadProjects() {
+  try {
+    const r = await fetch(BASE + '/projects');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    projectsData = d.projects || [];
+    const active = projectsData.filter(p => p.status === 'active').length;
+    document.getElementById('projects-count').textContent = `(${active} פעילים)`;
+    if (projectViewMode === 'cards') renderProjectCards();
+    else renderProjectTimeline();
+  } catch { showToast('שגיאה בטעינת פרויקטים', 'error'); }
+}
+
+function renderProjectCards() {
+  const el = document.getElementById('projects-cards');
+  if (!projectsData.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--muted2);padding:40px">אין פרויקטים. צור פרויקט חדש!</div>';
+    return;
+  }
+  el.innerHTML = projectsData.map(p => {
+    const progress = calcProgress(p);
+    const bar = buildProgressBar(progress, p.color || '#6366f1');
+    const dueStr = p.due_date ? new Date(p.due_date).toLocaleDateString('he-IL', { day:'numeric', month:'long', year:'numeric' }) : '';
+    const overdue = p.due_date && new Date(p.due_date) < new Date() && p.status === 'active';
+    return `<div class="data-item" style="border-right:4px solid ${p.color || '#6366f1'};cursor:pointer" onclick="openProjectDetail('${p.id}')">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:.95rem;display:flex;align-items:center;gap:6px">
+            ${PRIORITY_EMOJI[p.priority] || '🟡'} ${escHtml(p.name)}
+            <span style="font-size:.72rem;padding:2px 7px;border-radius:10px;background:${STATUS_COLOR[p.status]}22;color:${STATUS_COLOR[p.status]};font-weight:600">${STATUS_LABEL[p.status] || p.status}</span>
+          </div>
+          ${p.description ? `<div style="font-size:.8rem;color:var(--muted2);margin-top:2px">${escHtml(p.description)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          <button class="btn btn-secondary btn-sm" style="padding:3px 8px;font-size:.75rem" onclick="event.stopPropagation();openEditProject('${p.id}')">✏️</button>
+          <button class="btn btn-secondary btn-sm" style="padding:3px 8px;font-size:.75rem;color:#ef4444" onclick="event.stopPropagation();deleteProject('${p.id}','${escHtml(p.name)}')">🗑️</button>
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        ${bar}
+        <div style="font-size:.75rem;color:var(--muted2);margin-top:4px;display:flex;justify-content:space-between">
+          <span>התקדמות: ${progress}%</span>
+          ${dueStr ? `<span style="${overdue ? 'color:#ef4444;font-weight:600' : ''}">${overdue ? '⚠️ ' : '📅 '}${dueStr}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function buildProgressBar(pct, color) {
+  return `<div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden">
+    <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width .4s"></div>
+  </div>`;
+}
+
+function calcProgress(p) {
+  // Optimistic — real progress computed server-side; use local data if we have it
+  if (p._progress !== undefined) return p._progress;
+  return 0;
+}
+
+function renderProjectTimeline() {
+  const el = document.getElementById('projects-timeline');
+  const active = projectsData.filter(p => p.due_date);
+  if (!active.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--muted2);padding:24px">אין פרויקטים עם תאריך יעד להצגה בציר זמן</div>';
+    return;
+  }
+
+  const minDate = new Date(Math.min(...active.map(p => new Date(p.start_date || p.created_at))));
+  const maxDate = new Date(Math.max(...active.map(p => new Date(p.due_date))));
+  const totalMs = maxDate - minDate || 1;
+  const today = new Date();
+  const todayPct = Math.max(0, Math.min(100, ((today - minDate) / totalMs) * 100));
+
+  el.innerHTML = `
+    <div style="font-size:.8rem;font-weight:700;color:var(--muted2);margin-bottom:12px">ציר זמן פרויקטים</div>
+    <div style="position:relative;min-height:${active.length * 40 + 30}px">
+      <div style="position:absolute;top:0;bottom:0;left:${todayPct.toFixed(1)}%;width:2px;background:#ef4444;z-index:2">
+        <div style="position:absolute;top:-18px;left:-12px;font-size:.65rem;background:#ef4444;color:#fff;padding:1px 5px;border-radius:4px;white-space:nowrap">היום</div>
+      </div>
+      ${active.map((p, i) => {
+        const start = new Date(p.start_date || p.created_at);
+        const end = new Date(p.due_date);
+        const left = Math.max(0, ((start - minDate) / totalMs) * 100);
+        const width = Math.max(2, ((end - start) / totalMs) * 100);
+        return `<div style="position:absolute;top:${i*40+24}px;left:${left.toFixed(1)}%;width:${width.toFixed(1)}%;height:24px;background:${p.color||'#6366f1'};border-radius:6px;display:flex;align-items:center;padding:0 8px;cursor:pointer;overflow:hidden;white-space:nowrap;font-size:.75rem;color:#fff;font-weight:600;min-width:30px" onclick="openProjectDetail('${p.id}')" title="${escHtml(p.name)}">${escHtml(p.name)}</div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted2);margin-top:8px;border-top:1px solid var(--border);padding-top:6px">
+      <span>${minDate.toLocaleDateString('he-IL',{day:'numeric',month:'short'})}</span>
+      <span>${maxDate.toLocaleDateString('he-IL',{day:'numeric',month:'short'})}</span>
+    </div>`;
+}
+
+function cycleProjectView() {
+  const btn = document.getElementById('proj-view-btn');
+  if (projectViewMode === 'cards') {
+    projectViewMode = 'timeline';
+    btn.textContent = '📅 ציר זמן';
+    document.getElementById('projects-cards').style.display = 'none';
+    document.getElementById('projects-timeline').style.display = 'block';
+    renderProjectTimeline();
+  } else {
+    projectViewMode = 'cards';
+    btn.textContent = '🗂️ כרטיסים';
+    document.getElementById('projects-cards').style.display = '';
+    document.getElementById('projects-timeline').style.display = 'none';
+    renderProjectCards();
+  }
+}
+
+async function saveProject() {
+  const name = document.getElementById('proj-name').value.trim();
+  if (!name) { showToast('חסר שם פרויקט', 'error'); return; }
+  const body = {
+    name,
+    description: document.getElementById('proj-desc').value.trim() || null,
+    priority: document.getElementById('proj-priority').value,
+    due_date: document.getElementById('proj-due').value || null,
+    color: document.getElementById('proj-color').value,
+  };
+  try {
+    const r = await fetch(BASE + '/projects', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('פרויקט נוצר ✓', 'success');
+    toggleForm('project-form');
+    document.getElementById('proj-name').value = '';
+    document.getElementById('proj-desc').value = '';
+    document.getElementById('proj-due').value = '';
+    loadProjects();
+  } catch { showToast('שגיאה ביצירת פרויקט', 'error'); }
+}
+
+async function deleteProject(id, name) {
+  if (!confirm(`למחוק את הפרויקט "${name}"? כל אבני הדרך שלו יימחקו.`)) return;
+  try {
+    const r = await fetch(BASE + '/projects/' + id, { method:'DELETE' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('פרויקט נמחק ✓', 'success');
+    if (openProjectId === id) closeProjectDetail();
+    loadProjects();
+  } catch { showToast('שגיאה במחיקה', 'error'); }
+}
+
+async function openProjectDetail(id) {
+  openProjectId = id;
+  const drawer = document.getElementById('proj-detail-drawer');
+  drawer.style.display = 'block';
+  document.getElementById('proj-detail-body').innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted2)">טוען...</div>';
+
+  try {
+    const r = await fetch(BASE + '/projects/' + id);
+    const d = await r.json();
+    const { project: p, milestones = [], tasks = [], reminders = [], notes = [] } = d;
+    document.getElementById('proj-detail-title').textContent = p.name;
+
+    const openTasks = tasks.filter(t => !t.done);
+    const doneTasks = tasks.filter(t => t.done);
+    const doneMilestones = milestones.filter(m => m.completed);
+    const allItems = tasks.length + milestones.length;
+    const doneItems = doneTasks.length + doneMilestones.length;
+    const progress = allItems > 0 ? Math.round((doneItems / allItems) * 100) : 0;
+    p._progress = progress;
+
+    document.getElementById('proj-detail-body').innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <span style="padding:3px 10px;border-radius:10px;background:${STATUS_COLOR[p.status]}22;color:${STATUS_COLOR[p.status]};font-weight:600;font-size:.8rem">${STATUS_LABEL[p.status]}</span>
+        <span>${PRIORITY_EMOJI[p.priority]} ${p.priority}</span>
+        ${p.due_date ? `<span>📅 ${new Date(p.due_date).toLocaleDateString('he-IL',{day:'numeric',month:'long',year:'numeric'})}</span>` : ''}
+      </div>
+      ${p.description ? `<div style="font-size:.85rem;color:var(--muted2)">${escHtml(p.description)}</div>` : ''}
+      <div>
+        ${buildProgressBar(progress, p.color || '#6366f1')}
+        <div style="font-size:.78rem;color:var(--muted2);margin-top:4px">${progress}% הושלם (${doneItems}/${allItems} פריטים)</div>
+      </div>
+
+      <!-- Status switcher -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${['active','paused','completed','archived'].map(s =>
+          `<button class="btn btn-sm ${p.status===s?'btn-primary':'btn-secondary'}" onclick="updateProjectStatus('${p.id}','${s}')" style="font-size:.75rem">${STATUS_LABEL[s]}</button>`
+        ).join('')}
+      </div>
+
+      <!-- Milestones -->
+      <div>
+        <div style="font-weight:700;margin-bottom:8px;font-size:.85rem">🏁 אבני דרך (${doneMilestones.length}/${milestones.length})</div>
+        ${milestones.map(m => `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+            <input type="checkbox" ${m.completed?'checked':''} onchange="toggleMilestone('${p.id}','${m.id}',this.checked)" style="cursor:pointer"/>
+            <span style="${m.completed?'text-decoration:line-through;color:var(--muted2)':''}; font-size:.85rem">${escHtml(m.title)}</span>
+            ${m.due_date ? `<span style="font-size:.75rem;color:var(--muted2);margin-right:auto">📅 ${new Date(m.due_date).toLocaleDateString('he-IL',{day:'numeric',month:'short'})}</span>` : '<span style="flex:1"></span>'}
+            <button onclick="deleteMilestone('${p.id}','${m.id}')" style="background:none;border:none;cursor:pointer;color:#ef4444;padding:0;font-size:.8rem">✕</button>
+          </div>`).join('') || '<div style="font-size:.8rem;color:var(--muted2)">אין אבני דרך עדיין</div>'}
+        <div style="margin-top:8px;display:flex;gap:6px">
+          <input type="text" id="new-milestone-title" placeholder="אבן דרך חדשה..." style="flex:1;padding:5px 8px;font-size:.8rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)"/>
+          <input type="date" id="new-milestone-due" style="padding:5px 8px;font-size:.8rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)"/>
+          <button class="btn btn-primary btn-sm" onclick="addMilestone('${p.id}')">＋</button>
+        </div>
+      </div>
+
+      <!-- Tasks -->
+      <div>
+        <div style="font-weight:700;margin-bottom:6px;font-size:.85rem">✅ משימות (${doneTasks.length}/${tasks.length})</div>
+        ${openTasks.slice(0,8).map(t => `<div style="font-size:.82rem;padding:4px 0;border-bottom:1px solid var(--border)33">• ${escHtml(t.content)}</div>`).join('')}
+        ${openTasks.length > 8 ? `<div style="font-size:.78rem;color:var(--muted2)">...ועוד ${openTasks.length-8}</div>` : ''}
+        ${!tasks.length ? '<div style="font-size:.8rem;color:var(--muted2)">אין משימות מקושרות</div>' : ''}
+      </div>
+
+      ${reminders.length ? `<div style="font-size:.82rem"><b>⏰ תזכורות:</b> ${reminders.map(r=>escHtml(r.text)).join(', ')}</div>` : ''}
+      ${notes.length ? `<div style="font-size:.82rem"><b>📝 הערות:</b> ${notes.map(n=>escHtml(n.content||n.title||'')).join(', ')}</div>` : ''}
+    `;
+  } catch { document.getElementById('proj-detail-body').innerHTML = '<div style="color:#ef4444">שגיאה בטעינת פרויקט</div>'; }
+}
+
+function closeProjectDetail() {
+  openProjectId = null;
+  document.getElementById('proj-detail-drawer').style.display = 'none';
+}
+
+async function updateProjectStatus(id, status) {
+  try {
+    const r = await fetch(BASE + '/projects/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ status }) });
+    if (!r.ok) throw new Error();
+    showToast('עודכן ✓', 'success');
+    await loadProjects();
+    openProjectDetail(id);
+  } catch { showToast('שגיאה בעדכון', 'error'); }
+}
+
+async function toggleMilestone(projectId, milestoneId, completed) {
+  try {
+    await fetch(`${BASE}/projects/${projectId}/milestones/${milestoneId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed }),
+    });
+    showToast(completed ? 'אבן דרך הושלמה ✓' : 'אבן דרך נפתחה', 'success');
+    loadProjects();
+  } catch { showToast('שגיאה', 'error'); }
+}
+
+async function addMilestone(projectId) {
+  const title = document.getElementById('new-milestone-title').value.trim();
+  if (!title) return;
+  const due_date = document.getElementById('new-milestone-due').value || null;
+  try {
+    const r = await fetch(`${BASE}/projects/${projectId}/milestones`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, due_date }),
+    });
+    if (!r.ok) throw new Error();
+    showToast('אבן דרך נוספה ✓', 'success');
+    document.getElementById('new-milestone-title').value = '';
+    document.getElementById('new-milestone-due').value = '';
+    await loadProjects();
+    openProjectDetail(projectId);
+  } catch { showToast('שגיאה', 'error'); }
+}
+
+async function deleteMilestone(projectId, milestoneId) {
+  if (!confirm('למחוק אבן דרך זו?')) return;
+  try {
+    await fetch(`${BASE}/projects/${projectId}/milestones/${milestoneId}`, { method:'DELETE' });
+    showToast('נמחק ✓', 'success');
+    await loadProjects();
+    openProjectDetail(projectId);
+  } catch { showToast('שגיאה', 'error'); }
+}
+
+function openEditProject(id) {
+  const p = projectsData.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('proj-name').value = p.name;
+  document.getElementById('proj-desc').value = p.description || '';
+  document.getElementById('proj-priority').value = p.priority || 'medium';
+  document.getElementById('proj-due').value = p.due_date || '';
+  document.getElementById('proj-color').value = p.color || '#6366f1';
+  // Repurpose save button for edit
+  const btn = document.querySelector('#project-form .btn-primary');
+  btn.textContent = 'עדכן פרויקט';
+  btn.onclick = () => updateProjectFields(id);
+  document.getElementById('project-form').style.display = 'block';
+}
+
+async function updateProjectFields(id) {
+  const name = document.getElementById('proj-name').value.trim();
+  if (!name) return;
+  const body = {
+    name,
+    description: document.getElementById('proj-desc').value.trim() || null,
+    priority: document.getElementById('proj-priority').value,
+    due_date: document.getElementById('proj-due').value || null,
+    color: document.getElementById('proj-color').value,
+  };
+  try {
+    const r = await fetch(BASE + '/projects/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error();
+    showToast('פרויקט עודכן ✓', 'success');
+    const form = document.getElementById('project-form');
+    form.style.display = 'none';
+    const btn = form.querySelector('.btn-primary');
+    btn.textContent = 'שמור פרויקט';
+    btn.onclick = saveProject;
+    loadProjects();
+  } catch { showToast('שגיאה', 'error'); }
 }
 
 /* ═══════════════════════════════════════════════

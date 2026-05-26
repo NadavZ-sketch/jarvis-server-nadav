@@ -1864,11 +1864,14 @@ app.get('/projects', async (_req, res) => {
             .from('projects')
             .select('*')
             .order('created_at', { ascending: false });
-        if (error) throw error;
+        if (error) {
+            console.error('GET /projects DB error:', error.message);
+            return res.json({ projects: [] });
+        }
         res.json({ projects: data || [] });
     } catch (err) {
         console.error('GET /projects error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
+        res.json({ projects: [] });
     }
 });
 

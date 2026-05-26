@@ -83,6 +83,8 @@ Allowed intents:
 - 'insight': user asks for AI analysis, tips, or progress insights
 - 'briefing': user wants a full overview / morning briefing of all projects
 - 'link_reminder': user wants to set a reminder for a project deadline
+- 'plan_sprint': user wants to plan the next sprint, asks what tasks to put in the sprint
+- 'detect_conflicts': user asks about scheduling conflicts, overlapping deadlines across projects
 
 Priority rules:
 - "דחוף", "קריטי", "ASAP" → "critical"
@@ -483,6 +485,94 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
             }]);
 
             return { answer: `⏰ הגדרתי תזכורת לפרויקט *${p.name}* ב-${formatDate(parsed.dueDate || p.due_date)} בשעה 09:00` };
+        }
+
+        // ── PLAN SPRINT ───────────────────────────────────────────────────────
+        if (intent === 'plan_sprint') {
+            const matches = await findProject(supabase, parsed.projectName);
+            if (!matches.length) return { answer: `לא מצאתי פרויקט בשם "${parsed.projectName}".` };
+            const p = matches[0];
+
+            const { data: backlog } = await supabase
+                .from('tasks')
+                .select('id, content, story_points, priority')
+                .eq('project_id', p.id)
+                .is('sprint_id', null)
+                .eq('done', false);
+
+            if (!backlog || backlog.length === 0) {
+                return { answer: `הבאקלוג של פרויקט *${p.name}* ריק — אין משימות לספרינט.` };
+            }
+
+            const taskList = backlog.map(t => `- "${t.content}" (עדיפות: ${t.priority || 'medium'}, נקודות: ${t.story_points || '?'})`).join('\n');
+            const sprintPrompt = `הבאקלוג של פרויקט "${p.name}":\n${taskList}\n\nתכנן ספרינט של 2 שבועות. אילו משימות לכלול? הצע מטרת ספרינט ואומדן נקודות לכל משימה. החזר JSON: {"goal":"...","tasks":[{"id":"...","content":"...","points":N}]}`;
+
+            const raw = await callGemma4(sprintPrompt, useLocal, 600);
+            const match = raw.match(/\{[\s\S]*\}/);
+            let plan = null;
+            if (match) { try { plan = JSON.parse(match[0]); } catch (_) {} }
+
+            if (!plan) return { answer: 'לא הצלחתי לתכנן את הספרינט. נסה שוב.' };
+
+            let answer = `📋 *תכנון ספרינט לפרויקט ${p.name}:*\n\n`;
+            answer += `🎯 מטרה: ${plan.goal}\n\n`;
+            answer += `📌 משימות מוצעות:\n`;
+            (plan.tasks || []).forEach(t => { answer += `• ${t.content} — ${t.points} נקודות\n`; });
+
+            return { answer };
+        }
+
+        // ── DETECT CONFLICTS ──────────────────────────────────────────────────
+        if (intent === 'detect_conflicts') {
+            const today = new Date(todayISO());
+            const twoWeeksOut = new Date(today);
+            twoWeeksOut.setDate(twoWeeksOut.getDate() + 14);
+
+            const { data: upcomingTasks } = await supabase
+                .from('tasks')
+                .select('content, due_date, project_id')
+                .not('due_date', 'is', null)
+                .eq('done', false)
+                .gte('due_date', todayISO())
+                .lte('due_date', twoWeeksOut.toISOString().slice(0, 10));
+
+            const { data: upcomingMilestones } = await supabase
+                .from('project_milestones')
+                .select('title, due_date, project_id')
+                .not('due_date', 'is', null)
+                .eq('completed', false)
+                .gte('due_date', todayISO())
+                .lte('due_date', twoWeeksOut.toISOString().slice(0, 10));
+
+            const byDate = {};
+            for (const t of (upcomingTasks || [])) {
+                const d = t.due_date;
+                if (!byDate[d]) byDate[d] = [];
+                byDate[d].push(t.content);
+            }
+            for (const m of (upcomingMilestones || [])) {
+                const d = m.due_date;
+                if (!byDate[d]) byDate[d] = [];
+                byDate[d].push(`🏁 ${m.title}`);
+            }
+
+            const conflicts = Object.entries(byDate)
+                .filter(([, items]) => items.length >= 3)
+                .sort(([a], [b]) => a.localeCompare(b));
+
+            if (conflicts.length === 0) {
+                return { answer: '✅ לא מצאתי קונפליקטים בלוח הזמנים לשבועיים הקרובים.' };
+            }
+
+            let answer = `⚠️ *קונפליקטים בלוח הזמנים — שבועיים קרובים:*\n\n`;
+            for (const [date, items] of conflicts) {
+                answer += `📅 ${formatDate(date)} (${items.length} דדליינים):\n`;
+                items.forEach(i => { answer += `  • ${i}\n`; });
+                answer += '\n';
+            }
+            answer += '💡 שקול לפזר חלק מהמשימות לתאריכים אחרים.';
+
+            return { answer };
         }
 
         return { answer: 'לא הבנתי מה לעשות עם הפרויקט. נסה: "צור פרויקט", "הצג פרויקטים", "מה הסטטוס של פרויקט X", "הוסף משימה לפרויקט", "תובנות פרויקטים".' };

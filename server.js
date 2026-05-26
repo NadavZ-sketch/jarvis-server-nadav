@@ -1874,11 +1874,19 @@ app.get('/projects', async (_req, res) => {
 
 app.post('/projects', async (req, res) => {
     try {
-        const { name, description, status, priority, start_date, due_date, color } = req.body;
+        const { name, description, status, priority, start_date, due_date, color, methodology, method_config } = req.body;
         if (!name) return res.status(400).json({ error: 'name is required' });
         const { data, error } = await supabase
             .from('projects')
-            .insert([{ name, description, status: status || 'active', priority: priority || 'medium', start_date, due_date, color: color || '#6366f1' }])
+            .insert([{
+                name, description,
+                status: status || 'active',
+                priority: priority || 'medium',
+                start_date, due_date,
+                color: color || '#6366f1',
+                methodology: methodology || 'kanban',
+                method_config: method_config || {},
+            }])
             .select()
             .single();
         if (error) throw error;
@@ -1898,14 +1906,15 @@ app.get('/projects/:id', async (req, res) => {
             .single();
         if (error || !project) return res.status(404).json({ error: 'Not found' });
 
-        const [{ data: milestones }, { data: tasks }, { data: reminders }, { data: notes }] = await Promise.all([
+        const [{ data: milestones }, { data: tasks }, { data: reminders }, { data: notes }, { data: sprints }] = await Promise.all([
             supabase.from('project_milestones').select('*').eq('project_id', project.id).order('due_date'),
             supabase.from('tasks').select('*').eq('project_id', project.id).order('created_at'),
             supabase.from('reminders').select('*').eq('project_id', project.id).order('scheduled_time'),
             supabase.from('notes').select('*').eq('project_id', project.id).order('created_at'),
+            supabase.from('project_sprints').select('*').eq('project_id', project.id).order('start_date', { ascending: false }),
         ]);
 
-        res.json({ project, milestones: milestones || [], tasks: tasks || [], reminders: reminders || [], notes: notes || [] });
+        res.json({ project, milestones: milestones || [], tasks: tasks || [], reminders: reminders || [], notes: notes || [], sprints: sprints || [] });
     } catch (err) {
         console.error('GET /projects/:id error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
@@ -2000,6 +2009,191 @@ app.delete('/projects/:id/milestones/:mId', async (req, res) => {
         if (error) throw error;
         res.json({ ok: true });
     } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── Project Sprints (Scrum) ──────────────────────────────────────────────────
+
+app.get('/projects/:id/sprints', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('project_sprints')
+            .select('*')
+            .eq('project_id', req.params.id)
+            .order('start_date', { ascending: false });
+        if (error) throw error;
+        res.json({ sprints: data || [] });
+    } catch (err) {
+        console.error('GET /projects/:id/sprints error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/projects/:id/sprints', async (req, res) => {
+    try {
+        const { name, goal, start_date, end_date, capacity_points } = req.body;
+        if (!name || !start_date || !end_date) {
+            return res.status(400).json({ error: 'name, start_date ו-end_date נדרשים' });
+        }
+        const { data, error } = await supabase
+            .from('project_sprints')
+            .insert([{ project_id: req.params.id, name, goal, start_date, end_date, capacity_points: capacity_points || 0 }])
+            .select()
+            .single();
+        if (error) throw error;
+        res.json({ sprint: data });
+    } catch (err) {
+        console.error('POST /projects/:id/sprints error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.put('/projects/:id/sprints/:sId', async (req, res) => {
+    try {
+        const updates = { ...req.body, updated_at: new Date().toISOString() };
+        delete updates.id;
+        delete updates.project_id;
+        const { data, error } = await supabase
+            .from('project_sprints')
+            .update(updates)
+            .eq('id', req.params.sId)
+            .eq('project_id', req.params.id)
+            .select()
+            .single();
+        if (error) throw error;
+        res.json({ sprint: data });
+    } catch (err) {
+        console.error('PUT /projects/:id/sprints/:sId error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.delete('/projects/:id/sprints/:sId', async (req, res) => {
+    try {
+        const { error } = await supabase
+            .from('project_sprints')
+            .delete()
+            .eq('id', req.params.sId)
+            .eq('project_id', req.params.id);
+        if (error) throw error;
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /projects/:id/sprints/:sId error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/projects/:id/sprints/:sId/start', async (req, res) => {
+    try {
+        const { data: existing } = await supabase
+            .from('project_sprints')
+            .select('id')
+            .eq('project_id', req.params.id)
+            .eq('status', 'active')
+            .neq('id', req.params.sId);
+        if (existing && existing.length > 0) {
+            return res.status(409).json({ error: 'כבר קיים ספרינט פעיל לפרויקט זה' });
+        }
+        const { data, error } = await supabase
+            .from('project_sprints')
+            .update({ status: 'active', updated_at: new Date().toISOString() })
+            .eq('id', req.params.sId)
+            .eq('project_id', req.params.id)
+            .select()
+            .single();
+        if (error) throw error;
+        res.json({ sprint: data });
+    } catch (err) {
+        if (err.status === 409) return res.status(409).json({ error: err.message });
+        console.error('POST .../start error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/projects/:id/sprints/:sId/complete', async (req, res) => {
+    try {
+        await supabase
+            .from('tasks')
+            .update({ sprint_id: null })
+            .eq('sprint_id', req.params.sId)
+            .eq('done', false);
+        const { data, error } = await supabase
+            .from('project_sprints')
+            .update({ status: 'completed', updated_at: new Date().toISOString() })
+            .eq('id', req.params.sId)
+            .eq('project_id', req.params.id)
+            .select()
+            .single();
+        if (error) throw error;
+        res.json({ sprint: data });
+    } catch (err) {
+        console.error('POST .../complete error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── Project AI Insights ──────────────────────────────────────────────────────
+
+const _projectInsightsCache = new Map(); // key: `${projectId}:${methodology}`, value: {text, ts}
+
+app.post('/projects/:id/ai-insights', async (req, res) => {
+    try {
+        const { methodology } = req.body || {};
+        const cacheKey = `${req.params.id}:${methodology || 'general'}`;
+        const cached = _projectInsightsCache.get(cacheKey);
+        if (cached && (Date.now() - cached.ts) < 30 * 60 * 1000) {
+            return res.json({ insights: cached.text, cached: true });
+        }
+
+        const { data: project } = await supabase.from('projects').select('*').eq('id', req.params.id).single();
+        if (!project) return res.status(404).json({ error: 'פרויקט לא נמצא' });
+
+        const [{ data: tasks }, { data: milestones }, { data: sprints }] = await Promise.all([
+            supabase.from('tasks').select('content,done,story_points,kanban_column,eisenhower_quad,sprint_id').eq('project_id', req.params.id),
+            supabase.from('project_milestones').select('title,completed').eq('project_id', req.params.id),
+            supabase.from('project_sprints').select('*').eq('project_id', req.params.id),
+        ]);
+
+        const openTasks = (tasks || []).filter(t => !t.done).length;
+        const doneTasks = (tasks || []).filter(t => t.done).length;
+        const activeSprint = (sprints || []).find(s => s.status === 'active');
+
+        let contextLines = [
+            `פרויקט: "${project.name}". מתודולוגיה: ${methodology || project.methodology || 'kanban'}.`,
+            `משימות פתוחות: ${openTasks}, הושלמו: ${doneTasks}.`,
+        ];
+        if (methodology === 'scrum' || project.methodology === 'scrum') {
+            if (activeSprint) {
+                const sprintDone = (tasks || []).filter(t => t.done && t.sprint_id === activeSprint.id).reduce((s, t) => s + (t.story_points || 1), 0);
+                const sprintTotal = (tasks || []).filter(t => t.sprint_id === activeSprint.id).reduce((s, t) => s + (t.story_points || 1), 0);
+                contextLines.push(`ספרינט פעיל: "${activeSprint.name}", נקודות שהושלמו: ${sprintDone}/${sprintTotal}.`);
+            } else {
+                contextLines.push('אין ספרינט פעיל כרגע.');
+            }
+        } else if (methodology === 'kanban' || project.methodology === 'kanban') {
+            const cols = { todo: 0, in_progress: 0, review: 0, done: 0 };
+            (tasks || []).forEach(t => { if (cols[t.kanban_column] !== undefined) cols[t.kanban_column]++; });
+            contextLines.push(`עמודות Kanban: לביצוע=${cols.todo}, בתהליך=${cols.in_progress}, בבדיקה=${cols.review}, הושלם=${cols.done}.`);
+        } else if (methodology === 'eisenhower' || project.methodology === 'eisenhower') {
+            const quads = { q1: 0, q2: 0, q3: 0, q4: 0, null: 0 };
+            (tasks || []).forEach(t => { const k = t.eisenhower_quad || 'null'; if (quads[k] !== undefined) quads[k]++; });
+            contextLines.push(`מטריצה: Q1(דחוף+חשוב)=${quads.q1}, Q2(חשוב)=${quads.q2}, Q3(דחוף)=${quads.q3}, Q4(שאר)=${quads.q4}, לא מסווג=${quads.null}.`);
+        }
+
+        const prompt = contextLines.join('\n') + '\nתן 3 תובנות קצרות בעברית על מצב הפרויקט ומה כדאי לשפר. החזר JSON: {"insights":["...","...","..."]}';
+        const raw = await callGemma4(prompt, false, 300);
+        const match = raw.match(/\{[\s\S]*\}/);
+        let insights = [];
+        if (match) {
+            try { insights = JSON.parse(match[0]).insights || []; } catch (_) {}
+        }
+        if (!insights.length) insights = [raw.trim()];
+
+        _projectInsightsCache.set(cacheKey, { text: insights, ts: Date.now() });
+        res.json({ insights, cached: false });
+    } catch (err) {
+        console.error('POST /projects/:id/ai-insights error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

@@ -7,6 +7,7 @@ import '../history_screen.dart';
 import '../transitions/slide_fade_route.dart';
 import 'progress_map_screen.dart';
 import 'lists_screen.dart';
+import 'projects_hub_screen.dart';
 
 class AppDrawer extends StatelessWidget {
   final AppSettings settings;
@@ -140,6 +141,19 @@ class AppDrawer extends StatelessWidget {
                             onSwitchToChat?.call(cmd);
                           },
                         ),
+                      ),
+                    );
+                  },
+                ),
+                _DrawerTile(
+                  icon: Icons.folder_open_rounded,
+                  label: 'פרויקטים',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      SlideFadeRoute(
+                        page: ProjectsHubScreen(settings: settings),
                       ),
                     );
                   },

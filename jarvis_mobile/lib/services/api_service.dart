@@ -82,11 +82,24 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> addTask(String content,
-      {String priority = 'medium'}) async {
+      {String priority = 'medium',
+      String? projectId,
+      String? kanbanColumn,
+      String? eisenhowerQuad,
+      String? sprintId,
+      int? storyPoints,
+      String? dueDate}) async {
+    final body = <String, dynamic>{'content': content, 'priority': priority};
+    if (projectId != null) body['project_id'] = projectId;
+    if (kanbanColumn != null) body['kanban_column'] = kanbanColumn;
+    if (eisenhowerQuad != null) body['eisenhower_quad'] = eisenhowerQuad;
+    if (sprintId != null) body['sprint_id'] = sprintId;
+    if (storyPoints != null) body['story_points'] = storyPoints;
+    if (dueDate != null) body['due_date'] = dueDate;
     final res = await _client.post(
       _uri('/tasks'),
       headers: _headers({'Content-Type': 'application/json'}),
-      body: jsonEncode({'content': content, 'priority': priority}),
+      body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
@@ -96,12 +109,19 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> updateTask(String id,
-      {bool? done, String? dueDate, String? content, String? priority}) async {
+      {bool? done, String? dueDate, String? content, String? priority,
+       String? kanbanColumn, String? eisenhowerQuad, String? sprintId,
+       int? storyPoints, String? taskStartDate}) async {
     final body = <String, dynamic>{};
-    if (done     != null) body['done']     = done;
-    if (dueDate  != null) body['due_date'] = dueDate;
-    if (content  != null) body['content']  = content;
-    if (priority != null) body['priority'] = priority;
+    if (done           != null) body['done']            = done;
+    if (dueDate        != null) body['due_date']        = dueDate;
+    if (content        != null) body['content']         = content;
+    if (priority       != null) body['priority']        = priority;
+    if (kanbanColumn   != null) body['kanban_column']   = kanbanColumn;
+    if (eisenhowerQuad != null) body['eisenhower_quad'] = eisenhowerQuad;
+    if (sprintId       != null) body['sprint_id']       = sprintId;
+    if (storyPoints    != null) body['story_points']    = storyPoints;
+    if (taskStartDate  != null) body['task_start_date'] = taskStartDate;
     final res = await _client.put(
       _uri('/tasks/$id'),
       headers: _headers({'Content-Type': 'application/json'}),
@@ -488,5 +508,153 @@ class ApiService {
 
   Future<void> deleteUserProfile() async {
     await _client.delete(_uri('/user-profile')).timeout(_timeout);
+  }
+
+  // ─── Projects ─────────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getProjects() async {
+    final res = await _client.get(_uri('/projects'), headers: _baseHeaders).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['projects'] ?? []);
+  }
+
+  Future<Map<String, dynamic>> createProject(Map<String, dynamic> body) async {
+    final res = await _client.post(
+      _uri('/projects'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return data['project'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getProjectDetail(String id) async {
+    final res = await _client.get(_uri('/projects/$id'), headers: _baseHeaders).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateProject(String id, Map<String, dynamic> body) async {
+    final res = await _client.put(
+      _uri('/projects/$id'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return data['project'] as Map<String, dynamic>;
+  }
+
+  Future<void> deleteProject(String id) async {
+    await _client.delete(_uri('/projects/$id'), headers: _baseHeaders).timeout(_timeout);
+  }
+
+  Future<Map<String, dynamic>> createMilestone(
+      String projectId, String title, {String? dueDate}) async {
+    final res = await _client.post(
+      _uri('/projects/$projectId/milestones'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'title': title, if (dueDate != null) 'due_date': dueDate}),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return data['milestone'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateMilestone(
+      String projectId, String milestoneId, Map<String, dynamic> body) async {
+    final res = await _client.put(
+      _uri('/projects/$projectId/milestones/$milestoneId'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return data['milestone'] as Map<String, dynamic>;
+  }
+
+  Future<void> deleteMilestone(String projectId, String milestoneId) async {
+    await _client
+        .delete(_uri('/projects/$projectId/milestones/$milestoneId'),
+            headers: _baseHeaders)
+        .timeout(_timeout);
+  }
+
+  Future<List<Map<String, dynamic>>> getProjectInsights(String projectId, String methodology) async {
+    final res = await _client.post(
+      _uri('/projects/$projectId/ai-insights'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'methodology': methodology}),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    final raw = data['insights'];
+    if (raw is List) return raw.map((e) => {'text': e.toString()}).toList();
+    return [];
+  }
+
+  // ─── Sprints ──────────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getSprints(String projectId) async {
+    final res = await _client.get(_uri('/projects/$projectId/sprints'), headers: _baseHeaders).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['sprints'] ?? []);
+  }
+
+  Future<Map<String, dynamic>> createSprint(String projectId, Map<String, dynamic> body) async {
+    final res = await _client.post(
+      _uri('/projects/$projectId/sprints'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return data['sprint'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateSprint(String projectId, String sprintId, Map<String, dynamic> body) async {
+    final res = await _client.put(
+      _uri('/projects/$projectId/sprints/$sprintId'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return data['sprint'] as Map<String, dynamic>;
+  }
+
+  Future<void> deleteSprint(String projectId, String sprintId) async {
+    await _client.delete(_uri('/projects/$projectId/sprints/$sprintId'), headers: _baseHeaders).timeout(_timeout);
+  }
+
+  Future<Map<String, dynamic>> startSprint(String projectId, String sprintId) async {
+    final res = await _client.post(
+      _uri('/projects/$projectId/sprints/$sprintId/start'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({}),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return data['sprint'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> completeSprint(String projectId, String sprintId) async {
+    final res = await _client.post(
+      _uri('/projects/$projectId/sprints/$sprintId/complete'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({}),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return data['sprint'] as Map<String, dynamic>;
+  }
+
+  // ─── Task methodology fields ───────────────────────────────────────────────
+
+  Future<void> updateTaskKanban(String taskId, String column) async {
+    await updateTask(taskId, kanbanColumn: column);
+  }
+
+  Future<void> updateTaskEisenhower(String taskId, String? quad) async {
+    await updateTask(taskId, eisenhowerQuad: quad);
+  }
+
+  Future<void> updateTaskSprint(String taskId, String? sprintId) async {
+    await updateTask(taskId, sprintId: sprintId);
+  }
+
+  Future<void> updateTaskStoryPoints(String taskId, int? points) async {
+    await updateTask(taskId, storyPoints: points);
   }
 }

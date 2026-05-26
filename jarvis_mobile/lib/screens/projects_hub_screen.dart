@@ -1085,7 +1085,7 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
         'start_date': _startDate!.toIso8601String().substring(0, 10),
       if (_dueDate != null)
         'due_date': _dueDate!.toIso8601String().substring(0, 10),
-      'status': 'planning',
+      'status': 'active',
     };
 
     try {

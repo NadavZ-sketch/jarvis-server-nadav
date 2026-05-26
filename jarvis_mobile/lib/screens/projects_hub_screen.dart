@@ -1502,13 +1502,4 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
       ),
     );
   }
-
-  Color _parseColor(String hex) {
-    try {
-      final h = hex.replaceAll('#', '');
-      return Color(int.parse('FF$h', radix: 16));
-    } catch (_) {
-      return JC.blue500;
-    }
-  }
 }

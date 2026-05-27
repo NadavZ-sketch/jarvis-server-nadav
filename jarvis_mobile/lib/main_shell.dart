@@ -417,6 +417,7 @@ class _QuickSettingsSheetState extends State<_QuickSettingsSheet> {
                         temperature: _s.temperature, responseLength: _s.responseLength,
                         notificationsEnabled: _s.notificationsEnabled,
                         quietHoursStart: _s.quietHoursStart, quietHoursEnd: _s.quietHoursEnd,
+                        homeCardOrder: _s.homeCardOrder, homeCardsHidden: _s.homeCardsHidden,
                       );
                       _update(updated);
                     },

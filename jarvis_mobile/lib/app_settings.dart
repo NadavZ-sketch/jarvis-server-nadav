@@ -37,6 +37,10 @@ class AppSettings {
   int quietHoursStart; // hour 0-23
   int quietHoursEnd;   // hour 0-23
 
+  // ── Home screen layout ──
+  List<String> homeCardOrder;   // ordered card ids; empty = registry default
+  Set<String> homeCardsHidden;  // card ids the user hid
+
   static const String cloudServerUrl = 'https://jarvis-server-nadav.onrender.com';
 
   String get serverUrl => useLocalServer ? localServerUrl : cloudServerUrl;
@@ -66,7 +70,10 @@ class AppSettings {
     this.notificationsEnabled = true,
     this.quietHoursStart = 22,
     this.quietHoursEnd = 8,
-  });
+    List<String>? homeCardOrder,
+    Set<String>? homeCardsHidden,
+  })  : homeCardOrder = homeCardOrder ?? [],
+        homeCardsHidden = homeCardsHidden ?? {};
 
   static AppTheme _parseTheme(String? name) {
     if (name == null) return AppTheme.navyDark;
@@ -137,6 +144,8 @@ class AppSettings {
       notificationsEnabled: prefs.getBool('notificationsEnabled') ?? true,
       quietHoursStart:  prefs.getInt('quietHoursStart')     ?? 22,
       quietHoursEnd:    prefs.getInt('quietHoursEnd')       ?? 8,
+      homeCardOrder:    prefs.getStringList('homeCardOrder') ?? [],
+      homeCardsHidden:  (prefs.getStringList('homeCardsHidden') ?? []).toSet(),
     );
   }
 
@@ -166,6 +175,8 @@ class AppSettings {
     await prefs.setBool('notificationsEnabled', notificationsEnabled);
     await prefs.setInt('quietHoursStart',   quietHoursStart);
     await prefs.setInt('quietHoursEnd',     quietHoursEnd);
+    await prefs.setStringList('homeCardOrder',  homeCardOrder);
+    await prefs.setStringList('homeCardsHidden', homeCardsHidden.toList());
   }
 
   // Returns true if [hour] (0-23) falls inside the quiet window.

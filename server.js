@@ -1879,11 +1879,13 @@ app.post('/projects', async (req, res) => {
     try {
         const { name, description, status, priority, start_date, due_date, color, methodology, method_config } = req.body;
         if (!name) return res.status(400).json({ error: 'name is required' });
+        const validStatuses = ['active', 'paused', 'completed', 'archived'];
+        const safeStatus = validStatuses.includes(status) ? status : 'active';
         const { data, error } = await supabase
             .from('projects')
             .insert([{
                 name, description,
-                status: status || 'active',
+                status: safeStatus,
                 priority: priority || 'medium',
                 start_date, due_date,
                 color: color || '#6366f1',

@@ -84,6 +84,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       notificationsEnabled: w.notificationsEnabled,
       quietHoursStart:  w.quietHoursStart,
       quietHoursEnd:    w.quietHoursEnd,
+      homeCardOrder:    w.homeCardOrder,
+      homeCardsHidden:  w.homeCardsHidden,
     );
     _assistantNameCtrl  = TextEditingController(text: _s.assistantName);
     _userNameCtrl       = TextEditingController(text: _s.userName);

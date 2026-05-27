@@ -4,6 +4,16 @@ import 'package:flutter/material.dart';
 import '../../app_settings.dart';
 import '../../services/api_service.dart';
 
+/// Topics the user can steer the Jarvis insight toward.
+const List<String> kInsightTopics = [
+  'מיקוד',
+  'אנרגיה',
+  'הרגלים',
+  'החלטות',
+  'איזון',
+  'השראה',
+];
+
 /// Owns every piece of state the home screen renders and exposes optimistic
 /// mutations. Cards listen to this via [AnimatedBuilder]/[ListenableBuilder] so
 /// the screen itself stays a thin shell. Auto-refreshes on a timer and when the
@@ -13,7 +23,8 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       : api = ApiService(settings);
 
   final AppSettings settings;
-  final VoidCallback? onNavigateToChat;
+  // Switches to the chat tab; pass [command] to pre-fill/send a message.
+  final void Function({String? command})? onNavigateToChat;
   final ApiService api;
 
   static const _autoRefreshInterval = Duration(seconds: 60);
@@ -39,6 +50,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   String jarvisInsight = '';
   bool insightLoading = true;
   String? insightError;
+  String? insightTopic; // null = general; otherwise one of kInsightTopics
 
   // ── Transient UI state ──
   final Set<String> postponed = {};
@@ -174,7 +186,12 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     insightError = null;
     notifyListeners();
     try {
-      final base = _insightPrompts[Random().nextInt(_insightPrompts.length)];
+      final String base;
+      if (insightTopic != null) {
+        base = 'תן לי תובנה קצרה ומעשית בנושא "${insightTopic!}", בעברית, 2 שורות';
+      } else {
+        base = _insightPrompts[Random().nextInt(_insightPrompts.length)];
+      }
       final prompt = '$base\n$_dayContextLine'.trim();
       final r = await api.askJarvis(prompt, settings);
       jarvisInsight = r['answer'] as String? ?? '';
@@ -184,6 +201,17 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       insightLoading = false;
     }
     notifyListeners();
+  }
+
+  void setInsightTopic(String? topic) {
+    insightTopic = topic;
+    loadJarvisInsight();
+  }
+
+  Future<void> insightToTask() async {
+    final text = jarvisInsight.trim();
+    if (text.isEmpty) return;
+    await addTask(text);
   }
 
   // ───────────────────────────────────────────────────────────────────────────

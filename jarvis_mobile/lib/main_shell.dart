@@ -207,7 +207,12 @@ class _MainShellState extends State<MainShell> {
               // 0 — Smart Day Manager (home)
               SmartProductivityPreviewScreen(
                 settings: _settings,
-                onNavigateToChat: () => _onTabTapped(1),
+                onNavigateToChat: ({command}) {
+                  if (command != null && command.isNotEmpty) {
+                    setState(() => _pendingChatCommand = command);
+                  }
+                  _onTabTapped(1);
+                },
               ),
               // 1 — Chat (main screen)
               ChatScreen(

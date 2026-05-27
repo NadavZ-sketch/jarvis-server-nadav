@@ -2,7 +2,18 @@ function createTasksController({ supabase }) {
   return {
     async list(_req, res) {
       try {
-        const { data, error } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
+        // Embed subtasks; fall back to a plain select if the subtasks relation
+        // isn't present yet (e.g. migration not applied on this environment).
+        let { data, error } = await supabase
+          .from('tasks')
+          .select('*, subtasks(id, content, done, created_at)')
+          .order('created_at', { ascending: false });
+        if (error) {
+          ({ data, error } = await supabase
+            .from('tasks')
+            .select('*')
+            .order('created_at', { ascending: false }));
+        }
         if (error) throw error;
         res.json({ tasks: data || [] });
       } catch (err) {

@@ -10,6 +10,8 @@ import '../widgets/kanban_board.dart';
 import '../widgets/scrum_view.dart';
 import '../widgets/eisenhower_matrix.dart';
 import '../widgets/gantt_chart.dart';
+import '../widgets/task_edit_sheet.dart';
+import 'home/home_helpers.dart' show guardComplete, openSubtaskCount;
 
 // ─── ProjectDetailScreen ──────────────────────────────────────────────────────
 
@@ -360,6 +362,12 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           child: ListTile(
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            onTap: () => showTaskEditSheet(
+              context,
+              settings: widget.settings,
+              task: task,
+              onChanged: () => setState(() {}),
+            ),
             leading: Checkbox(
               value: isDone,
               activeColor: JC.green500,
@@ -377,16 +385,19 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                 decoration: isDone ? TextDecoration.lineThrough : null,
               ),
             ),
-            subtitle: task['due_date'] != null
-                ? Text(
-                    _shortDate(task['due_date']?.toString()),
-                    textDirection: TextDirection.rtl,
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'Heebo',
-                        color: JC.textMuted),
-                  )
-                : null,
+            subtitle: () {
+              final due = task['due_date'];
+              final openSubs = openSubtaskCount(task);
+              final parts = <String>[
+                if (due != null) _shortDate(due.toString()),
+                if (openSubs > 0) '☑ $openSubs תתי-משימות פתוחות',
+              ];
+              if (parts.isEmpty) return null;
+              return Text(parts.join('  ·  '),
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                      fontSize: 11, fontFamily: 'Heebo', color: JC.textMuted));
+            }(),
             trailing: Container(
               width: 10,
               height: 10,
@@ -1359,6 +1370,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
 
   Future<void> _toggleTask(Map<String, dynamic> task, bool done) async {
     final taskId = task['id']?.toString() ?? '';
+    if (done && openSubtaskCount(task) > 0) {
+      final ok = await guardComplete(context, task);
+      if (!ok) return;
+    }
     setState(() {
       final idx = _tasks.indexWhere((t) => t['id'] == task['id']);
       if (idx != -1) _tasks[idx]['done'] = done;

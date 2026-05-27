@@ -84,9 +84,9 @@ class TasksCard extends StatelessWidget {
         ] else ...[
           const SizedBox(height: 12),
           if (highTasks.isNotEmpty)
-            _group('דחוף', const Color(0xFFEF4444), highTasks),
+            _group(context, 'דחוף', const Color(0xFFEF4444), highTasks),
           if (starredTasks.isNotEmpty)
-            _group('מסומן חשוב ⭐', const Color(0xFFF59E0B), starredTasks),
+            _group(context, 'מסומן חשוב ⭐', const Color(0xFFF59E0B), starredTasks),
         ],
         if (otherCount > 0) ...[
           const SizedBox(height: 6),
@@ -102,7 +102,8 @@ class TasksCard extends StatelessWidget {
     );
   }
 
-  Widget _group(String label, Color color, List<Map<String, dynamic>> tasks) {
+  Widget _group(BuildContext context, String label, Color color,
+      List<Map<String, dynamic>> tasks) {
     const maxShown = 4;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -126,7 +127,7 @@ class TasksCard extends StatelessWidget {
                   color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
         ]),
         const SizedBox(height: 6),
-        ...tasks.take(maxShown).map(_row),
+        ...tasks.take(maxShown).map((t) => _row(context, t)),
         if (tasks.length > maxShown)
           Padding(
             padding: const EdgeInsets.only(top: 2),
@@ -138,13 +139,15 @@ class TasksCard extends StatelessWidget {
     );
   }
 
-  Widget _row(Map<String, dynamic> task) {
+  Widget _row(BuildContext context, Map<String, dynamic> task) {
     final id = task['id'].toString();
     final content = task['content'] as String? ?? '—';
     final priority = task['priority'] as String?;
     final isHigh = (priority ?? '').toString().toLowerCase() == 'high';
     final isImportant = c.markedImportant.contains(id);
     final accent = isHigh ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
+    final subs = subtasksOf(task);
+    final openSubs = subs.where((s) => s['done'] != true).length;
 
     return Dismissible(
       key: ValueKey('task-$id'),
@@ -155,7 +158,7 @@ class TasksCard extends StatelessWidget {
           const Color(0xFF3B82F6), Icons.schedule_rounded, 'דחה'),
       confirmDismiss: (dir) async {
         if (dir == DismissDirection.startToEnd) {
-          c.completeTask(task);
+          await tryCompleteTask(context, c, task);
           return false; // controller handles removal + animation
         } else {
           c.postponeTask(task);
@@ -172,7 +175,7 @@ class TasksCard extends StatelessWidget {
         ),
         child: Row(children: [
           GestureDetector(
-            onTap: () => c.completeTask(task),
+            onTap: () => tryCompleteTask(context, c, task),
             child: Container(
               width: 22,
               height: 22,
@@ -196,13 +199,33 @@ class TasksCard extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(content,
-                style: TextStyle(
-                  color: JC.textPrimary,
-                  fontSize: 13,
-                  fontFamily: 'Heebo',
-                  fontWeight: FontWeight.w600,
-                )),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(content,
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 13,
+                      fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w600,
+                    )),
+                if (subs.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.checklist_rounded,
+                        size: 11, color: JC.textMuted),
+                    const SizedBox(width: 3),
+                    Text('${subs.length - openSubs}/${subs.length} תתי-משימות',
+                        style: TextStyle(
+                            color: openSubs > 0
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFF22C55E),
+                            fontSize: 10,
+                            fontFamily: 'Heebo')),
+                  ]),
+                ],
+              ],
+            ),
           ),
           const SizedBox(width: 8),
           PriorityBadge(priority),
@@ -220,6 +243,11 @@ class TasksCard extends StatelessWidget {
         ]),
       ),
     );
+  }
+
+  Future<void> tryCompleteTask(
+      BuildContext context, HomeController c, Map<String, dynamic> task) async {
+    if (await guardComplete(context, task)) c.completeTask(task);
   }
 
   Widget _swipeBg(

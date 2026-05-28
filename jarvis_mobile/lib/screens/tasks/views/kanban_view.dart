@@ -71,15 +71,17 @@ class _Column extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxH = MediaQuery.of(context).size.height * 0.65;
     return DragTarget<Map<String, dynamic>>(
       onWillAcceptWithDetails: (d) =>
           (d.data['kanban_column'] ?? '').toString() != id,
       onAcceptWithDetails: (d) => controller.setKanbanColumn(d.data, id),
       builder: (ctx, candidate, _) {
         final hot = candidate.isNotEmpty;
-        return Container(
+        return ConstrainedBox(
+          constraints: BoxConstraints(minHeight: 120, maxHeight: maxH),
+          child: Container(
           width: 240,
-          constraints: const BoxConstraints(minHeight: 120),
           decoration: BoxDecoration(
             color: hot
                 ? JC.blue500.withValues(alpha: 0.1)
@@ -148,10 +150,19 @@ class _Column extends StatelessWidget {
                           fontSize: 11)),
                 )
               else
-                for (final t in tasks)
-                  _DraggableTaskTile(controller: controller, task: t),
+                Flexible(
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    shrinkWrap: true,
+                    children: [
+                      for (final t in tasks)
+                        _DraggableTaskTile(controller: controller, task: t),
+                    ],
+                  ),
+                ),
             ],
           ),
+        ),
         );
       },
     );

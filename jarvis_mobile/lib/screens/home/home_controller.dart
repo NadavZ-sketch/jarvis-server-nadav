@@ -51,6 +51,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   bool insightLoading = true;
   String? insightError;
   String? insightTopic; // null = general; otherwise one of kInsightTopics
+  int _insightSeq = 0; // stale-response guard
 
   // ── Transient UI state ──
   final Set<String> postponed = {};
@@ -182,6 +183,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   ];
 
   Future<void> loadJarvisInsight() async {
+    final seq = ++_insightSeq;
     insightLoading = true;
     insightError = null;
     notifyListeners();
@@ -194,9 +196,11 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       }
       final prompt = '$base\n$_dayContextLine'.trim();
       final r = await api.askJarvis(prompt, settings);
+      if (seq != _insightSeq) return; // superseded by a newer request
       jarvisInsight = r['answer'] as String? ?? '';
       insightLoading = false;
     } catch (e) {
+      if (seq != _insightSeq) return;
       insightError = ApiService.friendlyError(e);
       insightLoading = false;
     }

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:table_calendar/table_calendar.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
+import '../services/api_service.dart';
 
 class CalendarScreen extends StatefulWidget {
   final AppSettings settings;
@@ -74,6 +75,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
             onPressed: _loadEvents,
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddEventSheet(context),
+        backgroundColor: JC.blue500,
+        child: const Icon(Icons.add_rounded, color: Colors.white),
       ),
       body: _loading
           ? Center(child: CircularProgressIndicator(color: JC.blue400))
@@ -193,6 +199,133 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  Future<void> _showAddEventSheet(BuildContext ctx) async {
+    final textCtrl = TextEditingController();
+    DateTime date = _selected;
+    TimeOfDay time = const TimeOfDay(hour: 9, minute: 0);
+
+    await showModalBottomSheet(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: JC.surfaceAlt,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheet) => Padding(
+          padding: EdgeInsets.only(
+              left: 20, right: 20, top: 20,
+              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('אירוע חדש',
+                  style: TextStyle(
+                      color: JC.textPrimary, fontSize: 16,
+                      fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
+              const SizedBox(height: 12),
+              TextField(
+                controller: textCtrl,
+                textDirection: TextDirection.rtl,
+                autofocus: true,
+                style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
+                decoration: InputDecoration(
+                  hintText: 'כותרת האירוע...',
+                  hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+                  filled: true,
+                  fillColor: JC.surface,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: JC.border)),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: JC.border)),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: JC.blue500)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  Expanded(
+                    child: _PickerRow(
+                      icon: Icons.calendar_today_outlined,
+                      label: '${date.day.toString().padLeft(2, '0')}/'
+                          '${date.month.toString().padLeft(2, '0')}/'
+                          '${date.year}',
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: sheetCtx,
+                          initialDate: date,
+                          firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                          lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+                          builder: (c, child) => Theme(
+                            data: Theme.of(c).copyWith(
+                                colorScheme: ColorScheme.dark(
+                                    primary: JC.blue500, surface: JC.surface)),
+                            child: child!,
+                          ),
+                        );
+                        if (picked != null) setSheet(() => date = picked);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _PickerRow(
+                      icon: Icons.access_time_rounded,
+                      label: time.format(sheetCtx),
+                      onTap: () async {
+                        final picked = await showTimePicker(
+                          context: sheetCtx,
+                          initialTime: time,
+                          builder: (c, child) => Theme(
+                            data: Theme.of(c).copyWith(
+                                colorScheme: ColorScheme.dark(
+                                    primary: JC.blue500, surface: JC.surface)),
+                            child: child!,
+                          ),
+                        );
+                        if (picked != null) setSheet(() => time = picked);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: JC.blue500,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  onPressed: () async {
+                    final text = textCtrl.text.trim();
+                    if (text.isEmpty) return;
+                    final scheduled = DateTime(
+                        date.year, date.month, date.day, time.hour, time.minute);
+                    Navigator.pop(sheetCtx);
+                    try {
+                      await ApiService(widget.settings).addReminder(
+                          text, scheduled.toUtc().toIso8601String());
+                      _loadEvents();
+                    } catch (_) {}
+                  },
+                  child: const Text('הוסף אירוע',
+                      style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   String _formatSelectedDate(DateTime d) {
     const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
     const months = ['', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -283,5 +416,40 @@ class _EventTile extends StatelessWidget {
       if (dt.hour == 0 && dt.minute == 0) return null;
       return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     } catch (_) { return null; }
+  }
+}
+
+class _PickerRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _PickerRow({required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: JC.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: Row(
+          textDirection: TextDirection.rtl,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: JC.blue400),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(label,
+                  style: TextStyle(
+                      color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

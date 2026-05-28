@@ -295,6 +295,67 @@ class _TasksScreenState extends State<TasksScreen> {
                   ),
                 ),
               ),
+              if (_projects.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: JC.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: selectedProjectId != null
+                            ? JC.blue500
+                            : JC.border,
+                        width: selectedProjectId != null ? 1.2 : 0.8),
+                  ),
+                  child: Row(
+                    textDirection: TextDirection.rtl,
+                    children: [
+                      Icon(Icons.folder_open_rounded,
+                          size: 16,
+                          color: selectedProjectId != null
+                              ? JC.blue400
+                              : JC.textMuted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String?>(
+                            isExpanded: true,
+                            value: selectedProjectId,
+                            dropdownColor: JC.surfaceAlt,
+                            hint: Text('שייך לפרויקט (אופציונלי)',
+                                style: TextStyle(
+                                    color: JC.textMuted,
+                                    fontFamily: 'Heebo',
+                                    fontSize: 14)),
+                            items: [
+                              DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('ללא פרויקט',
+                                    style: TextStyle(
+                                        color: JC.textSecondary,
+                                        fontFamily: 'Heebo',
+                                        fontSize: 14)),
+                              ),
+                              ..._projects.map((p) => DropdownMenuItem<String?>(
+                                    value: p['id'].toString(),
+                                    child: Text(p['name']?.toString() ?? '—',
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            color: JC.textPrimary,
+                                            fontFamily: 'Heebo',
+                                            fontSize: 14)),
+                                  )),
+                            ],
+                            onChanged: (v) =>
+                                setSheet(() => selectedProjectId = v),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,

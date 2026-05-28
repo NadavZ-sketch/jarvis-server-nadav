@@ -41,6 +41,9 @@ class AppSettings {
   List<String> homeCardOrder;   // ordered card ids; empty = registry default
   Set<String> homeCardsHidden;  // card ids the user hid
 
+  // ── Tasks screen ──
+  String tasksDefaultView; // 'list' | 'eisenhower' | 'kanban' | 'day_plan'
+
   static const String cloudServerUrl = 'https://jarvis-server-nadav.onrender.com';
 
   String get serverUrl => useLocalServer ? localServerUrl : cloudServerUrl;
@@ -72,6 +75,7 @@ class AppSettings {
     this.quietHoursEnd = 8,
     List<String>? homeCardOrder,
     Set<String>? homeCardsHidden,
+    this.tasksDefaultView = 'list',
   })  : homeCardOrder = homeCardOrder ?? [],
         homeCardsHidden = homeCardsHidden ?? {};
 
@@ -146,6 +150,7 @@ class AppSettings {
       quietHoursEnd:    prefs.getInt('quietHoursEnd')       ?? 8,
       homeCardOrder:    prefs.getStringList('homeCardOrder') ?? [],
       homeCardsHidden:  (prefs.getStringList('homeCardsHidden') ?? []).toSet(),
+      tasksDefaultView: prefs.getString('tasksDefaultView') ?? 'list',
     );
   }
 
@@ -177,6 +182,7 @@ class AppSettings {
     await prefs.setInt('quietHoursEnd',     quietHoursEnd);
     await prefs.setStringList('homeCardOrder',  homeCardOrder);
     await prefs.setStringList('homeCardsHidden', homeCardsHidden.toList());
+    await prefs.setString('tasksDefaultView', tasksDefaultView);
   }
 
   // Returns true if [hour] (0-23) falls inside the quiet window.

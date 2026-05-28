@@ -108,13 +108,17 @@ class ApiService {
     await _client.delete(_uri('/tasks/$id')).timeout(_timeout);
   }
 
+  // Pass [clearProject] to unlink a task from its project (sets project_id null).
   Future<Map<String, dynamic>> updateTask(String id,
       {bool? done, String? dueDate, String? content, String? priority,
        String? kanbanColumn, String? eisenhowerQuad, String? sprintId,
-       int? storyPoints, String? taskStartDate}) async {
+       int? storyPoints, String? taskStartDate,
+       String? projectId, bool clearProject = false,
+       bool clearDueDate = false}) async {
     final body = <String, dynamic>{};
     if (done           != null) body['done']            = done;
-    if (dueDate        != null) body['due_date']        = dueDate;
+    if (clearDueDate)           body['due_date']        = null;
+    else if (dueDate   != null) body['due_date']        = dueDate;
     if (content        != null) body['content']         = content;
     if (priority       != null) body['priority']        = priority;
     if (kanbanColumn   != null) body['kanban_column']   = kanbanColumn;
@@ -122,12 +126,52 @@ class ApiService {
     if (sprintId       != null) body['sprint_id']       = sprintId;
     if (storyPoints    != null) body['story_points']    = storyPoints;
     if (taskStartDate  != null) body['task_start_date'] = taskStartDate;
+    if (clearProject)           body['project_id']      = null;
+    else if (projectId != null) body['project_id']      = projectId;
     final res = await _client.put(
       _uri('/tasks/$id'),
       headers: _headers({'Content-Type': 'application/json'}),
       body: jsonEncode(body),
     ).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  // ─── Subtasks ───────────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getSubtasks(String taskId) async {
+    final res = await _client
+        .get(_uri('/tasks/$taskId/subtasks'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['subtasks'] ?? []);
+  }
+
+  Future<Map<String, dynamic>> addSubtask(String taskId, String content) async {
+    final res = await _client.post(
+      _uri('/tasks/$taskId/subtasks'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'content': content}),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateSubtask(String taskId, String subId,
+      {bool? done, String? content}) async {
+    final body = <String, dynamic>{};
+    if (done    != null) body['done']    = done;
+    if (content != null) body['content'] = content;
+    final res = await _client.put(
+      _uri('/tasks/$taskId/subtasks/$subId'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode(body),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<void> deleteSubtask(String taskId, String subId) async {
+    await _client
+        .delete(_uri('/tasks/$taskId/subtasks/$subId'), headers: _baseHeaders)
+        .timeout(_timeout);
   }
 
   Future<Map<String, dynamic>> getStats() async {

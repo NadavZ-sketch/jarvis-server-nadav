@@ -10,7 +10,7 @@ import 'home/home_helpers.dart';
 /// can be reordered/hidden in layout-edit mode (persisted to [AppSettings]).
 class SmartProductivityPreviewScreen extends StatefulWidget {
   final AppSettings settings;
-  final VoidCallback? onNavigateToChat;
+  final void Function({String? command})? onNavigateToChat;
 
   const SmartProductivityPreviewScreen({
     super.key,

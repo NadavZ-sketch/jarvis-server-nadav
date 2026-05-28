@@ -1913,7 +1913,11 @@ app.get('/projects/:id', async (req, res) => {
 
         const [{ data: milestones }, { data: tasks }, { data: reminders }, { data: notes }, { data: sprints }] = await Promise.all([
             supabase.from('project_milestones').select('*').eq('project_id', project.id).order('due_date'),
-            supabase.from('tasks').select('*').eq('project_id', project.id).order('created_at'),
+            (async () => {
+                let r = await supabase.from('tasks').select('*, subtasks(id, content, done, created_at)').eq('project_id', project.id).order('created_at');
+                if (r.error) r = await supabase.from('tasks').select('*').eq('project_id', project.id).order('created_at');
+                return r;
+            })(),
             supabase.from('reminders').select('*').eq('project_id', project.id).order('scheduled_time'),
             supabase.from('notes').select('*').eq('project_id', project.id).order('created_at'),
             supabase.from('project_sprints').select('*').eq('project_id', project.id).order('start_date', { ascending: false }),

@@ -9,6 +9,8 @@ import '../widgets/delete_snackbar.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/jarvis_search_bar.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/task_edit_sheet.dart';
+import 'home/home_helpers.dart' show guardComplete, openSubtaskCount;
 
 // ─── Encouragement messages shown after milestone completions ────────────────
 const _kEncouragements = [
@@ -46,6 +48,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  List<Map<String, dynamic>> _projects = [];
 
   @override
   void initState() {
@@ -54,6 +57,14 @@ class _TasksScreenState extends State<TasksScreen> {
         () => setState(() => _searchQuery = _searchCtrl.text.toLowerCase()));
     _loadCache();
     _fetch();
+    _loadProjects();
+  }
+
+  Future<void> _loadProjects() async {
+    try {
+      final list = await ApiService(widget.settings).getProjects();
+      if (mounted) setState(() => _projects = list);
+    } catch (_) {/* project selector just won't show options */}
   }
 
   Future<void> _loadCache() async {
@@ -140,9 +151,14 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future<void> _toggleDone(Map<String, dynamic> item) async {
-    HapticFeedback.selectionClick();
     final id      = item['id'].toString();
     final newDone = item['done'] != true;
+    // Completion guard: open subtasks require explicit confirmation.
+    if (newDone && openSubtaskCount(item) > 0) {
+      final ok = await guardComplete(context, item);
+      if (!ok) return;
+    }
+    HapticFeedback.selectionClick();
     setState(() => item['done'] = newDone);
     _updateCount();
 
@@ -201,6 +217,7 @@ class _TasksScreenState extends State<TasksScreen> {
     final ctrl    = TextEditingController();
     DateTime? dueDate;
     String selectedPriority = 'medium';
+    String? selectedProjectId;
 
     await showModalBottomSheet(
       context: context,
@@ -228,8 +245,9 @@ class _TasksScreenState extends State<TasksScreen> {
                 autofocus: true,
                 style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
                 decoration: _fieldDecoration('תיאור המשימה...'),
-                onSubmitted: (_) =>
-                    _submitAdd(ctrl.text, dueDate, selectedPriority, ctx),
+                onSubmitted: (_) => _submitAdd(
+                    ctrl.text, dueDate, selectedPriority, ctx,
+                    projectId: selectedProjectId),
               ),
               const SizedBox(height: 10),
               // Priority picker
@@ -329,6 +347,67 @@ class _TasksScreenState extends State<TasksScreen> {
                   ),
                 ),
               ),
+              if (_projects.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: JC.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: selectedProjectId != null
+                            ? JC.blue500
+                            : JC.border,
+                        width: selectedProjectId != null ? 1.2 : 0.8),
+                  ),
+                  child: Row(
+                    textDirection: TextDirection.rtl,
+                    children: [
+                      Icon(Icons.folder_open_rounded,
+                          size: 16,
+                          color: selectedProjectId != null
+                              ? JC.blue400
+                              : JC.textMuted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String?>(
+                            isExpanded: true,
+                            value: selectedProjectId,
+                            dropdownColor: JC.surfaceAlt,
+                            hint: Text('שייך לפרויקט (אופציונלי)',
+                                style: TextStyle(
+                                    color: JC.textMuted,
+                                    fontFamily: 'Heebo',
+                                    fontSize: 14)),
+                            items: [
+                              DropdownMenuItem<String?>(
+                                value: null,
+                                child: Text('ללא פרויקט',
+                                    style: TextStyle(
+                                        color: JC.textSecondary,
+                                        fontFamily: 'Heebo',
+                                        fontSize: 14)),
+                              ),
+                              ..._projects.map((p) => DropdownMenuItem<String?>(
+                                    value: p['id'].toString(),
+                                    child: Text(p['name']?.toString() ?? '—',
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                            color: JC.textPrimary,
+                                            fontFamily: 'Heebo',
+                                            fontSize: 14)),
+                                  )),
+                            ],
+                            onChanged: (v) =>
+                                setSheet(() => selectedProjectId = v),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -337,8 +416,9 @@ class _TasksScreenState extends State<TasksScreen> {
                       backgroundColor: JC.blue500,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12))),
-                  onPressed: () =>
-                      _submitAdd(ctrl.text, dueDate, selectedPriority, ctx),
+                  onPressed: () => _submitAdd(
+                      ctrl.text, dueDate, selectedPriority, ctx,
+                      projectId: selectedProjectId),
                   child: const Text('הוסף',
                       style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
                 ),
@@ -351,12 +431,13 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future<void> _submitAdd(String text, DateTime? dueDate, String priority,
-      BuildContext sheetCtx) async {
+      BuildContext sheetCtx, {String? projectId}) async {
     final val = text.trim();
     if (val.isEmpty) return;
     Navigator.pop(sheetCtx);
     try {
-      final res = await ApiService(widget.settings).addTask(val, priority: priority);
+      final res = await ApiService(widget.settings)
+          .addTask(val, priority: priority, projectId: projectId);
       Map<String, dynamic> newItem =
           res['task'] as Map<String, dynamic>? ?? {
             'id': DateTime.now().toString(),
@@ -690,140 +771,42 @@ class _TaskItemState extends State<_TaskItem> {
     _        => JC.amber400,
   };
 
-  void _showEditSheet() async {
-    final raw  = widget.item['content']?.toString() ?? '';
-    final sep  = raw.indexOf('\n$_kPromptSep\n');
-    final title = sep != -1 ? raw.substring(0, sep) : raw;
-
-    final ctrl = TextEditingController(text: title);
-    String currentPriority = widget.item['priority']?.toString() ?? 'medium';
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: JC.surfaceAlt,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.only(
-              left: 20, right: 20, top: 20,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('עריכת משימה',
-                  style: TextStyle(color: JC.textPrimary, fontSize: 16,
-                      fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
-                  textDirection: TextDirection.rtl),
-              const SizedBox(height: 12),
-              TextField(
-                controller: ctrl,
-                textDirection: TextDirection.rtl,
-                autofocus: true,
-                style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo'),
-                decoration: _fieldDecoration('תיאור המשימה...'),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                textDirection: TextDirection.rtl,
-                children: [
-                  for (final entry in [
-                    ('high',   '🔴 גבוה',   JC.cancelRed),
-                    ('medium', '🟡 בינוני', JC.amber400),
-                    ('low',    '🟢 נמוך',   JC.green500),
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: GestureDetector(
-                        onTap: () => setSheet(() => currentPriority = entry.$1),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: currentPriority == entry.$1
-                                ? entry.$3.withValues(alpha: 0.18)
-                                : JC.surface,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: currentPriority == entry.$1 ? entry.$3 : JC.border,
-                              width: currentPriority == entry.$1 ? 1.2 : 0.8,
-                            ),
-                          ),
-                          child: Text(entry.$2,
-                              style: TextStyle(
-                                color: currentPriority == entry.$1
-                                    ? entry.$3
-                                    : JC.textSecondary,
-                                fontSize: 12,
-                                fontFamily: 'Heebo',
-                                fontWeight: currentPriority == entry.$1
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                              )),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: JC.blue500,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12))),
-                  onPressed: () async {
-                    final newText = ctrl.text.trim();
-                    if (newText.isEmpty) return;
-                    Navigator.pop(ctx);
-                    // Preserve AI prompt section if present
-                    final suffix = sep != -1 ? raw.substring(sep) : '';
-                    final newContent = newText + suffix;
-                    // Optimistic update
-                    final prevContent  = widget.item['content'];
-                    final prevPriority = widget.item['priority'];
-                    widget.item['content']  = newContent;
-                    widget.item['priority'] = currentPriority;
-                    widget.onUpdated();
-                    try {
-                      await ApiService(widget.settings).updateTask(
-                        widget.item['id'].toString(),
-                        content: newContent,
-                        priority: currentPriority,
-                      );
-                      await CacheService.saveList('tasks',
-                          [widget.item]); // partial — will be refreshed on next fetch
-                    } catch (_) {
-                      widget.item['content']  = prevContent;
-                      widget.item['priority'] = prevPriority;
-                      widget.onUpdated();
-                    }
-                  },
-                  child: const Text('שמור',
-                      style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+  void _showEditSheet() {
+    showTaskEditSheet(
+      context,
+      settings: widget.settings,
+      task: widget.item,
+      onChanged: widget.onUpdated,
     );
   }
 
   void _showAiSuggestions() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: JC.surfaceAlt,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => _AiSuggestionsSheet(
-        settings: widget.settings,
-        taskId: widget.item['id'].toString(),
-      ),
+    final taskId = widget.item['id'].toString();
+    showTaskSuggestionsSheet(
+      context,
+      settings: widget.settings,
+      taskId: taskId,
+      onAddSubtask: (text) async {
+        try {
+          final r = await ApiService(widget.settings).addSubtask(taskId, text);
+          final sub = r['subtask'] as Map<String, dynamic>?;
+          if (sub != null) {
+            final raw = widget.item['subtasks'];
+            final list = raw is List
+                ? List<Map<String, dynamic>>.from(raw)
+                : <Map<String, dynamic>>[];
+            list.add(sub);
+            widget.item['subtasks'] = list;
+            widget.onUpdated();
+          }
+        } catch (_) {}
+      },
+      onAddStandalone: (text) async {
+        try {
+          await ApiService(widget.settings).addTask(text);
+          widget.onUpdated();
+        } catch (_) {}
+      },
     );
   }
 
@@ -1054,183 +1037,6 @@ class _TaskItemState extends State<_TaskItem> {
   }
 }
 
-// ─── AI Suggestions sheet ─────────────────────────────────────────────────────
-
-class _AiSuggestionsSheet extends StatefulWidget {
-  final AppSettings settings;
-  final String taskId;
-  const _AiSuggestionsSheet({required this.settings, required this.taskId});
-
-  @override
-  State<_AiSuggestionsSheet> createState() => _AiSuggestionsSheetState();
-}
-
-class _AiSuggestionsSheetState extends State<_AiSuggestionsSheet> {
-  List<Map<String, dynamic>> _suggestions = [];
-  bool _loading = true;
-  String? _error;
-  final Set<int> _added = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _fetch();
-  }
-
-  Future<void> _fetch() async {
-    setState(() { _loading = true; _error = null; });
-    try {
-      final list = await ApiService(widget.settings).getTaskSuggestions(widget.taskId);
-      if (mounted) setState(() { _suggestions = list; _loading = false; });
-    } catch (e) {
-      if (mounted) setState(() {
-        _error = ApiService.friendlyError(e);
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _addSuggestion(int idx) async {
-    if (_added.contains(idx)) return;
-    final text = _suggestions[idx]['text']?.toString() ?? '';
-    if (text.isEmpty) return;
-    setState(() => _added.add(idx));
-    try {
-      await ApiService(widget.settings).addTask(text);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: const Color(0xFF0F1929),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          content: Text('המשימה נוספה ✓',
-              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
-          duration: const Duration(seconds: 2),
-        ));
-      }
-    } catch (_) {
-      if (mounted) setState(() => _added.remove(idx));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Row(
-            textDirection: TextDirection.rtl,
-            children: [
-              Icon(Icons.auto_awesome_rounded, color: JC.indigo300, size: 16),
-              const SizedBox(width: 8),
-              Text('הצעות ג׳ארביס',
-                  style: TextStyle(color: JC.textPrimary, fontSize: 16,
-                      fontWeight: FontWeight.w600, fontFamily: 'Heebo'),
-                  textDirection: TextDirection.rtl),
-              const Spacer(),
-              if (_loading)
-                SizedBox(width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: JC.indigo300)),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text('לחץ על הצעה להוספתה כמשימה',
-              textDirection: TextDirection.rtl,
-              style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
-          const SizedBox(height: 14),
-          if (_loading)
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: Column(
-                  children: [
-                    CircularProgressIndicator(strokeWidth: 2, color: JC.indigo300),
-                    SizedBox(height: 12),
-                    Text('ג׳ארביס מנתח את המשימה...',
-                        style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
-                  ],
-                ),
-              ),
-            )
-          else if (_error != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Center(child: Text(_error!,
-                  style: TextStyle(color: JC.cancelRed, fontFamily: 'Heebo', fontSize: 13))),
-            )
-          else if (_suggestions.isEmpty)
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: Text('אין הצעות זמינות',
-                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
-            )
-          else
-            ..._suggestions.asMap().entries.map((e) {
-              final idx  = e.key;
-              final sugg = e.value;
-              final done = _added.contains(idx);
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                decoration: BoxDecoration(
-                  color: done
-                      ? JC.blue500.withValues(alpha: 0.1)
-                      : JC.surfaceAlt,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: done ? JC.blue400.withValues(alpha: 0.4) : JC.border,
-                      width: 0.8),
-                ),
-                child: Row(
-                  textDirection: TextDirection.rtl,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(sugg['text']?.toString() ?? '',
-                              textDirection: TextDirection.rtl,
-                              style: TextStyle(
-                                  color: done ? JC.textSecondary : JC.textPrimary,
-                                  fontSize: 14, fontFamily: 'Heebo')),
-                          if ((sugg['reason']?.toString() ?? '').isNotEmpty)
-                            Text(sugg['reason'].toString(),
-                                textDirection: TextDirection.rtl,
-                                style: TextStyle(
-                                    color: JC.textMuted, fontSize: 11,
-                                    fontFamily: 'Heebo')),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: done ? null : () => _addSuggestion(idx),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: done ? JC.blue500.withValues(alpha: 0.2) : JC.blue500,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(done ? '✓' : 'הוסף',
-                            style: TextStyle(
-                                color: done ? JC.blue400 : Colors.white,
-                                fontSize: 12, fontFamily: 'Heebo',
-                                fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-        ],
-      ),
-    );
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 

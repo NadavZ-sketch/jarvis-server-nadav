@@ -107,6 +107,76 @@ ${otherTasks || 'אין'}
     }
   });
 
+  // ─── Subtasks — a one-level checklist under a parent task ─────────────────
+  router.get('/:id/subtasks', async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('subtasks')
+        .select('*')
+        .eq('parent_task_id', req.params.id)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      res.json({ subtasks: data || [] });
+    } catch (err) {
+      console.error('GET /tasks/:id/subtasks error:', err.message);
+      res.status(500).json({ subtasks: [] });
+    }
+  });
+
+  router.post('/:id/subtasks', async (req, res) => {
+    try {
+      const { content } = req.body;
+      if (!content) return res.status(400).json({ error: 'content required' });
+      const { data, error } = await supabase
+        .from('subtasks')
+        .insert([{ parent_task_id: req.params.id, content }])
+        .select()
+        .single();
+      if (error) throw error;
+      res.json({ subtask: data });
+    } catch (err) {
+      console.error('POST /tasks/:id/subtasks error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.put('/:id/subtasks/:subId', async (req, res) => {
+    try {
+      const { content, done } = req.body;
+      const updates = {};
+      if (content !== undefined) updates.content = content;
+      if (done    !== undefined) updates.done    = done;
+      if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'no fields to update' });
+      const { data, error } = await supabase
+        .from('subtasks')
+        .update(updates)
+        .eq('id', req.params.subId)
+        .eq('parent_task_id', req.params.id)
+        .select()
+        .single();
+      if (error) throw error;
+      res.json({ subtask: data });
+    } catch (err) {
+      console.error('PUT /tasks/:id/subtasks/:subId error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/:id/subtasks/:subId', async (req, res) => {
+    try {
+      const { error } = await supabase
+        .from('subtasks')
+        .delete()
+        .eq('id', req.params.subId)
+        .eq('parent_task_id', req.params.id);
+      if (error) throw error;
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('DELETE /tasks/:id/subtasks/:subId error:', err.message);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   router.get('/',     controller.list);
   router.post('/',    controller.create);
   router.put('/:id',  controller.update);

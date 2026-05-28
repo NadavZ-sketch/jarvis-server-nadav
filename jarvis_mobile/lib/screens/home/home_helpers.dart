@@ -70,6 +70,62 @@ String greetingEmoji() {
   return '✨';
 }
 
+/// Subtasks embedded on a task map by the server (`/tasks` select join).
+List<Map<String, dynamic>> subtasksOf(Map<String, dynamic> task) {
+  final raw = task['subtasks'];
+  if (raw is List) return List<Map<String, dynamic>>.from(raw);
+  return const [];
+}
+
+int openSubtaskCount(Map<String, dynamic> task) =>
+    subtasksOf(task).where((s) => s['done'] != true).length;
+
+/// Completion guard: if a task has open subtasks, asks the user to confirm
+/// before completing. Returns true when it's OK to mark the task done.
+Future<bool> guardComplete(BuildContext context, Map<String, dynamic> task) async {
+  final open = openSubtaskCount(task);
+  if (open == 0) return true;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (_) => Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        backgroundColor: const Color(0xFF0B1422),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('יש תתי-משימות פתוחות',
+            style: TextStyle(
+                color: JC.textPrimary,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w700)),
+        content: Text(
+          'נותרו $open תתי-משימות שלא הושלמו. להשלים את המשימה בכל זאת?',
+          style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('ביטול',
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF22C55E),
+              foregroundColor: Colors.white,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('השלם בכל זאת',
+                style:
+                    TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    ),
+  );
+  return ok ?? false;
+}
+
 const hebrewDays = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 const hebrewMonths = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',

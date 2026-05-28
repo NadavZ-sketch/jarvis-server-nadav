@@ -139,6 +139,7 @@ class _TasksScreenState extends State<TasksScreen> {
     final ctrl = TextEditingController();
     DateTime? dueDate;
     String priority = 'medium';
+    String? selectedProjectId;
 
     await showModalBottomSheet(
       context: context,
@@ -295,7 +296,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   ),
                 ),
               ),
-              if (_projects.isNotEmpty) ...[
+              if (_c.projects.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
@@ -337,7 +338,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                         fontFamily: 'Heebo',
                                         fontSize: 14)),
                               ),
-                              ..._projects.map((p) => DropdownMenuItem<String?>(
+                              ..._c.projects.map((p) => DropdownMenuItem<String?>(
                                     value: p['id'].toString(),
                                     child: Text(p['name']?.toString() ?? '—',
                                         overflow: TextOverflow.ellipsis,
@@ -369,7 +370,9 @@ class _TasksScreenState extends State<TasksScreen> {
                     if (text.isEmpty) return;
                     Navigator.pop(ctx);
                     final r = await _c.addTask(text,
-                        priority: priority, dueDate: dueDate);
+                        priority: priority,
+                        projectId: selectedProjectId,
+                        dueDate: dueDate);
                     if (r != null) _c.showSnack('משימה נוספה ✓');
                   },
                   child: const Text('הוסף',

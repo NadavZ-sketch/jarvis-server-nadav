@@ -576,69 +576,74 @@ class _WeeklyBriefingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: JC.surfaceAlt,
-        borderRadius: BorderRadius.circular(16),
-        border: Border(
-          right: BorderSide(color: JC.blue500, width: 3),
-          top: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
-          left: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
-          bottom: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
+    // ClipRRect owns the border-radius; the inner Container uses a non-uniform
+    // Border without a radius — mixing the two in BoxDecoration causes Flutter
+    // to skip painting the decoration entirely (and sometimes the child too).
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: JC.surfaceAlt,
+          border: Border(
+            right: BorderSide(color: JC.blue500, width: 3),
+            top: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
+            left: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
+            bottom: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
+          ),
         ),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            textDirection: TextDirection.rtl,
-            children: [
-              Icon(Icons.insights_rounded, size: 18, color: JC.blue400),
-              const SizedBox(width: 8),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                Icon(Icons.insights_rounded, size: 18, color: JC.blue400),
+                const SizedBox(width: 8),
+                Text(
+                  'בריפינג שבועי',
+                  style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
+                const Spacer(),
+                if (loading)
+                  const SizedBox(
+                      width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                else
+                  GestureDetector(
+                    onTap: onRefresh,
+                    child: Icon(Icons.refresh_rounded, size: 18, color: JC.textMuted),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (text != null && text!.trim().isNotEmpty)
+              MarkdownLite(
+                text: text!,
+                textDirection: TextDirection.rtl,
+                baseStyle: TextStyle(
+                  color: JC.textSecondary,
+                  fontSize: 14,
+                  height: 1.6,
+                  fontFamily: 'Heebo',
+                ),
+              )
+            else
               Text(
-                'בריפינג שבועי',
+                loading ? 'מכין בריפינג שבועי...' : 'לחץ על ריענון לטעינת הבריפינג.',
+                textDirection: TextDirection.rtl,
                 style: TextStyle(
-                  color: JC.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
+                  color: JC.textSecondary,
+                  fontSize: 13,
                   fontFamily: 'Heebo',
                 ),
               ),
-              const Spacer(),
-              if (loading)
-                const SizedBox(
-                    width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-              else
-                GestureDetector(
-                  onTap: onRefresh,
-                  child: Icon(Icons.refresh_rounded, size: 18, color: JC.textMuted),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (text != null && text!.trim().isNotEmpty)
-            MarkdownLite(
-              text: text!,
-              textDirection: TextDirection.rtl,
-              baseStyle: TextStyle(
-                color: JC.textSecondary,
-                fontSize: 14,
-                height: 1.6,
-                fontFamily: 'Heebo',
-              ),
-            )
-          else
-            Text(
-              loading ? 'מכין בריפינג שבועי...' : 'לחץ על ריענון לטעינת הבריפינג.',
-              textDirection: TextDirection.rtl,
-              style: TextStyle(
-                color: JC.textSecondary,
-                fontSize: 13,
-                fontFamily: 'Heebo',
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

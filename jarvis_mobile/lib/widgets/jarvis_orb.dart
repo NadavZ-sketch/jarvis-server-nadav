@@ -1,36 +1,64 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../main.dart' show JarvisState;
 
-/// Premium AI-core orb for Jarvis.
-///
-/// Visual language: plasma sine waves span the FULL width of the widget
-/// and pass through a central sphere made of thin concentric rings.
-/// A bright central star sits at the convergence point.
-/// Width fills the parent; only [size] (height) is specified by the caller.
-///
-/// States:
-///  idle      — gentle, slow waves; slow breathing rings; subtle particle drift.
-///  listening — waves expand in response to [level]; star brightens.
-///  thinking  — rings rotate as dashed arcs; particles orbit inward.
-///  speaking  — fast, sharper wave with rhythmic amplitude pulses.
-///  complete  — calm core + animated checkmark.
+// ─── Physics constants (directly ported from OREN Three.js prototype) ─────────
+const int    _kStrands    = 320;
+const int    _kSegments   = 6;
+const double _kBaseR      = 1.3;
+const double _kMaxLen     = 1.4;
+const double _kStiffness  = 0.25;
+const double _kDamping    = 0.82;
+const double _kFocalLen   = 6.0;   // virtual camera distance
+
+// ─── Mutable 3-D point (zero-alloc physics loop) ──────────────────────────────
+class _Pt {
+  double x, y, z;
+  _Pt(this.x, this.y, this.z);
+  _Pt.zero() : x = 0, y = 0, z = 0;
+  void copyFrom(_Pt o) { x = o.x; y = o.y; z = o.z; }
+  void scaleFrom(_Pt d, double s) { x = d.x * s; y = d.y * s; z = d.z * s; }
+}
+
+// ─── One elastic strand ────────────────────────────────────────────────────────
+class _Strand {
+  final List<_Pt> orig;     // spring rest positions (updated every frame)
+  final List<_Pt> pos;      // current positions (physics output)
+  final List<_Pt> vel;      // velocities
+  final double    lenMul;   // [0.75 .. 1.25]
+  final double    voiceSens;// [0.5  .. 2.1 ]
+
+  _Strand({
+    required this.orig,
+    required this.pos,
+    required this.vel,
+    required this.lenMul,
+    required this.voiceSens,
+  });
+}
+
+// ─── Public widget ─────────────────────────────────────────────────────────────
 class JarvisOrb extends StatefulWidget {
+  /// Current assistant state — controls colors, speed, breathing pattern.
   final JarvisState state;
 
-  /// Raw mic level from speech_to_text (0..~10). Only relevant in [listening].
+  /// Raw mic level from speech_to_text (0..~10).  Only matters in [listening].
   final double level;
 
-  /// Height of the widget. Width fills the available parent space.
+  /// Height of the widget; width fills the parent.
   final double size;
+
+  /// Called after the explosion fires (e.g. navigate away).
+  final VoidCallback? onTap;
 
   const JarvisOrb({
     super.key,
     required this.state,
     this.level = 0,
-    this.size = 200,
+    this.size  = 200,
+    this.onTap,
   });
 
   @override
@@ -39,71 +67,244 @@ class JarvisOrb extends StatefulWidget {
 
 class _JarvisOrbState extends State<JarvisOrb>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _clock;
-  late final List<_Particle> _particles;
+  late final Ticker _ticker;
 
-  double _amp = 0;
-  double _completeT = 0;
-  JarvisState _prevState = JarvisState.idle;
+  // ── 3-D geometry ──────────────────────────────────────────────────────────
+  late final List<_Pt>     _dirs;    // unit Fibonacci-sphere directions
+  late final List<_Strand> _strands;
 
+  // ── Colors ────────────────────────────────────────────────────────────────
+  Color _curBase = const Color(0xFF666666);
+  Color _curTip  = const Color(0xFFFFFFFF);
+  Color _tgtBase = const Color(0xFF666666);
+  Color _tgtTip  = const Color(0xFFFFFFFF);
+
+  static const _stateColors = <JarvisState, List<Color>>{
+    JarvisState.idle:      [Color(0xFF666666), Color(0xFFFFFFFF)],
+    JarvisState.listening: [Color(0xFF004488), Color(0xFF44CCFF)],
+    JarvisState.thinking:  [Color(0xFF003366), Color(0xFF00FFCC)],
+    JarvisState.speaking:  [Color(0xFF660033), Color(0xFFFF44AA)],
+    JarvisState.complete:  [Color(0xFF0A3366), Color(0xFF38BDF8)],
+  };
+
+  // ── Rotation ──────────────────────────────────────────────────────────────
+  double _rotX    = 0.0;
+  double _rotY    = 0.0;
+  double _velX    = 0.0003;
+  double _velY    = 0.0007;
+  bool   _panning = false;
+
+  // ── Physics scalars ───────────────────────────────────────────────────────
+  double _voice      = 0.0;  // smoothed amplitude 0..1
+  double _expl       = 0.0;  // explosion spring force (decays)
+  double _explFlash  = 0.0;  // visual brightness flash (decays)
+  double _time       = 0.0;  // seconds since init
+  double _completeT  = 0.0;  // seconds inside 'complete' state (for checkmark)
+
+  Duration? _prev;
+
+  // ─────────────────────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
-    _clock = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 6),
-    )..repeat();
-
-    final rnd = math.Random(42);
-    _particles = List.generate(32, (i) => _Particle(
-      x:       rnd.nextDouble(),
-      y:       0.08 + rnd.nextDouble() * 0.84,
-      size:    0.6 + rnd.nextDouble() * 1.8,
-      speed:   0.08 + rnd.nextDouble() * 0.28,
-      phase:   rnd.nextDouble() * math.pi * 2,
-      twinkle: rnd.nextDouble() * math.pi * 2,
-    ));
-
-    _clock.addListener(_tick);
+    _buildStrands();
+    _applyStateColors(widget.state, instant: true);
+    _ticker = createTicker(_onTick)..start();
   }
 
-  void _tick() {
-    final target = widget.state == JarvisState.listening
-        ? (widget.level.clamp(0.0, 10.0) / 10.0)
-        : (widget.state == JarvisState.speaking ? 0.60 : 0.0);
-
-    if (widget.state != _prevState) {
-      if (widget.state == JarvisState.complete) _completeT = 0;
-      _prevState = widget.state;
+  @override
+  void didUpdateWidget(covariant JarvisOrb old) {
+    super.didUpdateWidget(old);
+    if (old.state != widget.state) {
+      _applyStateColors(widget.state);
+      if (widget.state == JarvisState.listening) _triggerExplosion();
+      if (widget.state == JarvisState.complete)  _completeT = 0;
     }
-    if (widget.state == JarvisState.complete) {
-      _completeT = (_completeT + 0.016).clamp(0.0, 2.0);
-    }
-
-    setState(() => _amp = _amp + (target - _amp) * 0.15);
   }
 
   @override
   void dispose() {
-    _clock
-      ..removeListener(_tick)
-      ..dispose();
+    _ticker.dispose();
     super.dispose();
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+
+  void _applyStateColors(JarvisState s, {bool instant = false}) {
+    final c = _stateColors[s]!;
+    _tgtBase = c[0];
+    _tgtTip  = c[1];
+    if (instant) { _curBase = _tgtBase; _curTip = _tgtTip; }
+  }
+
+  void _triggerExplosion() {
+    _expl      = 1.5;
+    _explFlash = 1.0;
+  }
+
+  // ── Fibonacci sphere distribution ─────────────────────────────────────────
+  void _buildStrands() {
+    final rnd = math.Random(42);
+    _dirs = List.generate(_kStrands, (i) {
+      final phi   = math.acos(1 - 2 * (i + 0.5) / _kStrands);
+      final theta = math.pi * (1 + math.sqrt(5)) * (i + 0.5);
+      return _Pt(
+        math.sin(phi) * math.cos(theta),
+        math.sin(phi) * math.sin(theta),
+        math.cos(phi),
+      );
+    });
+
+    _strands = List.generate(_kStrands, (i) {
+      final d = _dirs[i];
+      return _Strand(
+        lenMul:   0.75 + rnd.nextDouble() * 0.5,
+        voiceSens: 0.5 + rnd.nextDouble() * 1.6,
+        orig: List.generate(_kSegments, (j) {
+          final l = _kBaseR + _kMaxLen * j / (_kSegments - 1);
+          return _Pt(d.x * l, d.y * l, d.z * l);
+        }),
+        pos: List.generate(_kSegments, (j) {
+          final l = _kBaseR + _kMaxLen * j / (_kSegments - 1);
+          return _Pt(d.x * l, d.y * l, d.z * l);
+        }),
+        vel: List.generate(_kSegments, (_) => _Pt.zero()),
+      );
+    });
+  }
+
+  // ── Ticker callback ───────────────────────────────────────────────────────
+  void _onTick(Duration elapsed) {
+    if (_prev == null) { _prev = elapsed; return; }
+    final dt = (elapsed - _prev!).inMilliseconds / 1000.0;
+    _prev = elapsed;
+    _time += dt;
+
+    // Color lerp
+    _curBase = Color.lerp(_curBase, _tgtBase, 0.08)!;
+    _curTip  = Color.lerp(_curTip,  _tgtTip,  0.08)!;
+
+    // Complete timer
+    if (widget.state == JarvisState.complete) _completeT += dt;
+
+    // Voice amplitude target
+    double vTarget = 0;
+    if (widget.state == JarvisState.listening) {
+      vTarget = widget.level.clamp(0.0, 10.0) / 10.0;
+    } else if (widget.state == JarvisState.speaking) {
+      vTarget = math.max(
+        0,
+        math.sin(_time * 8.0) * math.cos(_time * 3.0) * 0.8 + 0.2,
+      );
+    }
+    _voice += (vTarget - _voice) * 0.15;
+
+    // Explosion decay
+    if (_expl > 0)      { _expl      *= 0.92; if (_expl < 0.01)      _expl = 0; }
+    if (_explFlash > 0) { _explFlash -= 0.02; if (_explFlash < 0)  _explFlash = 0; }
+
+    // Rotation auto-spin (state-aware speed)
+    if (!_panning) {
+      _velX *= 0.985; _velY *= 0.985;
+      final tx = widget.state == JarvisState.thinking ? 0.002 :
+                 widget.state == JarvisState.listening ? 0.0001 : 0.0003;
+      final ty = widget.state == JarvisState.thinking ? 0.005 :
+                 widget.state == JarvisState.listening ? 0.0002 : 0.0007;
+      if (_velX.abs() < tx) _velX = tx;
+      if (_velY.abs() < ty) _velY = ty;
+    }
+    _rotX += _velX;
+    _rotY += _velY;
+
+    // Spring physics
+    _stepPhysics();
+
+    if (mounted) setState(() {});
+  }
+
+  // ── Spring physics (direct port from OREN JS) ─────────────────────────────
+  void _stepPhysics() {
+    for (var i = 0; i < _kStrands; i++) {
+      final st = _strands[i];
+      final d  = _dirs[i];
+
+      // Breathing pattern per state
+      double breath = 0;
+      switch (widget.state) {
+        case JarvisState.idle:
+          breath = math.sin(_time * 2.5 + i * 0.1) * 0.08;
+          break;
+        case JarvisState.listening:
+          breath = math.sin(_time * 4.0 + i * 0.1) * 0.03;
+          break;
+        case JarvisState.thinking:
+          breath = math.sin(_time * 12.0 + i * 0.5) * 0.07;
+          break;
+        default:
+          breath = math.sin(_time * 2.5 + i * 0.1) * 0.08;
+      }
+
+      final voiceR = (widget.state == JarvisState.speaking ||
+                      widget.state == JarvisState.listening)
+          ? _voice * st.voiceSens * 2.2
+          : 0.0;
+
+      final dynLen = _kMaxLen * st.lenMul * (0.9 + breath + voiceR + _expl);
+
+      for (var j = 1; j < _kSegments; j++) {
+        final ratio = j / (_kSegments - 1);
+        st.orig[j].scaleFrom(d, _kBaseR + dynLen * ratio);
+
+        // Spring: F = k*(target - current)
+        final fx = st.orig[j].x - st.pos[j].x;
+        final fy = st.orig[j].y - st.pos[j].y;
+        final fz = st.orig[j].z - st.pos[j].z;
+
+        st.vel[j].x = (st.vel[j].x + fx * _kStiffness) * _kDamping;
+        st.vel[j].y = (st.vel[j].y + fy * _kStiffness) * _kDamping;
+        st.vel[j].z = (st.vel[j].z + fz * _kStiffness) * _kDamping;
+
+        st.pos[j].x += st.vel[j].x;
+        st.pos[j].y += st.vel[j].y;
+        st.pos[j].z += st.vel[j].z;
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: SizedBox(
-        width: double.infinity,
-        height: widget.size,
-        child: CustomPaint(
-          painter: _OrbPainter(
-            t: _clock.value,
-            state: widget.state,
-            amp: _amp,
-            particles: _particles,
-            completeT: _completeT,
+    return GestureDetector(
+      onPanUpdate: (d) {
+        _panning = true;
+        _velX = d.delta.dy * 0.005;
+        _velY = d.delta.dx * 0.005;
+      },
+      onPanEnd: (_) {
+        _panning = false;
+        _velX *= 0.5;
+        _velY *= 0.5;
+      },
+      onTap: () {
+        _triggerExplosion();
+        widget.onTap?.call();
+      },
+      child: RepaintBoundary(
+        child: SizedBox(
+          width: double.infinity,
+          height: widget.size,
+          child: CustomPaint(
+            painter: _OrbPainter(
+              strands:    _strands,
+              rotX:       _rotX,
+              rotY:       _rotY,
+              curBase:    _curBase,
+              curTip:     _curTip,
+              voiceAmp:   _voice,
+              explFlash:  _explFlash,
+              state:      widget.state,
+              completeT:  _completeT,
+            ),
           ),
         ),
       ),
@@ -111,343 +312,122 @@ class _JarvisOrbState extends State<JarvisOrb>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _Particle {
-  final double x, y, size, speed, phase, twinkle;
-  const _Particle({
-    required this.x,
-    required this.y,
-    required this.size,
-    required this.speed,
-    required this.phase,
-    required this.twinkle,
-  });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ─── CustomPainter ─────────────────────────────────────────────────────────────
 class _OrbPainter extends CustomPainter {
-  final double t;
+  final List<_Strand> strands;
+  final double rotX, rotY;
+  final Color  curBase, curTip;
+  final double voiceAmp, explFlash;
   final JarvisState state;
-  final double amp;
-  final List<_Particle> particles;
   final double completeT;
 
   const _OrbPainter({
-    required this.t,
+    required this.strands,
+    required this.rotX,
+    required this.rotY,
+    required this.curBase,
+    required this.curTip,
+    required this.voiceAmp,
+    required this.explFlash,
     required this.state,
-    required this.amp,
-    required this.particles,
     required this.completeT,
   });
 
-  // ── Palette: white / icy-blue / soft-cyan / electric-blue ─────────────────
-  static const _white    = Color(0xFFFFFFFF);
-  static const _icy      = Color(0xFFBAE6FD);
-  static const _cyan     = Color(0xFF67E8F9);
-  static const _electric = Color(0xFF38BDF8);
-  static const _indigo   = Color(0xFF818CF8);
-  static const _deep     = Color(0xFF0F172A); // near-black navy for glow base
-
-  Color get _accent {
-    switch (state) {
-      case JarvisState.listening: return _icy;
-      case JarvisState.thinking:  return _indigo;
-      case JarvisState.speaking:  return _cyan;
-      case JarvisState.complete:  return _electric;
-      default:                    return _electric;
-    }
-  }
-
   @override
   void paint(Canvas canvas, Size size) {
-    final cx     = size.width  / 2;
-    final cy     = size.height / 2;
-    final center = Offset(cx, cy);
-    final time   = t * math.pi * 2;              // 0..2π per loop
-    final accent = _accent;
-    final breath = 0.5 + 0.5 * math.sin(time * 0.8);
+    final cx  = size.width  / 2;
+    final cy  = size.height / 2;
+    // Scale: pixels per unit. Make the orb fill ~80% of the shorter dimension.
+    final sc  = math.min(size.width, size.height) * 0.40;
 
-    // Orb radius (for the rings / star / check — NOT the waves)
-    final orbR = math.min(cx, cy) * 0.90;
+    // Pre-compute rotation trig (shared by all 320×6 points)
+    final cosX = math.cos(rotX), sinX = math.sin(rotX);
+    final cosY = math.cos(rotY), sinY = math.sin(rotY);
 
-    _paintAmbientGlow(canvas, center, orbR, accent, breath);
-    _paintRings(canvas, center, orbR, accent, time, breath);
-    _paintParticles(canvas, size, center, orbR, accent, time);
-    _paintPlasmaWaves(canvas, size, center, accent, time);
-    _paintCentralStar(canvas, center, accent, breath, time);
+    // Pre-compute one color per segment position (5 steps, reused for every strand)
+    const seg = _kSegments;
+    final segColors = List.generate(seg - 1, (j) {
+      final r = (j + 0.5) / (seg - 1);
+      Color c = Color.lerp(curBase, curTip, r)!;
+      if (explFlash > 0) {
+        c = Color.lerp(c, const Color(0xFFFFFFFF), explFlash * 0.6)!;
+      }
+      if (voiceAmp > 0.05) {
+        final boost = (voiceAmp * 0.3 * r).clamp(0.0, 0.35);
+        c = c.withValues(alpha: (c.alpha / 255.0 + boost).clamp(0.0, 1.0));
+      }
+      return c.withValues(alpha: 0.88);
+    });
+
+    final paint = Paint()
+      ..style       = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..blendMode   = BlendMode.plus;  // additive — strands sum to bright center
+
+    for (final st in strands) {
+      for (var j = 0; j < seg - 1; j++) {
+        final pa = st.pos[j];
+        final pb = st.pos[j + 1];
+
+        // ── Rotate A (Y then X) ───────────────────────────────────────────
+        final axY = pa.x * cosY + pa.z * sinY;
+        final ayY = pa.y;
+        final azY = -pa.x * sinY + pa.z * cosY;
+        final aFx = axY;
+        final aFy = ayY * cosX - azY * sinX;
+        final aFz = ayY * sinX + azY * cosX; // z in camera space
+        final dA  = _kFocalLen - aFz;        // depth (camera at +kFocalLen)
+        if (dA < 0.1) continue;
+        final sA  = _kFocalLen / dA * sc;
+        final ax  = cx + aFx * sA;
+        final ay  = cy - aFy * sA;
+
+        // ── Rotate B ────────────────────────────────────────────────────
+        final bxY = pb.x * cosY + pb.z * sinY;
+        final byY = pb.y;
+        final bzY = -pb.x * sinY + pb.z * cosY;
+        final bFx = bxY;
+        final bFy = byY * cosX - bzY * sinX;
+        final bFz = byY * sinX + bzY * cosX;
+        final dB  = _kFocalLen - bFz;
+        if (dB < 0.1) continue;
+        final sB  = _kFocalLen / dB * sc;
+        final bx  = cx + bFx * sB;
+        final by  = cy - bFy * sB;
+
+        paint.color = segColors[j];
+        canvas.drawLine(Offset(ax, ay), Offset(bx, by), paint);
+      }
+    }
+
+    // ── Checkmark overlay for 'complete' state ─────────────────────────────
     if (state == JarvisState.complete) {
-      _paintCheck(canvas, center, orbR * 0.52, accent);
+      _paintCheck(canvas, Offset(cx, cy), sc * 0.3, completeT);
     }
   }
 
-  // ── Ambient glow ────────────────────────────────────────────────────────────
-  void _paintAmbientGlow(
-      Canvas canvas, Offset c, double r, Color accent, double breath) {
-    final glowR = r * (1.55 + 0.12 * breath);
-    canvas.drawCircle(
-      c,
-      glowR,
-      Paint()
-        ..shader = ui.Gradient.radial(c, glowR, [
-          accent.withValues(alpha: 0.18),
-          accent.withValues(alpha: 0.04),
-          accent.withValues(alpha: 0.0),
-        ], [0.0, 0.55, 1.0]),
-    );
-  }
-
-  // ── Concentric rings ────────────────────────────────────────────────────────
-  void _paintRings(Canvas canvas, Offset c, double r, Color accent,
-      double time, double breath) {
-    const radFractions = [0.50, 0.75, 1.00];
-    const alphas       = [0.40, 0.24, 0.14];
-    final isThinking   = state == JarvisState.thinking;
-
-    for (var i = 0; i < radFractions.length; i++) {
-      final rad = r * radFractions[i] *
-          (state == JarvisState.idle ? (1 + 0.018 * math.sin(time + i)) : 1.0);
-
-      final paint = Paint()
-        ..style       = PaintingStyle.stroke
-        ..strokeWidth = 1.1
-        ..color       = accent.withValues(alpha: alphas[i]);
-
-      if (isThinking) {
-        final dir   = i.isEven ? 1.0 : -1.0;
-        final start = time * (0.55 + i * 0.2) * dir;
-        for (var s = 0; s < 3; s++) {
-          canvas.drawArc(
-            Rect.fromCircle(center: c, radius: rad),
-            start + s * math.pi * 2 / 3,
-            math.pi * 2 / 3 * 0.58,
-            false,
-            paint,
-          );
-        }
-      } else {
-        canvas.drawCircle(c, rad, paint);
-      }
-    }
-  }
-
-  // ── Particles / stars ───────────────────────────────────────────────────────
-  void _paintParticles(Canvas canvas, Size size, Offset c, double r,
-      Color accent, double time) {
-    final isThinking = state == JarvisState.thinking;
-
-    for (final p in particles) {
-      double px, py;
-
-      if (isThinking) {
-        // Orbit inward
-        final cycle = (time * p.speed + p.phase) % (math.pi * 2);
-        final rad   = r * (0.30 + 0.70 * (0.5 + 0.5 * math.cos(cycle)));
-        final angle = p.phase * math.pi * 2 + time * p.speed * 1.6;
-        px = c.dx + math.cos(angle) * rad;
-        py = c.dy + math.sin(angle) * rad * 0.58;
-      } else {
-        // Gentle drift
-        px = p.x * size.width  + math.sin(time * p.speed       + p.phase) * 9;
-        py = p.y * size.height + math.cos(time * p.speed * 0.7 + p.phase) * 6;
-      }
-
-      // Particles near the horizontal center line are brighter white
-      final nearCenter = (py - c.dy).abs() / (size.height / 2);
-      final twinkle =
-          0.25 + 0.55 * (0.5 + 0.5 * math.sin(time * 1.6 + p.twinkle));
-      final color = nearCenter < 0.3 ? _white : accent;
-
-      canvas.drawCircle(
-        Offset(px, py),
-        p.size,
-        Paint()
-          ..color      = color.withValues(alpha: twinkle * 0.85)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2),
-      );
-    }
-  }
-
-  // ── Plasma waves — the KEY element; spans full width ───────────────────────
-  void _paintPlasmaWaves(
-      Canvas canvas, Size size, Offset c, Color accent, double time) {
-    // Determine amplitude & speed from state
-    double baseAmp;
-    double speed;
-    switch (state) {
-      case JarvisState.listening:
-        baseAmp = 0.065 + amp * 0.30;
-        speed   = 2.8;
-        break;
-      case JarvisState.speaking:
-        baseAmp = 0.13 + 0.07 * (0.5 + 0.5 * math.sin(time * 5));
-        speed   = 4.5;
-        break;
-      case JarvisState.thinking:
-        baseAmp = 0.045;
-        speed   = 0.9;
-        break;
-      case JarvisState.complete:
-        baseAmp = 0.035;
-        speed   = 1.1;
-        break;
-      default: // idle
-        baseAmp = 0.038;
-        speed   = 1.4;
-    }
-
-    final h = size.height;
-
-    // Each row: [phaseOffset, freqMul, ampScale, alpha, strokeW, blurSigma]
-    // Drawn back-to-front: blurry background layers first, crisp front last.
-    final layers = <List<double>>[
-      [-0.7, 0.65, 0.65, 0.12, 2.0, 4.5],
-      [ 1.2, 1.50, 0.55, 0.15, 1.8, 3.5],
-      [-0.2, 0.85, 0.80, 0.28, 2.0, 2.5],
-      [ 0.5, 1.20, 0.90, 0.45, 2.0, 1.4],
-      [ 0.0, 1.00, 1.00, 0.92, 2.5, 0.5],  // foreground
-    ];
-
-    for (final layer in layers) {
-      final phaseOff = layer[0];
-      final freqMul  = layer[1];
-      final ampScale = layer[2];
-      final alpha    = layer[3];
-      final strokeW  = layer[4];
-      final blur     = layer[5];
-
-      final ampPx = baseAmp * h * ampScale;
-
-      final path = Path();
-      const steps = 140;
-      for (var i = 0; i <= steps; i++) {
-        final fx = i / steps;                         // 0..1
-        final x  = fx * size.width;
-
-        // Bell-curve envelope: tallest at centre, falls off toward edges.
-        // Using a smooth raised cosine so the fade is gradual.
-        final env = math.sin(fx * math.pi);
-
-        final y = c.dy +
-            math.sin(fx * 5 * math.pi * freqMul - time * speed + phaseOff) *
-                ampPx *
-                env;
-
-        if (i == 0) path.moveTo(x, y);
-        else        path.lineTo(x, y);
-      }
-
-      // Foreground layers are whiter; background layers lean toward accent.
-      final waveColor =
-          Color.lerp(_white, accent, alpha > 0.7 ? 0.10 : 0.45)!;
-
-      canvas.drawPath(
-        path,
-        Paint()
-          ..style       = PaintingStyle.stroke
-          ..strokeWidth = strokeW
-          ..strokeCap   = StrokeCap.round
-          ..strokeJoin  = StrokeJoin.round
-          ..color       = waveColor.withValues(alpha: alpha)
-          ..maskFilter  = MaskFilter.blur(BlurStyle.normal, blur),
-      );
-    }
-  }
-
-  // ── Central bright star ─────────────────────────────────────────────────────
-  void _paintCentralStar(
-      Canvas canvas, Offset c, Color accent, double breath, double time) {
-    final isActive = state == JarvisState.listening ||
-        state == JarvisState.speaking;
-    final brightness = isActive ? 1.0 : (0.65 + 0.35 * breath);
-
-    // Large outer bloom
-    final bloomR = 48.0 + 10 * breath;
-    canvas.drawCircle(
-      c,
-      bloomR,
-      Paint()
-        ..shader = ui.Gradient.radial(c, bloomR, [
-          accent.withValues(alpha: 0.50 * brightness),
-          accent.withValues(alpha: 0.12 * brightness),
-          accent.withValues(alpha: 0.0),
-        ], [0.0, 0.45, 1.0]),
-    );
-
-    // Inner soft halo
-    canvas.drawCircle(
-      c,
-      20,
-      Paint()
-        ..shader = ui.Gradient.radial(c, 20, [
-          _white.withValues(alpha: 0.88 * brightness),
-          accent.withValues(alpha: 0.65 * brightness),
-        ])
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0),
-    );
-
-    // Sharp bright core
-    canvas.drawCircle(
-      c,
-      7,
-      Paint()..color = _white.withValues(alpha: brightness),
-    );
-
-    // Starburst: 4 major rays + 4 minor diagonal rays
-    final rayPaint = Paint()
-      ..style    = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    for (var i = 0; i < 8; i++) {
-      final angle   = i * math.pi / 4;
-      final isMajor = i % 2 == 0;
-      final inner   = 9.0;
-      final outer   = isMajor ? 26.0 + 6 * breath : 17.0 + 3 * breath;
-      final a       = (isMajor ? 0.90 : 0.45) * brightness;
-
-      rayPaint
-        ..strokeWidth = isMajor ? 1.6 : 1.0
-        ..color       = _white.withValues(alpha: a)
-        ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 0.8);
-
-      canvas.drawLine(
-        Offset(c.dx + math.cos(angle) * inner, c.dy + math.sin(angle) * inner),
-        Offset(c.dx + math.cos(angle) * outer, c.dy + math.sin(angle) * outer),
-        rayPaint,
-      );
-    }
-  }
-
-  // ── Complete-state checkmark ─────────────────────────────────────────────────
-  void _paintCheck(Canvas canvas, Offset c, double r, Color accent) {
-    final prog = (completeT / 0.55).clamp(0.0, 1.0);
+  void _paintCheck(Canvas canvas, Offset c, double r, double t) {
+    final prog = (t / 0.55).clamp(0.0, 1.0);
     if (prog <= 0) return;
 
-    // Expanding confirmation ring
-    final ringProg = (completeT / 0.9).clamp(0.0, 1.0);
-    if (ringProg < 1.0) {
+    // Expanding ring
+    final rProg = (t / 0.85).clamp(0.0, 1.0);
+    if (rProg < 1.0) {
       canvas.drawCircle(
         c,
-        r * ringProg,
+        r * rProg,
         Paint()
           ..style       = PaintingStyle.stroke
           ..strokeWidth = 2.0
-          ..color       = _electric.withValues(alpha: (1 - ringProg) * 0.55),
+          ..blendMode   = BlendMode.srcOver
+          ..color       = const Color(0xFF38BDF8).withValues(alpha: (1 - rProg) * 0.55),
       );
     }
 
-    final s  = r * 0.48;
+    final s  = r * 0.6;
     final p1 = Offset(c.dx - s * 0.80, c.dy + s * 0.05);
     final p2 = Offset(c.dx - s * 0.18, c.dy + s * 0.60);
     final p3 = Offset(c.dx + s * 0.88, c.dy - s * 0.52);
-
-    final paint = Paint()
-      ..style      = PaintingStyle.stroke
-      ..strokeWidth = 3.0
-      ..strokeCap  = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..color      = _white.withValues(alpha: 0.95);
 
     final path = Path()..moveTo(p1.dx, p1.dy);
     if (prog < 0.5) {
@@ -458,7 +438,17 @@ class _OrbPainter extends CustomPainter {
       final f = (prog - 0.5) / 0.5;
       path.lineTo(p2.dx + (p3.dx - p2.dx) * f, p2.dy + (p3.dy - p2.dy) * f);
     }
-    canvas.drawPath(path, paint);
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style       = PaintingStyle.stroke
+        ..strokeWidth = 3.0
+        ..strokeCap   = StrokeCap.round
+        ..strokeJoin  = StrokeJoin.round
+        ..blendMode   = BlendMode.srcOver
+        ..color       = Colors.white.withValues(alpha: 0.95),
+    );
   }
 
   @override

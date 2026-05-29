@@ -192,13 +192,15 @@ class _MainShellState extends State<MainShell> {
               _selectedIndex = 1;
             }),
           ),
-          floatingActionButton: _QuickSettingsFab(
-            settings: _settings,
-            onChanged: (updated) {
-              setState(() => _settings = updated);
-              updated.save();
-            },
-          ),
+          floatingActionButton: _settings.quickSettingsEnabled
+              ? _QuickSettingsFab(
+                  settings: _settings,
+                  onChanged: (updated) {
+                    setState(() => _settings = updated);
+                    updated.save();
+                  },
+                )
+              : null,
           floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
           body: AnimatedIndexedStack(
             index: _selectedIndex,

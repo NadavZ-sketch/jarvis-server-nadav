@@ -39,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _userNameCtrl;
   late TextEditingController _localServerUrlCtrl;
   late TextEditingController _localModelCtrl;
+  late TextEditingController _briefingFocusCtrl;
   String? _pingResult;
   int _selectedPreset = -1; // index into _kPresets, -1 = custom
   String? _obsidianSyncStatus;
@@ -91,6 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _userNameCtrl       = TextEditingController(text: _s.userName);
     _localServerUrlCtrl = TextEditingController(text: _s.localServerUrl);
     _localModelCtrl     = TextEditingController(text: _s.localModelName);
+    _briefingFocusCtrl  = TextEditingController(text: _s.todayBriefingFocus);
     _detectPreset(_s.localServerUrl);
     _loadPermissions();
     _loadVoices();
@@ -195,6 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _userNameCtrl.dispose();
     _localServerUrlCtrl.dispose();
     _localModelCtrl.dispose();
+    _briefingFocusCtrl.dispose();
     _tts.stop();
     super.dispose();
   }
@@ -204,6 +207,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.userName       = _userNameCtrl.text.trim().isEmpty      ? 'נדב'                       : _userNameCtrl.text.trim();
     _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
     _s.localModelName = _localModelCtrl.text.trim().isEmpty    ? 'llama3'                     : _localModelCtrl.text.trim();
+    _s.todayBriefingFocus = _briefingFocusCtrl.text.trim();
     widget.onSave(_s);
     // Fire-and-forget: sync identity fields to Supabase so they survive
     // device reinstalls. SharedPreferences remains the source of truth locally.
@@ -608,6 +612,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
+  static const List<int> _orbPalette = [
+    0xFFFFFFFF, 0xFF666666, 0xFF44CCFF, 0xFF38BDF8,
+    0xFF00FFCC, 0xFFA78BFA, 0xFFFF44AA, 0xFFFFB020,
+    0xFF22C55E, 0xFFEF4444,
+  ];
+
+  Widget _orbColorRow({
+    required String label,
+    required int selected,
+    required void Function(int) onPick,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    color: JC.textPrimary, fontSize: 15, fontFamily: 'Heebo')),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: _orbPalette.map((c) {
+                final isSel = c == selected;
+                return GestureDetector(
+                  onTap: () => onPick(c),
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: Color(c),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSel ? JC.blue400 : JC.border,
+                        width: isSel ? 2.5 : 1,
+                      ),
+                    ),
+                    child: isSel
+                        ? Icon(Icons.check_rounded,
+                            size: 16,
+                            color: Color(c) == const Color(0xFFFFFFFF)
+                                ? Colors.black
+                                : Colors.white)
+                        : null,
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      );
+
   Widget _rowSwitch({
     required String label,
     required String subtitle,
@@ -816,6 +873,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: _s.animationsEnabled,
                 onChanged: (val) => setState(() => _s.animationsEnabled = val),
               ),
+              _divider(),
+              _rowSwitch(
+                label: 'כפתור הגדרות מהירות',
+                subtitle: 'כפתור צף לשינוי אופי/קול/שרת במהירות',
+                icon: Icons.tune_rounded,
+                value: _s.quickSettingsEnabled,
+                onChanged: (val) => setState(() => _s.quickSettingsEnabled = val),
+              ),
+            ]),
+
+            // ── האורב ────────────────────────────────────────────────────────
+            _sectionHeader('האורב', Icons.blur_on_rounded),
+            _card([
+              _rowSwitch(
+                label: 'צבעים מותאמים אישית',
+                subtitle: 'השתמש בצבעים שלך במקום צבעי המצב האוטומטיים',
+                icon: Icons.palette_outlined,
+                value: _s.orbCustomColors,
+                onChanged: (val) => setState(() => _s.orbCustomColors = val),
+              ),
+              if (_s.orbCustomColors) ...[
+                _divider(),
+                _orbColorRow(
+                  label: 'צבע בסיס',
+                  selected: _s.orbBaseColor,
+                  onPick: (c) => setState(() => _s.orbBaseColor = c),
+                ),
+                _divider(),
+                _orbColorRow(
+                  label: 'צבע קצוות',
+                  selected: _s.orbTipColor,
+                  onPick: (c) => setState(() => _s.orbTipColor = c),
+                ),
+              ],
+              _divider(),
+              _rowSlider(
+                label: 'רגישות קול',
+                icon: Icons.graphic_eq_rounded,
+                value: _s.orbVoiceSensitivity,
+                min: 0.2,
+                max: 2.5,
+                divisions: 23,
+                display: (v) => '${(v * 100).round()}%',
+                onChanged: (v) => setState(() => _s.orbVoiceSensitivity = v),
+              ),
+              _divider(),
+              _rowSlider(
+                label: 'רגישות סיבוב',
+                icon: Icons.threesixty_rounded,
+                value: _s.orbRotationSensitivity,
+                min: 0.2,
+                max: 2.5,
+                divisions: 23,
+                display: (v) => '${(v * 100).round()}%',
+                onChanged: (v) => setState(() => _s.orbRotationSensitivity = v),
+              ),
+              _divider(),
+              _rowSwitch(
+                label: 'פיצוץ בלחיצה',
+                subtitle: 'פעימת אנרגיה כשנוגעים באורב',
+                icon: Icons.auto_awesome_rounded,
+                value: _s.orbExplosionEnabled,
+                onChanged: (val) => setState(() => _s.orbExplosionEnabled = val),
+              ),
+            ]),
+
+            // ── מסך היום ──────────────────────────────────────────────────────
+            _sectionHeader('מסך היום', Icons.today_outlined),
+            _card([
+              _rowSwitch(
+                label: 'בריפינג שבועי',
+                subtitle: 'כרטיס סיכום שבועי מג׳רוויס בכרטיסיית היום',
+                icon: Icons.insights_rounded,
+                value: _s.todayBriefingEnabled,
+                onChanged: (val) => setState(() => _s.todayBriefingEnabled = val),
+              ),
+              if (_s.todayBriefingEnabled) ...[
+                _divider(),
+                _rowField(
+                  label: 'דגש לבריפינג',
+                  icon: Icons.center_focus_strong_outlined,
+                  ctrl: _briefingFocusCtrl,
+                  hint: 'לדוגמה: עבודה, כושר',
+                  textDir: TextDirection.rtl,
+                ),
+              ],
             ]),
 
             // ── זהות ─────────────────────────────────────────────────────────

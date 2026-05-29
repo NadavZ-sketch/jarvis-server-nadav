@@ -53,12 +53,32 @@ class JarvisOrb extends StatefulWidget {
   /// Called after the explosion fires (e.g. navigate away).
   final VoidCallback? onTap;
 
+  /// When non-null, overrides the per-state strand root colour.
+  final Color? baseColorOverride;
+
+  /// When non-null, overrides the per-state strand tip colour.
+  final Color? tipColorOverride;
+
+  /// Multiplier for how strongly strands react to voice (0.2 – 2.5).
+  final double voiceSensitivity;
+
+  /// Multiplier for drag-rotation speed (0.2 – 2.5).
+  final double rotationSensitivity;
+
+  /// When false, tapping the orb does not trigger the explosion pulse.
+  final bool explosionEnabled;
+
   const JarvisOrb({
     super.key,
     required this.state,
     this.level = 0,
     this.size  = 200,
     this.onTap,
+    this.baseColorOverride,
+    this.tipColorOverride,
+    this.voiceSensitivity = 1.0,
+    this.rotationSensitivity = 1.0,
+    this.explosionEnabled = true,
   });
 
   @override
@@ -115,10 +135,15 @@ class _JarvisOrbState extends State<JarvisOrb>
   @override
   void didUpdateWidget(covariant JarvisOrb old) {
     super.didUpdateWidget(old);
-    if (old.state != widget.state) {
+    final colorsChanged = old.baseColorOverride != widget.baseColorOverride ||
+        old.tipColorOverride != widget.tipColorOverride;
+    if (old.state != widget.state || colorsChanged) {
       _applyStateColors(widget.state);
-      if (widget.state == JarvisState.listening) _triggerExplosion();
-      if (widget.state == JarvisState.complete)  _completeT = 0;
+      if (old.state != widget.state &&
+          widget.state == JarvisState.listening) {
+        _triggerExplosion();
+      }
+      if (widget.state == JarvisState.complete) _completeT = 0;
     }
   }
 
@@ -132,12 +157,13 @@ class _JarvisOrbState extends State<JarvisOrb>
 
   void _applyStateColors(JarvisState s, {bool instant = false}) {
     final c = _stateColors[s]!;
-    _tgtBase = c[0];
-    _tgtTip  = c[1];
+    _tgtBase = widget.baseColorOverride ?? c[0];
+    _tgtTip  = widget.tipColorOverride ?? c[1];
     if (instant) { _curBase = _tgtBase; _curTip = _tgtTip; }
   }
 
   void _triggerExplosion() {
+    if (!widget.explosionEnabled) return;
     _expl      = 1.5;
     _explFlash = 1.0;
   }
@@ -246,7 +272,7 @@ class _JarvisOrbState extends State<JarvisOrb>
 
       final voiceR = (widget.state == JarvisState.speaking ||
                       widget.state == JarvisState.listening)
-          ? _voice * st.voiceSens * 2.2
+          ? _voice * st.voiceSens * 2.2 * widget.voiceSensitivity
           : 0.0;
 
       final dynLen = _kMaxLen * st.lenMul * (0.9 + breath + voiceR + _expl);
@@ -277,8 +303,8 @@ class _JarvisOrbState extends State<JarvisOrb>
     return GestureDetector(
       onPanUpdate: (d) {
         _panning = true;
-        _velX = d.delta.dy * 0.005;
-        _velY = d.delta.dx * 0.005;
+        _velX = d.delta.dy * 0.005 * widget.rotationSensitivity;
+        _velY = d.delta.dx * 0.005 * widget.rotationSensitivity;
       },
       onPanEnd: (_) {
         _panning = false;

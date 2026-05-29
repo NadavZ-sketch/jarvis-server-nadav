@@ -628,11 +628,23 @@ async function askJarvisHandler(req, res) {
         }
 
         // ── Routing ───────────────────────────────────────────────────────────
+        // Clients may force a specific intent to skip keyword/LLM classification
+        // (e.g. the home-screen "insight" card asks an open question that must
+        // be treated as plain chat, not routed to the analytics insight agent).
+        const FORCEABLE_INTENTS = ['chat', 'weather', 'news', 'stocks', 'sports', 'translate'];
+        const forcedIntent = typeof req.body.intent === 'string' ? req.body.intent.trim() : '';
+
         let intentMode = 'fast';
-        let agentName = imageBase64 ? 'chat' : classifyIntent(userMessage);
-        if (agentName === 'chat' && !imageBase64 && userMessage.trim().length > 12) {
-            agentName = await classifyIntentWithLLM(userMessage);
-            intentMode = 'llm';
+        let agentName;
+        if (FORCEABLE_INTENTS.includes(forcedIntent)) {
+            agentName = forcedIntent;
+            intentMode = 'forced';
+        } else {
+            agentName = imageBase64 ? 'chat' : classifyIntent(userMessage);
+            if (agentName === 'chat' && !imageBase64 && userMessage.trim().length > 12) {
+                agentName = await classifyIntentWithLLM(userMessage);
+                intentMode = 'llm';
+            }
         }
 
         // Follow-up override: if the user is continuing a previous conversation,

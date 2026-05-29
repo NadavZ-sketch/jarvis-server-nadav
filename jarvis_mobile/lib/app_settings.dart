@@ -19,6 +19,19 @@ class AppSettings {
   // ── Appearance ──
   AppTheme selectedTheme;
   bool animationsEnabled;
+  bool quickSettingsEnabled; // show the floating quick-settings button
+
+  // ── Orb ──
+  bool orbCustomColors;        // use orbBaseColor/orbTipColor instead of per-state
+  int orbBaseColor;            // ARGB int — strand root color
+  int orbTipColor;             // ARGB int — strand tip color
+  double orbVoiceSensitivity;  // 0.2 – 2.5; how strongly strands react to voice
+  double orbRotationSensitivity; // 0.2 – 2.5; drag-rotation speed multiplier
+  bool orbExplosionEnabled;    // tap → explosion pulse
+
+  // ── Today tab ──
+  bool todayBriefingEnabled;   // show the weekly briefing card in the Today tab
+  String todayBriefingFocus;   // optional focus the briefing should emphasise
 
   // ── Voice / TTS ──
   double ttsSpeed;     // 0.3 – 1.0 (flutter_tts speech rate)
@@ -62,6 +75,15 @@ class AppSettings {
     this.bargeInEnabled = true,
     this.selectedTheme = AppTheme.navyDark,
     this.animationsEnabled = true,
+    this.quickSettingsEnabled = false,
+    this.orbCustomColors = false,
+    this.orbBaseColor = 0xFF666666,
+    this.orbTipColor = 0xFFFFFFFF,
+    this.orbVoiceSensitivity = 1.0,
+    this.orbRotationSensitivity = 1.0,
+    this.orbExplosionEnabled = true,
+    this.todayBriefingEnabled = true,
+    this.todayBriefingFocus = '',
     this.ttsSpeed = 0.7,
     this.ttsPitch = 1.0,
     this.ttsLanguage = 'he-IL',
@@ -137,6 +159,15 @@ class AppSettings {
       bargeInEnabled:   prefs.getBool('bargeInEnabled')     ?? true,
       selectedTheme:    _parseTheme(prefs.getString('selectedTheme')),
       animationsEnabled: prefs.getBool('animationsEnabled') ?? true,
+      quickSettingsEnabled: prefs.getBool('quickSettingsEnabled') ?? false,
+      orbCustomColors:  prefs.getBool('orbCustomColors')    ?? false,
+      orbBaseColor:     prefs.getInt('orbBaseColor')        ?? 0xFF666666,
+      orbTipColor:      prefs.getInt('orbTipColor')         ?? 0xFFFFFFFF,
+      orbVoiceSensitivity:    prefs.getDouble('orbVoiceSensitivity')    ?? 1.0,
+      orbRotationSensitivity: prefs.getDouble('orbRotationSensitivity') ?? 1.0,
+      orbExplosionEnabled: prefs.getBool('orbExplosionEnabled') ?? true,
+      todayBriefingEnabled: prefs.getBool('todayBriefingEnabled') ?? true,
+      todayBriefingFocus:  prefs.getString('todayBriefingFocus') ?? '',
       ttsSpeed:         prefs.getDouble('ttsSpeed')         ?? 0.7,
       ttsPitch:         prefs.getDouble('ttsPitch')         ?? 1.0,
       ttsLanguage:      prefs.getString('ttsLanguage')      ?? 'he-IL',
@@ -169,6 +200,15 @@ class AppSettings {
     await prefs.setBool('bargeInEnabled',   bargeInEnabled);
     await prefs.setString('selectedTheme',  selectedTheme.name);
     await prefs.setBool('animationsEnabled', animationsEnabled);
+    await prefs.setBool('quickSettingsEnabled', quickSettingsEnabled);
+    await prefs.setBool('orbCustomColors',   orbCustomColors);
+    await prefs.setInt('orbBaseColor',       orbBaseColor);
+    await prefs.setInt('orbTipColor',        orbTipColor);
+    await prefs.setDouble('orbVoiceSensitivity',    orbVoiceSensitivity);
+    await prefs.setDouble('orbRotationSensitivity', orbRotationSensitivity);
+    await prefs.setBool('orbExplosionEnabled', orbExplosionEnabled);
+    await prefs.setBool('todayBriefingEnabled', todayBriefingEnabled);
+    await prefs.setString('todayBriefingFocus', todayBriefingFocus);
     await prefs.setDouble('ttsSpeed',       ttsSpeed);
     await prefs.setDouble('ttsPitch',       ttsPitch);
     await prefs.setString('ttsLanguage',    ttsLanguage);

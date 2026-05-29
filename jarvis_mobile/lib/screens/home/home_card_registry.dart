@@ -40,7 +40,7 @@ final List<HomeCardSpec> kHomeCards = [
       titleHe: 'מה עכשיו',
       build: (_, c) => NextActionCard(c)),
   HomeCardSpec(
-      id: 'insight', titleHe: 'תובנה מג׳רוויס', build: (_, c) => InsightCard(c)),
+      id: 'insight', titleHe: 'ג׳רוויס יזום', build: (_, c) => InsightCard(c)),
   HomeCardSpec(id: 'tasks', titleHe: 'משימות', build: (_, c) => TasksCard(c)),
   HomeCardSpec(
       id: 'calendar', titleHe: 'לוח שנה', build: (_, c) => CalendarCard(c)),

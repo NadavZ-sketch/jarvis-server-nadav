@@ -90,9 +90,7 @@ class _InsightCardState extends State<InsightCard>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildDepthChips(),
-                const SizedBox(height: 8),
-                _buildTopicChips(),
+                _buildModeChips(),
                 const SizedBox(height: 12),
                 _buildBody(),
                 if (hasThread) ...[
@@ -110,6 +108,7 @@ class _InsightCardState extends State<InsightCard>
   }
 
   Widget _buildHeader() {
+    final mode = c.insightMode;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
       child: Row(
@@ -121,22 +120,22 @@ class _InsightCardState extends State<InsightCard>
               color: const Color(0xFF6366F1).withOpacity(0.15),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Center(
-                child: Text('✨', style: TextStyle(fontSize: 18))),
+            child: Center(
+                child: Text(mode.emoji, style: const TextStyle(fontSize: 18))),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('תובנה מג׳רוויס',
+                Text(mode.label,
                     style: TextStyle(
                       color: JC.textPrimary,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       fontFamily: 'Heebo',
                     )),
-                Text('אישית, אינטרקטיבית, מבוססת נתונים',
+                Text(mode.subtitle,
                     style: TextStyle(
                         color: JC.textMuted,
                         fontSize: 11,
@@ -150,48 +149,23 @@ class _InsightCardState extends State<InsightCard>
     );
   }
 
-  Widget _buildDepthChips() {
+  Widget _buildModeChips() {
     return SizedBox(
       height: 28,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         reverse: true,
         padding: EdgeInsets.zero,
-        itemCount: kInsightDepths.length,
+        itemCount: kInsightModes.length,
         separatorBuilder: (_, __) => const SizedBox(width: 6),
         itemBuilder: (_, i) {
-          final d = kInsightDepths[i];
-          final selected = c.insightDepth == d;
+          final mode = kInsightModes[i];
+          final selected = c.insightMode.key == mode.key;
           return _chip(
-            d,
+            '${mode.emoji} ${mode.label}',
             selected,
-            () => c.setInsightDepth(d),
-            selectedColor: const Color(0xFF10B981),
-            selectedBorder: const Color(0xFF10B981),
-            selectedText: Colors.white,
+            () => c.setInsightMode(mode),
           );
-        },
-      ),
-    );
-  }
-
-  Widget _buildTopicChips() {
-    return SizedBox(
-      height: 28,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        reverse: true,
-        padding: EdgeInsets.zero,
-        itemCount: kInsightTopics.length + 1,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
-        itemBuilder: (_, i) {
-          if (i == 0) {
-            return _chip('כללי', c.insightTopic == null,
-                () => c.setInsightTopic(null));
-          }
-          final topic = kInsightTopics[i - 1];
-          return _chip(topic, c.insightTopic == topic,
-              () => c.setInsightTopic(topic));
         },
       ),
     );

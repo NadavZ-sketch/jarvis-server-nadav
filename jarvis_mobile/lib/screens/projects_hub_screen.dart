@@ -67,11 +67,19 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
       final prefs = await SharedPreferences.getInstance();
       final text = prefs.getString('weekly_briefing');
       final tsStr = prefs.getString('weekly_briefing_ts');
-      if (text != null && tsStr != null) {
+      final looksLikeError = text != null &&
+          ((text.contains('בעיה') && text.contains('נסה שוב')) ||
+              text.contains('לא הצלחתי') ||
+              text.contains('לא ניתן'));
+      if (text != null && tsStr != null && !looksLikeError) {
         final ts = DateTime.tryParse(tsStr);
         if (ts != null && DateTime.now().difference(ts).inDays < 7) {
           if (mounted) setState(() => _briefingText = text);
         }
+      } else if (looksLikeError) {
+        // Purge a previously-cached error reply so it stops showing.
+        await prefs.remove('weekly_briefing');
+        await prefs.remove('weekly_briefing_ts');
       }
     } catch (_) {}
   }
@@ -223,18 +231,26 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
     }).join('; ');
 
     final message =
-        'ברייפינג שבועי על הפרויקטים שלי: $summaryParts. תן סיכום קצר מה קורה ומה חשוב לשים לב אליו השבוע.';
+        'בריפינג שבועי על הפרויקטים שלי: $summaryParts. תן סיכום קצר מה קורה ומה חשוב לשים לב אליו השבוע.';
 
     try {
-      final result =
-          await ApiService(widget.settings).askJarvis(message, widget.settings);
-      final text = (result['answer'] as String?) ?? '';
+      final result = await ApiService(widget.settings)
+          .askJarvis(message, widget.settings, intent: 'chat');
+      final raw = (result['answer'] as String? ?? '').trim();
+      // Don't cache server error replies — they would persist for 7 days.
+      final looksLikeError = (raw.contains('בעיה') && raw.contains('נסה שוב')) ||
+          raw.contains('לא הצלחתי') ||
+          raw.contains('לא ניתן');
+      if (raw.isEmpty || looksLikeError) {
+        if (mounted) setState(() => _briefingLoading = false);
+        return;
+      }
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('weekly_briefing', text);
+      await prefs.setString('weekly_briefing', raw);
       await prefs.setString(
           'weekly_briefing_ts', DateTime.now().toIso8601String());
       if (mounted) setState(() {
-        _briefingText = text;
+        _briefingText = raw;
         _briefingLoading = false;
       });
     } catch (_) {

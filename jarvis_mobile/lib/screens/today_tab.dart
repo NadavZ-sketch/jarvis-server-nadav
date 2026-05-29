@@ -34,7 +34,8 @@ class _TodayTabState extends State<TodayTab> {
     super.initState();
     _loadCache();
     _fetch();
-    if (widget.settings.todayBriefingEnabled) _loadBriefingCache();
+    // Briefing is started after _fetch() completes so _items is populated
+    // when _fetchBriefing() builds the prompt.
   }
 
   // Cache key includes the focus so changing the focus invalidates the cache.
@@ -69,12 +70,18 @@ class _TodayTabState extends State<TodayTab> {
           .join(', ');
       final focus = widget.settings.todayBriefingFocus.trim();
       final focusLine = focus.isEmpty ? '' : ' שים דגש על: $focus.';
+      // Avoid Hebrew task/reminder root words ("משימ", "תזכור") in the prompt
+      // prefix — they trigger the keyword router on older server builds.
       final message =
-          'בריפינג שבועי קצר בעברית על סמך המשימות והתזכורות שלי: ${titles.isEmpty ? 'אין כרגע משימות פתוחות' : titles}. '
+          'בריפינג שבועי קצר בעברית. הנושאים לשבוע: ${titles.isEmpty ? 'לא נמצאו פריטים פתוחים' : titles}. '
           'תן סיכום ממוקד של מה חשוב השבוע ב-3 נקודות מקסימום.$focusLine';
       final result = await ApiService(widget.settings)
           .askJarvis(message, widget.settings, intent: 'chat');
-      final text = ((result['answer'] as String?) ?? '').trim();
+      final raw = ((result['answer'] as String?) ?? '').trim();
+      final looksLikeError = (raw.contains('בעיה') && raw.contains('נסה שוב')) ||
+          raw.contains('לא הצלחתי') ||
+          raw.contains('לא ניתן');
+      final text = (raw.isNotEmpty && !looksLikeError) ? raw : '';
       if (text.isNotEmpty) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_briefingCacheKey, text);
@@ -83,13 +90,32 @@ class _TodayTabState extends State<TodayTab> {
       }
       if (mounted) {
         setState(() {
-          if (text.isNotEmpty) _briefing = text;
+          _briefing = text.isNotEmpty ? text : _localBriefing();
           _briefingLoading = false;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _briefingLoading = false);
+      if (mounted) {
+        setState(() {
+          _briefing = _localBriefing();
+          _briefingLoading = false;
+        });
+      }
     }
+  }
+
+  String _localBriefing() {
+    final overdue = _items.where((i) => i['section'] == 'overdue').length;
+    final today = _items.where((i) => i['section'] == 'today').length;
+    final lines = <String>[];
+    if (overdue > 0) lines.add('• ⚠️ $overdue פריטים עברו את המועד — טפל בהם ראשון');
+    if (today > 0) lines.add('• יש לך $today פריטים להיום — בחר 3 עדיפויות ועמוד בהן');
+    if (lines.isEmpty) {
+      lines.add('• הרשימה נקייה — זמן טוב לתכנן את השבוע הבא');
+      lines.add('• הגדר יעד ברור אחד לשבוע זה');
+    }
+    lines.add('• קבע זמן קבוע לכל פריט ועמוד בו');
+    return lines.join('\n');
   }
 
   Future<void> _loadCache() async {
@@ -140,6 +166,10 @@ class _TodayTabState extends State<TodayTab> {
         _error    = null;
       });
       CacheService.saveList('today_items', _items);
+      // Start briefing now that _items is populated.
+      if (widget.settings.todayBriefingEnabled && _briefing == null) {
+        _loadBriefingCache();
+      }
     } catch (e) {
       if (mounted && _items.isEmpty) {
         setState(() {
@@ -562,6 +592,7 @@ class _WeeklyBriefingCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            textDirection: TextDirection.rtl,
             children: [
               Icon(Icons.insights_rounded, size: 18, color: JC.blue400),
               const SizedBox(width: 8),
@@ -599,9 +630,10 @@ class _WeeklyBriefingCard extends StatelessWidget {
             )
           else
             Text(
-              loading ? 'מכין בריפינג שבועי...' : 'אין בריפינג כרגע — לחץ לרענון.',
+              loading ? 'מכין בריפינג שבועי...' : 'לחץ על ריענון לטעינת הבריפינג.',
+              textDirection: TextDirection.rtl,
               style: TextStyle(
-                color: JC.textMuted,
+                color: JC.textSecondary,
                 fontSize: 13,
                 fontFamily: 'Heebo',
               ),

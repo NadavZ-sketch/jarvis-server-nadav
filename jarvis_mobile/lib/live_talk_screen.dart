@@ -14,6 +14,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'app_settings.dart';
 import 'main.dart' show JC, JarvisState;
+import 'widgets/jarvis_orb.dart';
 
 class LiveTalkScreen extends StatefulWidget {
   final String chatId;
@@ -591,10 +592,10 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                 child: Column(
                   children: [
-                    _VoiceWave(
-                      level: _soundLevel,
+                    JarvisOrb(
                       state: _state,
-                      controller: _waveController,
+                      level: _soundLevel,
+                      size: 180,
                     ),
                     const SizedBox(height: 12),
                     Text(
@@ -751,72 +752,3 @@ class _InFlightCard extends StatelessWidget {
   }
 }
 
-// ─── Voice wave widget — animated bars driven by mic level ──────────────────
-class _VoiceWave extends StatelessWidget {
-  final double level;          // 0..~10 (speech_to_text reports up to ~10)
-  final JarvisState state;
-  final AnimationController controller;
-
-  const _VoiceWave({
-    required this.level,
-    required this.state,
-    required this.controller,
-  });
-
-  Color get _color {
-    switch (state) {
-      case JarvisState.listening: return JC.blue400;
-      case JarvisState.thinking:  return JC.indigo300;
-      case JarvisState.speaking:  return const Color(0xFF22D3EE);
-      default:                    return JC.blue500;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final amp = (level.clamp(0.0, 10.0)) / 10.0; // 0..1
-    return SizedBox(
-      height: 84,
-      child: AnimatedBuilder(
-        animation: controller,
-        builder: (_, __) {
-          final t = controller.value;
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: List.generate(11, (i) {
-              final phase = (i / 11) * 2 * math.pi;
-              final base = state == JarvisState.idle ? 0.15 : 0.35;
-              final speakingBoost = state == JarvisState.speaking ? 0.55 : 0.0;
-              final wave = (math.sin(t * 2 * math.pi + phase) + 1) / 2;
-              final h = (base + amp * 0.7 + speakingBoost * wave) * 70.0 + 8.0;
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                width: 6,
-                height: h.clamp(8.0, 78.0),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(4),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      _color.withValues(alpha: 0.95),
-                      _color.withValues(alpha: 0.55),
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _color.withValues(alpha: 0.35),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-              );
-            }),
-          );
-        },
-      ),
-    );
-  }
-}

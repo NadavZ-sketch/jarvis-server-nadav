@@ -556,6 +556,50 @@ app.get('/health', (req, res) => {
     res.json({ ok: true, version: 'multi-agent-v3', ts: Date.now(), pinecone: pinecone.isReady() });
 });
 
+// Diagnostic: probe each LLM/Search provider with a tiny live request and
+// report which API keys are present and actually working. Open in a browser:
+//   https://<server>/health/providers
+// Each entry is one of: "ok" | "missing key" | "<error detail>".
+app.get('/health/providers', async (req, res) => {
+    const axios = require('axios');
+    const out = {};
+
+    const probe = async (name, present, fn) => {
+        if (!present) { out[name] = 'missing key'; return; }
+        try { await fn(); out[name] = 'ok'; }
+        catch (e) {
+            const status = e.response?.status;
+            const detail = e.response?.data?.error?.message
+                || e.response?.data?.error
+                || e.message;
+            out[name] = status ? `error ${status}: ${String(detail).slice(0, 120)}`
+                               : String(detail).slice(0, 120);
+        }
+    };
+
+    const tiny = [{ role: 'user', content: 'ping' }];
+
+    await Promise.all([
+        probe('groq', !!process.env.GROQ_API_KEY, () =>
+            axios.post('https://api.groq.com/openai/v1/chat/completions',
+                { model: 'llama-3.3-70b-versatile', messages: tiny, max_tokens: 1 },
+                { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, timeout: 8000 })),
+        probe('deepseek', !!process.env.DEEPSEEK_API_KEY, () =>
+            axios.post('https://api.deepseek.com/chat/completions',
+                { model: 'deepseek-chat', messages: tiny, max_tokens: 1 },
+                { headers: { Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` }, timeout: 10000 })),
+        probe('gemini_google', !!process.env.GOOGLE_API_KEY, () =>
+            axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+                { contents: [{ role: 'user', parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 1 } },
+                { timeout: 12000 })),
+    ]);
+
+    out.ollama = (process.env.OLLAMA_URL ? 'configured (local)' : 'not configured');
+    res.json({ ts: Date.now(), providers: out });
+});
+
+
 async function getUserProfile() {
     const cached = cacheGet('userProfile');
     if (cached !== undefined) return cached;

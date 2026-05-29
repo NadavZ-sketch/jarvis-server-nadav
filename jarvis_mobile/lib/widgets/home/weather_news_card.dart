@@ -16,7 +16,11 @@ class WeatherNewsCard extends StatelessWidget {
         final data = w['data'];
         if (data is Map && data['summary'] is String) {
           final s = (data['summary'] as String).trim();
-          return s.isEmpty ? null : s;
+          if (s.isEmpty) return null;
+          // Don't surface server error replies as content.
+          if (s.contains('לא הצלחתי') || s.contains('סליחה') ||
+              (s.contains('בעיה') && s.contains('נסה שוב'))) return null;
+          return s;
         }
       }
     }

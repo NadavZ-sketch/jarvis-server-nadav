@@ -224,12 +224,17 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> askJarvis(
-      String command, AppSettings settings) async {
+      String command, AppSettings settings, {String? intent}) async {
+    final body = <String, dynamic>{
+      'command': command,
+      'settings': settings.toJson(),
+    };
+    if (intent != null && intent.isNotEmpty) body['intent'] = intent;
     final res = await _client
         .post(
           _uri('/ask-jarvis'),
           headers: _headers({'Content-Type': 'application/json'}),
-          body: jsonEncode({'command': command, 'settings': settings.toJson()}),
+          body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 45));
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;

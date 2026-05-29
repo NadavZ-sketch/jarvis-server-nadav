@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
@@ -6,6 +7,7 @@ import '../services/cache_service.dart';
 import '../widgets/animated_list_item.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/markdown_lite.dart';
 
 class TodayTab extends StatefulWidget {
   final AppSettings settings;
@@ -23,11 +25,71 @@ class _TodayTabState extends State<TodayTab> {
   String? _error;
   final Set<String> _completing = {};
 
+  // ── Weekly briefing ──
+  String? _briefing;
+  bool _briefingLoading = false;
+
   @override
   void initState() {
     super.initState();
     _loadCache();
     _fetch();
+    if (widget.settings.todayBriefingEnabled) _loadBriefingCache();
+  }
+
+  // Cache key includes the focus so changing the focus invalidates the cache.
+  String get _briefingCacheKey =>
+      'today_briefing::${widget.settings.todayBriefingFocus.trim()}';
+
+  Future<void> _loadBriefingCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final text = prefs.getString(_briefingCacheKey);
+      final tsStr = prefs.getString('${_briefingCacheKey}_ts');
+      if (text != null && tsStr != null) {
+        final ts = DateTime.tryParse(tsStr);
+        if (ts != null && DateTime.now().difference(ts).inDays < 7) {
+          if (mounted) setState(() => _briefing = text);
+          return;
+        }
+      }
+      // No fresh cache → generate one.
+      _fetchBriefing();
+    } catch (_) {}
+  }
+
+  Future<void> _fetchBriefing() async {
+    if (_briefingLoading) return;
+    if (mounted) setState(() => _briefingLoading = true);
+    try {
+      final titles = _items
+          .map((i) => (i['title'] ?? i['text'] ?? i['content'] ?? '').toString())
+          .where((t) => t.isNotEmpty)
+          .take(20)
+          .join(', ');
+      final focus = widget.settings.todayBriefingFocus.trim();
+      final focusLine = focus.isEmpty ? '' : ' שים דגש על: $focus.';
+      final message =
+          'בריפינג שבועי קצר בעברית על סמך המשימות והתזכורות שלי: ${titles.isEmpty ? 'אין כרגע משימות פתוחות' : titles}. '
+          'תן סיכום ממוקד של מה חשוב השבוע ב-3 נקודות מקסימום.$focusLine';
+      final result = await ApiService(widget.settings)
+          .askJarvis(message, widget.settings, intent: 'chat');
+      final text = ((result['answer'] as String?) ?? '').trim();
+      if (text.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_briefingCacheKey, text);
+        await prefs.setString(
+            '${_briefingCacheKey}_ts', DateTime.now().toIso8601String());
+      }
+      if (mounted) {
+        setState(() {
+          if (text.isNotEmpty) _briefing = text;
+          _briefingLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _briefingLoading = false);
+    }
   }
 
   Future<void> _loadCache() async {
@@ -120,6 +182,14 @@ class _TodayTabState extends State<TodayTab> {
           const SizedBox(height: 10),
           _StatsHeader(stats: _stats),
           const SizedBox(height: 16),
+          if (widget.settings.todayBriefingEnabled) ...[
+            _WeeklyBriefingCard(
+              text: _briefing,
+              loading: _briefingLoading,
+              onRefresh: _fetchBriefing,
+            ),
+            const SizedBox(height: 16),
+          ],
           if (isEmpty)
             EmptyState(
               icon: Icons.check_circle_outline_rounded,
@@ -455,6 +525,87 @@ class _TodayItemTile extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Weekly briefing card ───────────────────────────────────────────────────────
+
+class _WeeklyBriefingCard extends StatelessWidget {
+  final String? text;
+  final bool loading;
+  final VoidCallback onRefresh;
+
+  const _WeeklyBriefingCard({
+    required this.text,
+    required this.loading,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: JC.surfaceAlt,
+        borderRadius: BorderRadius.circular(16),
+        border: Border(
+          right: BorderSide(color: JC.blue500, width: 3),
+          top: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
+          left: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
+          bottom: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.insights_rounded, size: 18, color: JC.blue400),
+              const SizedBox(width: 8),
+              Text(
+                'בריפינג שבועי',
+                style: TextStyle(
+                  color: JC.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Heebo',
+                ),
+              ),
+              const Spacer(),
+              if (loading)
+                const SizedBox(
+                    width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                GestureDetector(
+                  onTap: onRefresh,
+                  child: Icon(Icons.refresh_rounded, size: 18, color: JC.textMuted),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (text != null && text!.trim().isNotEmpty)
+            MarkdownLite(
+              text: text!,
+              textDirection: TextDirection.rtl,
+              baseStyle: TextStyle(
+                color: JC.textSecondary,
+                fontSize: 14,
+                height: 1.6,
+                fontFamily: 'Heebo',
+              ),
+            )
+          else
+            Text(
+              loading ? 'מכין בריפינג שבועי...' : 'אין בריפינג כרגע — לחץ לרענון.',
+              style: TextStyle(
+                color: JC.textMuted,
+                fontSize: 13,
+                fontFamily: 'Heebo',
+              ),
+            ),
         ],
       ),
     );

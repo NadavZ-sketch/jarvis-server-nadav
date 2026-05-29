@@ -217,12 +217,33 @@ class _JarvisOrb extends StatelessWidget {
   final Animation<double>? breathAnim; // kept for call-site compat; unused
   final double level;
   final VoidCallback? onTap;
+  final AppSettings settings;
+  final double size;
 
-  const _JarvisOrb({required this.state, this.breathAnim, this.level = 0, this.onTap});
+  const _JarvisOrb({
+    required this.state,
+    required this.settings,
+    this.breathAnim,
+    this.level = 0,
+    this.onTap,
+    this.size = 170,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return JarvisOrb(state: state, level: level, size: 170, onTap: onTap);
+    return JarvisOrb(
+      state: state,
+      level: level,
+      size: size,
+      onTap: onTap,
+      baseColorOverride:
+          settings.orbCustomColors ? Color(settings.orbBaseColor) : null,
+      tipColorOverride:
+          settings.orbCustomColors ? Color(settings.orbTipColor) : null,
+      voiceSensitivity: settings.orbVoiceSensitivity,
+      rotationSensitivity: settings.orbRotationSensitivity,
+      explosionEnabled: settings.orbExplosionEnabled,
+    );
   }
 }
 
@@ -1586,6 +1607,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final bool isListening = _currentState == JarvisState.listening;
+    final bool keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 60;
     final int itemCount = messages.length +
         (_currentState == JarvisState.thinking ? 1 : 0);
 
@@ -1680,37 +1702,44 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           Column(
             children: [
 
-              // ── Orb (tappable — primary mic trigger) ─────────────────────
-              AnimatedOpacity(
-                opacity: _showOrbAndHint ? 1.0 : 0.0,
+              // ── Orb (always visible — primary mic trigger). When the
+              //    keyboard is open it shrinks instead of disappearing, so it
+              //    stays present while typing or while Jarvis is speaking.
+              AnimatedSize(
                 duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 88, bottom: 0),
+                  padding: EdgeInsets.only(
+                      top: keyboardOpen ? 8 : 88, bottom: 0),
                   child: Column(
                       children: [
                         _JarvisOrb(
                           state: _currentState,
                           breathAnim: _orbBreath,
                           onTap: _openLiveTalk,
+                          settings: _settings,
+                          size: keyboardOpen ? 84 : 170,
                         ),
-                        const SizedBox(height: 10),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 250),
-                          child: Text(
-                            _orbHint,
-                            key: ValueKey(_orbHint),
-                            style: TextStyle(
-                              color: _currentState == JarvisState.listening
-                                  ? JC.blue400
-                                  : JC.textMuted,
-                              fontSize: 13,
-                              fontFamily: 'Heebo',
-                              fontWeight: _currentState == JarvisState.listening
-                                  ? FontWeight.w500
-                                  : FontWeight.normal,
+                        if (!keyboardOpen) ...[
+                          const SizedBox(height: 10),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 250),
+                            child: Text(
+                              _orbHint,
+                              key: ValueKey(_orbHint),
+                              style: TextStyle(
+                                color: _currentState == JarvisState.listening
+                                    ? JC.blue400
+                                    : JC.textMuted,
+                                fontSize: 13,
+                                fontFamily: 'Heebo',
+                                fontWeight: _currentState == JarvisState.listening
+                                    ? FontWeight.w500
+                                    : FontWeight.normal,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),

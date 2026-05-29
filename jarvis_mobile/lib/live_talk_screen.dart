@@ -596,6 +596,15 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
                       state: _state,
                       level: _soundLevel,
                       size: 220,
+                      baseColorOverride: widget.settings.orbCustomColors
+                          ? Color(widget.settings.orbBaseColor)
+                          : null,
+                      tipColorOverride: widget.settings.orbCustomColors
+                          ? Color(widget.settings.orbTipColor)
+                          : null,
+                      voiceSensitivity: widget.settings.orbVoiceSensitivity,
+                      rotationSensitivity: widget.settings.orbRotationSensitivity,
+                      explosionEnabled: widget.settings.orbExplosionEnabled,
                     ),
                     const SizedBox(height: 12),
                     Text(

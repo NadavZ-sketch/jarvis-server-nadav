@@ -195,9 +195,13 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
         base = _insightPrompts[Random().nextInt(_insightPrompts.length)];
       }
       final prompt = '$base\n$_dayContextLine'.trim();
-      final r = await api.askJarvis(prompt, settings);
+      // Force the 'chat' intent so the open-ended question is answered by the
+      // conversational agent, never re-routed to the analytics insight agent
+      // (which can return empty for users with little usage history).
+      final r = await api.askJarvis(prompt, settings, intent: 'chat');
       if (seq != _insightSeq) return; // superseded by a newer request
-      jarvisInsight = r['answer'] as String? ?? '';
+      final answer = (r['answer'] as String? ?? '').trim();
+      jarvisInsight = answer.isNotEmpty ? answer : _localFallbackInsight();
       insightLoading = false;
     } catch (e) {
       if (seq != _insightSeq) return;
@@ -206,6 +210,17 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     }
     notifyListeners();
   }
+
+  static const _fallbackInsights = [
+    'התחל מהמשימה הקשה ביותר בבוקר — שם האנרגיה שלך הכי גבוהה.',
+    'הפסקה קצרה כל 90 דקות משפרת ריכוז יותר מאשר עבודה רצופה.',
+    'רשימת "לא לעשות" יעילה לא פחות מרשימת מטלות — היא שומרת על מיקוד.',
+    'משימה שלוקחת פחות משתי דקות — עשה אותה עכשיו במקום לתזמן.',
+    'סיום היום בתכנון מחר חוסך זמן יקר בבוקר.',
+  ];
+
+  String _localFallbackInsight() =>
+      _fallbackInsights[Random().nextInt(_fallbackInsights.length)];
 
   void setInsightTopic(String? topic) {
     insightTopic = topic;

@@ -184,7 +184,11 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
         .take(5)
         .map((t) => '- ${t['content']} (${t['priority'] ?? 'רגיל'})')
         .join('\n');
-    final taskSection = topTasks.isNotEmpty ? 'המשימות הפתוחות כרגע:\n$topTasks\n' : '';
+    // Use neutral wording ("פריטים") instead of task/reminder keywords, which
+    // the server's Hebrew keyword router (/משימ.../, /תזכור.../) would otherwise
+    // catch and route to the wrong agent on builds without forced-intent.
+    final taskSection =
+        topTasks.isNotEmpty ? 'הפריטים הפתוחים של המשתמש כרגע:\n$topTasks\n' : '';
     final topicLine =
         insightTopic != null ? 'התמקד בנושא: $insightTopic.\n' : '';
     final depthLine = insightDepth == 'עמוק'
@@ -219,16 +223,35 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
         insightThread = [{'role': 'assistant', 'text': answer}];
         _saveInsightCache();
       } else {
-        insightError = 'לא ניתן לטעון תובנה כרגע';
+        // Don't leave the card on a dead error — show a graceful local insight
+        // (still ending with a question to keep it interactive).
+        final fb = _localFallbackInsight();
+        jarvisInsight = fb;
+        insightThread = [{'role': 'assistant', 'text': fb}];
+        _saveInsightCache();
       }
       insightLoading = false;
     } catch (e) {
       if (seq != _insightSeq) return;
-      insightError = ApiService.friendlyError(e);
+      // Only surface a hard error if we have nothing cached to show.
+      if (insightThread.isEmpty) {
+        insightError = ApiService.friendlyError(e);
+      }
       insightLoading = false;
     }
     notifyListeners();
   }
+
+  static const _fallbackInsights = [
+    'התחל מהמטלה הקשה ביותר בבוקר — שם האנרגיה הכי גבוהה. מה הדבר האחד שהכי מפחיד אותך לפתוח היום?',
+    'הפסקה קצרה כל 90 דקות משפרת ריכוז יותר מעבודה רצופה. מתי לקחת הפסקה אמיתית בפעם האחרונה?',
+    'רשימת "לא לעשות" שומרת על מיקוד לא פחות מרשימת מטלות. מה אפשר להוריד מהצלחת השבוע?',
+    'דבר שלוקח פחות משתי דקות — עשה אותו עכשיו במקום לתזמן. מה מחכה אצלך כבר יותר מדי זמן?',
+    'סיום היום בתכנון מחר חוסך זמן יקר בבוקר. מה הדבר הראשון שתרצה לעשות מחר?',
+  ];
+
+  String _localFallbackInsight() =>
+      _fallbackInsights[DateTime.now().millisecondsSinceEpoch % _fallbackInsights.length];
 
   Future<void> replyToInsight(String userMsg) async {
     if (userMsg.trim().isEmpty) return;

@@ -5,18 +5,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../app_settings.dart';
 import '../../services/api_service.dart';
 
-/// Topics the user can steer the Jarvis insight toward.
-const List<String> kInsightTopics = [
-  'מיקוד',
-  'אנרגיה',
-  'הרגלים',
-  'החלטות',
-  'איזון',
-  'השראה',
-];
+/// A contextual "role" the proactive Jarvis card takes on depending on the time
+/// of day. The card auto-picks one (see [HomeController._autoInsightMode]) but
+/// the user can override it from the chip row.
+class InsightMode {
+  final String key; // internal id used to branch the prompt
+  final String label; // chip text
+  final String emoji; // header icon
+  final String subtitle; // header sub-line
+  const InsightMode(this.key, this.label, this.emoji, this.subtitle);
+}
 
-/// Depth/style options for the insight.
-const List<String> kInsightDepths = ['קצר', 'עמוק', 'מעשי'];
+/// Order matters: the chip row renders these left-to-right and the auto-picker
+/// maps time windows onto them by index.
+const List<InsightMode> kInsightModes = [
+  InsightMode('briefing', 'תדריך בוקר', '☀️', 'מה הכי חשוב היום'),
+  InsightMode('checkin', 'צ׳ק-אין', '⚡', 'איפה אתה עומד עכשיו'),
+  InsightMode('recap', 'סיכום ערב', '🌙', 'מה הספקת ומה למחר'),
+  InsightMode('winddown', 'רגיעה', '🌌', 'לסגור את היום בנחת'),
+];
 
 /// Owns every piece of state the home screen renders and exposes optimistic
 /// mutations. Cards listen to this via [AnimatedBuilder]/[ListenableBuilder] so
@@ -54,11 +61,22 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   String jarvisInsight = '';
   bool insightLoading = true;
   String? insightError;
-  String? insightTopic; // null = general; otherwise one of kInsightTopics
-  String insightDepth = kInsightDepths[0];
+  // Proactive mode shown by the card. Auto-derived from the clock unless the
+  // user taps a chip, in which case [_insightModeManual] pins their choice.
+  InsightMode insightMode = _autoInsightMode();
+  bool _insightModeManual = false;
   List<Map<String, String>> insightThread = []; // [{role, text}]
   bool insightReplyLoading = false;
   int _insightSeq = 0; // stale-response guard
+
+  /// Picks the mode that fits the current local hour.
+  static InsightMode _autoInsightMode() {
+    final h = DateTime.now().hour;
+    if (h >= 5 && h < 11) return kInsightModes[0]; // morning briefing
+    if (h >= 11 && h < 17) return kInsightModes[1]; // midday check-in
+    if (h >= 17 && h < 22) return kInsightModes[2]; // evening recap
+    return kInsightModes[3]; // late-night wind-down
+  }
 
   // ── Transient UI state ──
   final Set<String> postponed = {};
@@ -178,31 +196,77 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Builds a proactive, time-of-day-aware prompt for the insight card. Feeds
+  /// Jarvis the real current state (open/urgent tasks, today's reminders, day
+  /// load) so the message is grounded rather than generic.
   String _buildInsightPrompt() {
+    final name = settings.userName.isNotEmpty ? settings.userName : 'המשתמש';
+
     final topTasks = tasks
         .where((t) => t['done'] != true)
         .take(5)
         .map((t) => '- ${t['content']} (${t['priority'] ?? 'רגיל'})')
         .join('\n');
-    final taskSection = topTasks.isNotEmpty ? 'המשימות הפתוחות כרגע:\n$topTasks\n' : '';
-    final topicLine =
-        insightTopic != null ? 'התמקד בנושא: $insightTopic.\n' : '';
-    final depthLine = insightDepth == 'עמוק'
-        ? 'פרט יותר, כ-4-5 משפטים.'
-        : insightDepth == 'מעשי'
-            ? 'תן צעד אחד קונקרטי לביצוע היום.'
-            : 'היה תמציתי, 2-3 משפטים.';
-    final name = settings.userName.isNotEmpty ? settings.userName : 'המשתמש';
-    return 'אתה ג׳רוויס, עוזר אישי של $name.\n'
-        '$taskSection'
-        '$topicLine'
-        '$depthLine\n'
-        'תן תובנה אישית ורלוונטית למה שאתה רואה. '
-        'סיים תמיד בשאלה אחת ישירה למשתמש.\n'
+
+    final todayRems = remindersForOffset(0).take(5).map((r) {
+      final iso = r['scheduled_time'] as String?;
+      var time = '';
+      if (iso != null) {
+        try {
+          final dt = DateTime.parse(iso).toLocal();
+          final hh = dt.hour.toString().padLeft(2, '0');
+          final mm = dt.minute.toString().padLeft(2, '0');
+          time = '$hh:$mm ';
+        } catch (_) {}
+      }
+      return '- $time${r['text'] ?? ''}';
+    }).join('\n');
+
+    final ctx = StringBuffer();
+    ctx.writeln('הקשר נוכחי של $name:');
+    ctx.writeln('• משימות פתוחות: $openTasks (מתוכן $highPriorityCount דחופות).');
+    if (topTasks.isNotEmpty) ctx.writeln('המשימות:\n$topTasks');
+    if (todayRems.isNotEmpty) ctx.writeln('תזכורות להיום:\n$todayRems');
+    final load = (dayPlan?['load'] as Map<String, dynamic>?)?['status']?.toString();
+    if (load != null && load.isNotEmpty) ctx.writeln('• עומס היום: $load.');
+
+    String modeLine;
+    switch (insightMode.key) {
+      case 'briefing':
+        modeLine =
+            'זה תדריך בוקר. פתח ב"בוקר טוב $name", ואז ב-2-3 משפטים הצג את 1-2 הדברים '
+            'הכי חשובים להיום ומאיפה הכי כדאי להתחיל.';
+        break;
+      case 'checkin':
+        modeLine =
+            'זה צ׳ק-אין באמצע היום. ב-2-3 משפטים: איפה $name עומד, מה עוד נשאר, '
+            'ודחיפה קטנה ומעודדת להמשיך.';
+        break;
+      case 'recap':
+        modeLine =
+            'זה סיכום ערב. ב-2-3 משפטים ובטון מרגיע: מה כדאי לסגור עוד היום, '
+            'ומה שווה להכין כבר עכשיו למחר.';
+        break;
+      case 'winddown':
+        modeLine =
+            'זה רגע רגיעה בלילה. משפט-שניים מרגיעים בלי שום לחץ, '
+            'ותזכורת עדינה לדבר הראשון שמחכה מחר.';
+        break;
+      default:
+        modeLine = 'תן תובנה אישית קצרה ורלוונטית למצב.';
+    }
+
+    return 'אתה ג׳רוויס, עוזר אישי יזום של $name.\n'
+        '${ctx.toString()}\n'
+        '$modeLine\n'
+        'דבר ישירות אל $name בגוף שני, חם ואנושי. אל תקריא את המספרים יבש — '
+        'תרגם אותם לתובנה. סיים תמיד בשאלה אחת ישירה שמזמינה תגובה.\n'
         'כתוב בעברית בלבד.';
   }
 
   Future<void> loadJarvisInsight() async {
+    // Keep the role in sync with the clock unless the user pinned one.
+    if (!_insightModeManual) insightMode = _autoInsightMode();
     final seq = ++_insightSeq;
     insightLoading = true;
     insightError = null;
@@ -283,14 +347,10 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  void setInsightTopic(String? topic) {
-    insightTopic = topic;
-    insightThread = [];
-    loadJarvisInsight();
-  }
-
-  void setInsightDepth(String depth) {
-    insightDepth = depth;
+  void setInsightMode(InsightMode mode) {
+    if (mode.key == insightMode.key && _insightModeManual) return;
+    insightMode = mode;
+    _insightModeManual = true;
     insightThread = [];
     loadJarvisInsight();
   }

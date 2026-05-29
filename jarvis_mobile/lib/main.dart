@@ -221,7 +221,8 @@ class _JarvisOrb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return JarvisOrb(state: state, level: level, size: 168);
+    // Wide-format: fills parent width, fixed height.
+    return JarvisOrb(state: state, level: level, size: 170);
   }
 }
 
@@ -1684,7 +1685,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 opacity: _showOrbAndHint ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 250),
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 96, bottom: 4),
+                  padding: const EdgeInsets.only(top: 88, bottom: 0),
                   child: GestureDetector(
                     onTap: _openLiveTalk,
                     onLongPress: null,

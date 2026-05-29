@@ -595,7 +595,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
                     JarvisOrb(
                       state: _state,
                       level: _soundLevel,
-                      size: 180,
+                      size: 210,
                     ),
                     const SizedBox(height: 12),
                     Text(

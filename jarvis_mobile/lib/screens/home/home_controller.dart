@@ -171,31 +171,58 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  static const _insightPrompts = [
-    'תן לי תובנה קצרה ומפתיעה על פרודוקטיביות שאנשים בדרך כלל לא יודעים, בעברית, 2 שורות',
-    'שתף אותי בטיפ חכם אחד לניהול אנרגיה נפשית לאורך יום עבודה, בעברית, 2 שורות',
-    'תן לי משפט השראה מקורי שקשור להשגת מטרות, בעברית, 2 שורות',
-    'מה הדבר הכי חשוב שאפשר לעשות כדי לשפר מיקוד? תובנה קצרה בעברית, 2 שורות',
-    'שתף אותי בחכמה קצרה על קבלת החלטות טובות, בעברית, 2 שורות',
-    'תן לי טיפ פרקטי לאיך להתחיל את היום בצורה חזקה, בעברית, 2 שורות',
-    'מה הסוד של אנשים שמצליחים לסיים את כל המשימות שלהם? תובנה בעברית, 2 שורות',
-    'שתף אותי במחשבה מעניינת על איזון בין עבודה וחיים, בעברית, 2 שורות',
+  static const _generalPrompts = [
+    'תובנה מפתיעה על פרודוקטיביות שאנשים לא יודעים',
+    'משפט השראה מקורי על השגת מטרות',
+    'טיפ פרקטי להתחלת יום חזקה',
+    'הסוד של אנשים שמצליחים לסיים את כל המשימות',
   ];
+
+  // Topic-specific instructions. Each prompt is laser-focused on its category
+  // and explicitly forbids drifting to other topics, so each chip yields a
+  // distinct answer instead of a generic productivity tip.
+  static const Map<String, String> _topicPrompts = {
+    'מיקוד':
+        'תן לי טכניקה קונקרטית אחת לשיפור מיקוד וריכוז בזמן אמת (למשל Pomodoro, time-blocking, חסימת הסחות). '
+            'אל תדבר על אנרגיה, הרגלים או איזון.',
+    'אנרגיה':
+        'תן לי טיפ ספציפי לניהול אנרגיה פיזית/נפשית לאורך היום (שינה, תזונה, הפסקות, אור שמש). '
+            'אל תדבר על מיקוד, הרגלים או החלטות.',
+    'הרגלים':
+        'תן לי עקרון אחד מתורת ההרגלים (atomic habits / habit stacking / cue-routine-reward). '
+            'אל תדבר על מיקוד, אנרגיה או השראה.',
+    'החלטות':
+        'תן לי כלי קבלת החלטות קונקרטי (2-minute rule, regret minimization, פרה-מורטם, weighted scoring). '
+            'אל תדבר על מיקוד, אנרגיה או הרגלים.',
+    'איזון':
+        'תן לי תובנה על איזון עבודה-חיים, גבולות, או מנוחה אקטיבית. '
+            'אל תדבר על מיקוד, הרגלים או החלטות.',
+    'השראה':
+        'תן לי ציטוט/אמירה קצרה של מנהיג, מדען או הוגה דעות, ולמה זה רלוונטי. '
+            'אל תדבר על טכניקות פרודוקטיביות.',
+  };
 
   Future<void> loadJarvisInsight() async {
     final seq = ++_insightSeq;
+    final topic = insightTopic; // snapshot for stale check
     insightLoading = true;
     insightError = null;
     notifyListeners();
     try {
       final String base;
-      if (insightTopic != null) {
-        base = 'תן לי תובנה קצרה ומעשית בנושא "${insightTopic!}", בעברית, 2 שורות';
+      if (topic != null) {
+        final spec = _topicPrompts[topic] ??
+            'תן לי תובנה ספציפית לנושא "$topic" בלבד';
+        base = '$spec\nענה בעברית בלבד, 2 שורות, ללא מבוא וללא חזרה על המספרים.';
       } else {
-        base = _insightPrompts[Random().nextInt(_insightPrompts.length)];
+        final pick = _generalPrompts[Random().nextInt(_generalPrompts.length)];
+        base = '$pick\nענה בעברית בלבד, 2 שורות.';
       }
       final prompt = '$base\n$_dayContextLine'.trim();
-      final r = await api.askJarvis(prompt, settings);
+      // Use a topic-isolated chatId so the main chat history doesn't bias
+      // the response and so each topic builds its own short context.
+      final chatId = 'insight-${topic ?? 'general'}';
+      final r = await api.askJarvis(prompt, settings, chatId: chatId);
       if (seq != _insightSeq) return; // superseded by a newer request
       jarvisInsight = r['answer'] as String? ?? '';
       insightLoading = false;

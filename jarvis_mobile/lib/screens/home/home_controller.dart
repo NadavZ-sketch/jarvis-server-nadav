@@ -178,7 +178,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     'מה הדבר הכי חשוב שאפשר לעשות כדי לשפר מיקוד? תובנה קצרה בעברית, 2 שורות',
     'שתף אותי בחכמה קצרה על קבלת החלטות טובות, בעברית, 2 שורות',
     'תן לי טיפ פרקטי לאיך להתחיל את היום בצורה חזקה, בעברית, 2 שורות',
-    'מה הסוד של אנשים שמצליחים לסיים את כל המשימות שלהם? תובנה בעברית, 2 שורות',
+    'מה הסוד של אנשים שמצליחים לסיים את כל היעדים שלהם? תובנה בעברית, 2 שורות',
     'שתף אותי במחשבה מעניינת על איזון בין עבודה וחיים, בעברית, 2 שורות',
   ];
 
@@ -201,7 +201,13 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       final r = await api.askJarvis(prompt, settings, intent: 'chat');
       if (seq != _insightSeq) return; // superseded by a newer request
       final answer = (r['answer'] as String? ?? '').trim();
-      jarvisInsight = answer.isNotEmpty ? answer : _localFallbackInsight();
+      // Detect server-side error replies (e.g. when the wrong agent handled the
+      // request) and fall through to the local fallback instead of showing the
+      // raw error text to the user.
+      final looksLikeError = (answer.contains('בעיה') && answer.contains('נסה שוב')) ||
+          answer.contains('לא הצלחתי') ||
+          answer.contains('לא ניתן');
+      jarvisInsight = (answer.isNotEmpty && !looksLikeError) ? answer : _localFallbackInsight();
       insightLoading = false;
     } catch (e) {
       if (seq != _insightSeq) return;
@@ -333,7 +339,9 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     final urgent = highPriorityCount;
     final rem = reminders.length;
     if (open == 0 && rem == 0) return '';
-    return 'הקשר: למשתמש $open משימות פתוחות ($urgent דחופות) ו-$rem תזכורות. '
+    // Avoid Hebrew task/reminder keywords ("משימ", "תזכור") which trigger
+    // the keyword router on old server builds before forced-intent was deployed.
+    return 'הקשר: למשתמש $open פריטים פתוחים ($urgent דחופים) ו-$rem אירועים קרובים. '
         'התאם את התובנה למצב הזה בעדינות, בלי לחזור על המספרים.';
   }
 

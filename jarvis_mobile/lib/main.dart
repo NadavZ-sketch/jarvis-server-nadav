@@ -214,14 +214,15 @@ class _TypingDotsState extends State<_TypingDots> with TickerProviderStateMixin 
 // churn at the call site; [level] feeds the live listening waveform.
 class _JarvisOrb extends StatelessWidget {
   final JarvisState state;
-  final Animation<double>? breathAnim;
+  final Animation<double>? breathAnim; // kept for call-site compat; unused
   final double level;
+  final VoidCallback? onTap;
 
-  const _JarvisOrb({required this.state, this.breathAnim, this.level = 0});
+  const _JarvisOrb({required this.state, this.breathAnim, this.level = 0, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return JarvisOrb(state: state, level: level, size: 168);
+    return JarvisOrb(state: state, level: level, size: 170, onTap: onTap);
   }
 }
 
@@ -1684,15 +1685,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 opacity: _showOrbAndHint ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 250),
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 96, bottom: 4),
-                  child: GestureDetector(
-                    onTap: _openLiveTalk,
-                    onLongPress: null,
-                    child: Column(
+                  padding: const EdgeInsets.only(top: 88, bottom: 0),
+                  child: Column(
                       children: [
                         _JarvisOrb(
                           state: _currentState,
                           breathAnim: _orbBreath,
+                          onTap: _openLiveTalk,
                         ),
                         const SizedBox(height: 10),
                         AnimatedSwitcher(
@@ -1715,7 +1714,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       ],
                     ),
                   ),
-                ),
               ),
 
               // ── Messages ──────────────────────────────────────────────────────

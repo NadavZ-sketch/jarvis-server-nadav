@@ -3,18 +3,70 @@ import '../../main.dart' show JC;
 import '../../screens/home/home_controller.dart';
 import '../../screens/home/home_helpers.dart';
 
-/// Daily AI productivity tip, grounded in the user's load, with interactive
-/// actions: regenerate, steer by topic, turn into a task, continue in chat,
-/// and 👍/👎 feedback.
-class InsightCard extends StatelessWidget {
+class InsightCard extends StatefulWidget {
   final HomeController c;
   const InsightCard(this.c, {super.key});
 
   @override
+  State<InsightCard> createState() => _InsightCardState();
+}
+
+class _InsightCardState extends State<InsightCard>
+    with SingleTickerProviderStateMixin {
+  final _replyController = TextEditingController();
+  final _scrollController = ScrollController();
+  late final AnimationController _dotController;
+
+  HomeController get c => widget.c;
+
+  @override
+  void initState() {
+    super.initState();
+    _dotController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _replyController.dispose();
+    _scrollController.dispose();
+    _dotController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(InsightCard old) {
+    super.didUpdateWidget(old);
+    // Auto-scroll to bottom when thread grows or typing indicator appears/disappears.
+    if (old.c.insightThread.length != c.insightThread.length ||
+        old.c.insightReplyLoading != c.insightReplyLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    }
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _sendReply() {
+    final msg = _replyController.text.trim();
+    if (msg.isEmpty || c.insightReplyLoading) return;
+    _replyController.clear();
+    c.replyToInsight(msg);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final hasInsight = !c.insightLoading &&
-        c.insightError == null &&
-        c.jarvisInsight.trim().isNotEmpty;
+    final hasThread =
+        !c.insightLoading && c.insightError == null && c.insightThread.isNotEmpty;
 
     return Container(
       decoration: BoxDecoration(
@@ -22,81 +74,32 @@ class InsightCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.25),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
+            color: Colors.black.withOpacity(0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          )
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6366F1).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child:
-                      const Center(child: Text('✨', style: TextStyle(fontSize: 18))),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('תובנה מג׳רוויס',
-                          style: TextStyle(
-                            color: JC.textPrimary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Heebo',
-                          )),
-                      Text('טיפ יומי לפרודוקטיביות',
-                          style: TextStyle(
-                              color: JC.textMuted,
-                              fontSize: 11,
-                              fontFamily: 'Heebo')),
-                    ],
-                  ),
-                ),
-                _iconBtn(Icons.refresh_rounded, c.loadJarvisInsight),
-              ],
-            ),
-          ),
+          _buildHeader(),
           Divider(color: JC.border, height: 1),
           Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _topicChips(),
-                const SizedBox(height: 10),
-                if (c.insightLoading)
-                  const CardSkeleton(lines: 2)
-                else if (c.insightError != null)
-                  InlineError(
-                      message: c.insightError!, onRetry: c.loadJarvisInsight)
-                else
-                  Text(
-                    c.jarvisInsight.isNotEmpty
-                        ? c.jarvisInsight
-                        : 'לא ניתן לטעון תובנה כרגע',
-                    style: const TextStyle(
-                      color: Color(0xFF818CF8),
-                      fontSize: 13.5,
-                      height: 1.55,
-                      fontFamily: 'Heebo',
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                if (hasInsight) ...[
+                _buildDepthChips(),
+                const SizedBox(height: 8),
+                _buildTopicChips(),
+                const SizedBox(height: 12),
+                _buildBody(),
+                if (hasThread) ...[
                   const SizedBox(height: 12),
-                  _actions(context),
+                  _buildReplyInput(),
+                  const SizedBox(height: 10),
+                  _buildActions(context),
                 ],
               ],
             ),
@@ -106,9 +109,75 @@ class InsightCard extends StatelessWidget {
     );
   }
 
-  Widget _topicChips() {
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF6366F1).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Center(
+                child: Text('✨', style: TextStyle(fontSize: 18))),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('תובנה מג׳רוויס',
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo',
+                    )),
+                Text('אישית, אינטרקטיבית, מבוססת נתונים',
+                    style: TextStyle(
+                        color: JC.textMuted,
+                        fontSize: 11,
+                        fontFamily: 'Heebo')),
+              ],
+            ),
+          ),
+          _iconBtn(Icons.refresh_rounded, c.loadJarvisInsight),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDepthChips() {
     return SizedBox(
-      height: 30,
+      height: 28,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        reverse: true,
+        padding: EdgeInsets.zero,
+        itemCount: kInsightDepths.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (_, i) {
+          final d = kInsightDepths[i];
+          final selected = c.insightDepth == d;
+          return _chip(
+            d,
+            selected,
+            () => c.setInsightDepth(d),
+            selectedColor: const Color(0xFF10B981),
+            selectedBorder: const Color(0xFF10B981),
+            selectedText: Colors.white,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTopicChips() {
+    return SizedBox(
+      height: 28,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         reverse: true,
@@ -128,26 +197,33 @@ class InsightCard extends StatelessWidget {
     );
   }
 
-  Widget _chip(String label, bool selected, VoidCallback onTap) {
+  Widget _chip(
+    String label,
+    bool selected,
+    VoidCallback onTap, {
+    Color selectedColor = const Color(0xFF6366F1),
+    Color selectedBorder = const Color(0xFF6366F1),
+    Color? selectedText,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: selected
-              ? const Color(0xFF6366F1).withOpacity(0.2)
+              ? selectedColor.withOpacity(0.2)
               : const Color(0xFF0B1929),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected
-                ? const Color(0xFF6366F1)
-                : JC.border.withOpacity(0.7),
+            color: selected ? selectedBorder : JC.border.withOpacity(0.7),
             width: 0.8,
           ),
         ),
         child: Text(label,
             style: TextStyle(
-              color: selected ? const Color(0xFF818CF8) : JC.textSecondary,
+              color: selected
+                  ? (selectedText ?? const Color(0xFF818CF8))
+                  : JC.textSecondary,
               fontSize: 11,
               fontFamily: 'Heebo',
               fontWeight: FontWeight.w600,
@@ -156,15 +232,182 @@ class InsightCard extends StatelessWidget {
     );
   }
 
-  Widget _actions(BuildContext context) {
+  Widget _buildBody() {
+    if (c.insightLoading && c.insightThread.isEmpty) {
+      return const CardSkeleton(lines: 3);
+    }
+    if (c.insightError != null && c.insightThread.isEmpty) {
+      return InlineError(message: c.insightError!, onRetry: c.loadJarvisInsight);
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 260),
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ...c.insightThread.map((msg) => _buildBubble(msg)),
+            if (c.insightReplyLoading) _buildTypingIndicator(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBubble(Map<String, String> msg) {
+    final isAssistant = msg['role'] == 'assistant';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Align(
+        alignment: isAssistant ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 300),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: isAssistant
+                ? const Color(0xFF6366F1).withOpacity(0.1)
+                : const Color(0xFF1E293B),
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(14),
+              topRight: const Radius.circular(14),
+              bottomLeft: Radius.circular(isAssistant ? 14 : 4),
+              bottomRight: Radius.circular(isAssistant ? 4 : 14),
+            ),
+            border: Border.all(
+              color: isAssistant
+                  ? const Color(0xFF6366F1).withOpacity(0.25)
+                  : JC.border.withOpacity(0.5),
+              width: 0.7,
+            ),
+          ),
+          child: Text(
+            msg['text'] ?? '',
+            style: TextStyle(
+              color: isAssistant ? const Color(0xFF818CF8) : JC.textPrimary,
+              fontSize: 13.5,
+              height: 1.55,
+              fontFamily: 'Heebo',
+              fontStyle:
+                  isAssistant ? FontStyle.italic : FontStyle.normal,
+            ),
+            textDirection: TextDirection.rtl,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTypingIndicator() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF6366F1).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: const Color(0xFF6366F1).withOpacity(0.2), width: 0.7),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              return AnimatedBuilder(
+                animation: _dotController,
+                builder: (_, __) {
+                  final delay = i * 0.3;
+                  final phase = (_dotController.value - delay).clamp(0.0, 1.0);
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: Color.lerp(
+                        const Color(0xFF6366F1).withOpacity(0.3),
+                        const Color(0xFF818CF8),
+                        phase,
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                },
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReplyInput() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1929),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border.withOpacity(0.6), width: 0.8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _replyController,
+              textDirection: TextDirection.rtl,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _sendReply(),
+              enabled: !c.insightReplyLoading,
+              style: TextStyle(
+                color: JC.textPrimary,
+                fontSize: 13,
+                fontFamily: 'Heebo',
+              ),
+              decoration: InputDecoration(
+                hintText: 'ענה לג׳רוויס...',
+                hintStyle: TextStyle(
+                  color: JC.textMuted,
+                  fontSize: 13,
+                  fontFamily: 'Heebo',
+                ),
+                border: InputBorder.none,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: c.insightReplyLoading ? null : _sendReply,
+            child: Container(
+              margin: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: c.insightReplyLoading
+                    ? const Color(0xFF6366F1).withOpacity(0.3)
+                    : const Color(0xFF6366F1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.send_rounded,
+                  size: 14, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context) {
+    final threadSummary = c.insightThread
+        .map((m) =>
+            '${m['role'] == 'assistant' ? 'ג׳רוויס' : 'אני'}: ${m['text']}')
+        .join('\n\n');
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
         _action(Icons.add_task_rounded, 'הפוך למשימה', c.insightToTask),
         _action(Icons.chat_bubble_outline_rounded, 'המשך בצ׳אט', () {
-          c.onNavigateToChat?.call(
-              command: 'בוא נדבר על התובנה הזו: ${c.jarvisInsight}');
+          c.onNavigateToChat?.call(command: threadSummary);
         }),
         _action(Icons.thumb_up_alt_outlined, '', () {
           c.showSnack('תודה על המשוב 🙏');
@@ -181,8 +424,8 @@ class InsightCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.symmetric(
-            horizontal: label.isEmpty ? 8 : 10, vertical: 6),
+        padding:
+            EdgeInsets.symmetric(horizontal: label.isEmpty ? 8 : 10, vertical: 6),
         decoration: BoxDecoration(
           color: const Color(0xFF0B1929),
           borderRadius: BorderRadius.circular(20),
@@ -214,8 +457,7 @@ class InsightCard extends StatelessWidget {
           color: const Color(0xFF6366F1).withOpacity(0.1),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(Icons.refresh_rounded,
-            color: Color(0xFF6366F1), size: 14),
+        child: Icon(icon, color: const Color(0xFF6366F1), size: 14),
       ),
     );
   }

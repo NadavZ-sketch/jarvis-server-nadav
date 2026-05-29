@@ -1,6 +1,7 @@
 import 'dart:async';
-import 'dart:math' show Random;
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../app_settings.dart';
 import '../../services/api_service.dart';
 
@@ -13,6 +14,9 @@ const List<String> kInsightTopics = [
   'איזון',
   'השראה',
 ];
+
+/// Depth/style options for the insight.
+const List<String> kInsightDepths = ['קצר', 'עמוק', 'מעשי'];
 
 /// Owns every piece of state the home screen renders and exposes optimistic
 /// mutations. Cards listen to this via [AnimatedBuilder]/[ListenableBuilder] so
@@ -51,6 +55,9 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   bool insightLoading = true;
   String? insightError;
   String? insightTopic; // null = general; otherwise one of kInsightTopics
+  String insightDepth = kInsightDepths[0];
+  List<Map<String, String>> insightThread = []; // [{role, text}]
+  bool insightReplyLoading = false;
   int _insightSeq = 0; // stale-response guard
 
   // ── Transient UI state ──
@@ -132,7 +139,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     _loadDashboardContext();
     _loadDayPlan();
     _loadStats();
-    loadJarvisInsight();
+    _loadInsightCache().then((_) => loadJarvisInsight());
   }
 
   Future<void> _loadDashboardContext() async {
@@ -171,16 +178,29 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  static const _insightPrompts = [
-    'תן לי תובנה קצרה ומפתיעה על פרודוקטיביות שאנשים בדרך כלל לא יודעים, בעברית, 2 שורות',
-    'שתף אותי בטיפ חכם אחד לניהול אנרגיה נפשית לאורך יום עבודה, בעברית, 2 שורות',
-    'תן לי משפט השראה מקורי שקשור להשגת מטרות, בעברית, 2 שורות',
-    'מה הדבר הכי חשוב שאפשר לעשות כדי לשפר מיקוד? תובנה קצרה בעברית, 2 שורות',
-    'שתף אותי בחכמה קצרה על קבלת החלטות טובות, בעברית, 2 שורות',
-    'תן לי טיפ פרקטי לאיך להתחיל את היום בצורה חזקה, בעברית, 2 שורות',
-    'מה הסוד של אנשים שמצליחים לסיים את כל היעדים שלהם? תובנה בעברית, 2 שורות',
-    'שתף אותי במחשבה מעניינת על איזון בין עבודה וחיים, בעברית, 2 שורות',
-  ];
+  String _buildInsightPrompt() {
+    final topTasks = tasks
+        .where((t) => t['done'] != true)
+        .take(5)
+        .map((t) => '- ${t['content']} (${t['priority'] ?? 'רגיל'})')
+        .join('\n');
+    final taskSection = topTasks.isNotEmpty ? 'המשימות הפתוחות כרגע:\n$topTasks\n' : '';
+    final topicLine =
+        insightTopic != null ? 'התמקד בנושא: $insightTopic.\n' : '';
+    final depthLine = insightDepth == 'עמוק'
+        ? 'פרט יותר, כ-4-5 משפטים.'
+        : insightDepth == 'מעשי'
+            ? 'תן צעד אחד קונקרטי לביצוע היום.'
+            : 'היה תמציתי, 2-3 משפטים.';
+    final name = settings.userName.isNotEmpty ? settings.userName : 'המשתמש';
+    return 'אתה ג׳רוויס, עוזר אישי של $name.\n'
+        '$taskSection'
+        '$topicLine'
+        '$depthLine\n'
+        'תן תובנה אישית ורלוונטית למה שאתה רואה. '
+        'סיים תמיד בשאלה אחת ישירה למשתמש.\n'
+        'כתוב בעברית בלבד.';
+  }
 
   Future<void> loadJarvisInsight() async {
     final seq = ++_insightSeq;
@@ -188,26 +208,19 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     insightError = null;
     notifyListeners();
     try {
-      final String base;
-      if (insightTopic != null) {
-        base = 'תן לי תובנה קצרה ומעשית בנושא "${insightTopic!}", בעברית, 2 שורות';
-      } else {
-        base = _insightPrompts[Random().nextInt(_insightPrompts.length)];
-      }
-      final prompt = '$base\n$_dayContextLine'.trim();
-      // Force the 'chat' intent so the open-ended question is answered by the
-      // conversational agent, never re-routed to the analytics insight agent
-      // (which can return empty for users with little usage history).
-      final r = await api.askJarvis(prompt, settings, intent: 'chat');
-      if (seq != _insightSeq) return; // superseded by a newer request
+      final r = await api.askJarvis(_buildInsightPrompt(), settings, intent: 'chat');
+      if (seq != _insightSeq) return;
       final answer = (r['answer'] as String? ?? '').trim();
-      // Detect server-side error replies (e.g. when the wrong agent handled the
-      // request) and fall through to the local fallback instead of showing the
-      // raw error text to the user.
       final looksLikeError = (answer.contains('בעיה') && answer.contains('נסה שוב')) ||
           answer.contains('לא הצלחתי') ||
           answer.contains('לא ניתן');
-      jarvisInsight = (answer.isNotEmpty && !looksLikeError) ? answer : _localFallbackInsight();
+      if (answer.isNotEmpty && !looksLikeError) {
+        jarvisInsight = answer;
+        insightThread = [{'role': 'assistant', 'text': answer}];
+        _saveInsightCache();
+      } else {
+        insightError = 'לא ניתן לטעון תובנה כרגע';
+      }
       insightLoading = false;
     } catch (e) {
       if (seq != _insightSeq) return;
@@ -217,26 +230,78 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  static const _fallbackInsights = [
-    'התחל מהמשימה הקשה ביותר בבוקר — שם האנרגיה שלך הכי גבוהה.',
-    'הפסקה קצרה כל 90 דקות משפרת ריכוז יותר מאשר עבודה רצופה.',
-    'רשימת "לא לעשות" יעילה לא פחות מרשימת מטלות — היא שומרת על מיקוד.',
-    'משימה שלוקחת פחות משתי דקות — עשה אותה עכשיו במקום לתזמן.',
-    'סיום היום בתכנון מחר חוסך זמן יקר בבוקר.',
-  ];
+  Future<void> replyToInsight(String userMsg) async {
+    if (userMsg.trim().isEmpty) return;
+    insightThread = [...insightThread, {'role': 'user', 'text': userMsg.trim()}];
+    insightReplyLoading = true;
+    notifyListeners();
+    try {
+      // Build a conversation context for Jarvis
+      final history = insightThread
+          .map((m) => '${m['role'] == 'assistant' ? 'ג׳רוויס' : 'משתמש'}: ${m['text']}')
+          .join('\n');
+      final prompt = 'המשך את השיחה הבאה בעברית. ענה בקצרה ובאמפתיה, וסיים בשאלה.\n\n$history\nג׳רוויס:';
+      final r = await api.askJarvis(prompt, settings, intent: 'chat');
+      final answer = (r['answer'] as String? ?? '').trim();
+      if (answer.isNotEmpty) {
+        insightThread = [...insightThread, {'role': 'assistant', 'text': answer}];
+        _saveInsightCache();
+      }
+    } catch (_) {/* keep thread as-is */}
+    insightReplyLoading = false;
+    notifyListeners();
+  }
 
-  String _localFallbackInsight() =>
-      _fallbackInsights[Random().nextInt(_fallbackInsights.length)];
+  Future<void> _saveInsightCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('insight_thread_v2', jsonEncode(insightThread));
+    } catch (_) {}
+  }
+
+  Future<void> _loadInsightCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('insight_thread_v2');
+      if (raw != null) {
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        final thread = decoded
+            .whereType<Map<String, dynamic>>()
+            .map((m) => {'role': m['role']?.toString() ?? '', 'text': m['text']?.toString() ?? ''})
+            .where((m) => m['role']!.isNotEmpty && m['text']!.isNotEmpty)
+            .toList();
+        if (thread.isNotEmpty) {
+          insightThread = thread;
+          jarvisInsight = thread.firstWhere(
+            (m) => m['role'] == 'assistant',
+            orElse: () => {'role': 'assistant', 'text': ''},
+          )['text']!;
+          // Show cached content immediately; loading stays true until fetch completes.
+          notifyListeners();
+        }
+      }
+    } catch (_) {}
+  }
 
   void setInsightTopic(String? topic) {
     insightTopic = topic;
+    insightThread = [];
+    loadJarvisInsight();
+  }
+
+  void setInsightDepth(String depth) {
+    insightDepth = depth;
+    insightThread = [];
     loadJarvisInsight();
   }
 
   Future<void> insightToTask() async {
-    final text = jarvisInsight.trim();
-    if (text.isEmpty) return;
-    await addTask(text);
+    final firstAssistant = insightThread
+        .where((m) => m['role'] == 'assistant')
+        .map((m) => m['text'] ?? '')
+        .firstWhere((t) => t.isNotEmpty, orElse: () => jarvisInsight);
+    if (firstAssistant.trim().isEmpty) return;
+    await addTask(firstAssistant.trim());
   }
 
   // ───────────────────────────────────────────────────────────────────────────

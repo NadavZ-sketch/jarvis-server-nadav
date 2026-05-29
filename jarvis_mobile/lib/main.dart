@@ -19,6 +19,7 @@ import 'app_settings.dart';
 import 'theme/jarvis_theme.dart';
 import 'theme/theme_notifier.dart';
 import 'widgets/markdown_lite.dart';
+import 'widgets/jarvis_orb.dart';
 import 'settings_screen.dart';
 import 'history_screen.dart';
 import 'live_talk_screen.dart';
@@ -146,7 +147,7 @@ class _JarvisAppState extends State<JarvisApp> {
   }
 }
 
-enum JarvisState { idle, listening, thinking, speaking }
+enum JarvisState { idle, listening, thinking, speaking, complete }
 
 // ─── Typing Dots ──────────────────────────────────────────────────────────────
 class _TypingDots extends StatefulWidget {
@@ -207,114 +208,20 @@ class _TypingDotsState extends State<_TypingDots> with TickerProviderStateMixin 
 }
 
 // ─── Jarvis Orb ───────────────────────────────────────────────────────────────
+// Thin wrapper kept for backwards-compat call sites. The visual is now the
+// fully custom-painted [JarvisOrb] (see widgets/jarvis_orb.dart). [breathAnim]
+// is no longer needed (the orb animates itself) but is accepted to avoid
+// churn at the call site; [level] feeds the live listening waveform.
 class _JarvisOrb extends StatelessWidget {
   final JarvisState state;
-  final Animation<double> breathAnim;
+  final Animation<double>? breathAnim;
+  final double level;
 
-  const _JarvisOrb({required this.state, required this.breathAnim});
-
-  Color get _glow {
-    switch (state) {
-      case JarvisState.listening: return const Color(0xFF93C5FD);
-      case JarvisState.thinking:  return const Color(0xFF818CF8);
-      case JarvisState.speaking:  return const Color(0xFF22D3EE);
-      default:                    return JC.blue500;
-    }
-  }
-
-  List<Color> get _gradient {
-    switch (state) {
-      case JarvisState.listening: return [const Color(0xFFBAE6FD), JC.blue400];
-      case JarvisState.thinking:  return [const Color(0xFFA78BFA), const Color(0xFF4338CA)];
-      case JarvisState.speaking:  return [const Color(0xFF67E8F9), const Color(0xFF0E7490)];
-      default:                    return [JC.blue400, const Color(0xFF1E3A8A)];
-    }
-  }
-
-  double get _size {
-    switch (state) {
-      case JarvisState.thinking: return 100.0;
-      case JarvisState.speaking: return 96.0;
-      default: return 114.0;
-    }
-  }
+  const _JarvisOrb({required this.state, this.breathAnim, this.level = 0});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: breathAnim,
-      builder: (_, __) => Transform.scale(
-        scale: state == JarvisState.idle ? breathAnim.value : 1.0,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Outer ambient ring
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeOut,
-              width:  _size + 52,
-              height: _size + 52,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _glow.withValues(alpha: 0.06),
-              ),
-            ),
-            // Mid glow ring
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeOut,
-              width:  _size + 28,
-              height: _size + 28,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _glow.withValues(alpha: 0.13),
-              ),
-            ),
-            // Core orb
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeOut,
-              width:  _size,
-              height: _size,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: _gradient,
-                  center: const Alignment(-0.25, -0.3),
-                  radius: 0.85,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _glow.withValues(alpha: 0.55),
-                    blurRadius: 24,
-                    spreadRadius: state == JarvisState.idle ? 1 : 6,
-                  ),
-                  BoxShadow(
-                    color: _glow.withValues(alpha: 0.2),
-                    blurRadius: 56,
-                    spreadRadius: 8,
-                  ),
-                ],
-              ),
-            ),
-            // Orb inner specular highlight
-            Positioned(
-              top: (_size + 52) / 2 - _size / 2 + 12,
-              left: (_size + 52) / 2 - _size / 2 + 14,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 600),
-                width:  _size * 0.28,
-                height: _size * 0.18,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  color: Colors.white.withValues(alpha: 0.22),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return JarvisOrb(state: state, level: level, size: 168);
   }
 }
 

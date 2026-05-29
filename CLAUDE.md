@@ -76,7 +76,10 @@ Every user message enters through `POST /ask-jarvis` (and `POST /stream-jarvis` 
 
 ### LLM Stack (`agents/models.js`)
 
-All LLM calls go through a provider failover chain:
+All LLM calls go through a provider failover chain. See
+[`docs/llm_flow_diagram.svg`](docs/llm_flow_diagram.svg) for a visual map of
+the routing (local Ollama gate vs. the Groq → DeepSeek → Gemini cloud chain,
+plus the Gemini-only bypass paths for search and vision).
 
 - **`callGemma4()`** — Main inference endpoint
   - Tries: Ollama (local) → Groq → DeepSeek → Gemini (cloud)

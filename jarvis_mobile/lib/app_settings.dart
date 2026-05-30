@@ -40,7 +40,8 @@ class AppSettings {
   String ttsVoiceName; // platform voice name, '' = default
 
   // ── AI / model ──
-  String cloudProvider; // 'groq' | 'deepseek' | 'gemini'
+  String cloudProvider; // 'groq' | 'deepseek' | 'openrouter' | 'gemini'
+  String openrouterModel; // model id to pass when cloudProvider == 'openrouter'
   String localModelName;
   double temperature;   // 0.0 – 1.0
   String responseLength; // 'short' | 'medium' | 'long'
@@ -89,6 +90,7 @@ class AppSettings {
     this.ttsLanguage = 'he-IL',
     this.ttsVoiceName = '',
     this.cloudProvider = 'groq',
+    this.openrouterModel = 'deepseek/deepseek-v4-flash:free',
     this.localModelName = 'llama3',
     this.temperature = 0.7,
     this.responseLength = 'medium',
@@ -173,6 +175,7 @@ class AppSettings {
       ttsLanguage:      prefs.getString('ttsLanguage')      ?? 'he-IL',
       ttsVoiceName:     prefs.getString('ttsVoiceName')     ?? '',
       cloudProvider:    prefs.getString('cloudProvider')    ?? 'groq',
+      openrouterModel:  prefs.getString('openrouterModel')  ?? 'deepseek/deepseek-v4-flash:free',
       localModelName:   prefs.getString('localModelName')   ?? 'llama3',
       temperature:      prefs.getDouble('temperature')      ?? 0.7,
       responseLength:   prefs.getString('responseLength')   ?? 'medium',
@@ -214,6 +217,7 @@ class AppSettings {
     await prefs.setString('ttsLanguage',    ttsLanguage);
     await prefs.setString('ttsVoiceName',   ttsVoiceName);
     await prefs.setString('cloudProvider',  cloudProvider);
+    await prefs.setString('openrouterModel', openrouterModel);
     await prefs.setString('localModelName', localModelName);
     await prefs.setDouble('temperature',    temperature);
     await prefs.setString('responseLength', responseLength);
@@ -246,8 +250,9 @@ class AppSettings {
     'useLocalServer': useLocalServer,
     'ttsEnabled':     voiceEnabled,   // server checks settings.ttsEnabled
     'telemetryConsent': telemetryConsent,
-    'cloudProvider':  cloudProvider,
-    'localModelName': localModelName,
+    'cloudProvider':   cloudProvider,
+    'openrouterModel': openrouterModel,
+    'localModelName':  localModelName,
     'temperature':    temperature,
     'responseLength': responseLength,
   };

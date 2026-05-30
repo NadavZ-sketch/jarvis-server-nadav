@@ -45,7 +45,7 @@ const PROVIDERS = {
         openaiCompatible: true,
         timeout: 10000,
         url:   () => 'https://openrouter.ai/api/v1/chat/completions',
-        model: () => process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
+        model: (s = {}) => s.openrouterModel || process.env.OPENROUTER_MODEL || 'deepseek/deepseek-v4-flash:free',
         keyEnv: 'OPENROUTER_API_KEY',
         extraHeaders: () => ({
             'HTTP-Referer': process.env.OPENROUTER_REFERER || 'https://jarvis-server',

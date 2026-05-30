@@ -80,6 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ttsLanguage:      w.ttsLanguage,
       ttsVoiceName:     w.ttsVoiceName,
       cloudProvider:    w.cloudProvider,
+      openrouterModel:  w.openrouterModel,
       localModelName:   w.localModelName,
       temperature:      w.temperature,
       responseLength:   w.responseLength,
@@ -1329,6 +1330,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                   onChanged: (val) => setState(() => _s.cloudProvider = val!),
                 ),
+                if (_s.cloudProvider == 'openrouter') ...[
+                  _divider(),
+                  _rowDropdown<String>(
+                    label: 'מודל OpenRouter',
+                    icon: Icons.memory_outlined,
+                    value: _s.openrouterModel,
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'deepseek/deepseek-v4-flash:free',
+                        child: Text('DeepSeek V4 Flash (free)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'google/gemma-4-31b-it:free',
+                        child: Text('Gemma 4 31B (free)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+                        child: Text('Nemotron Nano Reasoning (free)'),
+                      ),
+                    ],
+                    onChanged: (val) => setState(() => _s.openrouterModel = val!),
+                  ),
+                ],
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   child: Text(

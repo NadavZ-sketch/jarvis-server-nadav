@@ -33,7 +33,7 @@ async function sendEmail(to, body) {
     console.log(`📧 Email sent to ${to}`);
 }
 
-const { classifyIntent, classifyIntentWithLLM, loadCustomRegistry } = require('./agents/router');
+const { classifyIntent, classifyIntentWithLLM, loadCustomRegistry, detectComplexTask } = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator } = require('./agents/memoryAgent');
@@ -48,7 +48,7 @@ const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
 const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = require('./agents/e2eAgent');
-const { runManusAgent }       = require('./agents/manusAgent');
+const { runManusAgent, isManusConfigured } = require('./agents/manusAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent, analyzePatterns, optimizeDayPlan } = require('./agents/insightAgent');
 const priorityEngine          = require('./services/priorityEngine');
@@ -611,6 +611,15 @@ app.get('/health/providers', async (req, res) => {
                 { timeout: 12000 })),
     ]);
 
+    // Manus: lightweight authenticated list request (avoids creating a real task)
+    const manusBase = process.env.MANUS_BASE || 'https://api.manus.ai/v1';
+    const manusAuthHeader = process.env.MANUS_AUTH_HEADER || 'API_KEY';
+    await probe('manus', !!process.env.MANUS_API_KEY, () =>
+        axios.get(`${manusBase}/tasks?limit=1`, {
+            headers: { [manusAuthHeader]: process.env.MANUS_API_KEY },
+            timeout: 8000,
+        }));
+
     out.ollama = (process.env.OLLAMA_URL ? 'configured (local)' : 'not configured');
     res.json({ ts: Date.now(), providers: out });
 });
@@ -705,6 +714,22 @@ async function askJarvisHandler(req, res) {
                 agentName = await classifyIntentWithLLM(userMessage);
                 intentMode = 'llm';
             }
+            // Smart auto-routing: long/complex multi-step requests go to Manus
+            // when Manus is configured and auto-routing is not disabled.
+            if (agentName === 'chat' && !imageBase64
+                && process.env.MANUS_AUTOROUTE !== 'off'
+                && isManusConfigured()
+                && detectComplexTask(userMessage)) {
+                agentName = 'manus';
+                intentMode = 'complexity';
+                console.log(`🧠 Complexity auto-route: "manus" ← "${userMessage.slice(0, 60)}"`);
+            }
+        }
+
+        // Guard: if LLM or keyword classified as manus but Manus is not configured, fall back to chat
+        if (agentName === 'manus' && !isManusConfigured()) {
+            console.log('⚠️ Manus intent but MANUS_API_KEY not set — falling back to chat');
+            agentName = 'chat';
         }
 
         // Follow-up override: if the user is continuing a previous conversation,

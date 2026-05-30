@@ -3,6 +3,7 @@
 // with a Claude Code / Codex ready prompt block appended.
 
 const { runCodeErrorScanner } = require('./e2e/codeErrorScanner');
+const { runManusTask, isManusConfigured } = require('./manusAgent');
 
 const SEV_EMOJI = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢' };
 
@@ -13,6 +14,14 @@ function formatFindingLine(f) {
 async function runCodeErrorAgent(userMessage = '', _useLocal, sendEmailFn) {
     try {
         const { findings, claudePrompt, summary, score } = await runCodeErrorScanner({});
+
+        // Optionally offload the LLM analysis step to Manus
+        if (process.env.MANUS_OFFLOAD_CODE_ERROR === 'true' && isManusConfigured() && findings.length > 0) {
+            console.log('🔍 CodeErrorAgent: offloading analysis to Manus');
+            const { answer: manusAnswer } = await runManusTask(claudePrompt).catch(() => ({ answer: null }));
+            if (manusAnswer) return { answer: manusAnswer };
+            // fall through to normal formatting on Manus failure
+        }
 
         const counts = { critical: 0, high: 0, medium: 0, low: 0 };
         findings.forEach(f => { if (f.severity in counts) counts[f.severity]++; });

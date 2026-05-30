@@ -8,6 +8,7 @@ import 'main.dart' show JC;
 import 'theme/theme_notifier.dart';
 import 'widgets/theme_picker.dart';
 import 'services/api_service.dart';
+import 'screens/local_model_setup_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AppSettings settings;
@@ -1279,6 +1280,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ctrl: _localModelCtrl,
                   hint: 'llama3',
                 ),
+                _divider(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: JC.blue500,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: () async {
+                      final result = await Navigator.of(context).push<bool>(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              LocalModelSetupScreen(settings: _s),
+                        ),
+                      );
+                      if (result == true && mounted) {
+                        setState(() {
+                          _localServerUrlCtrl.text = _s.localServerUrl;
+                          _localModelCtrl.text = _s.localModelName;
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.school_outlined),
+                    label: const Text('מדריך התקנה אינטראקטיבי',
+                        style: TextStyle(fontFamily: 'Heebo')),
+                  ),
+                ),
               ] else ...[
                 _divider(),
                 _rowDropdown<String>(
@@ -1286,9 +1315,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.cloud_outlined,
                   value: _s.cloudProvider,
                   items: const [
-                    DropdownMenuItem(value: 'groq',     child: Text('Groq')),
-                    DropdownMenuItem(value: 'deepseek', child: Text('DeepSeek')),
-                    DropdownMenuItem(value: 'gemini',   child: Text('Gemini')),
+                    DropdownMenuItem(value: 'groq',       child: Text('Groq')),
+                    DropdownMenuItem(value: 'deepseek',   child: Text('DeepSeek')),
+                    DropdownMenuItem(value: 'openrouter', child: Text('OpenRouter')),
+                    DropdownMenuItem(value: 'gemini',     child: Text('Gemini')),
                   ],
                   onChanged: (val) => setState(() => _s.cloudProvider = val!),
                 ),

@@ -68,6 +68,18 @@ const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/cal
 const { runPromptAgent }      = require('./agents/promptAgent');
 const { runSettingsAgent }    = require('./agents/settingsAgent');
 const { runProjectAgent }     = require('./agents/projectAgent');
+const dispatcher              = require('./agents/dispatcher');
+
+// Single AGENTS map passed into the dispatcher so intent→agent wiring lives in
+// one place (agents/dispatcher.js) instead of duplicated if/else chains.
+const AGENTS = {
+    runTaskAgent, runReminderAgent, runMemoryAgent, runWeatherAgent, runNewsAgent,
+    runShoppingAgent, runNotesAgent, runStocksAgent, runTranslationAgent, runMusicAgent,
+    runSportsAgent, runMessagingAgent, runDraftAgent, runInsightAgent, runAgentFactoryAgent,
+    runCalendarAgent, runPromptAgent, runSettingsAgent, runProjectAgent,
+    runSecurityAgent, runCodeErrorAgent, runE2EAgent,
+};
+
 const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
 const { createTasksRouter } = require('./routes/tasks');
@@ -774,88 +786,54 @@ async function askJarvisHandler(req, res) {
         // ── Dispatch ──────────────────────────────────────────────────────────
         // Wrap the dispatch in a provider-tracking context so models.js can
         // record which LLM (groq/deepseek/openrouter/gemini/ollama) actually
-        // answered. Read back via getCurrentProvider() and surface to client.
-        const { providerContext, getCurrentProvider } = require('./agents/models');
+        // answered AND so per-request opts (cloudProvider, temperature, local
+        // url/model from the mobile app's settings) propagate to all ~44
+        // callGemma4 sites without editing any agent file. Read back via
+        // getCurrentProvider() and surface to the client.
         let result;
         let llmProvider = null;
-        await providerContext.run({}, async () => {
+        const providerOpts = {
+            cloudProvider:   settings.cloudProvider,
+            temperature:     settings.temperature,
+            localServerUrl:  settings.localServerUrl,
+            localModelName:  settings.localModelName,
+        };
+        await providerContext.run({ opts: providerOpts }, async () => {
+        // Build the per-request context once. The dispatcher's per-entry
+        // adapters destructure what each agent actually needs.
+        const ctx = {
+            userMessage, supabase, useLocal, settings,
+            chatHistory, longTermMemories, imageBase64,
+            sendEmail, chatId,
+        };
+        const entry = dispatcher.getEntry(agentName);
+
         if (isAgentDisabled(agentName)) {
             console.log(`⛔ Agent "${agentName}" is disabled — skipping dispatch`);
             result = { ...AGENT_DISABLED_REPLY };
-        } else if (agentName === 'task') {
-            result = await runTaskAgent(userMessage, supabase, useLocal, settings);
-        } else if (agentName === 'reminder') {
-            result = await runReminderAgent(userMessage, supabase);
-        } else if (agentName === 'memory') {
-            result = await runMemoryAgent(userMessage, supabase, useLocal, settings);
-            cacheInvalidate('memories'); // memory changed — bust cache
-        } else if (agentName === 'weather') {
-            result = await runWeatherAgent(userMessage, settings);
-        } else if (agentName === 'news') {
-            result = await runNewsAgent(userMessage, settings);
-        } else if (agentName === 'shopping') {
-            result = await runShoppingAgent(userMessage, supabase, useLocal);
-        } else if (agentName === 'notes') {
-            result = await runNotesAgent(userMessage, supabase, useLocal);
-        } else if (agentName === 'stocks') {
-            result = await runStocksAgent(userMessage);
-        } else if (agentName === 'translate') {
-            result = await runTranslationAgent(userMessage, supabase, useLocal);
-        } else if (agentName === 'music') {
-            result = await runMusicAgent(userMessage, supabase, useLocal, settings);
-        } else if (agentName === 'sports') {
-            result = await runSportsAgent(userMessage);
-        } else if (agentName === 'messaging') {
-            result = await runMessagingAgent(userMessage, supabase, useLocal);
-        } else if (agentName === 'draft') {
-            result = await runDraftAgent(userMessage, chatHistory, longTermMemories, settings);
-        } else if (agentName === 'insight') {
-            result = await runInsightAgent(userMessage, supabase, useLocal, settings);
-        } else if (agentName === 'security') {
-            result = await runSecurityAgent(userMessage, useLocal, sendEmail);
-        } else if (agentName === 'code_error') {
+        } else if (entry && entry.mode === 'background') {
+            // Background entries (code_error, e2e): return placeholder immediately,
+            // run the real agent via setImmediate, persist its answer to chat history
+            // when done. Keep the closure-over-chatId pattern explicit here.
+            const bgChatId = chatId;
+            const label = agentName;
             setImmediate(async () => {
                 try {
-                    const ceResult = await runCodeErrorAgent(userMessage, useLocal, sendEmail);
-                    await saveChatMessage('jarvis', ceResult.answer, chatId);
-                    cacheInvalidate(`chatHistory:${chatId}`);
-                    console.log('🔍 codeErrorAgent background run saved to chat history');
+                    const r = await entry.invoke(ctx, AGENTS);
+                    await saveChatMessage('jarvis', r.answer, bgChatId);
+                    cacheInvalidate(`chatHistory:${bgChatId}`);
+                    console.log(`🪐 background ${label} saved to chat history`);
                 } catch (err) {
-                    console.error('🔍 codeErrorAgent background run failed:', err.message);
-                    await saveChatMessage('jarvis', '❌ סריקת שגיאות נכשלה: ' + err.message, chatId).catch(() => {});
-                    cacheInvalidate(`chatHistory:${chatId}`);
+                    console.error(`🪐 background ${label} failed:`, err.message);
+                    await saveChatMessage('jarvis', `❌ ${label} נכשל: ${err.message}`, bgChatId).catch(() => {});
+                    cacheInvalidate(`chatHistory:${bgChatId}`);
                 }
             });
-            result = { answer: '🔍 מתחיל סריקת שגיאות קוד ברקע — הדוח יופיע בשיחה כשיסיים. רענן את השיחה כדי לראות את התוצאות.', skipTts: true };
-        } else if (agentName === 'e2e') {
-            // Run in background — return immediately so the HTTP request doesn't time out.
-            // The full report is saved to chat_history when the run finishes; the app
-            // will see it on the next history refresh.
-            const reportChatId = chatId; // Capture chatId in closure
-            setImmediate(async () => {
-                try {
-                    const e2eResult = await runE2EAgent(userMessage, supabase, useLocal, settings);
-                    console.log(`🧪 E2E saving to chatId: ${reportChatId}`);
-                    await saveChatMessage('jarvis', e2eResult.answer, reportChatId);
-                    cacheInvalidate(`chatHistory:${reportChatId}`);
-                    console.log('🧪 E2E background run saved to chat history');
-                } catch (err) {
-                    console.error('🧪 E2E background run failed:', err.message);
-                    await saveChatMessage('jarvis', '❌ בדיקות הקצה נכשלו: ' + err.message, reportChatId).catch(() => {});
-                    cacheInvalidate(`chatHistory:${reportChatId}`);
-                }
-            });
-            result = { answer: '🧪 מתחיל בדיקות קצה ברקע — הדוח המלא יופיע בשיחה כשיסיים (בד"כ תוך 1-2 דקות). רענן את השיחה כדי לראות את התוצאות.', skipTts: true };
-        } else if (agentName === 'factory') {
-            result = await runAgentFactoryAgent(userMessage, supabase, useLocal);
-        } else if (agentName === 'calendar') {
-            result = await runCalendarAgent(userMessage, supabase, settings);
-        } else if (agentName === 'prompt') {
-            result = await runPromptAgent(userMessage, supabase, useLocal, settings);
-        } else if (agentName === 'settings') {
-            result = await runSettingsAgent(userMessage, supabase, useLocal, settings);
-        } else if (agentName === 'project') {
-            result = await runProjectAgent(userMessage, supabase, useLocal, settings);
+            result = { answer: entry.placeholder, skipTts: true };
+        } else if (entry) {
+            // Sync entry — single line replaces the old per-intent if/else.
+            result = await dispatcher.dispatch(agentName, ctx, AGENTS);
+            if (entry.cacheBust) cacheInvalidate(entry.cacheBust);
         } else {
             // ── Orchestrator: handle multi-intent requests before chat fallback ─
             if (!imageBase64 && userMessage.length > 15) {
@@ -980,6 +958,16 @@ async function askJarvisHandler(req, res) {
         }
 
     } catch (err) {
+        if (err instanceof LocalModelError) {
+            // Strict-local mode: the user enabled "מודל מקומי" but it's not
+            // reachable. Show a clear Hebrew message instead of hanging.
+            console.warn('🔌 Local model unavailable:', err.url, err.model, err.message);
+            return res.status(200).json({
+                answer: `⚠️ המודל המקומי (${err.model || 'לא ידוע'}) לא זמין בכתובת ${err.url || 'לא מוגדרת'}. ודא ש-Ollama רץ ונגיש מהטלפון, או כבה "מודל מקומי" בהגדרות.`,
+                skipTts: true,
+                provider: 'ollama',
+            });
+        }
         console.error('Route Error:', err.message);
         res.status(500).json({ answer: 'שגיאת מערכת פנימית.' });
     }
@@ -2684,7 +2672,7 @@ app.patch('/shopping/:id', async (req, res) => {
 
 // ─── Streaming endpoint (SSE) ─────────────────────────────────────────────────
 
-const { callGemma4Stream, callGemma4 } = require('./agents/models');
+const { callGemma4Stream, callGemma4, providerContext, getCurrentProvider, LocalModelError } = require('./agents/models');
 
 async function streamJarvisHandler(req, res) {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -2719,6 +2707,21 @@ async function streamJarvisHandler(req, res) {
             if (didResolve) userMessage = resolved;
         }
 
+        // Per-request opts: cloudProvider, temperature, local url/model from the
+        // mobile app's settings. AsyncLocalStorage propagates these to all
+        // callGemma4* sites without touching individual agents.
+        const providerOpts = {
+            cloudProvider:   settings.cloudProvider,
+            temperature:     settings.temperature,
+            localServerUrl:  settings.localServerUrl,
+            localModelName:  settings.localModelName,
+        };
+
+        // Wrap the whole dispatch in providerContext.run so provider tracking
+        // (telemetry / provider badge) works for streaming too, and so opts
+        // propagate to all callGemma4* calls inside agents.
+        return await providerContext.run({ opts: providerOpts }, async () => {
+
         const agentName = await classifyIntent(userMessage);
 
         // Disabled-agent guard: respect the on/off toggle from the Control Center.
@@ -2733,13 +2736,11 @@ async function streamJarvisHandler(req, res) {
         }
 
         // Background agents: respond immediately and run in background via setImmediate
-        const backgroundAgents = { e2e: runE2EAgent, code_error: runCodeErrorAgent, security: runSecurityAgent };
-        if (backgroundAgents[agentName]) {
-            const placeholder = agentName === 'e2e'
-                ? '🧪 מתחיל בדיקות קצה ברקע — התוצאה תופיע בשיחה בעוד כמה דקות.'
-                : agentName === 'code_error'
-                    ? '🔍 סורק שגיאות קוד ברקע — התוצאה תופיע בשיחה בקרוב.'
-                    : '🔒 סורק אבטחה ברקע — התוצאה תופיע בשיחה בקרוב.';
+        // Background agents (e2e, code_error, security): in streaming mode
+        // security also runs in background (parity preserved via getEntryForMode).
+        const bgEntry = dispatcher.getEntryForMode(agentName, { forceBackground: true });
+        if (bgEntry && bgEntry.mode === 'background') {
+            const placeholder = bgEntry.placeholder;
             send({ chunk: placeholder, done: true, chatId });
             await Promise.all([
                 saveChatMessage('user', originalMessage, chatId),
@@ -2747,9 +2748,10 @@ async function streamJarvisHandler(req, res) {
             ]);
             res.end();
             const bgChatId = chatId;
+            const bgCtx = { userMessage, supabase, useLocal, settings, sendEmail, chatId };
             setImmediate(async () => {
                 try {
-                    const r = await backgroundAgents[agentName](userMessage, supabase, useLocal, settings);
+                    const r = await bgEntry.invoke(bgCtx, AGENTS);
                     await saveChatMessage('jarvis', r.answer, bgChatId);
                     cacheInvalidate(`chatHistory:${bgChatId}`);
                 } catch (err) {
@@ -2770,26 +2772,13 @@ async function streamJarvisHandler(req, res) {
             const recentHistory = await loadChatHistory(chatId).catch(() => []);
             settings.recentHistory = recentHistory.slice(-6);
 
+            const syncEntry = dispatcher.getEntry(agentName);
             let result;
-            if (agentName === 'weather')   result = await runWeatherAgent(userMessage, settings);
-            else if (agentName === 'news') result = await runNewsAgent(userMessage, settings);
-            else if (agentName === 'stocks') result = await runStocksAgent(userMessage);
-            else if (agentName === 'translate') result = await runTranslationAgent(userMessage, supabase, useLocal);
-            else if (agentName === 'factory') result = await runAgentFactoryAgent(userMessage, supabase, useLocal, settings);
-            else if (agentName === 'insight') result = await runInsightAgent(userMessage, supabase, useLocal, settings);
-            else if (agentName === 'task') result = await runTaskAgent(userMessage, supabase, useLocal, settings);
-            else if (agentName === 'reminder') result = await runReminderAgent(userMessage, supabase);
-            else if (agentName === 'memory') { result = await runMemoryAgent(userMessage, supabase, useLocal, settings); cacheInvalidate('memories'); }
-            else if (agentName === 'shopping') result = await runShoppingAgent(userMessage, supabase, useLocal);
-            else if (agentName === 'notes') result = await runNotesAgent(userMessage, supabase, useLocal);
-            else if (agentName === 'music') result = await runMusicAgent(userMessage, supabase, useLocal, settings);
-            else if (agentName === 'sports') result = await runSportsAgent(userMessage);
-            else if (agentName === 'messaging') result = await runMessagingAgent(userMessage, supabase, useLocal);
-            else if (agentName === 'calendar') result = await runCalendarAgent(userMessage, supabase, settings);
-            else if (agentName === 'prompt') result = await runPromptAgent(userMessage, supabase, useLocal, settings);
-            else if (agentName === 'settings') result = await runSettingsAgent(userMessage, supabase, useLocal, settings);
-            else if (agentName === 'project') result = await runProjectAgent(userMessage, supabase, useLocal, settings);
-            else {
+            if (syncEntry && syncEntry.mode === 'sync') {
+                const ctx = { userMessage, supabase, useLocal, settings, sendEmail, chatId };
+                result = await dispatcher.dispatch(agentName, ctx, AGENTS);
+                if (syncEntry.cacheBust) cacheInvalidate(syncEntry.cacheBust);
+            } else {
                 const [chatHistory, longTermMemories] = await Promise.all([
                     loadChatHistory(chatId), fetchLongTermMemories()
                 ]);
@@ -2869,7 +2858,17 @@ async function streamJarvisHandler(req, res) {
                 conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(() => {});
             }).catch(() => {});
         });
+        }); // end providerContext.run
     } catch (err) {
+        if (err instanceof LocalModelError) {
+            console.warn('🔌 Local model unavailable (stream):', err.url, err.model);
+            send({
+                chunk: `⚠️ המודל המקומי (${err.model || 'לא ידוע'}) לא זמין בכתובת ${err.url || 'לא מוגדרת'}. ודא ש-Ollama רץ ונגיש מהטלפון, או כבה "מודל מקומי" בהגדרות.`,
+                done: true,
+                provider: 'ollama',
+            });
+            return res.end();
+        }
         console.error('SSE error:', err.message);
         send({ error: 'שגיאת מערכת.' });
     } finally {

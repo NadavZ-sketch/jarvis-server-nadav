@@ -16,6 +16,12 @@ const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const DEEPSEEK_URL   = 'https://api.deepseek.com/chat/completions';
 const DEEPSEEK_MODEL = 'deepseek-chat';
 
+// ─── OpenRouter — additional fallback (OpenAI-compatible, free tier models) ──
+// Provides access to many free open-source models with a single API key.
+// Set OPENROUTER_API_KEY in .env to enable. Override model via OPENROUTER_MODEL.
+const OPENROUTER_URL   = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
+
 // Local Ollama override (optional — set OLLAMA_URL in .env to use local model)
 const OLLAMA_URL   = process.env.OLLAMA_URL;
 const OLLAMA_MODEL = 'gemma4:e4b';
@@ -104,10 +110,32 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
         });
         return response.data.choices[0].message.content.trim();
     } catch (deepseekErr) {
-        console.warn('⚠️ DeepSeek failed, falling back to Gemini:', deepseekErr.message);
+        console.warn('⚠️ DeepSeek failed, falling back to OpenRouter:', deepseekErr.message);
     }
 
-    // ── 4. Gemini final fallback — preserves system/user/assistant role boundaries
+    // ── 4. OpenRouter fallback (only if API key is set) ──
+    if (process.env.OPENROUTER_API_KEY) {
+        try {
+            const response = await axios.post(OPENROUTER_URL, {
+                model: OPENROUTER_MODEL, messages: msgs, max_tokens: maxTokens,
+                temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': process.env.OPENROUTER_REFERER || 'https://jarvis-server',
+                    'X-Title': 'Jarvis',
+                },
+                timeout: 10000,
+            });
+            return response.data.choices[0].message.content.trim();
+        } catch (openrouterErr) {
+            const detail = openrouterErr.response?.data ? JSON.stringify(openrouterErr.response.data) : openrouterErr.message;
+            console.warn('⚠️ OpenRouter failed, falling back to Gemini:', detail);
+        }
+    }
+
+    // ── 5. Gemini final fallback — preserves system/user/assistant role boundaries
     //       so identity and conversation context survive the fallback, instead of
     //       flattening everything into one user-side string blob.
     const payload = _msgsToGeminiPayload(msgs, {
@@ -237,10 +265,30 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
         return;
     } catch (err) {
         if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
-        console.warn('⚠️ DeepSeek stream failed, falling back to Gemini (non-streaming):', err.message);
+        console.warn('⚠️ DeepSeek stream failed, falling back to OpenRouter:', err.message);
     }
 
-    // ── 4. Gemini final fallback (non-streaming) — same role-preserving payload
+    // ── 4. OpenRouter streaming fallback ──
+    if (process.env.OPENROUTER_API_KEY) {
+        try {
+            const response = await axios.post(OPENROUTER_URL, {
+                model: OPENROUTER_MODEL, messages: msgs, max_tokens: maxTokens, stream: true,
+                temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
+            }, streamOpts({
+                'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': process.env.OPENROUTER_REFERER || 'https://jarvis-server',
+                'X-Title': 'Jarvis',
+            }));
+            await parseSSEStream(response.data, onChunk);
+            return;
+        } catch (err) {
+            if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
+            console.warn('⚠️ OpenRouter stream failed, falling back to Gemini (non-streaming):', err.message);
+        }
+    }
+
+    // ── 5. Gemini final fallback (non-streaming) — same role-preserving payload
     //       as the non-stream path for consistent tone across fallbacks.
     const payload = _msgsToGeminiPayload(msgs, {
         temperature: LLM_TEMPERATURE,

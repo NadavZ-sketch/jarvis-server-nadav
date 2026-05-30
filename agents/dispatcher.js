@@ -55,6 +55,12 @@ const REGISTRY = {
         backgroundPlaceholder: '🔒 סורק אבטחה ברקע — התוצאה תופיע בשיחה בקרוב.',
     },
 
+    manus: {
+        mode:'background',
+        invoke:(c,a) => a.runManusAgent(c.userMessage, c.settings),
+        placeholder: '🦾 Manus מתחיל לעבוד על המשימה ברקע — זה עשוי לקחת כמה דקות. התוצאה תופיע בשיחה כשתסיים.',
+    },
+
     code_error: {
         mode:'background',
         invoke:(c,a) => a.runCodeErrorAgent(c.userMessage, c.useLocal, c.sendEmail),

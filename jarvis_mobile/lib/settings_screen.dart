@@ -1137,13 +1137,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ]),
 
             // ── שרת ──────────────────────────────────────────────────────────
-            _sectionHeader('שרת', Icons.dns_outlined),
+            _sectionHeader('חיבור לשרת', Icons.dns_outlined),
             _card([
               _rowSwitch(
-                label: 'שרת מקומי',
+                label: 'שרת מקומי (LAN / ענן-מנהרה)',
                 subtitle: _s.useLocalServer
-                    ? _s.localServerUrl
-                    : 'Render Cloud (${AppSettings.cloudServerUrl.replaceFirst('https://', '')})',
+                    ? 'מתחבר אל: ${_s.localServerUrl}'
+                    : 'מחובר לשרת Render Cloud',
                 icon: Icons.router_outlined,
                 value: _s.useLocalServer,
                 onChanged: (val) => setState(() => _s.useLocalServer = val),
@@ -1261,13 +1261,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ]),
 
             // ── מודל AI ──────────────────────────────────────────────────────
-            _sectionHeader('AI ומודלים', Icons.memory_outlined),
+            _sectionHeader('מנוע AI (מי מייצר את התשובות)', Icons.memory_outlined),
             _card([
               _rowSwitch(
-                label: 'מודל מקומי (Ollama)',
+                label: 'מודל מקומי — Ollama',
                 subtitle: _s.useLocalModel
-                    ? 'Ollama על השרת המקומי'
-                    : 'ספק ענן',
+                    ? 'מנוע: Ollama (דרך השרת)'
+                    : 'מנוע: ספק ענן',
                 icon: Icons.precision_manufacturing_outlined,
                 value: _s.useLocalModel,
                 onChanged: (val) => setState(() => _s.useLocalModel = val),

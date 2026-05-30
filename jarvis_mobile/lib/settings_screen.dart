@@ -8,7 +8,7 @@ import 'main.dart' show JC;
 import 'theme/theme_notifier.dart';
 import 'widgets/theme_picker.dart';
 import 'services/api_service.dart';
-import 'screens/local_model_setup_screen.dart';
+import 'screens/local_server_setup_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AppSettings settings;
@@ -1152,6 +1152,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _divider(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: JC.blue500,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: () async {
+                      final result = await Navigator.of(context).push<bool>(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              LocalServerSetupScreen(settings: _s),
+                        ),
+                      );
+                      if (result == true && mounted) {
+                        setState(() {
+                          _localServerUrlCtrl.text = _s.localServerUrl;
+                          _detectPreset(_s.localServerUrl);
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.play_circle_outline),
+                    label: const Text('מדריך הפעלה וחיבור לשרת',
+                        style: TextStyle(fontFamily: 'Heebo')),
+                  ),
+                ),
+                _divider(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1285,34 +1313,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Text(
                     'במצב מקומי משתמשים אך ורק במודל שלך. אם הוא לא זמין — תוצג שגיאה (אין מעבר אוטומטי לענן).',
                     style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'),
-                  ),
-                ),
-                _divider(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: JC.blue500,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: () async {
-                      final result = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              LocalModelSetupScreen(settings: _s),
-                        ),
-                      );
-                      if (result == true && mounted) {
-                        setState(() {
-                          _localServerUrlCtrl.text = _s.localServerUrl;
-                          _localModelCtrl.text = _s.localModelName;
-                        });
-                      }
-                    },
-                    icon: const Icon(Icons.school_outlined),
-                    label: const Text('מדריך התקנה אינטראקטיבי',
-                        style: TextStyle(fontFamily: 'Heebo')),
                   ),
                 ),
               ] else ...[

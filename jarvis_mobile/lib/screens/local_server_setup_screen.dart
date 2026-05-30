@@ -5,82 +5,63 @@ import 'package:http/http.dart' as http;
 import '../main.dart';
 import '../app_settings.dart';
 
-/// Interactive step-by-step wizard for connecting an already-installed local
-/// Ollama on the user's computer to the Jarvis mobile app — either over the
-/// local WiFi network, or exposed to the cloud via a secure tunnel.
-class LocalModelSetupScreen extends StatefulWidget {
+/// Interactive step-by-step wizard for connecting the Jarvis mobile app
+/// to a Jarvis **server** running on the user's own computer — either over
+/// the local WiFi network, or exposed to the cloud via a secure tunnel.
+class LocalServerSetupScreen extends StatefulWidget {
   final AppSettings settings;
-  const LocalModelSetupScreen({super.key, required this.settings});
+  const LocalServerSetupScreen({super.key, required this.settings});
 
   @override
-  State<LocalModelSetupScreen> createState() => _LocalModelSetupScreenState();
+  State<LocalServerSetupScreen> createState() => _LocalServerSetupScreenState();
 }
 
 enum _ConnectionMode { localNetwork, cloudTunnel }
 
-class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
+class _LocalServerSetupScreenState extends State<LocalServerSetupScreen> {
   int _step = 0;
   _ConnectionMode _mode = _ConnectionMode.localNetwork;
   final _urlCtrl = TextEditingController();
-  final _modelCtrl = TextEditingController();
   String? _pingMsg;
   bool _pinging = false;
-  List<String> _detectedModels = [];
 
   static const int _totalSteps = 4;
 
   @override
   void initState() {
     super.initState();
-    _urlCtrl.text = widget.settings.localServerUrl.replaceAll(':3000', ':11434');
-    if (!_urlCtrl.text.contains('11434') &&
-        !_urlCtrl.text.contains('ngrok') &&
-        !_urlCtrl.text.contains('trycloudflare')) {
-      _urlCtrl.text = 'http://192.168.1.100:11434';
+    final existing = widget.settings.localServerUrl.trim();
+    if (existing.isEmpty) {
+      _urlCtrl.text = 'http://192.168.1.100:3000';
+    } else {
+      _urlCtrl.text = existing;
     }
-    _modelCtrl.text = widget.settings.localModelName.isEmpty
-        ? 'llama3'
-        : widget.settings.localModelName;
   }
 
   @override
   void dispose() {
     _urlCtrl.dispose();
-    _modelCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _pingOllama() async {
+  Future<void> _pingServer() async {
     setState(() {
       _pinging = true;
       _pingMsg = null;
-      _detectedModels = [];
     });
     try {
       final base = _urlCtrl.text.trim().replaceAll(RegExp(r'/$'), '');
       final resp = await http
-          .get(Uri.parse('$base/api/tags'))
-          .timeout(const Duration(seconds: 5));
+          .get(Uri.parse('$base/health'))
+          .timeout(const Duration(seconds: 6));
       if (resp.statusCode == 200) {
-        final body = resp.body;
-        final modelMatches =
-            RegExp(r'"name"\s*:\s*"([^"]+)"').allMatches(body);
-        final names = modelMatches.map((m) => m.group(1)!).toList();
-        setState(() {
-          _detectedModels = names;
-          _pingMsg = names.isEmpty
-              ? '⚠️ Ollama רץ אבל לא נמצאו מודלים מותקנים'
-              : '✅ מחובר! נמצאו ${names.length} מודלים';
-          if (names.isNotEmpty && !names.contains(_modelCtrl.text)) {
-            _modelCtrl.text = names.first;
-          }
-        });
+        setState(() => _pingMsg = '✅ השרת מחובר ומגיב!');
       } else {
-        setState(() => _pingMsg = '❌ שגיאה: ${resp.statusCode}');
+        setState(() => _pingMsg = '⚠️ השרת ענה עם קוד ${resp.statusCode}');
       }
     } on SocketException {
       setState(() => _pingMsg =
-          '❌ לא ניתן להתחבר. ודא ש-Ollama רץ ושהמחשב והטלפון על אותה רשת.');
+          '❌ לא ניתן להתחבר. ודא שהשרת רץ ושהמחשב והטלפון על אותה רשת.');
     } catch (e) {
       setState(() => _pingMsg = '❌ ${e.toString().split('\n').first}');
     } finally {
@@ -90,13 +71,11 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
 
   void _save() {
     widget.settings.localServerUrl = _urlCtrl.text.trim();
-    widget.settings.localModelName = _modelCtrl.text.trim();
-    widget.settings.useLocalModel = true;
-    widget.settings.useLocalServer = false;
+    widget.settings.useLocalServer = true;
     widget.settings.save();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('✅ ההגדרות נשמרו! המודל המקומי פעיל.'),
+        content: Text('✅ ההגדרות נשמרו! האפליקציה מחוברת לשרת המקומי.'),
       ));
       Navigator.of(context).pop(true);
     }
@@ -110,7 +89,7 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
         backgroundColor: JC.bg,
         appBar: AppBar(
           backgroundColor: JC.surface,
-          title: const Text('חיבור מודל מקומי',
+          title: const Text('חיבור לשרת מקומי',
               style: TextStyle(fontFamily: 'Heebo')),
           centerTitle: true,
         ),
@@ -162,7 +141,7 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
             },
             steps: [
               _buildModeStep(),
-              _buildServeStep(),
+              _buildStartStep(),
               _buildAddressStep(),
               _buildVerifyStep(),
             ],
@@ -181,13 +160,13 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const _InfoText(
-                'אנחנו מניחים ש-Ollama כבר מותקן אצלך. עכשיו צריך להחליט איך הטלפון יגיע אליו:'),
+                'הפרויקט כבר מותקן על המחשב שלך. צריך רק להחליט איך הטלפון יגיע אליו:'),
             const SizedBox(height: 12),
             _ModeCard(
               icon: Icons.wifi_outlined,
               title: 'רשת מקומית (WiFi)',
               subtitle:
-                  'הטלפון והמחשב על אותה רשת WiFi בבית. הכי מהיר, אפס עיכוב.',
+                  'הטלפון והמחשב על אותה רשת. הכי מהיר ופשוט — אפס עיכוב.',
               selected: _mode == _ConnectionMode.localNetwork,
               onTap: () =>
                   setState(() => _mode = _ConnectionMode.localNetwork),
@@ -195,9 +174,9 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
             const SizedBox(height: 8),
             _ModeCard(
               icon: Icons.cloud_outlined,
-              title: 'מנהרה לענן (ngrok / Cloudflare)',
+              title: 'מנהרה לענן (Cloudflare / ngrok)',
               subtitle:
-                  'גישה מכל מקום בעולם דרך כתובת ציבורית. מעט עיכוב, דורש כלי חיצוני.',
+                  'גישה מכל מקום בעולם דרך כתובת ציבורית. דורש כלי חיצוני.',
               selected: _mode == _ConnectionMode.cloudTunnel,
               onTap: () =>
                   setState(() => _mode = _ConnectionMode.cloudTunnel),
@@ -206,64 +185,61 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
         ),
       );
 
-  Step _buildServeStep() {
+  Step _buildStartStep() {
     final isLocal = _mode == _ConnectionMode.localNetwork;
     return Step(
-      title: Text(isLocal ? '2. הפעלת השרת לרשת המקומית' : '2. הפעלת מנהרה לענן',
+      title: Text(isLocal ? '2. הפעלת השרת במחשב' : '2. הפעלת השרת + מנהרה',
           style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
       isActive: _step >= 1,
       state: _step > 1 ? StepState.complete : StepState.indexed,
-      content: isLocal ? _buildLocalServeContent() : _buildTunnelServeContent(),
+      content: isLocal ? _buildLocalStartContent() : _buildTunnelStartContent(),
     );
   }
 
-  Widget _buildLocalServeContent() => Column(
+  Widget _buildLocalStartContent() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const _InfoText(
-              'כברירת מחדל Ollama מאזין רק ל-localhost ולא לטלפון. צריך לאפשר חיבורים מהרשת:'),
+              'בטרמינל במחשב — היכנס לתיקיית הפרויקט והפעל את השרת:'),
           const SizedBox(height: 12),
-          const _Subtitle('macOS / Linux — בטרמינל:'),
-          _CmdTile(cmd: 'export OLLAMA_HOST=0.0.0.0:11434'),
-          _CmdTile(cmd: 'ollama serve'),
-          const SizedBox(height: 10),
-          const _Subtitle('Windows — ב-PowerShell:'),
-          _CmdTile(cmd: '\$env:OLLAMA_HOST="0.0.0.0:11434"'),
-          _CmdTile(cmd: 'ollama serve'),
-          const SizedBox(height: 10),
-          const _Subtitle('macOS עם אפליקציה רקעית — הגדרה קבועה:'),
+          const _Subtitle('macOS / Linux / Windows:'),
+          _CmdTile(cmd: 'cd jarvis-server-nadav'),
           _CmdTile(
-              cmd: 'launchctl setenv OLLAMA_HOST "0.0.0.0:11434"',
-              note: 'אחרי הפקודה: צא מאפליקציית Ollama ופתח אותה שוב'),
+              cmd: 'node server.js',
+              note: 'אמור להופיע: 🚀 JARVIS ONLINE | PORT: 3000'),
+          const SizedBox(height: 10),
+          const _Subtitle('הרצה ברקע (אופציונלי, דורש pm2):'),
+          _CmdTile(cmd: 'pm2 start server.js --name jarvis'),
           const SizedBox(height: 12),
           _WarningTile(
             text:
-                'אם החיבור לא עובד — סביר שה-Firewall חוסם. אפשר את התעבורה הנכנסת לפורט 11434.',
+                'אם הטלפון לא רואה את השרת — סביר שה-Firewall של המחשב חוסם. אפשר תעבורה נכנסת לפורט 3000.',
           ),
         ],
       );
 
-  Widget _buildTunnelServeContent() => Column(
+  Widget _buildTunnelStartContent() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const _InfoText(
-              'מנהרה (tunnel) הופכת את Ollama בלוקאל לכתובת ציבורית מאובטחת. בחר אחת מהאפשרויות:'),
+              'הפעל את השרת ובמקביל פתח מנהרה שתחשוף אותו לאינטרנט עם כתובת ציבורית:'),
           const SizedBox(height: 12),
-          const _Subtitle('אפשרות א׳ — Cloudflare Tunnel (חינם, בלי הרשמה):'),
-          _CmdTile(cmd: 'ollama serve'),
-          _CmdTile(
-              cmd: 'cloudflared tunnel --url http://localhost:11434',
-              note: 'הפלט יציג כתובת מסוג https://<random>.trycloudflare.com — העתק אותה'),
+          const _Subtitle('שלב 1 — הפעל את השרת:'),
+          _CmdTile(cmd: 'cd jarvis-server-nadav && node server.js'),
           const SizedBox(height: 10),
-          const _Subtitle('אפשרות ב׳ — ngrok (דורש חשבון חינם):'),
-          _CmdTile(cmd: 'ollama serve'),
+          const _Subtitle('שלב 2 — פתח מנהרה בטרמינל נוסף:'),
           _CmdTile(
-              cmd: 'ngrok http 11434',
-              note: 'הפלט יציג Forwarding https://xxxx.ngrok-free.app — העתק אותה'),
+              cmd: 'cloudflared tunnel --url http://localhost:3000',
+              note: 'הפלט יציג https://<random>.trycloudflare.com — העתק אותה'),
+          const SizedBox(height: 8),
+          const _Subtitle('או חלופית עם ngrok:'),
+          _CmdTile(
+              cmd: 'ngrok http 3000',
+              note: 'הפלט יציג Forwarding https://xxxx.ngrok-free.app'),
           const SizedBox(height: 12),
           _WarningTile(
             text:
-                'אזהרה: מנהרה חושפת את ה-Ollama שלך לאינטרנט. סגור אותה כשלא בשימוש, ולא להריץ על מודלים עם מידע רגיש.',
+                'אזהרה: מנהרה חושפת את השרת לאינטרנט. סגור אותה כשלא בשימוש.',
           ),
         ],
       );
@@ -280,7 +256,7 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
         children: [
           if (isLocal) ...[
             const _InfoText(
-                'מצא את כתובת ה-IP של המחשב ברשת המקומית והזן אותה כאן.'),
+                'מצא את כתובת ה-IP של המחשב ברשת המקומית והזן אותה כאן (פורט 3000).'),
             const SizedBox(height: 8),
             const Text('איך מוצאים IP?',
                 style: TextStyle(
@@ -305,10 +281,10 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
             textDirection: TextDirection.ltr,
             style: TextStyle(color: JC.textPrimary, fontFamily: 'monospace'),
             decoration: InputDecoration(
-              labelText: isLocal ? 'כתובת Ollama' : 'כתובת מנהרה',
+              labelText: isLocal ? 'כתובת השרת' : 'כתובת מנהרה',
               labelStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
               hintText: isLocal
-                  ? 'http://192.168.1.100:11434'
+                  ? 'http://192.168.1.100:3000'
                   : 'https://xxxx.trycloudflare.com',
               hintStyle:
                   TextStyle(color: JC.textMuted.withValues(alpha: 0.5)),
@@ -326,14 +302,14 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
   }
 
   Step _buildVerifyStep() => Step(
-        title: const Text('4. בדיקת חיבור ובחירת מודל',
+        title: const Text('4. בדיקת חיבור',
             style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
         isActive: _step >= 3,
         state: StepState.indexed,
         content: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const _InfoText('בדוק שהחיבור עובד ובחר מודל מהרשימה.'),
+            const _InfoText('בדוק שהשרת עונה לכתובת שהזנת.'),
             const SizedBox(height: 12),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
@@ -341,7 +317,7 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              onPressed: _pinging ? null : _pingOllama,
+              onPressed: _pinging ? null : _pingServer,
               icon: _pinging
                   ? const SizedBox(
                       width: 16,
@@ -365,45 +341,9 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
                     style: const TextStyle(fontFamily: 'Heebo', fontSize: 13)),
               ),
             ],
-            if (_detectedModels.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const _Subtitle('בחר מודל:'),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _detectedModels.map((name) {
-                  final selected = _modelCtrl.text == name;
-                  return ChoiceChip(
-                    label: Text(name,
-                        style: const TextStyle(fontFamily: 'monospace')),
-                    selected: selected,
-                    onSelected: (_) =>
-                        setState(() => _modelCtrl.text = name),
-                    selectedColor: JC.blue500,
-                    backgroundColor: JC.surface,
-                    labelStyle: TextStyle(
-                        color: selected ? Colors.white : JC.textPrimary),
-                  );
-                }).toList(),
-              ),
-            ],
             const SizedBox(height: 12),
-            TextField(
-              controller: _modelCtrl,
-              textDirection: TextDirection.ltr,
-              style: TextStyle(color: JC.textPrimary, fontFamily: 'monospace'),
-              decoration: InputDecoration(
-                labelText: 'שם המודל',
-                labelStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
-                filled: true,
-                fillColor: JC.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: JC.border),
-                ),
-              ),
-            ),
+            const _InfoText(
+                'בלחיצה על "סיים ושמור" — האפליקציה תעבור להשתמש בכתובת הזו.'),
           ],
         ),
       );

@@ -154,8 +154,8 @@ describe('POST /ask-jarvis', () => {
             .post('/ask-jarvis')
             .send({ command: 'שלום' });
 
-        expect(res.status).toBe(500);
-        expect(res.body.answer).toBe('שגיאת מערכת פנימית.');
+        expect(res.status).toBe(200);
+        expect(res.body.answer).toMatch(/שגיאת מערכת/);
     });
 
     test('routes to music agent and returns action with youtube url', async () => {

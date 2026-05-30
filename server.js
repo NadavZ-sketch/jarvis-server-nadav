@@ -772,7 +772,13 @@ async function askJarvisHandler(req, res) {
         }
 
         // ── Dispatch ──────────────────────────────────────────────────────────
+        // Wrap the dispatch in a provider-tracking context so models.js can
+        // record which LLM (groq/deepseek/openrouter/gemini/ollama) actually
+        // answered. Read back via getCurrentProvider() and surface to client.
+        const { providerContext, getCurrentProvider } = require('./agents/models');
         let result;
+        let llmProvider = null;
+        await providerContext.run({}, async () => {
         if (isAgentDisabled(agentName)) {
             console.log(`⛔ Agent "${agentName}" is disabled — skipping dispatch`);
             result = { ...AGENT_DISABLED_REPLY };
@@ -887,6 +893,8 @@ async function askJarvisHandler(req, res) {
                 }
             }
         }
+        });
+        llmProvider = getCurrentProvider();
         const tAgent = Date.now();
         agentMetrics.record(agentName, tAgent - tRoute, intentMode);
 
@@ -942,7 +950,23 @@ async function askJarvisHandler(req, res) {
 
         // For WhatsApp — pass action to Flutter to open deep link
         // Return chatId so client can use it for subsequent messages
-        res.json({ answer, audio: audioBase64, action, chatId, suggestions });
+        res.json({ answer, audio: audioBase64, action, chatId, suggestions, provider: llmProvider });
+
+        // Fire-and-forget telemetry: log which LLM provider answered so the
+        // dashboard can show a usage breakdown per provider over time.
+        if (llmProvider) {
+            const telemetryUserId = (settings && (settings.userId || settings.userName)) || 'anonymous';
+            setImmediate(() => {
+                supabase.from('smart_telemetry_events').insert({
+                    user_id: String(telemetryUserId),
+                    event_name: `llm_provider:${llmProvider}`,
+                    event_value: 1,
+                    metadata: { provider: llmProvider, agent: agentName },
+                }).then(({ error }) => {
+                    if (error) console.warn('⚠️ provider telemetry insert failed:', error.message);
+                }).catch(() => {});
+            });
+        }
 
         // ── Fire-and-forget: passive memory extraction + summary update ────────
         if (agentName === 'chat' && !imageBase64) {

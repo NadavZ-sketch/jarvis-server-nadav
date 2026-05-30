@@ -381,6 +381,10 @@ class _ChatBubbleState extends State<_ChatBubble> {
             const SizedBox(height: 10),
             _suggestionChips(List<String>.from(widget.msg['suggestions'] as List)),
           ],
+          if (!isUser && widget.msg['provider'] != null) ...[
+            const SizedBox(height: 6),
+            _ProviderBadge(provider: widget.msg['provider']!.toString()),
+          ],
           if (_showTime) ...[
             const SizedBox(height: 6),
             Text(
@@ -512,6 +516,54 @@ class _ChatBubbleState extends State<_ChatBubble> {
         ],
       ),
       child: child,
+    );
+  }
+}
+
+/// Small badge under an assistant bubble showing which LLM provider answered.
+/// Helps the user understand fallback behavior at a glance.
+class _ProviderBadge extends StatelessWidget {
+  final String provider;
+  const _ProviderBadge({required this.provider});
+
+  static const _meta = <String, ({IconData icon, String label, Color color})>{
+    'groq':       (icon: Icons.bolt,                label: 'Groq',       color: Color(0xFFF97316)),
+    'deepseek':   (icon: Icons.psychology_outlined, label: 'DeepSeek',   color: Color(0xFF6366F1)),
+    'openrouter': (icon: Icons.alt_route,           label: 'OpenRouter', color: Color(0xFF14B8A6)),
+    'gemini':     (icon: Icons.auto_awesome,        label: 'Gemini',     color: Color(0xFF3B82F6)),
+    'ollama':     (icon: Icons.computer,            label: 'מקומי',      color: Color(0xFF22C55E)),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final m = _meta[provider] ??
+        (icon: Icons.smart_toy_outlined, label: provider, color: JC.textMuted);
+    return Tooltip(
+      message: 'הופק על ידי ${m.label}',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: m.color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: m.color.withValues(alpha: 0.35), width: 0.8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(m.icon, size: 11, color: m.color),
+            const SizedBox(width: 4),
+            Text(
+              m.label,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: m.color,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1143,6 +1195,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
         final rawSug = data['suggestions'];
         final suggestions = rawSug is List ? List<String>.from(rawSug.whereType<String>()) : <String>[];
+        final provider = data['provider']?.toString();
         setState(() => messages.add({
               'sender': 'jarvis',
               'text': answer,
@@ -1150,6 +1203,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               if (navTarget != null) 'navTarget': navTarget,
               if (navLabel != null) 'navLabel': navLabel,
               if (suggestions.isNotEmpty) 'suggestions': suggestions,
+              if (provider != null && provider.isNotEmpty) 'provider': provider,
             }));
         _persistMessages();
         _checkForFinalPrompt(answer);

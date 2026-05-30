@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { callGemma4 } = require('./models');
+const { runManusTask, isManusConfigured } = require('./manusAgent');
 
 const BUCKET_LABELS = { morning: 'בוקר (06-12)', afternoon: 'צהריים (12-17)', evening: 'ערב (17-22)', night: 'לילה (22-06)' };
 
@@ -171,12 +172,21 @@ async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
             };
         }
 
-        // 3. Build prompt + call LLM (always cloud for quality)
+        // 3. Build prompt + call LLM (always cloud for quality; optionally offload to Manus)
         const memoriesText = data.memories.map(m => `- ${m.content}`).join('\n') || 'אין זיכרונות שמורים';
         const profile = settings.userProfile || null;
         const prompt = buildInsightPrompt(analysis, memoriesText, userName) + profileSuggestions(profile) +
             '\nהתאם את ההצעות לפרופיל הזה ותן לפחות טיפ אחד שנוגע לתחומי העניין/משימות החוזרות.';
-        const answer = await callGemma4(prompt, false);
+
+        let answer;
+        const useManusOffload = process.env.MANUS_OFFLOAD_INSIGHT === 'true' && isManusConfigured();
+        if (useManusOffload) {
+            console.log('🔍 InsightAgent: offloading analysis to Manus');
+            const result = await runManusTask(prompt);
+            answer = result.answer;
+        } else {
+            answer = await callGemma4(prompt, false);
+        }
 
         return { answer };
 

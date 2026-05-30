@@ -2,6 +2,7 @@ require('dotenv').config();
 const fs   = require('fs');
 const path = require('path');
 const { callGemma4 } = require('./models');
+const { runManusTask, isManusConfigured } = require('./manusAgent');
 
 const BASE_DIR = path.join(__dirname, '..');
 
@@ -107,8 +108,17 @@ async function runSecurityAgent(userMessage, useLocal, sendEmailFn) {
 
         console.log(`🔐 SecurityAgent: scanning ${Object.keys(files).length} files...`);
 
-        // Always use cloud for security analysis (local models may miss issues)
-        const raw = await callGemma4(buildScanPrompt(codeBlock), false);
+        // Optionally offload analysis to Manus to save LLM tokens
+        const useManusOffload = process.env.MANUS_OFFLOAD_SECURITY === 'true' && isManusConfigured();
+        let raw;
+        if (useManusOffload) {
+            console.log('🔐 SecurityAgent: offloading analysis to Manus');
+            const { answer } = await runManusTask(buildScanPrompt(codeBlock));
+            raw = answer;
+        } else {
+            // Always use cloud for security analysis (local models may miss issues)
+            raw = await callGemma4(buildScanPrompt(codeBlock), false);
+        }
 
         // Extract JSON from response
         let report = null;

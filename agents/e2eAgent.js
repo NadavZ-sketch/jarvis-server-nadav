@@ -2,6 +2,7 @@
 // Triggered via chat ("בצע בדיקות קצה") or CLI (npm run e2e).
 
 const crypto = require('crypto');
+const { runManusTask, isManusConfigured } = require('./manusAgent');
 const { runApiProbe }          = require('./e2e/apiProbe');
 const { runStaticScan }        = require('./e2e/staticScan');
 const { runFlutterScan }       = require('./e2e/flutterScan');
@@ -291,15 +292,25 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
     const elapsed = Date.now() - t0;
     console.log(`🧪 E2E done in ${elapsed}ms — ${allFindings.length} findings, score ${score}`);
 
-    const answer = formatAnswer({
-        runId,
-        findings: allFindings,
-        score,
-        deltas,
-        learnedContext,
-        distillSummary,
-        summary: staticRes.summary || '',
-    });
+    // Optionally offload the narrative analysis to Manus (local probes still run here)
+    const useManusOffload = process.env.MANUS_OFFLOAD_E2E === 'true' && isManusConfigured() && allFindings.length > 0;
+    let answer;
+    if (useManusOffload) {
+        console.log('🧪 E2EAgent: offloading narrative analysis to Manus');
+        const claudePrompt = buildClaudePrompt({ runId, findings: allFindings, score, counts: countsBySeverity(allFindings) });
+        const { answer: manusAnswer } = await runManusTask(claudePrompt).catch(() => ({ answer: null }));
+        answer = manusAnswer || formatAnswer({ runId, findings: allFindings, score, deltas, learnedContext, distillSummary, summary: staticRes.summary || '' });
+    } else {
+        answer = formatAnswer({
+            runId,
+            findings: allFindings,
+            score,
+            deltas,
+            learnedContext,
+            distillSummary,
+            summary: staticRes.summary || '',
+        });
+    }
 
     return {
         answer,

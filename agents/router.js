@@ -23,7 +23,7 @@ const KEYWORDS = {
     insight:   /תן לי טיפים|מה אפשר לשפר|ניתוח שלי|דוח שימוש|עצות לשיפור|התייעלות|תובנות|איך אני משתמש/i,
     e2e:        /בצע בדיקות קצה|בדיקות קצה לקצה|בדיקות קצה|בדיקת e2e|הרץ בדיקות|דוח בדיקות|end[- ]?to[- ]?end/i,
     code_error: /סרוק שגיאות קוד|מצא שגיאות קוד|בדיקת שגיאות|שגיאות בקוד|code error|error scan|סרוק שגיאות|בדוק שגיאות קוד|code scan errors/i,
-    manus:      /manus|מאנוס|מטלה מורכבת|משימה מורכבת|משימה כבדה|מטלה כבדה|סוכן מורכב|אוטונומי|autonomous task/i,
+    manus:      /manus|מאנוס|מטלה מורכבת|משימה מורכבת|משימה כבדה|מטלה כבדה|סוכן מורכב|אוטונומי|autonomous task|מחקר מעמיק|תחקור לעומק|חקור לעומק|deep research|deep dive|נתח לעומק|סקירת ספרות|מחקר שוק|בנה לי (אפליקציה|אתר|סקריפט|כלי)|בנה פרויקט|תכתוב לי (אפליקציה|סקריפט|כלי|אוטומציה)|צור לי (אפליקציה|סקריפט|כלי)/i,
     security:   /סריקת אבטחה|בדיקת אבטחה|מצא באגים|דוח באגים|דוח אבטחה|סרוק קוד|חפש בעיות|security scan/i,
     stocks:    /מניה|מניות|בורסה|שוק ההון|נסד"ק|nasdaq|s&p|ביטקוין|bitcoin|קריפטו|crypto|דולר|אירו|שקל|מטבע|תל אביב 35|ת"א 35|אפל|גוגל|טסלה|אמזון|מיקרוסופט|מדד|תיק השקעות|ריבית|אינפלציה/i,
     // "מה פירוש / מה המשמעות" removed — too broad, steals philosophical/memory questions.
@@ -126,7 +126,7 @@ Rules:
 - code_error: scan source code for runtime errors, logic bugs, anti-patterns, missing error handling
 - e2e: run autonomous end-to-end self-tests of the assistant (UI, API, code scan, UX)
 - factory: create/manage/delete custom agents
-- manus: heavy/complex autonomous multi-step tasks requiring browsing, coding, or deep research (use Manus AI agent)
+- manus: heavy/complex autonomous tasks requiring web browsing, multi-step execution, building software/scripts, deep research or market analysis (use Manus AI agent — NOT for simple questions)
 - calendar: Google Calendar — view events, create meetings/appointments
 - past_conv: asking about previous conversations with Jarvis
 - prompt: create, refine, evaluate, save, or list AI prompts (prompt engineering)
@@ -172,4 +172,29 @@ async function classifyIntentWithLLM(userMessage) {
     }
 }
 
-module.exports = { classifyIntent, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry };
+// ─── Complexity heuristic for auto-routing to Manus ──────────────────────────
+// Returns true only when the message is genuinely multi-step / research-heavy
+// AND cannot be handled by a simple one-shot LLM reply. Deliberately strict
+// to avoid hijacking normal chat messages.
+
+const COMPLEXITY_MIN_LEN = 180; // chars — short messages stay in chat
+
+const COMPLEXITY_SIGNALS = [
+    // Multi-step / sequential
+    /\bשלב \d+\b|\bstep \d+\b/i,
+    /לאחר מכן|ולאחר מכן|ואז ל|and then|next step/i,
+    /\d+\.\s+[א-תa-z]/,  // numbered list items
+    // Research / analysis
+    /מחקר|research|analysis|analyze|נתח|השווה|compare|סקירה|survey|benchmark/i,
+    // Build / create something substantial
+    /בנה לי|תבנה|צור לי (אתר|אפליקציה|סקריפט|כלי|מערכת)|build (me |a |an )?[a-z]/i,
+    // Report / deep dive
+    /תכין דוח|כתוב דוח|prepare report|generate report|דוח מפורט|detailed report/i,
+];
+
+function detectComplexTask(userMessage) {
+    if (userMessage.length < COMPLEXITY_MIN_LEN) return false;
+    return COMPLEXITY_SIGNALS.some(pat => pat.test(userMessage));
+}
+
+module.exports = { classifyIntent, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry, detectComplexTask };

@@ -1,7 +1,7 @@
 'use strict';
 jest.mock('axios');
 const axios = require('axios');
-const { classifyIntent, classifyIntentWithLLM } = require('../../agents/router');
+const { classifyIntent, classifyIntentWithLLM, detectComplexTask } = require('../../agents/router');
 
 describe('classifyIntent — keyword routing', () => {
     test.each([
@@ -104,5 +104,54 @@ describe('classifyIntentWithLLM', () => {
     test('network error → falls back to chat', async () => {
         axios.post.mockRejectedValueOnce(new Error('timeout'));
         expect(await classifyIntentWithLLM('שאלה כלשהי')).toBe('chat');
+    });
+});
+
+describe('manus keyword routing', () => {
+    test.each([
+        ['manus', 'manus'],
+        ['מאנוס', 'manus'],
+        ['מטלה מורכבת לבניית מערכת', 'manus'],
+        ['מחקר מעמיק על השוק הישראלי', 'manus'],
+        ['deep research on AI trends', 'manus'],
+        ['בנה לי אפליקציה לניהול זמן', 'manus'],
+        ['תחקור לעומק את הנושא', 'manus'],
+    ])('"%s" → "manus"', (input) => {
+        expect(classifyIntent(input)).toBe('manus');
+    });
+
+    test('ordinary news question does NOT route to manus', () => {
+        expect(classifyIntent('מה קורה בחדשות היום')).toBe('news');
+    });
+
+    test('ordinary task does NOT route to manus', () => {
+        expect(classifyIntent('הוסף משימה לקנות חלב')).toBe('task');
+    });
+
+    test('short chat message does NOT route to manus', () => {
+        expect(classifyIntent('שלום')).toBe('chat');
+    });
+});
+
+describe('detectComplexTask', () => {
+    test('short message → false', () => {
+        expect(detectComplexTask('שלום')).toBe(false);
+    });
+
+    test('long message with research signal → true', () => {
+        const msg = 'אני רוצה שתעשה מחקר מעמיק על שוק התוכנה הישראלי ותשווה בין המתחרים העיקריים, תכין דוח מפורט עם המלצות אסטרטגיות ותציג את הממצאים בצורה ברורה ומקיפה. חשוב שהמחקר יהיה מקיף ויכסה את כל ההיבטים הרלוונטיים.';
+        expect(msg.length).toBeGreaterThan(180);
+        expect(detectComplexTask(msg)).toBe(true);
+    });
+
+    test('long message without complexity signals → false', () => {
+        const msg = 'שלום ג\'רוויס, יש לי שאלה פשוטה בנוגע לפעולות היום שלי ואני רוצה לדעת מה מצב העסקים ואיפה כדאי לי ללכת לאכול צהריים כי אני רעב מאוד ולא יודע להחליט בין שתי האפשרויות שעומדות בפניי כרגע ממש.';
+        expect(msg.length).toBeGreaterThan(180);
+        expect(detectComplexTask(msg)).toBe(false);
+    });
+
+    test('numbered list with build signal → true', () => {
+        const msg = 'בנה לי סקריפט Python שעושה את הדברים הבאים: 1. סורק תיקייה 2. מסדר קבצים לפי סוג 3. יוצר דוח סיכום 4. שולח מייל עם הדוח 5. עושה גיבוי אוטומטי לענן ואז מאתחל מחדש. זה חשוב מאוד לפרויקט שלי.';
+        expect(detectComplexTask(msg)).toBe(true);
     });
 });

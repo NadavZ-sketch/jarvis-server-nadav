@@ -22,6 +22,7 @@ const KEYWORDS = {
     insight:   /תן לי טיפים|מה אפשר לשפר|ניתוח שלי|דוח שימוש|עצות לשיפור|התייעלות|תובנות|איך אני משתמש/i,
     e2e:        /בצע בדיקות קצה|בדיקות קצה לקצה|בדיקות קצה|בדיקת e2e|הרץ בדיקות|דוח בדיקות|end[- ]?to[- ]?end/i,
     code_error: /סרוק שגיאות קוד|מצא שגיאות קוד|בדיקת שגיאות|שגיאות בקוד|code error|error scan|סרוק שגיאות|בדוק שגיאות קוד|code scan errors/i,
+    manus:      /manus|מאנוס|מטלה מורכבת|משימה מורכבת|משימה כבדה|מטלה כבדה|סוכן מורכב|אוטונומי|autonomous task/i,
     security:   /סריקת אבטחה|בדיקת אבטחה|מצא באגים|דוח באגים|דוח אבטחה|סרוק קוד|חפש בעיות|security scan/i,
     stocks:    /מניה|מניות|בורסה|שוק ההון|נסד"ק|nasdaq|s&p|ביטקוין|bitcoin|קריפטו|crypto|דולר|אירו|שקל|מטבע|תל אביב 35|ת"א 35|אפל|גוגל|טסלה|אמזון|מיקרוסופט|מדד|תיק השקעות|ריבית|אינפלציה/i,
     // "מה פירוש / מה המשמעות" removed — too broad, steals philosophical/memory questions.
@@ -97,7 +98,7 @@ function classifyIntent(userMessage) {
 const VALID_INTENTS = new Set([
     'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
     'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'insight', 'security', 'code_error', 'e2e', 'factory', 'past_conv', 'calendar', 'prompt', 'settings', 'chat',
+    'insight', 'security', 'code_error', 'e2e', 'factory', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'chat',
 ]);
 
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
@@ -125,6 +126,7 @@ Rules:
 - code_error: scan source code for runtime errors, logic bugs, anti-patterns, missing error handling
 - e2e: run autonomous end-to-end self-tests of the assistant (UI, API, code scan, UX)
 - factory: create/manage/delete custom agents
+- manus: heavy/complex autonomous multi-step tasks requiring browsing, coding, or deep research (use Manus AI agent)
 - calendar: Google Calendar — view events, create meetings/appointments
 - past_conv: asking about previous conversations with Jarvis
 - prompt: create, refine, evaluate, save, or list AI prompts (prompt engineering)

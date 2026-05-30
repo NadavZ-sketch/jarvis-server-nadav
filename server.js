@@ -48,6 +48,7 @@ const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
 const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = require('./agents/e2eAgent');
+const { runManusAgent }       = require('./agents/manusAgent');
 const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
 const { runInsightAgent, analyzePatterns, optimizeDayPlan } = require('./agents/insightAgent');
 const priorityEngine          = require('./services/priorityEngine');
@@ -77,7 +78,7 @@ const AGENTS = {
     runShoppingAgent, runNotesAgent, runStocksAgent, runTranslationAgent, runMusicAgent,
     runSportsAgent, runMessagingAgent, runDraftAgent, runInsightAgent, runAgentFactoryAgent,
     runCalendarAgent, runPromptAgent, runSettingsAgent, runProjectAgent,
-    runSecurityAgent, runCodeErrorAgent, runE2EAgent,
+    runSecurityAgent, runCodeErrorAgent, runE2EAgent, runManusAgent,
 };
 
 const obsidianSync            = require('./services/obsidianSync');

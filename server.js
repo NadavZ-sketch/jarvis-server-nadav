@@ -92,6 +92,9 @@ const helmet    = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
+// Render (and most reverse proxies) sit in front of the Node process.
+// Without trust proxy, express-rate-limit can't identify callers correctly.
+app.set('trust proxy', 1);
 
 // ─── Task auto-reminder pending ───────────────────────────────────────────────
 const TASK_REMINDER_PENDING = path.join(__dirname, 'task_reminder_pending.json');
@@ -969,7 +972,13 @@ async function askJarvisHandler(req, res) {
             });
         }
         console.error('Route Error:', err.message);
-        res.status(500).json({ answer: 'שגיאת מערכת פנימית.' });
+        const isRateLimit = err.response?.status === 429 || /429|rate.limit|quota/i.test(err.message);
+        res.status(200).json({
+            answer: isRateLimit
+                ? '⏳ כל ספקי ה-AI עמוסים כרגע (מגבלת קצב). נסה שוב בעוד כמה דקות.'
+                : 'שגיאת מערכת פנימית.',
+            skipTts: true,
+        });
     }
 }
 
@@ -2870,7 +2879,11 @@ async function streamJarvisHandler(req, res) {
             return res.end();
         }
         console.error('SSE error:', err.message);
-        send({ error: 'שגיאת מערכת.' });
+        const isRateLimit = err.response?.status === 429 || /429|rate.limit|quota/i.test(err.message);
+        const userMsg = isRateLimit
+            ? '⏳ כל ספקי ה-AI עמוסים כרגע (מגבלת קצב). נסה שוב בעוד כמה דקות.'
+            : 'שגיאת מערכת.';
+        send({ chunk: userMsg, done: true });
     } finally {
         res.end();
     }

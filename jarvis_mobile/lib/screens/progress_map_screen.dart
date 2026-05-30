@@ -654,9 +654,32 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       _loadBacklog(),
       _loadAgents(),
       _loadSurveys(),
+      _loadProviderTelemetry(),
     ]);
     _isRefreshing = false;
     if (mounted && _serverOk != true) _scheduleRetry();
+  }
+
+  /// Fetch per-provider LLM usage counters from server smart-telemetry and
+  /// merge into the local map so the dashboard can render the breakdown.
+  Future<void> _loadProviderTelemetry() async {
+    try {
+      final userId = _pseudoUserId();
+      final res = await http
+          .get(Uri.parse('$_base/dashboard/smart-telemetry?userId=$userId'))
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200 || !mounted) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final counters = (data['counters'] as Map?) ?? {};
+      setState(() {
+        counters.forEach((k, v) {
+          final key = k.toString();
+          if (key.startsWith('llm_provider:')) {
+            _smartTelemetry[key] = (v is num ? v.toInt() : 0);
+          }
+        });
+      });
+    } catch (_) {}
   }
 
   Future<void> _checkHealth() async {
@@ -2138,8 +2161,76 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
           Text('Sprint MVP: ${v('action_sprint_prompt_mvp')} | Sprint מורחב: ${v('action_sprint_prompt_full')}',
               style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+          const SizedBox(height: 10),
+          _buildProviderBreakdown(),
         ],
       ),
+    );
+  }
+
+  /// Show a per-provider usage breakdown sourced from smart_telemetry counters
+  /// where event_name follows the pattern "llm_provider:<name>".
+  Widget _buildProviderBreakdown() {
+    const meta = <String, ({IconData icon, String label, Color color})>{
+      'groq':       (icon: Icons.bolt,                label: 'Groq',       color: Color(0xFFF97316)),
+      'deepseek':   (icon: Icons.psychology_outlined, label: 'DeepSeek',   color: Color(0xFF6366F1)),
+      'openrouter': (icon: Icons.alt_route,           label: 'OpenRouter', color: Color(0xFF14B8A6)),
+      'gemini':     (icon: Icons.auto_awesome,        label: 'Gemini',     color: Color(0xFF3B82F6)),
+      'ollama':     (icon: Icons.computer,            label: 'מקומי',      color: Color(0xFF22C55E)),
+    };
+    final counts = <String, int>{};
+    int total = 0;
+    _smartTelemetry.forEach((k, v) {
+      if (k.startsWith('llm_provider:')) {
+        final name = k.substring('llm_provider:'.length);
+        counts[name] = (counts[name] ?? 0) + v;
+        total += v;
+      }
+    });
+    if (total == 0) {
+      return Text('פילוח מודלים: עדיין אין נתונים',
+          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11));
+    }
+    final entries = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text('פילוח לפי מודל ($total תשובות)',
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        ...entries.map((e) {
+          final m = meta[e.key] ??
+              (icon: Icons.smart_toy_outlined, label: e.key, color: JC.textMuted);
+          final pct = (e.value / total * 100).toStringAsFixed(0);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                Text('${e.value} ($pct%)',
+                    style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: e.value / total,
+                      minHeight: 5,
+                      backgroundColor: m.color.withValues(alpha: 0.12),
+                      valueColor: AlwaysStoppedAnimation(m.color),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(m.icon, size: 12, color: m.color),
+                const SizedBox(width: 3),
+                Text(m.label,
+                    style: TextStyle(color: m.color, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 

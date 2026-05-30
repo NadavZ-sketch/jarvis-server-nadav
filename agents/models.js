@@ -1,6 +1,19 @@
 require('dotenv').config();
 const axios    = require('axios');
 const readline = require('readline');
+const { AsyncLocalStorage } = require('async_hooks');
+
+// ─── Provider tracking — request-scoped store of which LLM answered ────────
+// Wrap a request with providerContext.run({}, fn) and any provider call inside
+// will record itself in the store. Read via getCurrentProvider() afterwards.
+const providerContext = new AsyncLocalStorage();
+function _setProvider(name) {
+    const store = providerContext.getStore();
+    if (store) store.provider = name;
+}
+function getCurrentProvider() {
+    return providerContext.getStore()?.provider || null;
+}
 
 // ─── Gemini (Google) — for live search agents (chat, sports) ───────────────
 const GEMINI_MODEL = 'gemini-2.5-flash-lite';
@@ -68,6 +81,7 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
             model: OLLAMA_MODEL, messages: msgs, stream: false,
             temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
         }, { timeout: 15000 });
+        _setProvider('ollama');
         return response.data.choices[0].message.content.trim();
     }
 
@@ -90,6 +104,7 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
             console.warn('⚠️ Groq returned error as content, falling back to DeepSeek:', content.slice(0, 80));
             throw new Error(content);
         }
+        _setProvider('groq');
         return content;
     } catch (groqErr) {
         const detail = groqErr.response?.data ? JSON.stringify(groqErr.response.data) : groqErr.message;
@@ -108,6 +123,7 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
             },
             timeout: 9000,
         });
+        _setProvider('deepseek');
         return response.data.choices[0].message.content.trim();
     } catch (deepseekErr) {
         console.warn('⚠️ DeepSeek failed, falling back to OpenRouter:', deepseekErr.message);
@@ -128,6 +144,7 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
                 },
                 timeout: 10000,
             });
+            _setProvider('openrouter');
             return response.data.choices[0].message.content.trim();
         } catch (openrouterErr) {
             const detail = openrouterErr.response?.data ? JSON.stringify(openrouterErr.response.data) : openrouterErr.message;
@@ -144,6 +161,7 @@ async function callGemma4(messages, useLocal = true, maxTokens = 800) {
         maxOutputTokens: maxTokens,
     });
     const response = await axios.post(GEMINI_URL, payload, { timeout: 15000 });
+    _setProvider('gemini');
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
@@ -231,6 +249,7 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
             temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
         }, streamOpts({ 'Content-Type': 'application/json' }));
         await parseSSEStream(response.data, onChunk);
+        _setProvider('ollama');
         return;
     }
 
@@ -246,6 +265,7 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
         // parseSSEStream resolves (complete or partial chunks) or rejects (no data + error/timeout).
         // On resolve we're done — even a partial response is better than a fallback that appends.
         await parseSSEStream(response.data, onChunk);
+        _setProvider('groq');
         return;
     } catch (err) {
         if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
@@ -262,6 +282,7 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
             'Content-Type': 'application/json'
         }));
         await parseSSEStream(response.data, onChunk);
+        _setProvider('deepseek');
         return;
     } catch (err) {
         if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
@@ -281,6 +302,7 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
                 'X-Title': 'Jarvis',
             }));
             await parseSSEStream(response.data, onChunk);
+            _setProvider('openrouter');
             return;
         } catch (err) {
             if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
@@ -297,6 +319,7 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
     });
     const response = await axios.post(GEMINI_URL, payload, { timeout: 15000, ...(signal ? { signal } : {}) });
     const text = response.data.candidates[0].content.parts[0].text.trim();
+    _setProvider('gemini');
     onChunk(text);
 }
 
@@ -307,6 +330,7 @@ async function callGeminiWithSearch(prompt) {
         contents: [{ parts: [{ text: prompt }] }],
         tools: [{ google_search: {} }]
     });
+    _setProvider('gemini');
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
@@ -332,7 +356,8 @@ async function callGeminiVision(prompt, imageBase64) {
             ]
         }]
     });
+    _setProvider('gemini');
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
-module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision, detectMimeType };
+module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision, detectMimeType, providerContext, getCurrentProvider };

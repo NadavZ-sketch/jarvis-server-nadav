@@ -1280,6 +1280,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ctrl: _localModelCtrl,
                   hint: 'llama3',
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    'במצב מקומי משתמשים אך ורק במודל שלך. אם הוא לא זמין — תוצג שגיאה (אין מעבר אוטומטי לענן).',
+                    style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'),
+                  ),
+                ),
                 _divider(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -1321,6 +1328,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     DropdownMenuItem(value: 'gemini',     child: Text('Gemini')),
                   ],
                   onChanged: (val) => setState(() => _s.cloudProvider = val!),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    'הספק שתבחר ינוסה ראשון; אם הוא לא זמין, נמשיך אוטומטית לשאר כגיבוי.',
+                    style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'),
+                  ),
                 ),
               ],
               _divider(),

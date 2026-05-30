@@ -2,10 +2,14 @@ require('dotenv').config();
 const axios    = require('axios');
 const readline = require('readline');
 const { AsyncLocalStorage } = require('async_hooks');
+const { PROVIDERS, resolveChain, clampTemp, LocalModelError } = require('./providerConfig');
 
-// ─── Provider tracking — request-scoped store of which LLM answered ────────
-// Wrap a request with providerContext.run({}, fn) and any provider call inside
-// will record itself in the store. Read via getCurrentProvider() afterwards.
+// ─── Provider tracking + per-request options ──────────────────────────────
+// Wrap a request with providerContext.run({ opts }, fn). Any provider call
+// inside records which provider answered (read via getCurrentProvider()), and
+// callGemma4/callGemma4Stream pick up per-request `opts` (cloudProvider,
+// temperature, local url/model) from the store when not passed explicitly.
+// This lets all ~44 callGemma4 call sites honor user settings without edits.
 const providerContext = new AsyncLocalStorage();
 function _setProvider(name) {
     const store = providerContext.getStore();
@@ -14,6 +18,11 @@ function _setProvider(name) {
 function getCurrentProvider() {
     return providerContext.getStore()?.provider || null;
 }
+// Merge explicit opts arg with request-scoped opts from the store (arg wins).
+function _resolveOpts(opts) {
+    const fromStore = providerContext.getStore()?.opts || {};
+    return { ...fromStore, ...(opts || {}) };
+}
 
 // ─── Gemini (Google) — for live search agents (chat, sports) ───────────────
 const GEMINI_MODEL = 'gemini-2.5-flash-lite';
@@ -21,31 +30,14 @@ const GOOGLE_KEY = process.env.GOOGLE_API_KEY;
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const GEMINI_URL = `${GEMINI_BASE}/${GEMINI_MODEL}:generateContent?key=${GOOGLE_KEY}`;
 
-// ─── Groq — primary cloud (free, fast, OpenAI-compatible) ─────────────────
-const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Cloud/local provider descriptors (urls, models, timeouts, keys) and the
+// failover chain live in agents/providerConfig.js — the single source of truth.
 
-// ─── DeepSeek — fallback (OpenAI-compatible) ───────────────────────────────
-const DEEPSEEK_URL   = 'https://api.deepseek.com/chat/completions';
-const DEEPSEEK_MODEL = 'deepseek-chat';
-
-// ─── OpenRouter — additional fallback (OpenAI-compatible, free tier models) ──
-// Provides access to many free open-source models with a single API key.
-// Set OPENROUTER_API_KEY in .env to enable. Override model via OPENROUTER_MODEL.
-const OPENROUTER_URL   = 'https://openrouter.ai/api/v1/chat/completions';
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free';
-
-// Local Ollama override (optional — set OLLAMA_URL in .env to use local model)
-const OLLAMA_URL   = process.env.OLLAMA_URL;
-const OLLAMA_MODEL = 'gemma4:e4b';
-
-// ─── Shared sampling parameters ────────────────────────────────────────────
-// Pin temperature/top_p across all providers so the same prompt yields a
-// consistent style regardless of which provider answered (Groq/DeepSeek/
-// Gemini/Ollama each ship a different default — 0.7/0.9/1.0/0.8). 0.5 keeps
-// answers focused while leaving enough room for natural Hebrew variation.
-const LLM_TEMPERATURE = 0.5;
-const LLM_TOP_P       = 0.9;
+// ─── Shared sampling parameter ────────────────────────────────────────────
+// Pin top_p across all providers so the same prompt yields a consistent style
+// regardless of which provider answered. Temperature is per-request (honors
+// settings.temperature via clampTemp), defaulting to 0.5 when unset.
+const LLM_TOP_P = 0.9;
 
 // Convert OpenAI-style messages → Gemini contents + systemInstruction.
 // Preserves role boundaries (instead of flattening to a single string), so
@@ -70,99 +62,81 @@ function _msgsToGeminiPayload(msgs, generationConfig = {}) {
     return payload;
 }
 
-async function callGemma4(messages, useLocal = true, maxTokens = 800) {
+// Build axios headers for an OpenAI-compatible provider descriptor.
+function _providerHeaders(provider) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (provider.keyEnv && process.env[provider.keyEnv]) {
+        headers['Authorization'] = `Bearer ${process.env[provider.keyEnv]}`;
+    }
+    if (provider.extraHeaders) Object.assign(headers, provider.extraHeaders());
+    return headers;
+}
+
+// Single non-streaming call to one provider. Returns trimmed text or throws.
+async function _callProvider(provider, msgs, maxTokens, temperature, settings) {
+    if (provider.openaiCompatible) {
+        const url = `${provider.url(settings).replace(/\/$/, '')}`;
+        // Ollama exposes the OpenAI-compatible API under /v1/chat/completions.
+        const endpoint = provider.id === 'ollama' ? `${url}/v1/chat/completions` : url;
+        const response = await axios.post(endpoint, {
+            model: provider.model(settings), messages: msgs, max_tokens: maxTokens,
+            temperature, top_p: LLM_TOP_P,
+        }, { headers: _providerHeaders(provider), timeout: provider.timeout });
+        const content = response.data.choices[0].message.content.trim();
+        // Groq occasionally returns infrastructure errors as completion text
+        // instead of HTTP errors — treat those as a failure so we fall through.
+        if (provider.id === 'groq' &&
+            /^(API Error:|Stream idle timeout|internal server error)/i.test(content)) {
+            throw new Error(content);
+        }
+        return content;
+    }
+    // Gemini — preserves system/user/assistant role boundaries so identity and
+    // conversation context survive across the fallback.
+    const payload = _msgsToGeminiPayload(msgs, {
+        temperature, topP: LLM_TOP_P, maxOutputTokens: maxTokens,
+    });
+    const response = await axios.post(GEMINI_URL, payload, { timeout: provider.timeout });
+    return response.data.candidates[0].content.parts[0].text.trim();
+}
+
+async function callGemma4(messages, useLocal = true, maxTokens = 800, opts = {}) {
     const msgs = typeof messages === 'string'
         ? [{ role: 'user', content: messages }]
         : messages;
 
-    // ── 1. Local Ollama (only if useLocal is enabled AND OLLAMA_URL is set) ──
-    if (useLocal && OLLAMA_URL) {
-        const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
-            model: OLLAMA_MODEL, messages: msgs, stream: false,
-            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
-        }, { timeout: 15000 });
-        _setProvider('ollama');
-        return response.data.choices[0].message.content.trim();
-    }
+    const o = _resolveOpts(opts);
+    const temperature = clampTemp(o.temperature);
+    const chain = resolveChain({ useLocal, cloudProvider: o.cloudProvider });
+    const strictLocal = useLocal;
 
-    // ── 2. Groq (free, fast) ──
-    try {
-        const response = await axios.post(GROQ_URL, {
-            model: GROQ_MODEL, messages: msgs, max_tokens: maxTokens,
-            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
-        }, {
-            headers: {
-                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            timeout: 7000,
-        });
-        const content = response.data.choices[0].message.content.trim();
-        // Groq occasionally returns infrastructure errors as completion text instead of HTTP errors.
-        // Detect and fall through to the next provider rather than showing raw error to the user.
-        if (/^(API Error:|Stream idle timeout|internal server error)/i.test(content)) {
-            console.warn('⚠️ Groq returned error as content, falling back to DeepSeek:', content.slice(0, 80));
-            throw new Error(content);
-        }
-        _setProvider('groq');
-        return content;
-    } catch (groqErr) {
-        const detail = groqErr.response?.data ? JSON.stringify(groqErr.response.data) : groqErr.message;
-        console.warn('⚠️ Groq failed, falling back to DeepSeek:', detail);
-    }
-
-    // ── 3. DeepSeek fallback ──
-    try {
-        const response = await axios.post(DEEPSEEK_URL, {
-            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: maxTokens,
-            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
-        }, {
-            headers: {
-                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            timeout: 9000,
-        });
-        _setProvider('deepseek');
-        return response.data.choices[0].message.content.trim();
-    } catch (deepseekErr) {
-        console.warn('⚠️ DeepSeek failed, falling back to OpenRouter:', deepseekErr.message);
-    }
-
-    // ── 4. OpenRouter fallback (only if API key is set) ──
-    if (process.env.OPENROUTER_API_KEY) {
+    let lastErr = null;
+    for (const id of chain) {
+        const provider = PROVIDERS[id];
+        if (!provider) continue;
+        // Skip providers that can't run this request (e.g. OpenRouter without a
+        // key, Ollama without a configured url) — they fall through to the next.
+        if (provider.enabled && !provider.enabled(o)) continue;
         try {
-            const response = await axios.post(OPENROUTER_URL, {
-                model: OPENROUTER_MODEL, messages: msgs, max_tokens: maxTokens,
-                temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': process.env.OPENROUTER_REFERER || 'https://jarvis-server',
-                    'X-Title': 'Jarvis',
-                },
-                timeout: 10000,
-            });
-            _setProvider('openrouter');
-            return response.data.choices[0].message.content.trim();
-        } catch (openrouterErr) {
-            const detail = openrouterErr.response?.data ? JSON.stringify(openrouterErr.response.data) : openrouterErr.message;
-            console.warn('⚠️ OpenRouter failed, falling back to Gemini:', detail);
+            const content = await _callProvider(provider, msgs, maxTokens, temperature, o);
+            _setProvider(id);
+            return content;
+        } catch (err) {
+            lastErr = err;
+            const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+            console.warn(`⚠️ Provider "${id}" failed${chain.length > 1 ? ', trying next' : ''}:`, detail);
         }
     }
 
-    // ── 5. Gemini final fallback — preserves system/user/assistant role boundaries
-    //       so identity and conversation context survive the fallback, instead of
-    //       flattening everything into one user-side string blob.
-    const payload = _msgsToGeminiPayload(msgs, {
-        temperature: LLM_TEMPERATURE,
-        topP: LLM_TOP_P,
-        maxOutputTokens: maxTokens,
-    });
-    const response = await axios.post(GEMINI_URL, payload, { timeout: 15000 });
-    _setProvider('gemini');
-    return response.data.candidates[0].content.parts[0].text.trim();
+    // Strict local: surface a clean, typed error so the handler can show a clear
+    // Hebrew message instead of a raw stack/timeout.
+    if (strictLocal) {
+        const p = PROVIDERS.ollama;
+        throw new LocalModelError('Local model unavailable', {
+            url: p.url(o), model: p.model(o),
+        });
+    }
+    throw lastErr || new Error('All providers failed');
 }
 
 // ─── SSE stream parser (Groq / DeepSeek / Ollama) ─────────────────────────────
@@ -228,99 +202,68 @@ function parseSSEStream(stream, onChunk) {
     });
 }
 
-// ─── Streaming variant: Groq → DeepSeek → Gemini (non-stream fallback) ────────
+// ─── Streaming variant: config-driven chain, Gemini non-stream terminal ───────
 
-async function callGemma4Stream(messages, useLocal = true, onChunk, signal = null, maxTokens = 800) {
+// Stream one OpenAI-compatible provider's SSE response into onChunk.
+async function _streamProvider(provider, msgs, maxTokens, temperature, settings, onChunk, signal) {
+    const url = provider.url(settings).replace(/\/$/, '');
+    const endpoint = provider.id === 'ollama' ? `${url}/v1/chat/completions` : url;
+    const response = await axios.post(endpoint, {
+        model: provider.model(settings), messages: msgs, max_tokens: maxTokens, stream: true,
+        temperature, top_p: LLM_TOP_P,
+    }, {
+        headers: _providerHeaders(provider),
+        responseType: 'stream',
+        timeout: provider.timeout,
+        ...(signal ? { signal } : {}),
+    });
+    // parseSSEStream resolves (complete or partial chunks) or rejects (no data +
+    // error/timeout). On resolve we're done — even a partial response beats a
+    // fallback that appends.
+    await parseSSEStream(response.data, onChunk);
+}
+
+async function callGemma4Stream(messages, useLocal = true, onChunk, signal = null, maxTokens = 800, opts = {}) {
     const msgs = typeof messages === 'string'
         ? [{ role: 'user', content: messages }]
         : messages;
 
-    const streamOpts = (headers) => ({
-        headers,
-        responseType: 'stream',
-        timeout: 15000,
-        ...(signal ? { signal } : {})
-    });
+    const o = _resolveOpts(opts);
+    const temperature = clampTemp(o.temperature);
+    const chain = resolveChain({ useLocal, cloudProvider: o.cloudProvider });
+    const strictLocal = useLocal;
 
-    // ── 1. Local Ollama ──
-    if (useLocal && OLLAMA_URL) {
-        const response = await axios.post(`${OLLAMA_URL}/v1/chat/completions`, {
-            model: OLLAMA_MODEL, messages: msgs, stream: true,
-            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
-        }, streamOpts({ 'Content-Type': 'application/json' }));
-        await parseSSEStream(response.data, onChunk);
-        _setProvider('ollama');
-        return;
-    }
-
-    // ── 2. Groq streaming ──
-    try {
-        const response = await axios.post(GROQ_URL, {
-            model: GROQ_MODEL, messages: msgs, max_tokens: maxTokens, stream: true,
-            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
-        }, streamOpts({
-            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-            'Content-Type': 'application/json'
-        }));
-        // parseSSEStream resolves (complete or partial chunks) or rejects (no data + error/timeout).
-        // On resolve we're done — even a partial response is better than a fallback that appends.
-        await parseSSEStream(response.data, onChunk);
-        _setProvider('groq');
-        return;
-    } catch (err) {
-        if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
-        console.warn('⚠️ Groq stream failed, falling back to DeepSeek:', err.message);
-    }
-
-    // ── 3. DeepSeek streaming fallback ──
-    try {
-        const response = await axios.post(DEEPSEEK_URL, {
-            model: DEEPSEEK_MODEL, messages: msgs, max_tokens: maxTokens, stream: true,
-            temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
-        }, streamOpts({
-            'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-            'Content-Type': 'application/json'
-        }));
-        await parseSSEStream(response.data, onChunk);
-        _setProvider('deepseek');
-        return;
-    } catch (err) {
-        if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
-        console.warn('⚠️ DeepSeek stream failed, falling back to OpenRouter:', err.message);
-    }
-
-    // ── 4. OpenRouter streaming fallback ──
-    if (process.env.OPENROUTER_API_KEY) {
+    let lastErr = null;
+    for (const id of chain) {
+        const provider = PROVIDERS[id];
+        if (!provider) continue;
+        if (provider.enabled && !provider.enabled(o)) continue;
         try {
-            const response = await axios.post(OPENROUTER_URL, {
-                model: OPENROUTER_MODEL, messages: msgs, max_tokens: maxTokens, stream: true,
-                temperature: LLM_TEMPERATURE, top_p: LLM_TOP_P,
-            }, streamOpts({
-                'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': process.env.OPENROUTER_REFERER || 'https://jarvis-server',
-                'X-Title': 'Jarvis',
-            }));
-            await parseSSEStream(response.data, onChunk);
-            _setProvider('openrouter');
+            if (provider.openaiCompatible) {
+                await _streamProvider(provider, msgs, maxTokens, temperature, o, onChunk, signal);
+            } else {
+                // Gemini — non-streaming terminal fallback; emit the full text as one chunk.
+                const payload = _msgsToGeminiPayload(msgs, {
+                    temperature, topP: LLM_TOP_P, maxOutputTokens: maxTokens,
+                });
+                const response = await axios.post(GEMINI_URL, payload,
+                    { timeout: provider.timeout, ...(signal ? { signal } : {}) });
+                onChunk(response.data.candidates[0].content.parts[0].text.trim());
+            }
+            _setProvider(id);
             return;
         } catch (err) {
             if (err.name === 'CanceledError' || err.name === 'AbortError') throw err;
-            console.warn('⚠️ OpenRouter stream failed, falling back to Gemini (non-streaming):', err.message);
+            lastErr = err;
+            console.warn(`⚠️ Provider "${id}" stream failed${chain.length > 1 ? ', trying next' : ''}:`, err.message);
         }
     }
 
-    // ── 5. Gemini final fallback (non-streaming) — same role-preserving payload
-    //       as the non-stream path for consistent tone across fallbacks.
-    const payload = _msgsToGeminiPayload(msgs, {
-        temperature: LLM_TEMPERATURE,
-        topP: LLM_TOP_P,
-        maxOutputTokens: maxTokens,
-    });
-    const response = await axios.post(GEMINI_URL, payload, { timeout: 15000, ...(signal ? { signal } : {}) });
-    const text = response.data.candidates[0].content.parts[0].text.trim();
-    _setProvider('gemini');
-    onChunk(text);
+    if (strictLocal) {
+        const p = PROVIDERS.ollama;
+        throw new LocalModelError('Local model unavailable', { url: p.url(o), model: p.model(o) });
+    }
+    throw lastErr || new Error('All streaming providers failed');
 }
 
 // ─── Gemini with Google Search grounding (real-time data) ─────────────────────
@@ -360,4 +303,4 @@ async function callGeminiVision(prompt, imageBase64) {
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
-module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision, detectMimeType, providerContext, getCurrentProvider };
+module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision, detectMimeType, providerContext, getCurrentProvider, LocalModelError };

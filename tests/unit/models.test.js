@@ -155,6 +155,42 @@ describe('callGemma4', () => {
     });
 });
 
+describe('callGemma4 — provider selection & strict local', () => {
+    const { LocalModelError } = require('../../agents/providerConfig');
+
+    test('cloudProvider preference is tried first', async () => {
+        const DEEPSEEK = { data: { choices: [{ message: { content: 'ds first' } }] } };
+        axios.post.mockResolvedValueOnce(DEEPSEEK);
+        const result = await callGemma4('hi', false, 800, { cloudProvider: 'deepseek' });
+        expect(result).toBe('ds first');
+        // First call should hit the DeepSeek endpoint.
+        expect(axios.post.mock.calls[0][0]).toContain('deepseek');
+    });
+
+    test('settings.temperature flows into the request body', async () => {
+        axios.post.mockResolvedValueOnce(GROQ_RESPONSE);
+        await callGemma4('hi', false, 800, { temperature: 0.1 });
+        expect(axios.post.mock.calls[0][1].temperature).toBe(0.1);
+    });
+
+    test('strict local failure throws LocalModelError (no cloud fallback)', async () => {
+        axios.post.mockRejectedValue(new Error('ECONNREFUSED'));
+        await expect(
+            callGemma4('hi', true, 800, { localServerUrl: 'http://127.0.0.1:1', localModelName: 'bogus' })
+        ).rejects.toBeInstanceOf(LocalModelError);
+        // Only the local endpoint is attempted — no cloud fallback in strict mode.
+        expect(axios.post).toHaveBeenCalledTimes(1);
+        expect(axios.post.mock.calls[0][0]).toContain('127.0.0.1:1');
+    });
+
+    test('strict local success uses the configured model name', async () => {
+        axios.post.mockResolvedValueOnce({ data: { choices: [{ message: { content: 'local ok' } }] } });
+        const result = await callGemma4('hi', true, 800, { localServerUrl: 'http://host:11434', localModelName: 'qwen2.5' });
+        expect(result).toBe('local ok');
+        expect(axios.post.mock.calls[0][1].model).toBe('qwen2.5');
+    });
+});
+
 describe('callGeminiWithSearch', () => {
     test('sends google_search tool in body and returns text', async () => {
         axios.post.mockResolvedValueOnce(GEMINI_RESPONSE);

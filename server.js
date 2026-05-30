@@ -798,6 +798,7 @@ async function askJarvisHandler(req, res) {
         let llmProvider = null;
         const providerOpts = {
             cloudProvider:   settings.cloudProvider,
+            openrouterModel: settings.openrouterModel,
             temperature:     settings.temperature,
             localServerUrl:  settings.localServerUrl,
             localModelName:  settings.localModelName,
@@ -2722,6 +2723,7 @@ async function streamJarvisHandler(req, res) {
         // callGemma4* sites without touching individual agents.
         const providerOpts = {
             cloudProvider:   settings.cloudProvider,
+            openrouterModel: settings.openrouterModel,
             temperature:     settings.temperature,
             localServerUrl:  settings.localServerUrl,
             localModelName:  settings.localModelName,

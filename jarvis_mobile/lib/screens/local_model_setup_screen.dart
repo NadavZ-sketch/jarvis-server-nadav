@@ -5,8 +5,9 @@ import 'package:http/http.dart' as http;
 import '../main.dart';
 import '../app_settings.dart';
 
-/// Interactive step-by-step wizard for connecting a local LLM (Ollama)
-/// running on the user's computer to the Jarvis mobile app.
+/// Interactive step-by-step wizard for connecting an already-installed local
+/// Ollama on the user's computer to the Jarvis mobile app — either over the
+/// local WiFi network, or exposed to the cloud via a secure tunnel.
 class LocalModelSetupScreen extends StatefulWidget {
   final AppSettings settings;
   const LocalModelSetupScreen({super.key, required this.settings});
@@ -15,19 +16,26 @@ class LocalModelSetupScreen extends StatefulWidget {
   State<LocalModelSetupScreen> createState() => _LocalModelSetupScreenState();
 }
 
+enum _ConnectionMode { localNetwork, cloudTunnel }
+
 class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
   int _step = 0;
+  _ConnectionMode _mode = _ConnectionMode.localNetwork;
   final _urlCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
   String? _pingMsg;
   bool _pinging = false;
   List<String> _detectedModels = [];
 
+  static const int _totalSteps = 4;
+
   @override
   void initState() {
     super.initState();
     _urlCtrl.text = widget.settings.localServerUrl.replaceAll(':3000', ':11434');
-    if (!_urlCtrl.text.contains('11434')) {
+    if (!_urlCtrl.text.contains('11434') &&
+        !_urlCtrl.text.contains('ngrok') &&
+        !_urlCtrl.text.contains('trycloudflare')) {
       _urlCtrl.text = 'http://192.168.1.100:11434';
     }
     _modelCtrl.text = widget.settings.localModelName.isEmpty
@@ -118,7 +126,7 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
             type: StepperType.vertical,
             currentStep: _step,
             onStepContinue: () {
-              if (_step < 4) {
+              if (_step < _totalSteps - 1) {
                 setState(() => _step++);
               } else {
                 _save();
@@ -138,7 +146,7 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
                         foregroundColor: Colors.white,
                       ),
                       onPressed: details.onStepContinue,
-                      child: Text(_step == 4 ? 'סיים ושמור' : 'הבא',
+                      child: Text(_step == _totalSteps - 1 ? 'סיים ושמור' : 'הבא',
                           style: const TextStyle(fontFamily: 'Heebo')),
                     ),
                     const SizedBox(width: 8),
@@ -153,10 +161,9 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
               );
             },
             steps: [
-              _buildInstallStep(),
-              _buildPullStep(),
+              _buildModeStep(),
               _buildServeStep(),
-              _buildConnectStep(),
+              _buildAddressStep(),
               _buildVerifyStep(),
             ],
           ),
@@ -165,8 +172,8 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
     );
   }
 
-  Step _buildInstallStep() => Step(
-        title: const Text('1. התקנת Ollama על המחשב',
+  Step _buildModeStep() => Step(
+        title: const Text('1. בחר איך להתחבר',
             style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
         isActive: _step >= 0,
         state: _step > 0 ? StepState.complete : StepState.indexed,
@@ -174,132 +181,155 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const _InfoText(
-                'Ollama הוא שרת קוד פתוח שמריץ מודלי שפה על המחשב שלך, חינם ובלי לשלוח מידע לענן.'),
+                'אנחנו מניחים ש-Ollama כבר מותקן אצלך. עכשיו צריך להחליט איך הטלפון יגיע אליו:'),
             const SizedBox(height: 12),
-            _PlatformTile(
-              icon: Icons.apple,
-              label: 'macOS',
-              cmd: 'הורד מ-ollama.com/download',
+            _ModeCard(
+              icon: Icons.wifi_outlined,
+              title: 'רשת מקומית (WiFi)',
+              subtitle:
+                  'הטלפון והמחשב על אותה רשת WiFi בבית. הכי מהיר, אפס עיכוב.',
+              selected: _mode == _ConnectionMode.localNetwork,
+              onTap: () =>
+                  setState(() => _mode = _ConnectionMode.localNetwork),
             ),
-            _PlatformTile(
-              icon: Icons.window,
-              label: 'Windows',
-              cmd: 'הורד את ה-installer מ-ollama.com/download',
-            ),
-            _PlatformTile(
-              icon: Icons.terminal,
-              label: 'Linux',
-              cmd: 'curl -fsSL https://ollama.com/install.sh | sh',
-              copyable: true,
-            ),
-          ],
-        ),
-      );
-
-  Step _buildPullStep() => Step(
-        title: const Text('2. הורדת מודל',
-            style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
-        isActive: _step >= 1,
-        state: _step > 1 ? StepState.complete : StepState.indexed,
-        content: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const _InfoText(
-                'פתח טרמינל (Terminal / PowerShell) והרץ את הפקודה. בחר מודל לפי הזיכרון של המחשב:'),
-            const SizedBox(height: 12),
-            _CmdTile(
-              cmd: 'ollama pull llama3',
-              note: 'מומלץ — איכותי, 4.7GB, דורש ~8GB RAM',
-            ),
-            _CmdTile(
-              cmd: 'ollama pull gemma2:2b',
-              note: 'קל ומהיר, 1.6GB, דורש ~4GB RAM',
-            ),
-            _CmdTile(
-              cmd: 'ollama pull qwen2.5:7b',
-              note: 'תומך עברית טוב יותר, 4.4GB',
-            ),
-          ],
-        ),
-      );
-
-  Step _buildServeStep() => Step(
-        title: const Text('3. הפעלת השרת לכל הרשת',
-            style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
-        isActive: _step >= 2,
-        state: _step > 2 ? StepState.complete : StepState.indexed,
-        content: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const _InfoText(
-                'כברירת מחדל Ollama מאזין רק ל-localhost. כדי שהטלפון יוכל להתחבר, הגדר משתנה סביבה:'),
-            const SizedBox(height: 12),
-            const _Subtitle('macOS / Linux:'),
-            _CmdTile(cmd: 'export OLLAMA_HOST=0.0.0.0:11434'),
-            _CmdTile(cmd: 'ollama serve'),
             const SizedBox(height: 8),
-            const _Subtitle('Windows (PowerShell):'),
-            _CmdTile(cmd: '\$env:OLLAMA_HOST="0.0.0.0:11434"'),
-            _CmdTile(cmd: 'ollama serve'),
-            const SizedBox(height: 12),
-            _WarningTile(
-              text: 'חשוב: הטלפון והמחשב חייבים להיות על אותה רשת WiFi. '
-                  'אם יש לך Firewall, אפשר את פורט 11434.',
+            _ModeCard(
+              icon: Icons.cloud_outlined,
+              title: 'מנהרה לענן (ngrok / Cloudflare)',
+              subtitle:
+                  'גישה מכל מקום בעולם דרך כתובת ציבורית. מעט עיכוב, דורש כלי חיצוני.',
+              selected: _mode == _ConnectionMode.cloudTunnel,
+              onTap: () =>
+                  setState(() => _mode = _ConnectionMode.cloudTunnel),
             ),
           ],
         ),
       );
 
-  Step _buildConnectStep() => Step(
-        title: const Text('4. הזנת כתובת המחשב',
-            style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
-        isActive: _step >= 3,
-        state: _step > 3 ? StepState.complete : StepState.indexed,
-        content: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+  Step _buildServeStep() {
+    final isLocal = _mode == _ConnectionMode.localNetwork;
+    return Step(
+      title: Text(isLocal ? '2. הפעלת השרת לרשת המקומית' : '2. הפעלת מנהרה לענן',
+          style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
+      isActive: _step >= 1,
+      state: _step > 1 ? StepState.complete : StepState.indexed,
+      content: isLocal ? _buildLocalServeContent() : _buildTunnelServeContent(),
+    );
+  }
+
+  Widget _buildLocalServeContent() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _InfoText(
+              'כברירת מחדל Ollama מאזין רק ל-localhost ולא לטלפון. צריך לאפשר חיבורים מהרשת:'),
+          const SizedBox(height: 12),
+          const _Subtitle('macOS / Linux — בטרמינל:'),
+          _CmdTile(cmd: 'export OLLAMA_HOST=0.0.0.0:11434'),
+          _CmdTile(cmd: 'ollama serve'),
+          const SizedBox(height: 10),
+          const _Subtitle('Windows — ב-PowerShell:'),
+          _CmdTile(cmd: '\$env:OLLAMA_HOST="0.0.0.0:11434"'),
+          _CmdTile(cmd: 'ollama serve'),
+          const SizedBox(height: 10),
+          const _Subtitle('macOS עם אפליקציה רקעית — הגדרה קבועה:'),
+          _CmdTile(
+              cmd: 'launchctl setenv OLLAMA_HOST "0.0.0.0:11434"',
+              note: 'אחרי הפקודה: צא מאפליקציית Ollama ופתח אותה שוב'),
+          const SizedBox(height: 12),
+          _WarningTile(
+            text:
+                'אם החיבור לא עובד — סביר שה-Firewall חוסם. אפשר את התעבורה הנכנסת לפורט 11434.',
+          ),
+        ],
+      );
+
+  Widget _buildTunnelServeContent() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _InfoText(
+              'מנהרה (tunnel) הופכת את Ollama בלוקאל לכתובת ציבורית מאובטחת. בחר אחת מהאפשרויות:'),
+          const SizedBox(height: 12),
+          const _Subtitle('אפשרות א׳ — Cloudflare Tunnel (חינם, בלי הרשמה):'),
+          _CmdTile(cmd: 'ollama serve'),
+          _CmdTile(
+              cmd: 'cloudflared tunnel --url http://localhost:11434',
+              note: 'הפלט יציג כתובת מסוג https://<random>.trycloudflare.com — העתק אותה'),
+          const SizedBox(height: 10),
+          const _Subtitle('אפשרות ב׳ — ngrok (דורש חשבון חינם):'),
+          _CmdTile(cmd: 'ollama serve'),
+          _CmdTile(
+              cmd: 'ngrok http 11434',
+              note: 'הפלט יציג Forwarding https://xxxx.ngrok-free.app — העתק אותה'),
+          const SizedBox(height: 12),
+          _WarningTile(
+            text:
+                'אזהרה: מנהרה חושפת את ה-Ollama שלך לאינטרנט. סגור אותה כשלא בשימוש, ולא להריץ על מודלים עם מידע רגיש.',
+          ),
+        ],
+      );
+
+  Step _buildAddressStep() {
+    final isLocal = _mode == _ConnectionMode.localNetwork;
+    return Step(
+      title: Text(isLocal ? '3. הזנת כתובת המחשב ברשת' : '3. הזנת כתובת המנהרה',
+          style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
+      isActive: _step >= 2,
+      state: _step > 2 ? StepState.complete : StepState.indexed,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (isLocal) ...[
             const _InfoText(
                 'מצא את כתובת ה-IP של המחשב ברשת המקומית והזן אותה כאן.'),
             const SizedBox(height: 8),
-            const Text(
-              'איך מוצאים IP?',
-              style: TextStyle(
-                  fontFamily: 'Heebo',
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13),
-            ),
+            const Text('איך מוצאים IP?',
+                style: TextStyle(
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13)),
             const SizedBox(height: 4),
+            const _InfoText('• macOS/Linux: ifconfig | grep "inet "\n'
+                '• Windows: ipconfig וחפש "IPv4 Address"'),
+          ] else ...[
             const _InfoText(
-                '• macOS/Linux: הרץ ifconfig | grep "inet "\n'
-                '• Windows: הרץ ipconfig וחפש "IPv4 Address"'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _urlCtrl,
-              textDirection: TextDirection.ltr,
-              style: TextStyle(color: JC.textPrimary, fontFamily: 'monospace'),
-              decoration: InputDecoration(
-                labelText: 'כתובת Ollama',
-                labelStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
-                hintText: 'http://192.168.1.100:11434',
-                hintStyle:
-                    TextStyle(color: JC.textMuted.withValues(alpha: 0.5)),
-                filled: true,
-                fillColor: JC.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: JC.border),
-                ),
-              ),
+                'הדבק כאן את הכתובת הציבורית שהמנהרה החזירה (trycloudflare.com / ngrok-free.app).'),
+            const SizedBox(height: 8),
+            _WarningTile(
+              text:
+                  'הקפד שזו כתובת HTTPS מלאה ללא רווחים. הכתובת משתנה בכל הפעלה של המנהרה.',
             ),
           ],
-        ),
-      );
+          const SizedBox(height: 16),
+          TextField(
+            controller: _urlCtrl,
+            textDirection: TextDirection.ltr,
+            style: TextStyle(color: JC.textPrimary, fontFamily: 'monospace'),
+            decoration: InputDecoration(
+              labelText: isLocal ? 'כתובת Ollama' : 'כתובת מנהרה',
+              labelStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+              hintText: isLocal
+                  ? 'http://192.168.1.100:11434'
+                  : 'https://xxxx.trycloudflare.com',
+              hintStyle:
+                  TextStyle(color: JC.textMuted.withValues(alpha: 0.5)),
+              filled: true,
+              fillColor: JC.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: JC.border),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Step _buildVerifyStep() => Step(
-        title: const Text('5. בדיקת חיבור ובחירת מודל',
+        title: const Text('4. בדיקת חיבור ובחירת מודל',
             style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
-        isActive: _step >= 4,
-        state: _step >= 4 ? StepState.indexed : StepState.indexed,
+        isActive: _step >= 3,
+        state: StepState.indexed,
         content: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -457,41 +487,67 @@ class _CmdTile extends StatelessWidget {
   }
 }
 
-class _PlatformTile extends StatelessWidget {
+class _ModeCard extends StatelessWidget {
   final IconData icon;
-  final String label;
-  final String cmd;
-  final bool copyable;
-  const _PlatformTile({
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ModeCard({
     required this.icon,
-    required this.label,
-    required this.cmd,
-    this.copyable = false,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: JC.textMuted),
-          const SizedBox(width: 8),
-          SizedBox(
-              width: 70,
-              child: Text(label,
-                  style:
-                      const TextStyle(fontFamily: 'Heebo', fontSize: 13))),
-          Expanded(
-            child: copyable
-                ? _CmdTile(cmd: cmd)
-                : Text(cmd,
-                    style: TextStyle(
-                        color: JC.textMuted,
-                        fontSize: 12,
-                        fontFamily: 'Heebo')),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected
+              ? JC.blue500.withValues(alpha: 0.12)
+              : JC.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? JC.blue500 : JC.border,
+            width: selected ? 1.5 : 1,
           ),
-        ],
+        ),
+        child: Row(
+          children: [
+            Icon(icon,
+                size: 24,
+                color: selected ? JC.blue500 : JC.textMuted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontFamily: 'Heebo',
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: selected ? JC.blue500 : JC.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text(subtitle,
+                      style: TextStyle(
+                          fontFamily: 'Heebo',
+                          fontSize: 12,
+                          color: JC.textMuted,
+                          height: 1.4)),
+                ],
+              ),
+            ),
+            if (selected)
+              Icon(Icons.check_circle, size: 20, color: JC.blue500),
+          ],
+        ),
       ),
     );
   }

@@ -33,7 +33,7 @@ async function sendEmail(to, body) {
     console.log(`📧 Email sent to ${to}`);
 }
 
-const { classifyIntent, classifyIntentWithLLM, loadCustomRegistry, detectComplexTask } = require('./agents/router');
+const { classifyIntent, classifyIntentWithLLM, loadCustomRegistry } = require('./agents/router');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator } = require('./agents/memoryAgent');
@@ -49,11 +49,9 @@ const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
 const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = require('./agents/e2eAgent');
 const { runManusAgent, isManusConfigured } = require('./agents/manusAgent');
-const { runAgentFactoryAgent} = require('./agents/agentFactoryAgent');
-const { runInsightAgent, analyzePatterns, optimizeDayPlan } = require('./agents/insightAgent');
+const { analyzePatterns, optimizeDayPlan } = require('./agents/insightAgent');
 const priorityEngine          = require('./services/priorityEngine');
 const { runWeatherAgent }     = require('./agents/weatherAgent');
-const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, generateSurveySummary } = require('./agents/surveyAgent');
 const { runNewsAgent }        = require('./agents/newsAgent');
 const { runShoppingAgent }    = require('./agents/shoppingAgent');
 const { runNotesAgent }       = require('./agents/notesAgent');
@@ -76,12 +74,11 @@ const dispatcher              = require('./agents/dispatcher');
 const AGENTS = {
     runTaskAgent, runReminderAgent, runMemoryAgent, runWeatherAgent, runNewsAgent,
     runShoppingAgent, runNotesAgent, runStocksAgent, runTranslationAgent, runMusicAgent,
-    runSportsAgent, runMessagingAgent, runDraftAgent, runInsightAgent, runAgentFactoryAgent,
+    runSportsAgent, runMessagingAgent, runDraftAgent,
     runCalendarAgent, runPromptAgent, runSettingsAgent, runProjectAgent,
     runSecurityAgent, runCodeErrorAgent, runE2EAgent, runManusAgent,
 };
 
-const obsidianSync            = require('./services/obsidianSync');
 const pinecone                = require('./services/pineconeMemory');
 const { createTasksRouter } = require('./routes/tasks');
 const { createRemindersRouter } = require('./routes/reminders');
@@ -308,13 +305,6 @@ function deleteLocalProfile() {
     } catch (_) {}
 }
 
-// ─── Obsidian Sync ────────────────────────────────────────────────────────────
-obsidianSync.initSync({
-    vaultPath: process.env.OBSIDIAN_VAULT_PATH,
-    supabase,
-}).then(() => obsidianSync.fullSyncFromDb())
-  .catch(err => console.error('[ObsidianSync] init error:', err.message));
-
 // ─── In-memory TTL Cache ──────────────────────────────────────────────────────
 
 const _cache = new Map(); // key → { value, expiresAt }
@@ -399,7 +389,6 @@ async function saveChatMessage(role, text, chatId = 'default-session') {
     }
     chatMemoryFallback.push({ role, text });
     if (chatMemoryFallback.length > 20) chatMemoryFallback = chatMemoryFallback.slice(-20);
-    obsidianSync.appendChatMessage(role, text).catch(() => {});
 }
 
 // ─── Memories ─────────────────────────────────────────────────────────────────
@@ -714,16 +703,6 @@ async function askJarvisHandler(req, res) {
                 agentName = await classifyIntentWithLLM(userMessage);
                 intentMode = 'llm';
             }
-            // Smart auto-routing: long/complex multi-step requests go to Manus
-            // when Manus is configured and auto-routing is not disabled.
-            if (agentName === 'chat' && !imageBase64
-                && process.env.MANUS_AUTOROUTE !== 'off'
-                && isManusConfigured()
-                && detectComplexTask(userMessage)) {
-                agentName = 'manus';
-                intentMode = 'complexity';
-                console.log(`🧠 Complexity auto-route: "manus" ← "${userMessage.slice(0, 60)}"`);
-            }
         }
 
         // Guard: if LLM or keyword classified as manus but Manus is not configured, fall back to chat
@@ -737,7 +716,7 @@ async function askJarvisHandler(req, res) {
         // Actionable agents (task/reminder/notes) are intentionally excluded:
         // "הוסף משימה" must always execute, never get re-routed to chat where
         // it would only be discussed instead of performed.
-        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'insight', 'security', 'e2e', 'factory'];
+        const CONTEXT_OVERRIDE_AGENTS = ['sports', 'weather', 'news', 'security', 'e2e'];
         if (CONTEXT_OVERRIDE_AGENTS.includes(agentName)) {
             const tempHistory = await loadChatHistory(chatId); // uses TTL cache — cheap
             if (detectFollowUp(userMessage, tempHistory)) {
@@ -960,22 +939,6 @@ async function askJarvisHandler(req, res) {
         // Return chatId so client can use it for subsequent messages
         res.json({ answer, audio: audioBase64, action, chatId, suggestions, provider: llmProvider });
 
-        // Fire-and-forget telemetry: log which LLM provider answered so the
-        // dashboard can show a usage breakdown per provider over time.
-        if (llmProvider) {
-            const telemetryUserId = (settings && (settings.userId || settings.userName)) || 'anonymous';
-            setImmediate(() => {
-                supabase.from('smart_telemetry_events').insert({
-                    user_id: String(telemetryUserId),
-                    event_name: `llm_provider:${llmProvider}`,
-                    event_value: 1,
-                    metadata: { provider: llmProvider, agent: agentName },
-                }).then(({ error }) => {
-                    if (error) console.warn('⚠️ provider telemetry insert failed:', error.message);
-                }).catch(() => {});
-            });
-        }
-
         // ── Fire-and-forget: passive memory extraction + summary update ────────
         if (agentName === 'chat' && !imageBase64) {
             setImmediate(() => {
@@ -1170,234 +1133,6 @@ app.delete('/user-profile', async (_req, res) => {
         cacheInvalidate('userProfile');
         res.json({ success: true, deleted: true });
     } catch (err) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── Survey check (should user take survey?) ──────────────────────────────
-// Per-user 48h cooldown after a completed submission; questions answered in
-// the last 7 days are excluded from the next survey so it feels fresh.
-const SURVEY_COOLDOWN_HOURS = 48;
-const SURVEY_EXCLUDE_WINDOW_DAYS = 7;
-
-app.get('/survey-check', async (req, res) => {
-    try {
-        const { sessionMinutes, agentCallCount, force, userName } = req.query;
-        const minutes = parseInt(sessionMinutes) || 0;
-        const calls = parseInt(agentCallCount) || 0;
-        const forced = force === 'true' || force === '1';
-
-        // Trigger survey after 25+ minutes OR 8+ agent calls (or forced by user).
-        // Higher thresholds keep the survey from interrupting short, active sessions.
-        const shouldShowSurvey = forced || minutes >= 25 || calls >= 8;
-        if (!shouldShowSurvey) return res.json({ showSurvey: false });
-
-        // Cooldown + recent-question exclusion (requires userName).
-        let excludeIds = [];
-        if (userName) {
-            try {
-                const cooldownCutoff = new Date(Date.now() - SURVEY_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
-                const excludeCutoff  = new Date(Date.now() - SURVEY_EXCLUDE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-                // 1) Cooldown: any completed survey since cutoff blocks new prompts.
-                if (!forced) {
-                    const { data: recent } = await supabase
-                        .from('user_surveys')
-                        .select('id, completed_at')
-                        .eq('user_name', userName)
-                        .gte('completed_at', cooldownCutoff)
-                        .limit(1);
-                    if (recent && recent.length > 0) {
-                        return res.json({ showSurvey: false, cooldown: true });
-                    }
-                }
-
-                // 2) Build exclude list from question_ids of surveys in the last 7 days.
-                const { data: recentWeek } = await supabase
-                    .from('user_surveys')
-                    .select('question_ids')
-                    .eq('user_name', userName)
-                    .gte('completed_at', excludeCutoff)
-                    .limit(20);
-                for (const row of (recentWeek || [])) {
-                    for (const qid of (row.question_ids || [])) excludeIds.push(qid);
-                }
-            } catch (cooldownErr) {
-                // If the cooldown columns don't exist yet (migration not applied), proceed without filtering.
-                console.warn('⚠️ /survey-check cooldown query failed (will still serve survey):', cooldownErr.message);
-            }
-        }
-
-        const questions = selectSurveyQuestions({ minutes, calls }, excludeIds);
-        if (Object.keys(questions).length === 0) {
-            return res.json({ showSurvey: false, exhausted: true });
-        }
-        const surveyJson = buildSurveyJson(questions);
-        res.json({ showSurvey: true, questions: surveyJson });
-    } catch (err) {
-        console.error('⚠️ /survey-check error:', err.message);
-        res.json({ showSurvey: false });
-    }
-});
-
-// ─── Survey submission ─────────────────────────────────────────────────────
-app.post('/survey-submit', async (req, res) => {
-    try {
-        const { responses, userName } = req.body;
-        if (!responses || !userName) {
-            return res.status(400).json({ error: 'Missing responses or userName' });
-        }
-
-        // Build survey structure for summary
-        const surveyQIds = Object.keys(responses);
-        const survey = surveyQIds.map(id => ({
-            id,
-            question: SURVEY_QUESTIONS[id]?.question || id,
-        }));
-
-        // Get latest E2E test report for context
-        let e2eContext = '';
-        try {
-            const { data: e2eData } = await supabase
-                .from('e2e_reports')
-                .select('score, critical, high, medium')
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            if (e2eData && e2eData.length > 0) {
-                const report = e2eData[0];
-                e2eContext = `\n\n🧪 *דוח בדיקות אחרון:* Score ${report.score}, ` +
-                    `${report.critical || 0} קריטיות, ${report.high || 0} גבוהות`;
-            }
-        } catch (_) {}
-
-        // Generate AI summary
-        let summary = await generateSurveySummary(survey, responses, userName);
-        summary += e2eContext;
-
-        // Save survey to DB with completion tracking so future /survey-check
-        // calls can enforce the per-user cooldown and exclude answered question_ids.
-        const nowIso = new Date().toISOString();
-        const insertRow = {
-            user_name: userName,
-            responses: JSON.stringify(responses),
-            summary,
-            created_at: nowIso,
-            completed_at: nowIso,
-            question_ids: surveyQIds,
-        };
-        let { error } = await supabase.from('user_surveys').insert([insertRow]);
-
-        // If the migration hasn't been applied yet, retry without the new columns
-        // so old deployments don't break on submit.
-        if (error && /completed_at|question_ids/i.test(error.message || '')) {
-            delete insertRow.completed_at;
-            delete insertRow.question_ids;
-            ({ error } = await supabase.from('user_surveys').insert([insertRow]));
-        }
-        if (error) throw error;
-
-        // Invalidate aggregate insights cache so the next /survey-insights
-        // request picks up this new submission.
-        _surveyInsightsCache.delete(userName);
-
-        res.json({ success: true, summary });
-    } catch (err) {
-        console.error('⚠️ /survey-submit error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── Survey history (past surveys for a user) ─────────────────────────────
-app.get('/survey-history', async (req, res) => {
-    try {
-        const { userName } = req.query;
-        if (!userName) return res.status(400).json({ error: 'userName required' });
-
-        const { data, error } = await supabase
-            .from('user_surveys')
-            .select('id, created_at, summary, responses')
-            .eq('user_name', userName)
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-        if (error) throw error;
-
-        const surveys = (data || []).map(s => {
-            let parsed = s.responses;
-            if (typeof parsed === 'string') {
-                try { parsed = JSON.parse(parsed); } catch (_) { parsed = {}; }
-            }
-            return { id: s.id, createdAt: s.created_at, summary: s.summary, responses: parsed };
-        });
-
-        res.json({ surveys });
-    } catch (err) {
-        console.error('⚠️ /survey-history error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── Survey aggregate insights (TTL cache, 1h) ────────────────────────────
-// LRU-bounded: drops oldest entries beyond _SURVEY_INSIGHTS_CACHE_MAX
-// to prevent unbounded memory growth across many users.
-const _SURVEY_INSIGHTS_CACHE_MAX = 500;
-const _surveyInsightsCache = new Map(); // userName -> { insights, generatedAt, ts }
-app.get('/survey-insights', async (req, res) => {
-    try {
-        const { userName } = req.query;
-        if (!userName) return res.status(400).json({ error: 'userName required' });
-
-        const cached = _surveyInsightsCache.get(userName);
-        if (cached && Date.now() - cached.ts < 60 * 60 * 1000) {
-            // Refresh recency for LRU eviction order.
-            _surveyInsightsCache.delete(userName);
-            _surveyInsightsCache.set(userName, cached);
-            return res.json({ insights: cached.insights, generatedAt: cached.generatedAt, cached: true });
-        }
-
-        const { data, error } = await supabase
-            .from('user_surveys')
-            .select('summary, created_at')
-            .eq('user_name', userName)
-            .order('created_at', { ascending: false })
-            .limit(20);
-
-        if (error) throw error;
-
-        const summariesWithContent = (data || []).filter(s => (s.summary || '').trim().length > 0);
-        if (summariesWithContent.length === 0) {
-            return res.json({ insights: [], generatedAt: null });
-        }
-
-        const summariesText = summariesWithContent
-            .map((s, i) => `[${i + 1}] (${s.created_at}) ${s.summary}`)
-            .join('\n\n');
-
-        let insights = [];
-        try {
-            const raw = await callGemma4([
-                { role: 'system', content: 'אתה אנליסט מוצר. ענה תמיד ב-JSON בלבד.' },
-                { role: 'user', content: `סקרים אחרונים של המשתמש "${userName}":\n${summariesText}\n\nסכם 3-5 תובנות מצטברות בעברית על המשתמש (העדפות, נקודות חוזק, אזורי שיפור). החזר JSON: {"insights":["...","..."]}` },
-            ], false, 500);
-            const match = raw.match(/\{[\s\S]*\}/);
-            if (match) {
-                const parsed = JSON.parse(match[0]);
-                if (Array.isArray(parsed.insights)) insights = parsed.insights.filter(x => typeof x === 'string');
-            }
-        } catch (e) {
-            console.error('⚠️ survey-insights LLM error:', e.message);
-        }
-
-        const generatedAt = new Date().toISOString();
-        _surveyInsightsCache.set(userName, { insights, generatedAt, ts: Date.now() });
-        while (_surveyInsightsCache.size > _SURVEY_INSIGHTS_CACHE_MAX) {
-            const oldestKey = _surveyInsightsCache.keys().next().value;
-            _surveyInsightsCache.delete(oldestKey);
-        }
-        res.json({ insights, generatedAt, cached: false });
-    } catch (err) {
-        console.error('⚠️ /survey-insights error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -3099,34 +2834,6 @@ if (!isTestEnv) cron.schedule('0 9 * * *', async () => {
     }
 }, { timezone: 'Asia/Jerusalem' });
 
-// ─── Obsidian sync endpoints ──────────────────────────────────────────────────
-let obsidianAutoSync = true;
-
-app.post('/sync/obsidian', async (_req, res) => {
-    try {
-        const result = await obsidianSync.syncAll();
-        res.json({ ok: true, ...result });
-    } catch (err) {
-        res.status(500).json({ ok: false, error: 'Internal server error' });
-    }
-});
-
-app.post('/sync/obsidian/auto', (req, res) => {
-    obsidianAutoSync = req.body?.enabled !== false;
-    console.log(`[ObsidianSync] auto-sync ${obsidianAutoSync ? 'enabled' : 'disabled'}`);
-    res.json({ ok: true, autoSync: obsidianAutoSync });
-});
-
-app.get('/sync/obsidian/status', (_req, res) => {
-    res.json({ autoSync: obsidianAutoSync, vaultReady: !!process.env.OBSIDIAN_VAULT_PATH });
-});
-
-// ─── Obsidian auto-sync cron (every 5 min) ────────────────────────────────────
-if (!isTestEnv) cron.schedule('*/5 * * * *', () => {
-    if (!obsidianAutoSync) return;
-    obsidianSync.syncAll().catch(err => console.error('[ObsidianSync] cron:', err.message));
-});
-
 // Daily cleanup: remove ephemeral memories past their TTL.
 // 'session' scope: 7 days; 'recent' scope: 24 hours.
 if (!isTestEnv) cron.schedule('30 3 * * *', async () => {
@@ -3925,29 +3632,6 @@ app.post('/dashboard/generate-prompt', async (req, res) => {
     }
 });
 
-// ─── Dashboard – Smart telemetry (MVP) ──────────────────────────────────────
-app.post('/dashboard/smart-telemetry', async (req, res) => {
-    try {
-        const { userId, eventName, eventValue, metadata } = req.body || {};
-        if (!userId || !String(userId).trim()) return res.status(400).json({ error: 'userId required' });
-        if (!eventName || !String(eventName).trim()) return res.status(400).json({ error: 'eventName required' });
-
-        const payload = {
-            user_id: String(userId).trim(),
-            event_name: String(eventName).trim(),
-            event_value: Number.isFinite(Number(eventValue)) ? Number(eventValue) : 1,
-            metadata: (metadata && typeof metadata === 'object') ? metadata : {},
-        };
-
-        const { error } = await supabase.from('smart_telemetry_events').insert(payload);
-        if (error) return res.status(500).json({ error: error.message });
-        res.json({ ok: true });
-    } catch (e) {
-        console.error('smart-telemetry POST error:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
 // ─── Dashboard – Graph actions (MVP) ────────────────────────────────────────
 app.post('/dashboard/graph/action', (req, res) => {
     try {
@@ -4000,59 +3684,6 @@ app.post('/dashboard/graph/action', (req, res) => {
     } catch (e) {
         console.error('graph/action error:', e.message);
         return res.status(500).json({ error: 'graph action failed' });
-    }
-});
-
-app.get('/dashboard/smart-telemetry', async (req, res) => {
-    try {
-        const userId = String(req.query.userId || '').trim();
-        if (!userId) return res.status(400).json({ error: 'userId required' });
-
-        const { data, error } = await supabase
-            .from('smart_telemetry_events')
-            .select('event_name,event_value,created_at')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-            .limit(300);
-
-        if (error) return res.status(500).json({ error: error.message });
-        const counters = {};
-        for (const row of (data || [])) {
-            const key = row.event_name || 'unknown';
-            counters[key] = (counters[key] || 0) + (Number(row.event_value) || 0);
-        }
-        res.json({ counters, events: data || [] });
-    } catch (e) {
-        console.error('smart-telemetry GET error:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.delete('/dashboard/smart-telemetry/history', async (req, res) => {
-    try {
-        const userId = String(req.body?.userId || req.query.userId || '').trim();
-        if (!userId) return res.status(400).json({ error: 'userId required' });
-        const { error } = await supabase.from('smart_telemetry_events').delete().eq('user_id', userId);
-        if (error) return res.status(500).json({ error: error.message });
-        res.json({ ok: true });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// Called from the mobile settings screen "Reset Telemetry" button.
-// scope='user' (default) deletes all telemetry events for this installation.
-app.post('/dashboard/smart-telemetry/reset', async (req, res) => {
-    try {
-        const scope = String(req.body?.scope || 'user').trim();
-        if (scope !== 'user') {
-            return res.status(400).json({ error: `Unknown scope: ${scope}` });
-        }
-        const { error } = await supabase.from('smart_telemetry_events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        if (error) return res.status(500).json({ error: error.message });
-        res.json({ ok: true, deleted: true, scope });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
     }
 });
 

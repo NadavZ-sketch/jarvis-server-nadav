@@ -38,11 +38,13 @@ beforeEach(() => {
 
 describe('runTaskAgent', () => {
     test('add intent inserts task and confirms', async () => {
-        callGemma4.mockResolvedValue('{"intent":"add","taskDetails":"buy milk"}');
+        callGemma4.mockResolvedValue('{"intent":"add","taskDetails":"buy milk","category":"general"}');
         const supabase = makeSupabase();
         const result = await runTaskAgent('הוסף משימה לקנות חלב', supabase);
         expect(supabase.from).toHaveBeenCalledWith('tasks');
-        expect(supabase._chain.insert).toHaveBeenCalledWith([{ content: 'buy milk' }]);
+        expect(supabase._chain.insert).toHaveBeenCalledWith(
+            expect.arrayContaining([expect.objectContaining({ content: 'buy milk', category: 'general' })])
+        );
         expect(result.answer).toContain('הוספתי');
         expect(result.action).toEqual({ type: 'navigate', target: 'tasks', label: 'פתח משימות' });
     });

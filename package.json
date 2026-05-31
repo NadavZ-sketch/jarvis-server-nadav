@@ -19,6 +19,10 @@
     "testMatch": [
       "**/tests/**/*.test.js"
     ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/archive/"
+    ],
     "collectCoverageFrom": [
       "server.js",
       "agents/**/*.js"

@@ -20,7 +20,6 @@ const KEYWORDS = {
     // "כתוב לי" alone is too broad (catches "כתוב לי בדיחה" → chat).
     // Require explicit messaging/document context before routing to draft.
     draft:     /נסח לי|תנסח|עזור לי לנסח|תכין לי.*הודעה|הכן לי.*הודעה|תכין לי.*מייל|הכן לי.*מייל|תעזור לי לכתוב.*הודע|תעזור לי לכתוב.*מייל|נוסח ל|כתוב לי.*הודע|כתוב לי.*מייל|כתוב לי.*מכתב|תכתוב לי.*הודע|תכתוב לי.*מייל|תכתוב לי.*מכתב/i,
-    insight:   /תן לי טיפים|מה אפשר לשפר|ניתוח שלי|דוח שימוש|עצות לשיפור|התייעלות|תובנות|איך אני משתמש/i,
     e2e:        /בצע בדיקות קצה|בדיקות קצה לקצה|בדיקות קצה|בדיקת e2e|הרץ בדיקות|דוח בדיקות|end[- ]?to[- ]?end/i,
     code_error: /סרוק שגיאות קוד|מצא שגיאות קוד|בדיקת שגיאות|שגיאות בקוד|code error|error scan|סרוק שגיאות|בדוק שגיאות קוד|code scan errors/i,
     manus:      /manus|מאנוס|מטלה מורכבת|משימה מורכבת|משימה כבדה|מטלה כבדה|סוכן מורכב|אוטונומי|autonomous task|מחקר מעמיק|תחקור לעומק|חקור לעומק|deep research|deep dive|נתח לעומק|סקירת ספרות|מחקר שוק|בנה לי (אפליקציה|אתר|סקריפט|כלי)|בנה פרויקט|תכתוב לי (אפליקציה|סקריפט|כלי|אוטומציה)|צור לי (אפליקציה|סקריפט|כלי)/i,
@@ -29,23 +28,12 @@ const KEYWORDS = {
     // "מה פירוש / מה המשמעות" removed — too broad, steals philosophical/memory questions.
     // Kept explicit language directives (תרגם, translate, "כתוב באנגלית" etc.)
     translate: /תרגם|תרגום|translate|translation|כתוב.*אנגלית|כתוב.*עברית|תכתוב.*אנגלית|תכתוב.*עברית|בצרפתית|בספרדית|בערבית|בגרמנית|מה פירוש המילה|מה המשמעות של המילה/i,
-    factory:   /צור אייג'נט|יצור אייג'נט|בנה אייג'נט|הוסף אייג'נט|תייצר אייג'נט|תבנה אייג'נט|רשימת אייג'נטים|הצג אייג'נטים|מחק אייג'נט|הסר אייג'נט/i,
     settings:  /שנה.*אישיות|שנה.*אופי|דבר.*יותר.*לאט|דבר.*יותר.*מהר|האט|האץ|בטל קול|כבה קול|הפעל קול|אפשר קול|תשובות קצרות|תשובות ארוכות|שנה.*שם.*ל|קרא לי |קרא לעצמך|מה.*הגדרות.*שלי|הגדרות.*נוכחיות|שנה.*הגדרות/i,
     calendar:  /יומן|פגישות.*היום|פגישות.*מחר|מה יש לי.*ביומן|מה ביומן|קבע פגישה|קבע אירוע|הוסף.*ליומן|תקבע.*פגישה|אירועים.*היום|google calendar/i,
     prompt:    /צור פרומפט|תכתוב פרומפט|בנה פרומפט|שפר פרומפט|שדרג פרומפט|הערך פרומפט|נתח פרומפט|שמור פרומפט|רשימת פרומפטים|הצג פרומפטים|פרומפטים שמורים|הפרומפטים שלי|הנדסת פרומפטים|prompt engineering|כתוב.*פרומפט|פרומפט ל[א-ת]/i,
 };
 
 const REGISTRY_PATH = path.join(__dirname, 'custom', 'registry.json');
-const PENDING_PATH  = path.join(__dirname, 'custom', 'pending.json');
-
-let _pendingCache = false, _pendingAt = 0;
-function hasPendingAgent() {
-    if (Date.now() - _pendingAt < 5000) return _pendingCache;
-    try { _pendingCache = !!JSON.parse(fs.readFileSync(PENDING_PATH, 'utf8')); }
-    catch { _pendingCache = false; }
-    _pendingAt = Date.now();
-    return _pendingCache;
-}
 
 let _registryCache = [], _registryAt = 0;
 function loadCustomRegistry() {
@@ -56,18 +44,10 @@ function loadCustomRegistry() {
     return _registryCache;
 }
 
-function invalidateRouterCache() { _pendingAt = 0; _registryAt = 0; }
+function invalidateRouterCache() { _registryAt = 0; }
 
 function classifyIntent(userMessage) {
     const msg = userMessage.toLowerCase();
-
-    // Pending agent confirmation/cancellation takes priority
-    if (/^(כן|אשר|yes|approve|אוקי|בסדר|שלב|לא|בטל|cancel|no|ביטול|אל תשלב)$/i.test(userMessage.trim())) {
-        if (hasPendingAgent()) {
-            console.log(`🧭 Router (pending): "factory" ← "${userMessage.trim()}"`);
-            return 'factory';
-        }
-    }
 
     // Fast path: static keyword match
     for (const [intent, pattern] of Object.entries(KEYWORDS)) {
@@ -98,13 +78,13 @@ function classifyIntent(userMessage) {
 const VALID_INTENTS = new Set([
     'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
     'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'insight', 'security', 'code_error', 'e2e', 'factory', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'chat',
+    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'chat',
 ]);
 
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
 Given a user message, classify it into exactly one of these intents:
 task, reminder, memory, weather, news, shopping, notes, music, stocks, translate,
-sports, messaging, draft, insight, security, code_error, e2e, factory, past_conv,
+sports, messaging, draft, security, code_error, e2e, past_conv,
 calendar, prompt, settings, chat
 
 Rules:
@@ -121,11 +101,9 @@ Rules:
 - sports: sports results, leagues, teams, players
 - messaging: send WhatsApp/email messages or manage contacts
 - draft: compose a message, email, or letter for the user to send
-- insight: analyze the user's habits or provide usage tips
 - security: code security scan, OWASP vulnerability or bug report
 - code_error: scan source code for runtime errors, logic bugs, anti-patterns, missing error handling
 - e2e: run autonomous end-to-end self-tests of the assistant (UI, API, code scan, UX)
-- factory: create/manage/delete custom agents
 - manus: heavy/complex autonomous tasks requiring web browsing, multi-step execution, building software/scripts, deep research or market analysis (use Manus AI agent — NOT for simple questions)
 - calendar: Google Calendar — view events, create meetings/appointments
 - past_conv: asking about previous conversations with Jarvis

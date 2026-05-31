@@ -25,6 +25,33 @@ function formatDate(isoDate) {
     });
 }
 
+// ─── Category keyword classifier (fast path, no LLM call) ────────────────────
+
+const CATEGORY_KEYWORDS = {
+    work:      /פגישה|ישיבה|מייל|אימייל|דוח|דו"ח|לקוח|מנהל|עובד|עמית|משרד|עבודה|פרזנטציה|מצגת|קולגה|הגשה|ספק|שותף|גיוס|ראיון|משכורת|חוזה|הסכם|לקוחות|פרויקט עסקי/i,
+    personal:  /רופא|רופאה|בריאות|משפחה|ילד|ילדה|חבר|חברה|ספורט|כושר|חדר כושר|אוכל|תזונה|טיול|חופשה|שיניים|תרופה|ביגוד|ניקיון|שטיפה|ביקור|יום הולדת|לימודים|קורס|אוניברסיטה|בית ספר/i,
+    financial: /כסף|תשלום|חשבון|חוב|הלוואה|השקעה|מניה|ביטוח|מס|ארנונה|חשמל|גז|מים|ויזה|אשראי|בנק|קנייה|רכישה|תקציב|הוצאה|הכנסה|שכר דירה|משכנתא|פנסיה|קרן|ריבית/i,
+    project:   /פרויקט|פרוייקט|אפליקציה|אפ|קוד|פיתוח|דיזיין|עיצוב|אתר|בסיס נתונים|מסד נתונים|API|שרת|מוצר|MVP|ספרינט|sprint|גיטהאב|github|פיצ'ר|feature|באג|bug|ריפקטור|deploy|배포|הרצה|CI/i,
+};
+
+const CATEGORY_META = {
+    work:      { label: 'עבודה',   emoji: '💼' },
+    personal:  { label: 'אישי',    emoji: '👤' },
+    financial: { label: 'פיננסי',  emoji: '💰' },
+    project:   { label: 'פרויקט', emoji: '🚀' },
+    general:   { label: 'כללי',    emoji: '📌' },
+};
+
+function classifyCategory(text) {
+    if (!text) return 'general';
+    for (const [cat, rx] of Object.entries(CATEGORY_KEYWORDS)) {
+        if (rx.test(text)) return cat;
+    }
+    return 'general';
+}
+
+// ─── LLM Prompt ───────────────────────────────────────────────────────────────
+
 const TASK_PROMPT = (today) => `You are a task management AI. Analyze the Hebrew user message and extract the intent.
 Allowed intents: 'add', 'list', 'delete', 'complete', 'suggest', 'today'.
 - 'add': user wants to create a new task
@@ -46,8 +73,15 @@ Priority rules:
 - "חשוב", "בינוני", "עדיפות בינונית" → "medium"
 - "לא דחוף", "נמוך", "כשיש זמן", "בזמן פנוי" → "low"
 
+Category rules — classify the task into ONE of: work, personal, financial, project, general:
+- "work": meetings, emails, reports, clients, office, business tasks
+- "personal": health, family, friends, sport, errands, education
+- "financial": payments, bills, banking, investments, budget, insurance
+- "project": coding, design, development, apps, software, product
+- "general": everything else
+
 Return ONLY a JSON object (no explanation):
-{"intent": "add|list|delete|complete|suggest|today", "taskDetails": "task text or empty", "dueDate": "YYYY-MM-DD or null", "priority": "high|medium|low|null"}
+{"intent": "add|list|delete|complete|suggest|today", "taskDetails": "task text or empty", "dueDate": "YYYY-MM-DD or null", "priority": "high|medium|low|null", "category": "work|personal|financial|project|general"}
 
 User message: `;
 
@@ -72,14 +106,31 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         console.log('📋 TaskAgent:', parsed);
 
         if (parsed.intent === 'add') {
-            const insertData = { content: parsed.taskDetails };
+            // Category: prefer LLM output; fall back to keyword classifier
+            const validCats = new Set(['work', 'personal', 'financial', 'project', 'general']);
+            const category = validCats.has(parsed.category)
+                ? parsed.category
+                : classifyCategory(parsed.taskDetails);
+
+            const insertData = { content: parsed.taskDetails, category };
             if (parsed.dueDate) insertData.due_date = parsed.dueDate;
             if (parsed.priority && parsed.priority !== 'null') insertData.priority = parsed.priority;
 
-            await supabase.from('tasks').insert([insertData]);
-            obsidianSync.dbToVault('tasks', { content: parsed.taskDetails });
+            // Graceful insert: if `category` column doesn't exist yet, retry without it
+            const { error: insertErr } = await supabase.from('tasks').insert([insertData]);
+            if (insertErr) {
+                if (/column "category"/.test(insertErr.message || '')) {
+                    const { category: _c, ...rowWithoutCategory } = insertData;
+                    await supabase.from('tasks').insert([rowWithoutCategory]);
+                } else {
+                    console.error('TaskAgent insert error:', insertErr.message);
+                }
+            }
+            obsidianSync.dbToVault('tasks', { content: parsed.taskDetails, category });
 
+            const catMeta = CATEGORY_META[category] || CATEGORY_META.general;
             let answer = `מעולה ${userName}, הוספתי את המשימה: ${parsed.taskDetails}`;
+            answer += `\n${catMeta.emoji} קטגוריה: ${catMeta.label}`;
             if (parsed.dueDate) {
                 answer += `\n📅 תאריך יעד: ${formatDate(parsed.dueDate)}`;
             }
@@ -134,7 +185,8 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                 answer += `\n📅 *להיום (${dueTodayItems.length}):*\n`;
                 dueTodayItems.forEach((t, i) => {
                     const prio = t.priority === 'high' ? ' 🔴' : t.priority === 'medium' ? ' 🟡' : '';
-                    answer += `${i + 1}. ${t.content}${prio}\n`;
+                    const catEmoji = (t.category && CATEGORY_META[t.category]) ? CATEGORY_META[t.category].emoji + ' ' : '';
+                    answer += `${i + 1}. ${catEmoji}${t.content}${prio}\n`;
                 });
             }
 
@@ -156,16 +208,39 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
             let answer = `📋 *המשימות שלך (${pending.length} פתוחות, ${completed.length} בוצעו):*\n\n`;
 
             if (pending.length > 0) {
-                answer += '*משימות פתוחות:*\n';
-                pending.forEach((t, i) => {
-                    const prio = t.priority === 'high' ? ' 🔴' : t.priority === 'medium' ? ' 🟡' : '';
-                    const due = t.due_date ? ` | 📅 ${formatDate(t.due_date)}` : '';
-                    answer += `${i + 1}. ${t.content}${prio}${due}\n`;
+                // Group by category for better readability
+                const grouped = {};
+                pending.forEach(t => {
+                    const cat = t.category && CATEGORY_META[t.category] ? t.category : 'general';
+                    (grouped[cat] = grouped[cat] || []).push(t);
                 });
+
+                const catOrder = ['work', 'project', 'financial', 'personal', 'general'];
+                const usedCats = catOrder.filter(c => grouped[c]);
+                const hasCats = usedCats.some(c => c !== 'general') || (grouped.general?.length > 0 && usedCats.length > 1);
+
+                if (hasCats) {
+                    usedCats.forEach(cat => {
+                        const meta = CATEGORY_META[cat];
+                        answer += `*${meta.emoji} ${meta.label}:*\n`;
+                        grouped[cat].forEach((t, i) => {
+                            const prio = t.priority === 'high' ? ' 🔴' : t.priority === 'medium' ? ' 🟡' : '';
+                            const due = t.due_date ? ` | 📅 ${formatDate(t.due_date)}` : '';
+                            answer += `  ${i + 1}. ${t.content}${prio}${due}\n`;
+                        });
+                        answer += '\n';
+                    });
+                } else {
+                    pending.forEach((t, i) => {
+                        const prio = t.priority === 'high' ? ' 🔴' : t.priority === 'medium' ? ' 🟡' : '';
+                        const due = t.due_date ? ` | 📅 ${formatDate(t.due_date)}` : '';
+                        answer += `${i + 1}. ${t.content}${prio}${due}\n`;
+                    });
+                }
             }
 
             if (pending.length > 3) {
-                answer += `\n💡 *הצעה:* אתה עם ${pending.length} משימות פתוחות. תרצה לסיים אחת מהן או להפריד לחלקים קטנים יותר?`;
+                answer += `💡 *הצעה:* אתה עם ${pending.length} משימות פתוחות. תרצה לסיים אחת מהן או להפריד לחלקים קטנים יותר?`;
             }
 
             return { answer };
@@ -255,4 +330,4 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
     return { answer: 'הייתה בעיה בעיבוד המשימה, נסה שוב.' };
 }
 
-module.exports = { runTaskAgent };
+module.exports = { runTaskAgent, classifyCategory, CATEGORY_META };

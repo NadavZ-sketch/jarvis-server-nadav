@@ -1318,6 +1318,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   if (navTarget != null) 'navTarget': navTarget,
                   if (navLabel != null) 'navLabel': navLabel,
                 });
+                _currentState = JarvisState.idle;
               });
               _persistMessages();
               _checkForFinalPrompt(answer);
@@ -1330,7 +1331,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               }
               _agentCallCount++;
               _checkSurveyEligibility();
-              _speakText(answer);
+              unawaited(_speakText(answer));
             }
           } catch (_) {}
         }

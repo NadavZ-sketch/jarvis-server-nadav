@@ -227,6 +227,27 @@ class ApiService {
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
+  /// Fetches the proactive home-screen insight from the dedicated, server-cached
+  /// endpoint. Pass [fresh] to bypass the server cache (manual refresh). Sending
+  /// [mode] lets the server cache one insight per time-of-day role.
+  Future<Map<String, dynamic>> getInsightCard(
+      String prompt, {String? mode, bool fresh = false}) async {
+    final body = <String, dynamic>{
+      'prompt': prompt,
+      if (mode != null) 'mode': mode,
+      if (fresh) 'fresh': true,
+      'userId': settings.userName,
+    };
+    final res = await _client
+        .post(
+          _uri('/insight-card'),
+          headers: _headers({'Content-Type': 'application/json'}),
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 45));
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> askJarvis(
       String command, AppSettings settings, {String? intent}) async {
     final body = <String, dynamic>{

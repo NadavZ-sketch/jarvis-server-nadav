@@ -38,9 +38,6 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   final void Function({String? command})? onNavigateToChat;
   final ApiService api;
 
-  static const _autoRefreshInterval = Duration(seconds: 60);
-  Timer? _refreshTimer;
-
   // ── Core data ──
   List<Map<String, dynamic>> tasks = [];
   List<Map<String, dynamic>> reminders = [];
@@ -93,14 +90,13 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   void start() {
     WidgetsBinding.instance.addObserver(this);
     load();
-    _refreshTimer =
-        Timer.periodic(_autoRefreshInterval, (_) => _silentRefresh());
+    // No periodic timer: the insight + day-plan are LLM-backed and expensive.
+    // Data refreshes on initial load, pull-to-refresh, and app resume instead.
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _refreshTimer?.cancel();
     _snackTimer?.cancel();
     super.dispose();
   }
@@ -141,8 +137,10 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   /// Pull-to-refresh: re-runs the full load surfacing errors.
   Future<void> refresh() => load();
 
-  /// Timer / app-resume refresh: updates core + secondary data quietly without
-  /// flipping the screen back into a loading state.
+  /// App-resume refresh: updates core + cheap/cached secondary data quietly,
+  /// without flipping the screen back into a loading state. Deliberately skips
+  /// the day-plan LLM (it re-runs on the full load and after task mutations); the
+  /// insight is served from the server cache unless it has gone stale.
   Future<void> _silentRefresh() async {
     try {
       final results = await Future.wait([api.getTasks(), api.getReminders()]);
@@ -150,7 +148,9 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       reminders = results[1];
       notifyListeners();
     } catch (_) {/* keep showing the last good data */}
-    _loadSecondary();
+    _loadDashboardContext();
+    _loadStats();
+    loadJarvisInsight(); // fresh:false → returns the server-cached insight cheaply
   }
 
   void _loadSecondary() {
@@ -264,7 +264,10 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
         'כתוב בעברית בלבד.';
   }
 
-  Future<void> loadJarvisInsight() async {
+  /// Loads the proactive insight from the server-cached `/insight-card` endpoint.
+  /// Pass [fresh] to force a brand-new LLM generation (manual refresh / new
+  /// suggestion); otherwise the server serves a cached insight for free.
+  Future<void> loadJarvisInsight({bool fresh = false}) async {
     // Keep the role in sync with the clock unless the user pinned one.
     if (!_insightModeManual) insightMode = _autoInsightMode();
     final seq = ++_insightSeq;
@@ -272,7 +275,8 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     insightError = null;
     notifyListeners();
     try {
-      final r = await api.askJarvis(_buildInsightPrompt(), settings, intent: 'chat');
+      final r = await api.getInsightCard(_buildInsightPrompt(),
+          mode: insightMode.key, fresh: fresh);
       if (seq != _insightSeq) return;
       final answer = (r['answer'] as String? ?? '').trim();
       final looksLikeError = (answer.contains('בעיה') && answer.contains('נסה שוב')) ||

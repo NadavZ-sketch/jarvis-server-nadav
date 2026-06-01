@@ -6,22 +6,21 @@ const fs = require('fs');
 const CUSTOM_REGISTRY_PATH = path.join(__dirname, '..', 'agents', 'custom', 'registry.json');
 const STATUS_OVERRIDE_PATH = path.join(__dirname, '..', 'agents', 'custom', 'agent-status.json');
 
-function readStatusOverrides() {
+async function readStatusOverrides() {
   try {
-    if (!fs.existsSync(STATUS_OVERRIDE_PATH)) return {};
-    const raw = fs.readFileSync(STATUS_OVERRIDE_PATH, 'utf8');
+    const raw = await fs.promises.readFile(STATUS_OVERRIDE_PATH, 'utf8');
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch (_) { return {}; }
 }
 
-function writeStatusOverrides(map) {
+async function writeStatusOverrides(map) {
   try {
     const dir = path.dirname(STATUS_OVERRIDE_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    await fs.promises.mkdir(dir, { recursive: true });
     const tmp = STATUS_OVERRIDE_PATH + '.tmp.' + process.pid;
-    fs.writeFileSync(tmp, JSON.stringify(map, null, 2), 'utf8');
-    fs.renameSync(tmp, STATUS_OVERRIDE_PATH); // atomic on POSIX — prevents partial-read corruption
+    await fs.promises.writeFile(tmp, JSON.stringify(map, null, 2), 'utf8');
+    await fs.promises.rename(tmp, STATUS_OVERRIDE_PATH); // atomic on POSIX — prevents partial-read corruption
     return true;
   } catch (e) { return false; }
 }
@@ -33,26 +32,26 @@ function isProtectedAgent(agentId) {
   return PROTECTED_AGENT_IDS.includes(agentId);
 }
 
-function setAgentStatus(agentId, status) {
+async function setAgentStatus(agentId, status) {
   if (!agentId) throw new Error('agentId required');
   if (!['active', 'disabled'].includes(status)) throw new Error('status must be active|disabled');
   if (status === 'disabled' && isProtectedAgent(agentId)) {
     throw new Error('סוכן ליבה — לא ניתן לכיבוי');
   }
-  const overrides = readStatusOverrides();
+  const overrides = await readStatusOverrides();
   const prev = overrides[agentId] || {};
   overrides[agentId] = { ...prev, status, updatedAt: new Date().toISOString() };
-  if (!writeStatusOverrides(overrides)) throw new Error('failed to persist status override');
+  if (!await writeStatusOverrides(overrides)) throw new Error('failed to persist status override');
   return overrides[agentId];
 }
 
-function setAgentRisk(agentId, riskLevel) {
+async function setAgentRisk(agentId, riskLevel) {
   if (!agentId) throw new Error('agentId required');
   if (!['low', 'medium', 'high'].includes(riskLevel)) throw new Error('riskLevel must be low|medium|high');
-  const overrides = readStatusOverrides();
+  const overrides = await readStatusOverrides();
   const prev = overrides[agentId] || {};
   overrides[agentId] = { ...prev, riskLevel, updatedAt: new Date().toISOString() };
-  if (!writeStatusOverrides(overrides)) throw new Error('failed to persist risk override');
+  if (!await writeStatusOverrides(overrides)) throw new Error('failed to persist risk override');
   return overrides[agentId];
 }
 
@@ -423,8 +422,8 @@ const STATIC_AGENTS = [
   },
 ];
 
-function getAgentRegistry() {
-  const overrides = readStatusOverrides();
+async function getAgentRegistry() {
+  const overrides = await readStatusOverrides();
   const applyOverride = (agent) => {
     const ov = overrides[agent.id];
     if (!ov) return agent;
@@ -440,8 +439,8 @@ function getAgentRegistry() {
   };
   const agents = STATIC_AGENTS.map(applyOverride);
   try {
-    if (fs.existsSync(CUSTOM_REGISTRY_PATH)) {
-      const raw = fs.readFileSync(CUSTOM_REGISTRY_PATH, 'utf8');
+    const raw = await fs.promises.readFile(CUSTOM_REGISTRY_PATH, 'utf8');
+    {
       const custom = JSON.parse(raw);
       if (Array.isArray(custom)) {
         custom.forEach(c => {

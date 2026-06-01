@@ -79,7 +79,7 @@ function createAgentCenterRouter({ callGemma4, agentMetrics }) {
 
   router.get('/agents', async (_req, res) => {
     try {
-      const agents = getAgentRegistry();
+      const agents = await getAgentRegistry();
       // Attach live metrics + health scores if available.
       if (agentMetrics) {
         const snap = await agentMetrics.snapshot().catch(() => ({ latency: [], intent: { fast: 0, llm: 0 } }));
@@ -101,17 +101,17 @@ function createAgentCenterRouter({ callGemma4, agentMetrics }) {
   });
 
   // Enable/disable an agent. Toggles status if no explicit value sent.
-  router.post('/agents/:id/toggle', (req, res) => {
+  router.post('/agents/:id/toggle', async (req, res) => {
     try {
       const agentId = req.params.id;
-      const registry = getAgentRegistry();
+      const registry = await getAgentRegistry();
       const current = registry.find(a => a.id === agentId);
       if (!current) return res.status(404).json({ error: 'agent not found' });
       const explicit = req.body && typeof req.body.status === 'string' ? req.body.status : null;
       const nextStatus = explicit
         ? explicit
         : (current.status === 'disabled' ? 'active' : 'disabled');
-      const override = setAgentStatus(agentId, nextStatus);
+      const override = await setAgentStatus(agentId, nextStatus);
       res.json({ id: agentId, status: nextStatus, updatedAt: override.updatedAt });
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -119,13 +119,13 @@ function createAgentCenterRouter({ callGemma4, agentMetrics }) {
   });
 
   // Set an agent's risk level (low|medium|high). Persisted as an override.
-  router.post('/agents/:id/risk', (req, res) => {
+  router.post('/agents/:id/risk', async (req, res) => {
     try {
       const agentId = req.params.id;
-      const registry = getAgentRegistry();
+      const registry = await getAgentRegistry();
       if (!registry.find(a => a.id === agentId)) return res.status(404).json({ error: 'agent not found' });
       const riskLevel = req.body && req.body.riskLevel;
-      const override = setAgentRisk(agentId, riskLevel);
+      const override = await setAgentRisk(agentId, riskLevel);
       res.json({ id: agentId, riskLevel, updatedAt: override.updatedAt });
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -173,7 +173,7 @@ ${metricsText}
       const { agentId, changeRequest } = req.body || {};
       if (!changeRequest) return res.status(400).json({ error: 'changeRequest required' });
 
-      const agents = getAgentRegistry();
+      const agents = await getAgentRegistry();
       const agent = agents.find(a => a.id === agentId);
 
       const category = detectCategory(changeRequest);
@@ -230,7 +230,7 @@ ${metricsText}
       const { agentId, changeRequest, analysis, answers, notes } = req.body || {};
       if (!changeRequest) return res.status(400).json({ error: 'changeRequest required' });
 
-      const agents = getAgentRegistry();
+      const agents = await getAgentRegistry();
       const agent = agents.find(a => a.id === agentId);
       const agentCtx = agent
         ? `שם: ${agent.nameHe} (${agent.id})

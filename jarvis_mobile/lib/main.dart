@@ -254,6 +254,9 @@ class _ChatBubble extends StatefulWidget {
   final ValueChanged<String>? onSpeak;
   final void Function(String target)? onNavigate;
   final void Function(String text)? onSend;
+  // Reports explicit feedback on a Jarvis reply: signal is 'up'/'down',
+  // correction is an optional note (only for 'down'). Null for user bubbles.
+  final void Function(String signal, String? correction)? onFeedback;
 
   const _ChatBubble({
     required this.msg,
@@ -261,6 +264,7 @@ class _ChatBubble extends StatefulWidget {
     this.onSpeak,
     this.onNavigate,
     this.onSend,
+    this.onFeedback,
   });
 
   @override
@@ -307,8 +311,82 @@ class _ChatBubbleState extends State<_ChatBubble> {
                   widget.onSpeak!(text);
                 },
               ),
+            if (isJarvis && widget.onFeedback != null) ...[
+              _menuAction(
+                icon: Icons.thumb_up_alt_outlined,
+                label: 'תשובה טובה',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  widget.onFeedback!('up', null);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('תודה על המשוב 🙏'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+              _menuAction(
+                icon: Icons.thumb_down_alt_outlined,
+                label: 'לא מדויק',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _promptCorrection();
+                },
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  // 👎 flow: ask for an optional "what did you mean?" note, then report it.
+  // Sending with an empty note still counts as a down-vote.
+  Future<void> _promptCorrection() async {
+    final controller = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: JC.surface,
+        title: const Text('מה התכוונת?',
+            style: TextStyle(fontFamily: 'Heebo', fontSize: 17)),
+        content: Directionality(
+          textDirection: TextDirection.rtl,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 1,
+            maxLines: 4,
+            style: const TextStyle(fontFamily: 'Heebo'),
+            decoration: const InputDecoration(
+              hintText: 'אפשר להסביר מה היה חסר (לא חובה)',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              widget.onFeedback!('down', null);
+            },
+            child: const Text('דלג'),
+          ),
+          TextButton(
+            onPressed: () {
+              final note = controller.text.trim();
+              Navigator.pop(ctx);
+              widget.onFeedback!('down', note.isEmpty ? null : note);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('תודה, אלמד מזה 🙏'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            child: const Text('שליחה'),
+          ),
+        ],
       ),
     );
   }
@@ -1851,6 +1929,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       onSpeak: _speakText,
                       onNavigate: widget.onNavigate,
                       onSend: (text) => _sendCommandStreaming(text),
+                      onFeedback: _settings.telemetryConsent
+                          ? (signal, correction) => _api.sendFeedback(
+                                chatId: _chatId,
+                                messageText:
+                                    (messages[index]['text'] ?? '').toString(),
+                                signal: signal,
+                                correction: correction,
+                              )
+                          : null,
                     );
                   },
                 ),

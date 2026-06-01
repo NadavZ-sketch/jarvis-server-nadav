@@ -63,6 +63,7 @@ const { runOrchestratorAgent } = require('./agents/orchestratorAgent');
 const contextResolver = require('./services/contextResolver');
 const proactiveEngine = require('./services/proactiveEngine');
 const profileLearner  = require('./services/profileLearner');
+const feedbackStore   = require('./services/feedbackStore');
 const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
 const { runPromptAgent }      = require('./agents/promptAgent');
 const { runSettingsAgent }    = require('./agents/settingsAgent');
@@ -1287,6 +1288,88 @@ app.post('/insight-card', _rl(30), async (req, res) => {
         console.error('POST /insight-card error:', err.message);
         res.status(500).json({ error: 'insight failed' });
     }
+});
+
+// ─── Feedback & Telemetry — foundation of the self-improvement loop ──────────
+// Records explicit user feedback (👍/👎 + optional correction) and arbitrary
+// telemetry events into `smart_telemetry_events`. These signals are aggregated
+// deterministically by the daily profile learner (later phase) — no per-message
+// LLM cost. An in-memory dedup guard prevents repeated taps from multi-counting.
+
+const _feedbackDedup = new Map(); // `${chatId}:${hash}` → expiresAt
+const FEEDBACK_DEDUP_TTL = 10_000;
+function _feedbackSeenRecently(key) {
+    const now = Date.now();
+    const exp = _feedbackDedup.get(key);
+    if (exp && now < exp) return true;
+    _feedbackDedup.set(key, now + FEEDBACK_DEDUP_TTL);
+    if (_feedbackDedup.size > 500) {
+        for (const [k, e] of _feedbackDedup) { if (now > e) _feedbackDedup.delete(k); }
+    }
+    return false;
+}
+
+app.post('/feedback', _rl(30), async (req, res) => {
+    try {
+        const { chatId = 'default-session', messageText = '', signal, correction, source = 'chat', userId } = req.body || {};
+        if (signal !== 'up' && signal !== 'down') {
+            return res.status(400).json({ error: "signal must be 'up' or 'down'" });
+        }
+        const snippet = String(messageText).slice(0, 300);
+        const dedupKey = `${chatId}:${signal}:${snippet.slice(0, 80)}`;
+        if (_feedbackSeenRecently(dedupKey)) return res.json({ ok: true, deduped: true });
+
+        const metadata = { chatId: String(chatId), snippet, source };
+        if (typeof correction === 'string' && correction.trim()) metadata.correction = correction.trim().slice(0, 300);
+
+        feedbackStore.recordEvent(supabase, {
+            userId: userId || 'default',
+            eventName: signal === 'up' ? 'feedback_up' : 'feedback_down',
+            value: feedbackStore.SIGNAL_VALUE[signal],
+            metadata,
+        }).catch(() => {});
+        // A correction is a strong learning signal — log it separately too.
+        if (metadata.correction) {
+            feedbackStore.recordEvent(supabase, {
+                userId: userId || 'default',
+                eventName: 'feedback_correction',
+                value: -1,
+                metadata,
+            }).catch(() => {});
+        }
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('POST /feedback error:', err.message);
+        res.status(500).json({ error: 'feedback failed' });
+    }
+});
+
+// Generic telemetry sink the Flutter app already calls (was previously a silent
+// 404). POST records an event; GET returns deterministic aggregates.
+app.post('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
+    try {
+        const { event_type, event_name, payload, value, user_id } = req.body || {};
+        const name = event_name || event_type;
+        if (!name) return res.status(400).json({ error: 'event_type required' });
+        const r = await feedbackStore.recordEvent(supabase, {
+            userId: user_id || 'default',
+            eventName: name,
+            value: Number.isFinite(value) ? value : 1,
+            metadata: (payload && typeof payload === 'object') ? payload : {},
+        });
+        res.json({ ok: r.ok });
+    } catch (err) {
+        console.error('POST /dashboard/smart-telemetry error:', err.message);
+        res.status(500).json({ error: 'telemetry failed' });
+    }
+});
+
+app.get('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
+    const r = await feedbackStore.aggregateEvents(supabase, {
+        userId: req.query.user_id || 'default',
+        sinceDays: Math.min(Number(req.query.days) || 30, 90),
+    });
+    res.json({ counts: r.counts, total: r.total });
 });
 
 // ─── Today Message — personalized AI morning/motivation card ──────────────────

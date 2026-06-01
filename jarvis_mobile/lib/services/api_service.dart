@@ -27,6 +27,36 @@ class ApiService {
     return h;
   }
 
+  /// Sends explicit user feedback on a Jarvis reply to the server's feedback
+  /// loop. Fire-and-forget: never throws into the UI. [signal] is 'up' or
+  /// 'down'; [correction] is an optional "what I actually meant" note.
+  Future<void> sendFeedback({
+    required String chatId,
+    required String messageText,
+    required String signal,
+    String? correction,
+    String source = 'chat',
+  }) async {
+    try {
+      await _client
+          .post(
+            _uri('/feedback'),
+            headers: _headers({'Content-Type': 'application/json'}),
+            body: jsonEncode({
+              'chatId': chatId,
+              'messageText': messageText,
+              'signal': signal,
+              if (correction != null && correction.trim().isNotEmpty)
+                'correction': correction.trim(),
+              'source': source,
+            }),
+          )
+          .timeout(_timeout);
+    } catch (e) {
+      debugPrint('[ApiService] sendFeedback failed (suppressed): $e');
+    }
+  }
+
   /// Maps low-level exceptions to short Hebrew messages safe to show in UI.
   /// The original error is logged via [debugPrint] so devs still see it.
   static String friendlyError(Object error) {

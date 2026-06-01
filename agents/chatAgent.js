@@ -108,7 +108,34 @@ function _cosine(a, b) {
     return na && nb ? dot / Math.sqrt(na * nb) : 0;
 }
 
-// Async embedding-based ranking. Falls back to token ranking on failure.
+// Per-line embedding cache so the same memory text isn't re-embedded on every
+// turn — memories change rarely, queries change every message. Bounded LRU-ish.
+const _embedCache = new Map();
+const _EMBED_CACHE_MAX = 500;
+async function _cachedEmbed(text) {
+    if (_embedCache.has(text)) return _embedCache.get(text);
+    const vec = await pinecone.embed(text);
+    if (_embedCache.size >= _EMBED_CACHE_MAX) {
+        _embedCache.delete(_embedCache.keys().next().value);
+    }
+    _embedCache.set(text, vec);
+    return vec;
+}
+
+// Hit-rate telemetry for the semantic-recall path (inspectable in tests/logs).
+const memoryRecallStats = { semantic: 0, fallback: 0 };
+function getMemoryRecallStats() { return { ..._embedStats() }; }
+function _embedStats() {
+    const total = memoryRecallStats.semantic + memoryRecallStats.fallback;
+    return {
+        ...memoryRecallStats,
+        total,
+        hitRate: total ? +(memoryRecallStats.semantic / total).toFixed(3) : 0,
+    };
+}
+
+// Async embedding-based ranking. Pinecone is the primary path; token ranking is
+// the last-resort fallback (Pinecone unavailable or embedding error).
 // Used by the chat agent before assembling system prompt.
 async function filterRelevantMemoriesAsync(memoriesText, userMessage, topK = 8) {
     if (!memoriesText || memoriesText === 'אין עדיין זיכרונות שמורים.') return memoriesText;
@@ -116,18 +143,22 @@ async function filterRelevantMemoriesAsync(memoriesText, userMessage, topK = 8) 
     if (lines.length <= topK) return memoriesText;
 
     if (!pinecone.isReady()) {
+        memoryRecallStats.fallback++;
         return _tokenRankMemories(lines, userMessage).join('\n');
     }
     try {
-        const [queryVec, ...lineVecs] = await Promise.all([
-            pinecone.embed(userMessage),
-            ...lines.map(l => pinecone.embed(l.replace(/^\s*-\s*/, ''))),
-        ]);
+        // Query is always fresh; memory lines are served from the embed cache.
+        const queryVec = await pinecone.embed(userMessage);
+        const lineVecs = await Promise.all(
+            lines.map(l => _cachedEmbed(l.replace(/^\s*-\s*/, ''))),
+        );
         const scored = lines.map((line, i) => ({ line, score: _cosine(queryVec, lineVecs[i]) }));
         scored.sort((a, b) => b.score - a.score);
+        memoryRecallStats.semantic++;
         return scored.slice(0, topK).map(s => s.line).join('\n');
     } catch (err) {
         console.warn('⚠️ filterRelevantMemoriesAsync embedding failed, using token fallback:', err.message);
+        memoryRecallStats.fallback++;
         return _tokenRankMemories(lines, userMessage).join('\n');
     }
 }
@@ -286,8 +317,9 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
     // system message
     const messages = [{ role: 'system', content: system }];
 
-    // history — last 10 turns only (avoid context overflow on small models)
-    const recentHistory = chatHistory.slice(-10);
+    // history — recent turns. The caller (loadChatHistory) already trims to a
+    // token budget; keep a generous local cap to avoid overflow on small models.
+    const recentHistory = chatHistory.slice(-24);
     for (const msg of recentHistory) {
         messages.push({
             role:    msg.role === 'user' ? 'user' : 'assistant',
@@ -368,4 +400,4 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
     return { answer: 'סליחה, נתקלתי בבעיה. נסה שוב.' };
 }
 
-module.exports = { runChatAgent, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, analyzeUserStyle, buildSystemPrompt };
+module.exports = { runChatAgent, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, getMemoryRecallStats, analyzeUserStyle, buildSystemPrompt };

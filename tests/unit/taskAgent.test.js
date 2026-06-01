@@ -94,6 +94,29 @@ describe('runTaskAgent', () => {
         expect(result.answer).toContain('כל הכבוד');
     });
 
+    test('recategorize intent updates category of matching task', async () => {
+        callGemma4.mockResolvedValue('{"intent":"recategorize","taskDetails":"קניות","category":"financial"}');
+        const supabase = makeSupabase([{ id: 7, content: 'קניות לשבת' }]);
+        const result = await runTaskAgent('תעביר את קניות לפיננסי', supabase);
+        expect(supabase._chain.update).toHaveBeenCalledWith({ category: 'financial' });
+        expect(result.answer).toContain('פיננסי');
+    });
+
+    test('recategorize with invalid category → asks for clarification', async () => {
+        callGemma4.mockResolvedValue('{"intent":"recategorize","taskDetails":"קניות","category":"banana"}');
+        const supabase = makeSupabase([{ id: 7, content: 'קניות' }]);
+        const result = await runTaskAgent('תעביר את קניות לבננה', supabase);
+        expect(supabase._chain.update).not.toHaveBeenCalled();
+        expect(result.answer).toContain('קטגוריה');
+    });
+
+    test('recategorize with no matching task → not found message', async () => {
+        callGemma4.mockResolvedValue('{"intent":"recategorize","taskDetails":"לא קיים","category":"work"}');
+        const supabase = makeSupabase([]);
+        const result = await runTaskAgent('תעביר את לא קיים לעבודה', supabase);
+        expect(result.answer).toContain('לא מצאתי');
+    });
+
     test('LLM returns no JSON → error message', async () => {
         callGemma4.mockResolvedValue('Sorry, I cannot help with that.');
         const supabase = makeSupabase();

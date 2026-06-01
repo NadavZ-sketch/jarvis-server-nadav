@@ -4,6 +4,7 @@ import '../../main.dart' show JC;
 import '../../screens/tasks/tasks_controller.dart';
 import '../task_edit_sheet.dart';
 import 'ai_suggestions_panel.dart';
+import 'task_category.dart';
 
 /// Reusable interactive task card used by every tasks view.
 ///
@@ -137,6 +138,9 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
     final quad = widget.task['eisenhower_quad']?.toString();
     final col = widget.task['kanban_column']?.toString();
     final pts = widget.task['story_points'];
+    // Hide the 'general' category chip — it carries no signal and adds noise.
+    final cat = categoryById(widget.task['category']?.toString());
+    final showCat = cat != null && cat.id != 'general';
 
     return Container(
       margin: EdgeInsets.only(bottom: widget.dense ? 6 : 10),
@@ -219,7 +223,8 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                         if (dueLabel.isNotEmpty ||
                             (quad?.isNotEmpty ?? false) ||
                             (col?.isNotEmpty ?? false) ||
-                            pts != null)
+                            pts != null ||
+                            showCat)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Wrap(
@@ -227,6 +232,9 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                               runSpacing: 4,
                               textDirection: TextDirection.rtl,
                               children: [
+                                if (showCat)
+                                  _chip('${cat.emoji} ${cat.label}',
+                                      color: cat.color()),
                                 if (dueLabel.isNotEmpty)
                                   _chip(dueLabel,
                                       color: _overdue

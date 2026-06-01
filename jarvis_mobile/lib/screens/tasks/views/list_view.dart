@@ -5,6 +5,7 @@ import '../../../widgets/delete_snackbar.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/jarvis_search_bar.dart';
 import '../../../widgets/tasks/smart_task_card.dart';
+import '../../../widgets/tasks/task_category.dart';
 import '../tasks_controller.dart';
 
 class TasksListView extends StatefulWidget {
@@ -19,6 +20,7 @@ class _TasksListViewState extends State<TasksListView> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _query = '';
   String _filter = 'all'; // all|high|medium|low
+  String _catFilter = 'all'; // all|work|personal|financial|project|general
   String _sort = 'priority'; // priority|due_date|created
   bool _showDone = false;
 
@@ -42,6 +44,14 @@ class _TasksListViewState extends State<TasksListView> {
     var src = List<Map<String, dynamic>>.from(widget.controller.tasks);
     if (_filter != 'all') {
       src = src.where((t) => t['priority'] == _filter).toList();
+    }
+    if (_catFilter != 'all') {
+      src = src.where((t) {
+        final c = t['category']?.toString();
+        // 'general' also matches tasks with no category set.
+        if (_catFilter == 'general') return c == null || c.isEmpty || c == 'general';
+        return c == _catFilter;
+      }).toList();
     }
     final active = src.where((t) => t['done'] != true).toList();
     final done = src.where((t) => t['done'] == true).toList();
@@ -87,8 +97,10 @@ class _TasksListViewState extends State<TasksListView> {
           _FilterBar(
             filter: _filter,
             sort: _sort,
+            catFilter: _catFilter,
             onFilter: (v) => setState(() => _filter = v),
             onSort: (v) => setState(() => _sort = v),
+            onCatFilter: (v) => setState(() => _catFilter = v),
           ),
         if (doneCount > 0)
           Padding(
@@ -154,17 +166,50 @@ class _TasksListViewState extends State<TasksListView> {
 class _FilterBar extends StatelessWidget {
   final String filter;
   final String sort;
+  final String catFilter;
   final ValueChanged<String> onFilter;
   final ValueChanged<String> onSort;
+  final ValueChanged<String> onCatFilter;
   const _FilterBar({
     required this.filter,
     required this.sort,
+    required this.catFilter,
     required this.onFilter,
     required this.onSort,
+    required this.onCatFilter,
   });
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _priorityRow(),
+        _categoryRow(),
+      ],
+    );
+  }
+
+  Widget _categoryRow() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      reverse: true,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Row(
+        textDirection: TextDirection.rtl,
+        children: [
+          _chip('הכל', catFilter == 'all', JC.indigo300,
+              () => onCatFilter('all')),
+          for (final c in kTaskCategories) ...[
+            const SizedBox(width: 6),
+            _chip('${c.emoji} ${c.label}', catFilter == c.id, c.color(),
+                () => onCatFilter(c.id)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _priorityRow() {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       reverse: true,

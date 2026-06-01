@@ -53,13 +53,14 @@ function classifyCategory(text) {
 // ─── LLM Prompt ───────────────────────────────────────────────────────────────
 
 const TASK_PROMPT = (today) => `You are a task management AI. Analyze the Hebrew user message and extract the intent.
-Allowed intents: 'add', 'list', 'delete', 'complete', 'suggest', 'today'.
+Allowed intents: 'add', 'list', 'delete', 'complete', 'suggest', 'today', 'recategorize'.
 - 'add': user wants to create a new task
 - 'complete': user says they finished/completed a task (e.g. סיימתי, עשיתי, השלמתי, סמן כבוצע)
 - 'delete': user explicitly wants to remove a task without completing it
 - 'list': user wants to see all tasks
 - 'suggest': user asks for help or recommendations about tasks
 - 'today': user asks what they have today or what's due today
+- 'recategorize': user wants to change the category of an existing task (e.g. "תעביר את X לעבודה", "שנה את המשימה Y לפיננסי", "תסווג את Z כפרויקט")
 
 Date parsing (today is ${today}):
 - "מחר" → tomorrow's date
@@ -80,8 +81,10 @@ Category rules — classify the task into ONE of: work, personal, financial, pro
 - "project": coding, design, development, apps, software, product
 - "general": everything else
 
+For 'recategorize': put the task name (without the category word) in taskDetails, and the target category in category.
+
 Return ONLY a JSON object (no explanation):
-{"intent": "add|list|delete|complete|suggest|today", "taskDetails": "task text or empty", "dueDate": "YYYY-MM-DD or null", "priority": "high|medium|low|null", "category": "work|personal|financial|project|general"}
+{"intent": "add|list|delete|complete|suggest|today|recategorize", "taskDetails": "task text or empty", "dueDate": "YYYY-MM-DD or null", "priority": "high|medium|low|null", "category": "work|personal|financial|project|general"}
 
 User message: `;
 
@@ -258,6 +261,36 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
             }
             await supabase.from('tasks').delete().eq('id', matches[0].id);
             return { answer: `מחקתי את המשימה: ${matches[0].content}` };
+        }
+
+        if (parsed.intent === 'recategorize') {
+            const validCats = new Set(['work', 'personal', 'financial', 'project', 'general']);
+            const category = validCats.has(parsed.category) ? parsed.category : null;
+            if (!category) {
+                return { answer: 'לא הבנתי לאיזו קטגוריה להעביר. נסה: עבודה / אישי / פיננסי / פרויקט / כללי.' };
+            }
+
+            const { data: matches } = await supabase
+                .from('tasks')
+                .select('id, content')
+                .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`)
+                .eq('done', false);
+            if (!matches || matches.length === 0) return { answer: 'לא מצאתי משימה כזו לעדכן.' };
+            if (matches.length > 1) {
+                const list = matches.map((t, i) => `${i + 1}. ${t.content}`).join('\n');
+                return { answer: `מצאתי ${matches.length} משימות תואמות. על איזו מהן?\n${list}` };
+            }
+
+            const { error: updErr } = await supabase.from('tasks').update({ category }).eq('id', matches[0].id);
+            const catMeta = CATEGORY_META[category];
+            if (updErr) {
+                if (/column "category"/.test(updErr.message || '')) {
+                    return { answer: 'עמודת הקטגוריה עוד לא קיימת במסד הנתונים. הרץ את המיגרציה ונסה שוב.' };
+                }
+                console.error('TaskAgent recategorize error:', updErr.message);
+                return { answer: 'הייתה בעיה בעדכון הקטגוריה, נסה שוב.' };
+            }
+            return { answer: `עדכנתי את "${matches[0].content}" ל${catMeta.emoji} ${catMeta.label}.` };
         }
 
         if (parsed.intent === 'complete') {

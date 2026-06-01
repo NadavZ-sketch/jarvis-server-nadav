@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
+import 'tasks/task_category.dart';
 
 /// Reusable task editor used by the tasks screen and project detail. Edits
 /// content, priority, due date and project link, manages subtasks, and offers
@@ -46,6 +47,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
       TextEditingController(text: widget.task['content']?.toString() ?? '');
   final TextEditingController _addCtrl = TextEditingController();
   late String _priority = widget.task['priority']?.toString() ?? 'medium';
+  late String _category = widget.task['category']?.toString() ?? 'general';
   DateTime? _dueDate;
   String? _projectId;
 
@@ -100,6 +102,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
         _taskId,
         content: text,
         priority: _priority,
+        category: _category,
         dueDate: iso,
         clearDueDate: clearDueDate,
         projectId: _projectId,
@@ -107,6 +110,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
       );
       widget.task['content'] = text;
       widget.task['priority'] = _priority;
+      widget.task['category'] = _category;
       widget.task['due_date'] = iso;
       widget.task['project_id'] = _projectId;
       widget.onChanged?.call();
@@ -190,6 +194,8 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
               const SizedBox(height: 10),
               _priorityRow(),
               const SizedBox(height: 10),
+              _categoryRow(),
+              const SizedBox(height: 10),
               _dueDateRow(),
               const SizedBox(height: 10),
               _projectRow(),
@@ -250,6 +256,40 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
           ),
         ),
     ]);
+  }
+
+  Widget _categoryRow() {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      textDirection: TextDirection.rtl,
+      children: [
+        for (final c in kTaskCategories)
+          GestureDetector(
+            onTap: () => setState(() => _category = c.id),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _category == c.id
+                    ? c.color().withValues(alpha: 0.18)
+                    : JC.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: _category == c.id ? c.color() : JC.border,
+                    width: _category == c.id ? 1.2 : 0.8),
+              ),
+              child: Text('${c.emoji} ${c.label}',
+                  style: TextStyle(
+                      color: _category == c.id
+                          ? JC.textPrimary
+                          : JC.textSecondary,
+                      fontSize: 12,
+                      fontFamily: 'Heebo')),
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _dueDateRow() {

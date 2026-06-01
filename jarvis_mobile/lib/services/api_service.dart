@@ -83,6 +83,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> addTask(String content,
       {String priority = 'medium',
+      String? category,
       String? projectId,
       String? kanbanColumn,
       String? eisenhowerQuad,
@@ -90,6 +91,7 @@ class ApiService {
       int? storyPoints,
       String? dueDate}) async {
     final body = <String, dynamic>{'content': content, 'priority': priority};
+    if (category != null) body['category'] = category;
     if (projectId != null) body['project_id'] = projectId;
     if (kanbanColumn != null) body['kanban_column'] = kanbanColumn;
     if (eisenhowerQuad != null) body['eisenhower_quad'] = eisenhowerQuad;
@@ -111,6 +113,7 @@ class ApiService {
   // Pass [clearProject] to unlink a task from its project (sets project_id null).
   Future<Map<String, dynamic>> updateTask(String id,
       {bool? done, String? dueDate, String? content, String? priority,
+       String? category,
        String? kanbanColumn, String? eisenhowerQuad, String? sprintId,
        int? storyPoints, String? taskStartDate,
        String? projectId, bool clearProject = false,
@@ -121,6 +124,7 @@ class ApiService {
     else if (dueDate   != null) body['due_date']        = dueDate;
     if (content        != null) body['content']         = content;
     if (priority       != null) body['priority']        = priority;
+    if (category       != null) body['category']        = category;
     if (kanbanColumn   != null) body['kanban_column']   = kanbanColumn;
     if (eisenhowerQuad != null) body['eisenhower_quad'] = eisenhowerQuad;
     if (sprintId       != null) body['sprint_id']       = sprintId;

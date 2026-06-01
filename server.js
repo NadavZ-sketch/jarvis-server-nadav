@@ -1151,6 +1151,7 @@ app.get('/stats', async (_req, res) => {
         memoriesTotal,
         notesTotal,
         shoppingTotal, shoppingChecked,
+        pendingCategories,
     ] = await Promise.allSettled([
         supabase.from('chat_history').select('id', { count: 'exact', head: true }),
         supabase.from('chat_history').select('id', { count: 'exact', head: true }).gte('created_at', todayISO),
@@ -1162,6 +1163,7 @@ app.get('/stats', async (_req, res) => {
         supabase.from('notes').select('id', { count: 'exact', head: true }),
         supabase.from('shopping_items').select('id', { count: 'exact', head: true }),
         supabase.from('shopping_items').select('id', { count: 'exact', head: true }).eq('checked', true),
+        supabase.from('tasks').select('category').eq('done', false),
     ]);
 
     const getCount = (result) => {
@@ -1169,9 +1171,19 @@ app.get('/stats', async (_req, res) => {
         return 0;
     };
 
+    // Pending-task breakdown by category (counted in JS; gracefully empty if the
+    // `category` column doesn't exist or the query failed).
+    const byCategory = { work: 0, personal: 0, financial: 0, project: 0, general: 0 };
+    if (pendingCategories.status === 'fulfilled' && !pendingCategories.value.error) {
+        for (const row of pendingCategories.value.data || []) {
+            const c = byCategory[row.category] !== undefined ? row.category : 'general';
+            byCategory[c]++;
+        }
+    }
+
     res.json({
         chat:      { total: getCount(chatTotal),      today:   getCount(chatToday) },
-        tasks:     { total: getCount(tasksTotal),     done:    getCount(tasksDone),    pending: getCount(tasksTotal) - getCount(tasksDone) },
+        tasks:     { total: getCount(tasksTotal),     done:    getCount(tasksDone),    pending: getCount(tasksTotal) - getCount(tasksDone), byCategory },
         reminders: { total: getCount(remindersTotal), active:  getCount(remindersActive) },
         memories:  { total: getCount(memoriesTotal) },
         notes:     { total: getCount(notesTotal) },

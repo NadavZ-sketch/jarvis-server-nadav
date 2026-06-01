@@ -386,9 +386,11 @@ class _InsightCardState extends State<InsightCard>
           c.onNavigateToChat?.call(command: threadSummary);
         }),
         _action(Icons.thumb_up_alt_outlined, '', () {
+          c.recordInsightFeedback('up');
           c.showSnack('תודה על המשוב 🙏');
         }),
         _action(Icons.thumb_down_alt_outlined, '', () {
+          c.recordInsightFeedback('down');
           c.showSnack('תודה, אנסה משהו אחר');
           c.loadJarvisInsight(fresh: true);
         }),

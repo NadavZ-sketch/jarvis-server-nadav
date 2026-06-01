@@ -351,6 +351,20 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  /// Reports explicit feedback on the current insight to the server's feedback
+  /// loop. Gated on telemetry consent; fire-and-forget.
+  void recordInsightFeedback(String signal) {
+    if (!settings.telemetryConsent) return;
+    final text = jarvisInsight.trim();
+    if (text.isEmpty) return;
+    api.sendFeedback(
+      chatId: 'insight-${insightMode.key}',
+      messageText: text,
+      signal: signal,
+      source: 'insight_card',
+    );
+  }
+
   void setInsightMode(InsightMode mode) {
     if (mode.key == insightMode.key && _insightModeManual) return;
     insightMode = mode;

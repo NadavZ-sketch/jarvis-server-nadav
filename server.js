@@ -1259,6 +1259,36 @@ app.get('/day-plan', async (req, res) => {
     }
 });
 
+// ─── POST /insight-card — proactive home-screen insight, server-cached ────────
+// The home screen used to drive this through /ask-jarvis (full chat agent, which
+// also injects 20 history messages + memories) on a 60s timer — burning tokens.
+// This dedicated endpoint calls the model directly with the self-contained prompt
+// and caches the result per user+mode, so repeat loads are free. `fresh:true`
+// bypasses the cache for an explicit manual refresh.
+const TTL_INSIGHT_CARD = 3 * 60 * 60 * 1000; // 3 h — insight only meaningfully changes every few hours
+app.post('/insight-card', _rl(30), async (req, res) => {
+    try {
+        const { prompt, mode, fresh, userId } = req.body || {};
+        if (!prompt || typeof prompt !== 'string') {
+            return res.status(400).json({ error: 'prompt required' });
+        }
+
+        const cacheKey = `insight:${userId || 'default'}:${mode || 'auto'}`;
+        if (!fresh) {
+            const cached = cacheGet(cacheKey);
+            if (cached) return res.json({ answer: cached, cached: true });
+        }
+
+        const { callGemma4 } = require('./agents/models');
+        const answer = ((await callGemma4(prompt, false, 500)) || '').trim();
+        if (answer) cacheSet(cacheKey, answer, TTL_INSIGHT_CARD);
+        res.json({ answer, cached: false });
+    } catch (err) {
+        console.error('POST /insight-card error:', err.message);
+        res.status(500).json({ error: 'insight failed' });
+    }
+});
+
 // ─── Today Message — personalized AI morning/motivation card ──────────────────
 
 app.get('/today-message', async (_req, res) => {
@@ -1346,9 +1376,9 @@ app.get('/morning-briefing', async (_req, res) => {
 
 // ─── Dashboard Context ────────────────────────────────────────────────────────
 
-const TTL_DASHBOARD_WEATHER = 30 * 60 * 1000; // 30 min
-const TTL_DASHBOARD_NEWS    = 15 * 60 * 1000; // 15 min
-const TTL_DASHBOARD_HERO    =  5 * 60 * 1000; // 5 min
+const TTL_DASHBOARD_WEATHER = 2 * 60 * 60 * 1000; // 2 h — weather changes slowly; long TTL cuts LLM calls
+const TTL_DASHBOARD_NEWS    = 60 * 60 * 1000;     // 1 h — headlines stay relevant for an hour
+const TTL_DASHBOARD_HERO    =  5 * 60 * 1000;     // 5 min
 
 function _getDashboardTimeSlot(dateJer) {
     const h = dateJer.getHours();

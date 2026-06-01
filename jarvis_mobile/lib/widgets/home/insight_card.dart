@@ -143,7 +143,7 @@ class _InsightCardState extends State<InsightCard>
               ],
             ),
           ),
-          _iconBtn(Icons.refresh_rounded, c.loadJarvisInsight),
+          _iconBtn(Icons.refresh_rounded, () => c.loadJarvisInsight(fresh: true)),
         ],
       ),
     );
@@ -211,7 +211,9 @@ class _InsightCardState extends State<InsightCard>
       return const CardSkeleton(lines: 3);
     }
     if (c.insightError != null && c.insightThread.isEmpty) {
-      return InlineError(message: c.insightError!, onRetry: c.loadJarvisInsight);
+      return InlineError(
+          message: c.insightError!,
+          onRetry: () => c.loadJarvisInsight(fresh: true));
     }
 
     return ConstrainedBox(
@@ -388,7 +390,7 @@ class _InsightCardState extends State<InsightCard>
         }),
         _action(Icons.thumb_down_alt_outlined, '', () {
           c.showSnack('תודה, אנסה משהו אחר');
-          c.loadJarvisInsight();
+          c.loadJarvisInsight(fresh: true);
         }),
       ],
     );

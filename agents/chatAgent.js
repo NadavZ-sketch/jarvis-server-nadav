@@ -138,7 +138,7 @@ function _embedStats() {
 // Async embedding-based ranking. Pinecone is the primary path; token ranking is
 // the last-resort fallback (Pinecone unavailable or embedding error).
 // Used by the chat agent before assembling system prompt.
-async function filterRelevantMemoriesAsync(memoriesText, userMessage, topK = 8) {
+async function filterRelevantMemoriesAsync(memoriesText, userMessage, topK = 5) {
     if (!memoriesText || memoriesText === 'אין עדיין זיכרונות שמורים.') return memoriesText;
     const lines = memoriesText.split('\n').filter(l => l.trim());
     if (lines.length <= topK) return memoriesText;
@@ -196,20 +196,12 @@ function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followU
         .map(msg => `${msg.role === 'user' ? userName : name}: ${msg.text}`)
         .join('\n');
 
-    const emotionalIntelligenceBlock = `
---- הנחיות אמפתיה ועומק ---
-זהה את הטון הרגשי של ${userName}: אם הוא נשמע מתוסכל, עצוב, לחוץ או מבולבל — פתח עם אמפתיה קצרה לפני שתגיב לתוכן.
-אם הוא נרגש, שמח או חגיגי — שקף את זה בחיות.
-כשהנושא דורש עומק (הסבר מושג, בעיה מורכבת, החלטה חשובה) — תן תשובה מלאה ומפורטת. אל תקצר שלא לצורך.
-כשהנושא פשוט — אל תנפח תשובות. הרלוונטיות גוברת על האורך.
------------------------------------`;
+    const emotionalIntelligenceBlock =
+        `\nTone: match ${userName}'s emotional register — empathy if distressed, energy if excited. Depth only when needed; brief when simple.`;
 
-    const clarificationBlock = `
---- הנחיות בקשות עמומות ---
-אם הבקשה חסרת פרטים קריטיים לביצוע (לדוגמה: "שלח הודעה" — למי? "תוסיף" — מה?), שאל שאלה ממוקדת אחת בלבד לפני שתגיב.
-שאלת הבירור: קצרה, ישירה, בעברית. לא יותר ממשפט אחד.
-לא לשאול כשהכוונה ברורה מן ההקשר — גם אם חסרים פרטים מינוריים.
------------------------------------`;
+    // Single-line clarification to save tokens (rule still clear, 10× shorter).
+    const clarificationLine =
+        `\nClarify only when a critical detail is missing (who/what). One short Hebrew question max; skip if intent is clear from context.`;
 
     const followUpBlock = followUpContext
         ? `\n--- הקשר להמשך שיחה ---\n${followUpContext}\n-----------------------------------\n`
@@ -249,6 +241,13 @@ ${learnedStyle}
 ${chatSummary}
 -----------------------------------` : '';
 
+    // Cap memories to 2000 chars (~650 tokens) so a large memory bank can't
+    // flood the context budget. The most relevant lines are already ranked first
+    // by filterRelevantMemoriesAsync, so the tail is the least useful content.
+    const memoriesCapped = (longTermMemories || '').length > 2000
+        ? longTermMemories.slice(0, 2000) + '\n(ועוד…)'
+        : (longTermMemories || '');
+
     const styleHint = userMessage && !voiceMode ? (() => {
         const { length, register } = analyzeUserStyle(userMessage);
         return `\nStyle hint: mirror length=${length}, register=${register}.`;
@@ -257,15 +256,13 @@ ${chatSummary}
     return `You are ${name}, a personal AI assistant for ${userName}. Respond in Hebrew only.
 ${genderInstr}
 Personality: ${personalityDesc}
-CRITICAL: Mirror ${userName}'s own writing style, vocabulary and tone in every response.${styleHint}
-CRITICAL: Never claim you have performed an action (added a task, set a reminder, saved a note, etc.) unless you have tools to actually do it. If the user asks you to DO something actionable, say you'll try OR redirect them — but NEVER say "הוספתי", "שמרתי", "הגדרתי" if you haven't actually executed it.
-${voiceModeBlock}
-${emotionalIntelligenceBlock}
-${clarificationBlock}
+CRITICAL: Mirror ${userName}'s writing style, vocabulary and tone.${styleHint}
+CRITICAL: Never claim you performed an action unless you actually executed it.
+${voiceModeBlock}${emotionalIntelligenceBlock}${clarificationLine}
 ${profileBlock}${learnedStyleBlock}
 ${followUpBlock}${summaryBlock}
 --- Permanent Memories About ${userName} ---
-${longTermMemories}
+${memoriesCapped}
 --------------------------------------
 
 Current DateTime: ${currentDay}, ${currentDate}, ${currentTime}.
@@ -383,9 +380,10 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
 
         const finalAnswer = answer || 'לא הצלחתי לגבש תשובה.';
 
-        // Generate 2-3 follow-up suggestions (skipped in voice mode to keep latency low)
+        // Generate follow-up suggestions only for substantive exchanges (saves ~80
+        // tokens + 1 LLM call on short replies like "תודה", "הבנתי", etc.)
         let suggestions = [];
-        if (!voiceMode && !imageBase64 && finalAnswer.length > 20) {
+        if (!voiceMode && !imageBase64 && userMessage.length > 60 && finalAnswer.length > 80) {
             try {
                 const sugPrompt = `בהתבסס על השיחה הבאה, הצע 2-3 שאלות המשך קצרות בעברית שהמשתמש עשוי לרצות לשאול. החזר JSON בלבד: {"suggestions":["...","..."]}
 שאלת המשתמש: "${userMessage.slice(0, 100)}"

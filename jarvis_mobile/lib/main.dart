@@ -479,10 +479,15 @@ class _ChatBubbleState extends State<_ChatBubble> {
       ),
       child: Align(
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-        child: GestureDetector(
-          onTap: () => setState(() => _showTime = !_showTime),
-          onLongPress: () => _showCopyMenu(widget.msg['text'] ?? ''),
-          child: _bubbleSurface(isUser: isUser, child: _bubbleContent(isUser)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.78,
+          ),
+          child: GestureDetector(
+            onTap: () => setState(() => _showTime = !_showTime),
+            onLongPress: () => _showCopyMenu(widget.msg['text'] ?? ''),
+            child: _bubbleSurface(isUser: isUser, child: _bubbleContent(isUser)),
+          ),
         ),
       ),
     );
@@ -632,11 +637,11 @@ class _ChatBubbleState extends State<_ChatBubble> {
   Widget _bubbleSurface({required bool isUser, required Widget child}) {
     final scheme = JC.scheme;
     final margin = EdgeInsets.only(
-      bottom: 14,
-      right: isUser ? 0 : 48,
-      left: isUser ? 48 : 0,
+      bottom: 10,
+      right: isUser ? 0 : 12,
+      left: isUser ? 12 : 0,
     );
-    const padding = EdgeInsets.symmetric(horizontal: 16, vertical: 12);
+    const padding = EdgeInsets.symmetric(horizontal: 16, vertical: 14);
     final radius = BorderRadius.only(
       topLeft: const Radius.circular(20),
       topRight: const Radius.circular(20),
@@ -2000,10 +2005,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   'ג׳רביס',
                   key: const ValueKey('title'),
                   style: TextStyle(
-                    color: JC.textSecondary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.3,
+                    color: JC.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
                     fontFamily: 'Heebo',
                   ),
                 ),
@@ -2148,12 +2153,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                               style: TextStyle(
                                 color: _currentState == JarvisState.listening
                                     ? JC.blue400
-                                    : JC.textMuted,
-                                fontSize: 13,
+                                    : _currentState == JarvisState.speaking
+                                        ? JC.accentPrimary
+                                        : JC.textMuted,
+                                fontSize: 13.5,
                                 fontFamily: 'Heebo',
-                                fontWeight: _currentState == JarvisState.listening
-                                    ? FontWeight.w500
-                                    : FontWeight.normal,
+                                letterSpacing: 0.1,
+                                fontWeight: (_currentState == JarvisState.listening ||
+                                             _currentState == JarvisState.speaking)
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
                               ),
                             ),
                           ),
@@ -2354,7 +2363,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     BoxShadow(
                       color: isListening
                           ? JC.blue500.withValues(alpha: 0.2)
-                          : Colors.black.withValues(alpha: 0.3),
+                          : JC.shadow,
                       blurRadius: isListening ? 16 : 8,
                       offset: const Offset(0, 4),
                     ),
@@ -2421,9 +2430,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                             ),
                           ],
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.arrow_upward_rounded,
-                          color: Colors.white,
+                          color: JC.onAccent,
                           size: 20,
                         ),
                       ),

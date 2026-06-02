@@ -33,7 +33,8 @@ async function sendEmail(to, body) {
     console.log(`📧 Email sent to ${to}`);
 }
 
-const { classifyIntent, classifyIntentWithLLM, loadCustomRegistry } = require('./agents/router');
+const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCustomRegistry } = require('./agents/router');
+const routeTracker = require('./services/routeTracker');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const { runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator } = require('./agents/memoryAgent');
@@ -703,9 +704,33 @@ async function askJarvisHandler(req, res) {
         if (FORCEABLE_INTENTS.includes(forcedIntent)) {
             agentName = forcedIntent;
             intentMode = 'forced';
+        } else if (imageBase64) {
+            agentName = 'chat';
         } else {
-            agentName = imageBase64 ? 'chat' : classifyIntent(userMessage);
-            if (agentName === 'chat' && !imageBase64 && userMessage.trim().length > 12) {
+            const routed = classifyIntentDetailed(userMessage);
+            agentName = routed.intent;
+
+            if (routed.ambiguous) {
+                // Collision: several keyword intents matched. Disambiguate with
+                // the LLM, but only trust it if it picks one of the candidates —
+                // otherwise keep the first keyword match as the best guess.
+                const llmIntent = await classifyIntentWithLLM(userMessage);
+                if (routed.matches.includes(llmIntent)) agentName = llmIntent;
+                intentMode = 'llm';
+
+                // Telemetry: record only ambiguous routing decisions.
+                feedbackStore.recordEvent(supabase, {
+                    eventName: 'route_ambiguous',
+                    value: 1,
+                    metadata: {
+                        chatId: String(chatId),
+                        snippet: String(userMessage).slice(0, 200),
+                        candidates: routed.matches,
+                        llm: llmIntent,
+                        chosen: agentName,
+                    },
+                }).catch(() => {});
+            } else if (agentName === 'chat' && userMessage.trim().length > 12) {
                 agentName = await classifyIntentWithLLM(userMessage);
                 intentMode = 'llm';
             }
@@ -736,6 +761,9 @@ async function askJarvisHandler(req, res) {
             agentName = 'chat';
             console.log('🔍 Past-conv: remapped to chat');
         }
+
+        // Remember the resolved route so explicit feedback can be linked to it.
+        routeTracker.setLastRoute(chatId, { intent: agentName, mode: intentMode });
 
         // ── Mid-session mood adaptation: 3+ consecutive short replies → concise ─
         // "Short" = under 10 chars. Resets when user sends a long message.
@@ -1326,6 +1354,10 @@ app.post('/feedback', _rl(30), async (req, res) => {
 
         const metadata = { chatId: String(chatId), snippet, source };
         if (typeof correction === 'string' && correction.trim()) metadata.correction = correction.trim().slice(0, 300);
+        // Link the feedback to the intent that produced the reply, so systematic
+        // mis-routes become visible in analysis (null if the route has expired).
+        const lastRoute = routeTracker.getLastRoute(chatId);
+        if (lastRoute && lastRoute.intent) metadata.routedIntent = lastRoute.intent;
 
         feedbackStore.recordEvent(supabase, {
             userId: userId || 'default',
@@ -2624,7 +2656,27 @@ async function streamJarvisHandler(req, res) {
         // propagate to all callGemma4* calls inside agents.
         return await providerContext.run({ opts: providerOpts }, async () => {
 
-        const agentName = await classifyIntent(userMessage);
+        const _routed = classifyIntentDetailed(userMessage);
+        let agentName = _routed.intent;
+        if (_routed.ambiguous) {
+            // Collision: disambiguate with the LLM, trusting it only if it picks
+            // one of the matched candidates; otherwise keep the best keyword guess.
+            const _llmIntent = await classifyIntentWithLLM(userMessage);
+            if (_routed.matches.includes(_llmIntent)) agentName = _llmIntent;
+            feedbackStore.recordEvent(supabase, {
+                eventName: 'route_ambiguous',
+                value: 1,
+                metadata: {
+                    chatId: String(chatId),
+                    snippet: String(userMessage).slice(0, 200),
+                    candidates: _routed.matches,
+                    llm: _llmIntent,
+                    chosen: agentName,
+                    source: 'stream',
+                },
+            }).catch(() => {});
+        }
+        routeTracker.setLastRoute(chatId, { intent: agentName, mode: _routed.ambiguous ? 'llm' : 'fast' });
 
         // Disabled-agent guard: respect the on/off toggle from the Control Center.
         if (isAgentDisabled(agentName)) {

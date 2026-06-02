@@ -61,7 +61,31 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       }
     });
     _loadTabIndex();
+    _loadDetailCache();
     _fetch();
+  }
+
+  // Populate from the last cached detail so the screen renders instantly /
+  // offline, before the network _fetch resolves. Mirrors the hub's _loadCache.
+  Future<void> _loadDetailCache() async {
+    try {
+      final cached = await CacheService.loadList('project_$_projectId');
+      if (cached == null || cached.isEmpty) return;
+      final detail = cached.first;
+      if (!mounted || _tasks.isNotEmpty || _milestones.isNotEmpty) return;
+      final proj = (detail['project'] is Map)
+          ? Map<String, dynamic>.from(detail['project'] as Map)
+          : null;
+      setState(() {
+        if (proj != null) _project = proj;
+        _tasks = _parseList(detail['tasks']);
+        _milestones = _parseList(detail['milestones']);
+        _sprints = _parseList(detail['sprints']);
+        _reminders = _parseList(detail['reminders']);
+        _notes = _parseList(detail['notes']);
+        _loading = false;
+      });
+    } catch (_) {}
   }
 
   @override
@@ -343,14 +367,23 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       );
     }
 
-    return ListView.builder(
+    return RefreshIndicator(
+      onRefresh: _fetch,
+      color: _projectColor(),
+      child: ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
       itemCount: all.length,
       itemBuilder: (ctx, i) {
         final task = all[i];
         final isDone = task['done'] == true;
         final priority = task['priority']?.toString() ?? 'medium';
-        return Container(
+        return Dismissible(
+          key: ValueKey('task_${task['id']}'),
+          direction: DismissDirection.endToStart,
+          background: _dismissBackground(),
+          onDismissed: (_) => _deleteTask(task),
+          child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           decoration: BoxDecoration(
             color: JC.surface,
@@ -407,9 +440,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
               ),
             ),
           ),
-        );
+        ));
       },
-    );
+    ));
   }
 
   // ─── Tab: milestones ──────────────────────────────────────────────────────
@@ -423,13 +456,22 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       );
     }
 
-    return ListView.builder(
+    return RefreshIndicator(
+      onRefresh: _fetch,
+      color: _projectColor(),
+      child: ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
       itemCount: _milestones.length,
       itemBuilder: (ctx, i) {
         final m = _milestones[i];
         final completed = m['completed'] == true;
-        return Container(
+        return Dismissible(
+          key: ValueKey('milestone_${m['id']}'),
+          direction: DismissDirection.endToStart,
+          background: _dismissBackground(),
+          onDismissed: (_) => _deleteMilestone(m),
+          child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           decoration: BoxDecoration(
             color: JC.surface,
@@ -438,6 +480,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           child: ListTile(
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            onTap: () => _showEditMilestoneDialog(m),
             leading: Checkbox(
               value: completed,
               activeColor: JC.green500,
@@ -471,9 +514,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
               size: 20,
             ),
           ),
-        );
+        ));
       },
-    );
+    ));
   }
 
   // ─── Tab: info ────────────────────────────────────────────────────────────
@@ -483,7 +526,11 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
     final milestonesDone = _milestones.where((m) => m['completed'] == true).length;
     final progress = _progress();
 
-    return SingleChildScrollView(
+    return RefreshIndicator(
+      onRefresh: _fetch,
+      color: _projectColor(),
+      child: SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -650,7 +697,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                         color: JC.bg,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: JC.blue500.withOpacity(0.2)),
+                            color: JC.blue500.withValues(alpha: 0.2)),
                       ),
                       child: Row(
                         textDirection: TextDirection.rtl,
@@ -695,28 +742,59 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           ),
           const SizedBox(height: 16),
 
-          // Reminders
-          if (_reminders.isNotEmpty) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: JC.surface,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'תזכורות',
-                    textDirection: TextDirection.rtl,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo',
-                      color: JC.textPrimary,
+          // Reminders (always shown so a deadline reminder can be created)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: JC.surface,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    Text(
+                      'תזכורות',
+                      textDirection: TextDirection.rtl,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Heebo',
+                        color: JC.textPrimary,
+                      ),
                     ),
-                  ),
+                    const Spacer(),
+                    if ((_project['due_date']?.toString() ?? '').isNotEmpty)
+                      TextButton.icon(
+                        onPressed: _addDeadlineReminder,
+                        icon: Icon(Icons.add_alarm_rounded,
+                            size: 16, color: JC.amber400),
+                        label: Text('תזכורת לדדליין',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Heebo',
+                                color: JC.amber400)),
+                      ),
+                  ],
+                ),
+                if (_reminders.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      (_project['due_date']?.toString() ?? '').isNotEmpty
+                          ? 'אין תזכורות. צור תזכורת לדדליין הפרויקט.'
+                          : 'אין תזכורות. הוסף דדליין לפרויקט כדי לקבל תזכורת.',
+                      textDirection: TextDirection.rtl,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'Heebo',
+                          color: JC.textMuted),
+                    ),
+                  )
+                else ...[
                   const SizedBox(height: 8),
                   ..._reminders.map((r) => Padding(
                         padding: const EdgeInsets.only(bottom: 6),
@@ -740,10 +818,10 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                         ),
                       )),
                 ],
-              ),
+              ],
             ),
-            const SizedBox(height: 16),
-          ],
+          ),
+          const SizedBox(height: 16),
 
           // Notes
           if (_notes.isNotEmpty) ...[
@@ -797,7 +875,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           ],
         ],
       ),
-    );
+    ));
   }
 
   // ─── FAB ──────────────────────────────────────────────────────────────────
@@ -886,7 +964,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                         side: BorderSide(
                             color: selectedPriority == pKey
                                 ? pColor
-                                : JC.textMuted.withOpacity(0.3)),
+                                : JC.textMuted.withValues(alpha: 0.3)),
                         onSelected: (v) {
                           if (v) setSheetState(() => selectedPriority = pKey);
                         },
@@ -1063,6 +1141,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
     ];
     final statuses = [
       ('active', 'פעיל'),
+      ('planning', 'בתכנון'),
       ('paused', 'מושהה'),
       ('completed', 'הושלם'),
       ('archived', 'ארכיון'),
@@ -1143,7 +1222,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                         side: BorderSide(
                             color: sel
                                 ? JC.indigo500
-                                : JC.textMuted.withOpacity(0.3)),
+                                : JC.textMuted.withValues(alpha: 0.3)),
                         onSelected: (v) {
                           if (v) setSheetState(() => selMethodology = mKey);
                         },
@@ -1174,7 +1253,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                         side: BorderSide(
                             color: sel
                                 ? pColor
-                                : JC.textMuted.withOpacity(0.3)),
+                                : JC.textMuted.withValues(alpha: 0.3)),
                         onSelected: (v) {
                           if (v) setSheetState(() => selPriority = pKey);
                         },
@@ -1204,7 +1283,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                         side: BorderSide(
                             color: sel
                                 ? JC.blue500
-                                : JC.textMuted.withOpacity(0.3)),
+                                : JC.textMuted.withValues(alpha: 0.3)),
                         onSelected: (v) {
                           if (v) setSheetState(() => selStatus = sKey);
                         },
@@ -1241,7 +1320,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
                             boxShadow: sel
                                 ? [
                                     BoxShadow(
-                                        color: col.withOpacity(0.5),
+                                        color: col.withValues(alpha: 0.5),
                                         blurRadius: 6)
                                   ]
                                 : null,
@@ -1374,19 +1453,30 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       final ok = await guardComplete(context, task);
       if (!ok) return;
     }
+    // Keep the Kanban column in sync with completion so the board and the list
+    // never disagree: completing moves the card to 'done', un-completing to 'todo'.
+    final newColumn = done ? 'done' : 'todo';
+    final prevColumn = task['kanban_column']?.toString();
     setState(() {
       final idx = _tasks.indexWhere((t) => t['id'] == task['id']);
-      if (idx != -1) _tasks[idx]['done'] = done;
+      if (idx != -1) {
+        _tasks[idx]['done'] = done;
+        _tasks[idx]['kanban_column'] = newColumn;
+      }
     });
     try {
       if (taskId.isNotEmpty) {
-        await ApiService(widget.settings).updateTask(taskId, done: done);
+        await ApiService(widget.settings)
+            .updateTask(taskId, done: done, kanbanColumn: newColumn);
       }
     } catch (_) {
       if (mounted) {
         setState(() {
           final idx = _tasks.indexWhere((t) => t['id'] == task['id']);
-          if (idx != -1) _tasks[idx]['done'] = !done;
+          if (idx != -1) {
+            _tasks[idx]['done'] = !done;
+            _tasks[idx]['kanban_column'] = prevColumn;
+          }
         });
       }
     }
@@ -1446,6 +1536,242 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
     }
   }
 
+  Future<void> _deleteMilestone(Map<String, dynamic> milestone) async {
+    final id = milestone['id']?.toString() ?? '';
+    final idx = _milestones.indexWhere((m) => m['id'] == milestone['id']);
+    final removed = idx != -1 ? _milestones[idx] : milestone;
+    setState(() => _milestones.removeWhere((m) => m['id'] == milestone['id']));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('אבן הדרך נמחקה', style: TextStyle(fontFamily: 'Heebo')),
+          action: SnackBarAction(
+            label: 'ביטול',
+            onPressed: () {
+              if (mounted && idx != -1) {
+                setState(() => _milestones.insert(
+                    idx.clamp(0, _milestones.length), removed));
+              }
+            },
+          ),
+        ),
+      );
+    }
+    try {
+      if (id.isNotEmpty) {
+        await ApiService(widget.settings).deleteMilestone(_projectId, id);
+      }
+    } catch (_) {
+      if (mounted && idx != -1) {
+        setState(() =>
+            _milestones.insert(idx.clamp(0, _milestones.length), removed));
+      }
+    }
+  }
+
+  void _showEditMilestoneDialog(Map<String, dynamic> milestone) {
+    final id = milestone['id']?.toString() ?? '';
+    final titleCtrl = TextEditingController(
+        text: milestone['title']?.toString() ??
+            milestone['name']?.toString() ??
+            '');
+    DateTime? selectedDate =
+        DateTime.tryParse(milestone['due_date']?.toString() ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setDialogState) {
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: AlertDialog(
+              backgroundColor: JC.surface,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: Text('ערוך אבן דרך',
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w700,
+                      color: JC.textPrimary)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _sheetTextField(titleCtrl, 'שם אבן הדרך'),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: selectedDate ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now().add(const Duration(days: 1460)),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => selectedDate = picked);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: JC.bg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        textDirection: TextDirection.rtl,
+                        children: [
+                          Icon(Icons.calendar_today_outlined,
+                              size: 16, color: JC.textMuted),
+                          const SizedBox(width: 8),
+                          Text(
+                            selectedDate != null
+                                ? '${selectedDate!.day}.${selectedDate!.month}.${selectedDate!.year}'
+                                : 'בחר תאריך יעד',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'Heebo',
+                              color: selectedDate != null
+                                  ? JC.textPrimary
+                                  : JC.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('ביטול',
+                      style:
+                          TextStyle(fontFamily: 'Heebo', color: JC.textMuted)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: JC.indigo500,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () async {
+                    final title = titleCtrl.text.trim();
+                    if (title.isEmpty || id.isEmpty) return;
+                    Navigator.pop(ctx);
+                    final body = <String, dynamic>{
+                      'title': title,
+                      'due_date':
+                          selectedDate?.toIso8601String().substring(0, 10),
+                    };
+                    setState(() {
+                      final idx =
+                          _milestones.indexWhere((m) => m['id'] == milestone['id']);
+                      if (idx != -1) {
+                        _milestones[idx]['title'] = title;
+                        if (selectedDate != null) {
+                          _milestones[idx]['due_date'] =
+                              selectedDate!.toIso8601String();
+                        }
+                      }
+                    });
+                    try {
+                      await ApiService(widget.settings)
+                          .updateMilestone(_projectId, id, body);
+                    } catch (_) {
+                      if (mounted) _fetch();
+                    }
+                  },
+                  child: const Text('שמור',
+                      style: TextStyle(fontFamily: 'Heebo')),
+                ),
+              ],
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  Future<void> _deleteTask(Map<String, dynamic> task) async {
+    final id = task['id']?.toString() ?? '';
+    final idx = _tasks.indexWhere((t) => t['id'] == task['id']);
+    final removed = idx != -1 ? _tasks[idx] : task;
+    setState(() => _tasks.removeWhere((t) => t['id'] == task['id']));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('המשימה נמחקה', style: TextStyle(fontFamily: 'Heebo')),
+          action: SnackBarAction(
+            label: 'ביטול',
+            onPressed: () {
+              if (mounted && idx != -1) {
+                setState(
+                    () => _tasks.insert(idx.clamp(0, _tasks.length), removed));
+              }
+            },
+          ),
+        ),
+      );
+    }
+    try {
+      if (id.isNotEmpty) {
+        await ApiService(widget.settings).deleteTask(id);
+      }
+    } catch (_) {
+      if (mounted && idx != -1) {
+        setState(() => _tasks.insert(idx.clamp(0, _tasks.length), removed));
+      }
+    }
+  }
+
+  Future<void> _addDeadlineReminder() async {
+    final dueStr = _project['due_date']?.toString() ?? '';
+    final due = DateTime.tryParse(dueStr);
+    if (due == null) return;
+    final name = _project['name']?.toString() ?? 'הפרויקט';
+    // Fire at 09:00 Israel time on the deadline day (mirrors projectAgent).
+    final dateOnly = due.toIso8601String().substring(0, 10);
+    final scheduledTime = '${dateOnly}T09:00:00+03:00';
+    final text = 'פרויקט "$name" — בדוק התקדמות';
+    try {
+      await ApiService(widget.settings)
+          .addReminder(text, scheduledTime, projectId: _projectId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⏰ נקבעה תזכורת ל-${due.day}.${due.month} בשעה 09:00',
+                style: const TextStyle(fontFamily: 'Heebo')),
+          ),
+        );
+        _fetch();
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('שגיאה ביצירת תזכורת',
+                  style: TextStyle(fontFamily: 'Heebo'))),
+        );
+      }
+    }
+  }
+
+  Widget _dismissBackground() {
+    return Container(
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.only(left: 24),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: JC.cancelRed.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
+    );
+  }
+
   // ─── AI Insights ──────────────────────────────────────────────────────────
 
   Future<void> _loadInsights() async {
@@ -1467,7 +1793,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           width: 40,
           height: 4,
           decoration: BoxDecoration(
-            color: JC.textMuted.withOpacity(0.3),
+            color: JC.textMuted.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -1534,9 +1860,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
+          color: color.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Column(
           children: [

@@ -71,7 +71,7 @@ const documentParser = require('./services/documentParser');
 const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
 const { runPromptAgent }      = require('./agents/promptAgent');
 const { runSettingsAgent }    = require('./agents/settingsAgent');
-const { runProjectAgent }     = require('./agents/projectAgent');
+const { runProjectAgent, buildProjectsBriefing } = require('./agents/projectAgent');
 const dispatcher              = require('./agents/dispatcher');
 
 // Single AGENTS map passed into the dispatcher so intent→agent wiring lives in
@@ -1900,7 +1900,45 @@ app.get('/projects', async (_req, res) => {
             console.error('GET /projects DB error:', error.message);
             return res.json({ projects: [] });
         }
-        res.json({ projects: data || [] });
+        const projects = data || [];
+
+        // Enrich each project with aggregate task/milestone counts + progress.
+        // Single-user app: 3 queries total (projects + tasks + milestones), no N+1.
+        const ids = projects.map(p => p.id);
+        if (ids.length > 0) {
+            const [{ data: tasks }, { data: milestones }] = await Promise.all([
+                supabase.from('tasks').select('project_id, done').in('project_id', ids),
+                supabase.from('project_milestones').select('project_id, completed').in('project_id', ids),
+            ]);
+
+            const stats = {}; // projectId -> { open, total, done, mTotal, mDone }
+            for (const id of ids) stats[id] = { open: 0, total: 0, done: 0, mTotal: 0, mDone: 0 };
+            for (const t of tasks || []) {
+                const s = stats[t.project_id];
+                if (!s) continue;
+                s.total++;
+                if (t.done) s.done++; else s.open++;
+            }
+            for (const m of milestones || []) {
+                const s = stats[m.project_id];
+                if (!s) continue;
+                s.mTotal++;
+                if (m.completed) s.mDone++;
+            }
+            for (const p of projects) {
+                const s = stats[p.id] || { open: 0, total: 0, done: 0, mTotal: 0, mDone: 0 };
+                const totalItems = s.total + s.mTotal;
+                const doneItems = s.done + s.mDone;
+                p.open_tasks = s.open;
+                p.total_tasks = s.total;
+                p.done_count = doneItems;
+                p.milestones_total = s.mTotal;
+                p.milestones_done = s.mDone;
+                p.progress = totalItems > 0 ? doneItems / totalItems : 0;
+            }
+        }
+
+        res.json({ projects });
     } catch (err) {
         console.error('GET /projects error:', err.message);
         res.json({ projects: [] });
@@ -1911,7 +1949,7 @@ app.post('/projects', async (req, res) => {
     try {
         const { name, description, status, priority, start_date, due_date, color, methodology, method_config } = req.body;
         if (!name) return res.status(400).json({ error: 'name is required' });
-        const validStatuses = ['active', 'paused', 'completed', 'archived'];
+        const validStatuses = ['active', 'planning', 'paused', 'completed', 'archived'];
         const safeStatus = validStatuses.includes(status) ? status : 'active';
         const { data, error } = await supabase
             .from('projects')
@@ -1931,6 +1969,19 @@ app.post('/projects', async (req, res) => {
     } catch (err) {
         console.error('POST /projects error:', err.message, err.details || '');
         res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+});
+
+// Deterministic weekly briefing (zero LLM tokens). Must be registered before
+// GET /projects/:id so the ":id" param doesn't capture "briefing".
+app.get('/projects/briefing', async (req, res) => {
+    try {
+        const userName = req.query.userName || 'נדב';
+        const result = await buildProjectsBriefing(supabase, userName);
+        res.json(result);
+    } catch (err) {
+        console.error('GET /projects/briefing error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -2170,6 +2221,39 @@ app.post('/projects/:id/sprints/:sId/complete', async (req, res) => {
         res.json({ sprint: data });
     } catch (err) {
         console.error('POST .../complete error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── Methodology recommendation (cached) ──────────────────────────────────────
+
+const _methodRecCache = new Map(); // key: name::description, value: {data, ts}
+
+app.post('/projects/recommend-methodology', async (req, res) => {
+    try {
+        const { name = '', description = '' } = req.body || {};
+        const key = `${name}::${description}`.slice(0, 300);
+        const cached = _methodRecCache.get(key);
+        if (cached && (Date.now() - cached.ts) < 30 * 60 * 1000) {
+            return res.json({ ...cached.data, cached: true });
+        }
+        const prompt = `הפרויקט: ${name}. ${description}. איזו שיטת עבודה תמליץ: kanban/scrum/eisenhower/gantt? הסבר בקצרה. החזר JSON: {"methodology":"...","reason":"..."} בלבד.`;
+        const raw = await callGemma4(prompt, false, 150);
+        const match = raw.match(/\{[\s\S]*\}/);
+        let data = { methodology: '', reason: '' };
+        if (match) {
+            try {
+                const p = JSON.parse(match[0]);
+                data = {
+                    methodology: (p.methodology || '').toLowerCase(),
+                    reason: p.reason || '',
+                };
+            } catch (_) {}
+        }
+        _methodRecCache.set(key, { data, ts: Date.now() });
+        res.json({ ...data, cached: false });
+    } catch (err) {
+        console.error('POST /projects/recommend-methodology error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

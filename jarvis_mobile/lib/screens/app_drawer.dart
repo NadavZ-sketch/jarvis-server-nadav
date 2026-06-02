@@ -153,7 +153,10 @@ class AppDrawer extends StatelessWidget {
                     Navigator.push(
                       context,
                       SlideFadeRoute(
-                        page: ProjectsHubScreen(settings: settings),
+                        page: ProjectsHubScreen(
+                          settings: settings,
+                          onSwitchToChat: onSwitchToChat,
+                        ),
                       ),
                     );
                   },

@@ -16,10 +16,11 @@ function createRemindersController({ supabase, pinecone }) {
     },
     async create(req, res) {
       try {
-        const { text, scheduled_time, recurrence } = req.body;
+        const { text, scheduled_time, recurrence, project_id } = req.body;
         if (!text || !scheduled_time) return res.status(400).json({ error: 'text and scheduled_time required' });
         const row = { text, scheduled_time, fired: false };
         if (recurrence && ['daily', 'weekly', 'monthly'].includes(recurrence)) row.recurrence = recurrence;
+        if (project_id) row.project_id = project_id;
         const { data, error } = await supabase.from('reminders').insert([row]).select().single();
         if (error) throw error;
         res.json({ reminder: data });

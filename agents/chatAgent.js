@@ -298,7 +298,7 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
     };
 
     const memoriesShort = longTermMemories && longTermMemories.trim() && longTermMemories !== 'אין זיכרונות'
-        ? `עובדות על ${userName}: ${longTermMemories.slice(0, 400)}`
+        ? `עובדות על ${userName}: ${longTermMemories.slice(0, 600)}`
         : '';
 
     const followUp = followUpContext ? `\nהקשר: ${followUpContext}` : '';
@@ -326,7 +326,7 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
 
     // history — recent turns. The caller (loadChatHistory) already trims to a
     // token budget; keep a generous local cap to avoid overflow on small models.
-    const recentHistory = chatHistory.slice(-24);
+    const recentHistory = chatHistory.slice(-16);
     for (const msg of recentHistory) {
         messages.push({
             role:    msg.role === 'user' ? 'user' : 'assistant',
@@ -373,9 +373,11 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
             answer = await callGemma4(msgs, true, maxTokens);
 
         } else {
-            // Cloud: rich single-prompt format → Groq/DeepSeek/Gemini
-            const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, followUpContext, userMessage);
-            answer = await callGemma4([{ role: 'user', content: systemPrompt + userMessage }], false, maxTokens);
+            // Cloud: use the same structured message format as the local path.
+            // The old approach serialised all history into one giant user message
+            // string, burning ~5000 tokens/turn and exhausting Groq's TPM quota.
+            const msgs = buildLocalMessages(userMessage, chatHistory, longTermMemories, settings, followUpContext, chatSummary);
+            answer = await callGemma4(msgs, false, maxTokens);
         }
 
         const finalAnswer = answer || 'לא הצלחתי לגבש תשובה.';

@@ -379,12 +379,12 @@ async function loadChatHistory(chatId = 'default-session') {
 
         if (error) throw error;
         const ordered = (data || []).reverse();
-        const result = selectByTokenBudget(ordered, { maxTokens: 3500, maxMessages: 40 });
+        const result = selectByTokenBudget(ordered, { maxTokens: 1500, maxMessages: 20 });
         cacheSet(cacheKey, result, TTL_CHAT_HISTORY);
         return result;
     } catch (err) {
         console.error('⚠️ loadChatHistory fallback:', err.message);
-        return selectByTokenBudget(chatMemoryFallback, { maxTokens: 3500, maxMessages: 40 });
+        return selectByTokenBudget(chatMemoryFallback, { maxTokens: 1500, maxMessages: 20 });
     }
 }
 
@@ -836,7 +836,7 @@ async function askJarvisHandler(req, res) {
             // Cap at 1500 chars (~500 tokens) so a long summary can't flood the context.
             if (agentName === 'chat') {
                 const raw = await conversationSummary.getSummary(chatId, supabase);
-                settings.chatSummary = raw && raw.length > 1500 ? raw.slice(0, 1500) + '…' : raw;
+                settings.chatSummary = raw && raw.length > 600 ? raw.slice(0, 600) + '…' : raw;
             }
         } else {
             // All other agents get raw memories (TTL-cached — cheap)
@@ -2878,8 +2878,8 @@ async function streamJarvisHandler(req, res) {
             conversationSummary.getSummary(chatId, supabase),
         ]);
 
-        settings.chatSummary = chatSummary && chatSummary.length > 1500
-            ? chatSummary.slice(0, 1500) + '…'
+        settings.chatSummary = chatSummary && chatSummary.length > 600
+            ? chatSummary.slice(0, 600) + '…'
             : chatSummary;
         const voiceMode = settings.voiceMode === true;
         const maxTokens = voiceMode ? 200 : 800;

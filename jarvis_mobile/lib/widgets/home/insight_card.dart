@@ -243,7 +243,7 @@ class _InsightCardState extends State<InsightCard>
           decoration: BoxDecoration(
             color: isAssistant
                 ? const Color(0xFF6366F1).withOpacity(0.1)
-                : const Color(0xFF1E293B),
+                : JC.surfaceSunken,
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(14),
               topRight: const Radius.circular(14),

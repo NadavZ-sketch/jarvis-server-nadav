@@ -90,7 +90,7 @@ Future<bool> guardComplete(BuildContext context, Map<String, dynamic> task) asyn
     builder: (_) => Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
-        backgroundColor: const Color(0xFF0B1422),
+        backgroundColor: JC.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text('יש תתי-משימות פתוחות',
             style: TextStyle(

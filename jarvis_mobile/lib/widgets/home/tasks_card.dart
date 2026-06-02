@@ -141,10 +141,11 @@ class TasksCard extends StatelessWidget {
 
     return Dismissible(
       key: ValueKey('task-$id'),
-      // Swipe end→start (RTL: leftwards) completes; start→end postpones.
-      background: _swipeBg(
-          Alignment.centerRight, const Color(0xFF22C55E), Icons.check_rounded, 'השלם'),
-      secondaryBackground: _swipeBg(Alignment.centerLeft,
+      // Directional so RTL reveals match the swipe: start→end (from the right)
+      // completes; end→start (from the left) postpones.
+      background: _swipeBg(AlignmentDirectional.centerStart,
+          const Color(0xFF22C55E), Icons.check_rounded, 'השלם'),
+      secondaryBackground: _swipeBg(AlignmentDirectional.centerEnd,
           const Color(0xFF3B82F6), Icons.schedule_rounded, 'דחה'),
       confirmDismiss: (dir) async {
         if (dir == DismissDirection.startToEnd) {
@@ -161,7 +162,7 @@ class TasksCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF0B1929),
           borderRadius: BorderRadius.circular(10),
-          border: Border(right: BorderSide(color: accent, width: 3)),
+          border: BorderDirectional(start: BorderSide(color: accent, width: 3)),
         ),
         child: Row(children: [
           GestureDetector(
@@ -222,7 +223,7 @@ class TasksCard extends StatelessWidget {
           GestureDetector(
             onTap: isImportant ? null : () => c.markImportant(task),
             child: Padding(
-              padding: const EdgeInsets.only(right: 4, left: 2),
+              padding: const EdgeInsetsDirectional.only(end: 4, start: 2),
               child: Icon(
                 isImportant ? Icons.star_rounded : Icons.star_outline_rounded,
                 color: isImportant ? const Color(0xFFF59E0B) : JC.textMuted,
@@ -241,7 +242,7 @@ class TasksCard extends StatelessWidget {
   }
 
   Widget _swipeBg(
-      Alignment align, Color color, IconData icon, String label) {
+      AlignmentDirectional align, Color color, IconData icon, String label) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16),

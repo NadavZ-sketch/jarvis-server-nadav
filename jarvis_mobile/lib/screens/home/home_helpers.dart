@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../main.dart' show JC;
+import '../../theme/jarvis_dimens.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers — shared across all home cards.
@@ -163,23 +164,23 @@ class SectionCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: JC.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(JD.rLg),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            padding: const EdgeInsetsDirectional.fromSTEB(JD.lg, JD.lg, JD.lg, JD.md),
             child: Row(
               children: [
                 Icon(icon, color: iconColor, size: 18),
-                const SizedBox(width: 8),
+                const SizedBox(width: JD.sm),
                 Expanded(
                   child: Text(title,
                       style: TextStyle(
                         color: JC.textPrimary,
-                        fontSize: 14,
+                        fontSize: JD.title,
                         fontWeight: FontWeight.w700,
                         fontFamily: 'Heebo',
                       )),
@@ -189,7 +190,7 @@ class SectionCard extends StatelessWidget {
             ),
           ),
           Divider(color: JC.border, height: 1),
-          Padding(padding: const EdgeInsets.all(14), child: child),
+          Padding(padding: JD.cardPad, child: child),
         ],
       ),
     );

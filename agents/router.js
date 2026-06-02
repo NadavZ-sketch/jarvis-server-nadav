@@ -71,6 +71,40 @@ function classifyIntent(userMessage) {
     return 'chat';
 }
 
+// ─── Detailed classifier (collision-aware) ────────────────────────────────────
+// Returns ALL matching keyword intents, not just the first. When more than one
+// intent matches, the decision is "ambiguous" and the caller may escalate to the
+// LLM to disambiguate. `intent` is always the best single guess (first match),
+// so callers that ignore the extra fields behave exactly like classifyIntent().
+function classifyIntentDetailed(userMessage) {
+    const msg = userMessage.toLowerCase();
+
+    const matches = [];
+    for (const [intent, pattern] of Object.entries(KEYWORDS)) {
+        if (pattern.test(userMessage)) matches.push(intent);
+    }
+
+    // Custom agents only considered when no built-in keyword matched.
+    if (matches.length === 0) {
+        const customAgents = loadCustomRegistry();
+        for (const agent of customAgents) {
+            if (Array.isArray(agent.keywords) && agent.keywords.some(kw => msg.includes(kw.toLowerCase()))) {
+                matches.push(agent.name);
+            }
+        }
+    }
+
+    if (matches.length === 0) {
+        return { intent: 'chat', matches: [], ambiguous: false };
+    }
+    if (matches.length === 1) {
+        return { intent: matches[0], matches, ambiguous: false };
+    }
+    // Collision — multiple keyword intents matched the same message.
+    console.log(`🧭 Router (ambiguous): [${matches.join(', ')}] ← "${userMessage.slice(0, 50)}"`);
+    return { intent: matches[0], matches, ambiguous: true };
+}
+
 // ─── LLM fallback classifier ──────────────────────────────────────────────────
 // Called only when keyword routing returns 'chat' and the message is long enough.
 // Uses a fast Groq model with a 3s timeout and strict JSON output.
@@ -175,4 +209,4 @@ function detectComplexTask(userMessage) {
     return COMPLEXITY_SIGNALS.some(pat => pat.test(userMessage));
 }
 
-module.exports = { classifyIntent, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry, detectComplexTask };
+module.exports = { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry, detectComplexTask };

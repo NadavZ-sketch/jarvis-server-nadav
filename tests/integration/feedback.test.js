@@ -90,6 +90,17 @@ describe('POST /feedback', () => {
         expect(inserted).toHaveLength(0);
     });
 
+    it('links feedback to the intent that produced the reply (routedIntent)', async () => {
+        // Simulate a prior routing decision for this chat.
+        require('../../services/routeTracker').setLastRoute('routed-chat', { intent: 'weather', mode: 'fast' });
+        await request(app)
+            .post('/feedback')
+            .send({ chatId: 'routed-chat', messageText: 'לא מה שרציתי', signal: 'down' });
+        const ev = inserted.find(e => e.event_name === 'feedback_down' && e.metadata.chatId === 'routed-chat');
+        expect(ev).toBeDefined();
+        expect(ev.metadata.routedIntent).toBe('weather');
+    });
+
     it('dedups rapid identical taps (second tap writes nothing new)', async () => {
         const body = { chatId: 'dedup', messageText: 'אותה הודעה', signal: 'up' };
         await request(app).post('/feedback').send(body);

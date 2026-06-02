@@ -24,7 +24,20 @@ jest.mock('../../services/obsidianSync', () => ({
     appendChatMessage: jest.fn().mockResolvedValue(undefined),
     syncAll: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('../../agents/router', () => ({ classifyIntent: jest.fn(), classifyIntentWithLLM: jest.fn(), invalidateRouterCache: jest.fn() }));
+jest.mock('../../agents/router', () => {
+    const classifyIntent = jest.fn();
+    return {
+        classifyIntent,
+        // Delegate to the classifyIntent mock so existing mockReturnValue() calls
+        // keep driving routing; non-ambiguous single match by default.
+        classifyIntentDetailed: jest.fn((msg) => {
+            const intent = classifyIntent(msg);
+            return { intent, matches: intent === 'chat' ? [] : [intent], ambiguous: false };
+        }),
+        classifyIntentWithLLM: jest.fn(),
+        invalidateRouterCache: jest.fn(),
+    };
+});
 jest.mock('../../agents/taskAgent', () => ({ runTaskAgent: jest.fn() }));
 jest.mock('../../agents/reminderAgent', () => ({ runReminderAgent: jest.fn() }));
 jest.mock('../../agents/memoryAgent', () => ({ runMemoryAgent: jest.fn(), autoExtractMemory: jest.fn().mockResolvedValue(undefined) }));

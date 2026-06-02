@@ -1079,6 +1079,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _listeningText = '';
       });
       _speech.stop();
+      if (_settings.telemetryConsent) {
+        unawaited(_api.recordTelemetryEvent(
+          'voice_session_end',
+          payload: {'chatId': _chatId},
+        ));
+      }
       return;
     }
 
@@ -1100,6 +1106,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _currentState          = JarvisState.listening;
         _listeningText         = 'מקשיב...';
       });
+      // Voice session telemetry — fire-and-forget, gated on telemetryConsent.
+      if (_settings.telemetryConsent) {
+        unawaited(_api.recordTelemetryEvent(
+          'voice_session_start',
+          payload: {'chatId': _chatId},
+        ));
+      }
       _speech.listen(
         onResult: (val) {
           if (_currentState == JarvisState.listening) {
@@ -1388,6 +1401,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               final isNav     = action is Map && action['type'] == 'navigate';
               final navTarget = isNav ? action['target']?.toString() : null;
               final navLabel  = isNav ? action['label']?.toString() : null;
+              // Server signals skipAudio=true in voiceMode: flutter_tts is the
+              // sole audio engine; ignore any server-side Google TTS audio.
+              final skipAudio = data['skipAudio'] == true;
               setState(() {
                 messages.add({
                   'sender': 'jarvis',
@@ -1409,7 +1425,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               }
               _agentCallCount++;
               _checkSurveyEligibility();
-              unawaited(_speakText(answer));
+              if (!skipAudio) unawaited(_speakText(answer));
             }
           } catch (_) {}
         }

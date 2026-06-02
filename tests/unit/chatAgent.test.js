@@ -68,3 +68,40 @@ describe('runChatAgent', () => {
         expect(prompt).toContain("ג'רביס");
     });
 });
+
+// ─── Token-budget guardrails ──────────────────────────────────────────────────
+
+const { buildSystemPrompt } = require('../../agents/chatAgent');
+
+describe('buildSystemPrompt — token-budget guardrails', () => {
+    test('memory block is capped at 2000 chars', () => {
+        const bigMemory = 'זיכרון '.repeat(500); // ~3500 chars
+        const prompt = buildSystemPrompt([], bigMemory, {});
+        // The raw memory does NOT appear in full — only the cap-truncated version.
+        expect(prompt).not.toContain(bigMemory);
+        // The capped prefix is present.
+        expect(prompt).toContain('זיכרון '.repeat(10).slice(0, 50));
+        // Truncation marker is present.
+        expect(prompt).toContain('(ועוד…)');
+    });
+
+    test('memory block within limit passes through unchanged', () => {
+        const smallMemory = '- [hobby] אני אוהב ריצה\n- [name] נדב';
+        const prompt = buildSystemPrompt([], smallMemory, {});
+        expect(prompt).toContain('[hobby] אני אוהב ריצה');
+        expect(prompt).not.toContain('(ועוד…)');
+    });
+
+    test('chat summary within settings is included', () => {
+        const prompt = buildSystemPrompt([], '', { chatSummary: 'סיכום קצר' });
+        expect(prompt).toContain('סיכום קצר');
+    });
+
+    test('suggestions skipped when user message is short (≤60 chars)', async () => {
+        callGemma4.mockResolvedValue('בסדר, שמרתי.');
+        await runChatAgent('תודה', null, [], '', {});
+        // With a 5-char message the suggestions call should not fire.
+        // callGemma4 is called exactly once (for the answer, not suggestions).
+        expect(callGemma4).toHaveBeenCalledTimes(1);
+    });
+});

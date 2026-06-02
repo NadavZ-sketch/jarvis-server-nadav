@@ -81,6 +81,20 @@ class ApiService {
     }
   }
 
+  /// Lightweight reachability probe against /health. Returns true if the
+  /// server answered with 200. Never throws — used to drive the offline
+  /// banner. Works on web and mobile (plain http, no dart:io lookup).
+  Future<bool> ping() async {
+    try {
+      final res = await _client
+          .get(_uri('/health'), headers: _baseHeaders)
+          .timeout(const Duration(seconds: 6));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Maps low-level exceptions to short Hebrew messages safe to show in UI.
   /// The original error is logged via [debugPrint] so devs still see it.
   static String friendlyError(Object error) {

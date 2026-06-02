@@ -57,6 +57,30 @@ class ApiService {
     }
   }
 
+  /// Records a generic telemetry event via the smart-telemetry endpoint.
+  /// Fire-and-forget: never throws into the UI.
+  Future<void> recordTelemetryEvent(
+    String eventType, {
+    Map<String, dynamic>? payload,
+    String? userId,
+  }) async {
+    try {
+      await _client
+          .post(
+            _uri('/dashboard/smart-telemetry'),
+            headers: _headers({'Content-Type': 'application/json'}),
+            body: jsonEncode({
+              'event_type': eventType,
+              if (payload != null) 'payload': payload,
+              if (userId != null) 'user_id': userId,
+            }),
+          )
+          .timeout(_timeout);
+    } catch (e) {
+      debugPrint('[ApiService] recordTelemetryEvent failed (suppressed): $e');
+    }
+  }
+
   /// Maps low-level exceptions to short Hebrew messages safe to show in UI.
   /// The original error is logged via [debugPrint] so devs still see it.
   static String friendlyError(Object error) {

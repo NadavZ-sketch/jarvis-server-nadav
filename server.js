@@ -480,8 +480,12 @@ function stripMarkdownForTTS(text) {
         .replace(/#{1,6}\s+/g, '')
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
         .replace(/^[-•*]\s+/gm, '')
+        // Strip emoji — Unicode ranges for emoticons, symbols, and supplemental symbols.
+        // eslint-disable-next-line no-misleading-character-class
+        .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}]/gu, '')
         .replace(/\n{2,}/g, '. ')
         .replace(/\n/g, ' ')
+        .replace(/\s{2,}/g, ' ')
         .trim();
 }
 
@@ -2797,13 +2801,24 @@ async function streamJarvisHandler(req, res) {
             finally { clearTimeout(nudgeTimer); }
         }
 
-        send({ done: true, chatId });
+        // In voice mode flutter_tts is the sole audio engine — tell the client
+        // not to play the server-side Google TTS audio for this response.
+        send({ done: true, chatId, skipAudio: voiceMode });
 
         await Promise.all([
             saveChatMessage('user', originalMessage, chatId),
             saveChatMessage('jarvis', fullAnswer, chatId),
         ]);
         cacheInvalidate(`chatHistory:${chatId}`);
+
+        // Voice telemetry: record session activity (fire-and-forget, never throws).
+        if (voiceMode) {
+            feedbackStore.recordEvent(supabase, {
+                eventName: 'voice_turn',
+                value: 1,
+                metadata: { chatId: String(chatId), chars: fullAnswer.length },
+            }).catch(() => {});
+        }
 
         // Update rolling summary + passive memory extraction (fire-and-forget)
         setImmediate(() => {

@@ -67,6 +67,7 @@ const profileLearner  = require('./services/profileLearner');
 const styleLearner    = require('./services/styleLearner');
 const feedbackStore   = require('./services/feedbackStore');
 const { selectByTokenBudget } = require('./services/contextWindow');
+const documentParser = require('./services/documentParser');
 const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
 const { runPromptAgent }      = require('./agents/promptAgent');
 const { runSettingsAgent }    = require('./agents/settingsAgent');
@@ -666,6 +667,32 @@ async function askJarvisHandler(req, res) {
         settings.userProfile = userProfile;
         const useLocal  = settings.useLocalModel === true;
 
+        // ── Optional PDF/document context ─────────────────────────────────────
+        // When a PDF is attached, extract its text and fold it into the message
+        // sent to the agent (history still stores only the user's typed text).
+        let documentContext = '';
+        const pdfBase64 = req.body.pdf || req.body.document;
+        if (pdfBase64) {
+            const doc = await documentParser.extractPdfText(pdfBase64);
+            if (doc.ok) {
+                documentContext = doc.text;
+                const truncNote = doc.truncated ? ' (קוצר מפאת אורך)' : '';
+                const ask = userMessage.trim() || 'סכם את המסמך בנקודות עיקריות.';
+                userMessage = `המשתמש צירף מסמך PDF${truncNote}. תוכן המסמך:\n"""\n${doc.text}\n"""\n\nבהתבסס על המסמך בלבד, ${ask}`;
+                console.log(`📄 PDF attached: ${doc.pages || '?'} pages, ${doc.text.length} chars${truncNote}`);
+                feedbackStore.recordEvent(supabase, {
+                    eventName: 'document_query',
+                    value: 1,
+                    metadata: { chatId: String(chatId), chars: doc.text.length, pages: doc.pages },
+                }).catch(() => {});
+            } else {
+                return res.json({
+                    answer: 'לא הצלחתי לקרוא את המסמך. ודא שמדובר בקובץ PDF תקין שאינו מוגן בסיסמה.',
+                    audio: null, action: null, chatId,
+                });
+            }
+        }
+
         // ── Confirmation checks (before routing) ──────────────────────────────
         for (const confirmFn of [handleConfirmation, handleTaskReminderConfirmation]) {
             const confirmResult = await confirmFn(userMessage);
@@ -684,7 +711,7 @@ async function askJarvisHandler(req, res) {
         // Rewrite short follow-ups with anaphora ("תזכיר לי על זה") into a
         // self-contained message so specialist agents can act on them. The
         // ORIGINAL message is still what gets saved to history (see below).
-        if (!imageBase64 && contextResolver.shouldResolve(userMessage)) {
+        if (!imageBase64 && !documentContext && contextResolver.shouldResolve(userMessage)) {
             const [resHistory, resSummary] = await Promise.all([
                 loadChatHistory(chatId),
                 conversationSummary.getSummary(chatId, supabase),
@@ -708,7 +735,7 @@ async function askJarvisHandler(req, res) {
         if (FORCEABLE_INTENTS.includes(forcedIntent)) {
             agentName = forcedIntent;
             intentMode = 'forced';
-        } else if (imageBase64) {
+        } else if (imageBase64 || documentContext) {
             agentName = 'chat';
         } else {
             const routed = classifyIntentDetailed(userMessage);

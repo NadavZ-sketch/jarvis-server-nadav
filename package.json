@@ -61,6 +61,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.5",
     "openai": "^6.33.0",
+    "pdf-parse": "^2.4.5",
     "simple-git": "^3.36.0",
     "ws": "^8.18.0"
   }

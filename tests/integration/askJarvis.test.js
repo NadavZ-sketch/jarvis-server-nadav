@@ -53,6 +53,11 @@ jest.mock('../../agents/shoppingAgent', () => ({ runShoppingAgent: jest.fn() }))
 jest.mock('../../agents/notesAgent', () => ({ runNotesAgent: jest.fn() }));
 jest.mock('../../agents/stocksAgent', () => ({ runStocksAgent: jest.fn() }));
 jest.mock('../../agents/translationAgent', () => ({ runTranslationAgent: jest.fn() }));
+jest.mock('../../services/documentParser', () => ({
+    extractPdfText: jest.fn(),
+    MAX_PDF_BYTES: 10 * 1024 * 1024,
+    MAX_TEXT_CHARS: 12000,
+}));
 
 const request = require('supertest');
 const { createClient } = require('@supabase/supabase-js');
@@ -61,6 +66,7 @@ const { runTaskAgent } = require('../../agents/taskAgent');
 const { runChatAgent } = require('../../agents/chatAgent');
 const { runMessagingAgent } = require('../../agents/messagingAgent');
 const { runMusicAgent } = require('../../agents/musicAgent');
+const { extractPdfText } = require('../../services/documentParser');
 const { app } = require('../../server');
 
 function makeChain(data = [], error = null) {
@@ -128,6 +134,35 @@ describe('POST /ask-jarvis', () => {
         expect(res.status).toBe(200);
         expect(classifyIntent).not.toHaveBeenCalled();
         expect(runChatAgent).toHaveBeenCalled();
+    });
+
+    test('PDF attachment routes to chat with the document text injected', async () => {
+        extractPdfText.mockResolvedValue({ ok: true, text: 'תוכן החוזה כאן', pages: 3, truncated: false });
+        runChatAgent.mockResolvedValue({ answer: 'סיכום החוזה' });
+
+        const res = await request(app)
+            .post('/ask-jarvis')
+            .send({ command: 'סכם את המסמך', pdf: 'JVBERIbase64' });
+
+        expect(res.status).toBe(200);
+        expect(extractPdfText).toHaveBeenCalledWith('JVBERIbase64');
+        expect(classifyIntent).not.toHaveBeenCalled(); // forced to chat
+        // The chat agent receives the document text folded into the message.
+        const sentMessage = runChatAgent.mock.calls[0][0];
+        expect(sentMessage).toContain('תוכן החוזה כאן');
+        expect(res.body.answer).toBe('סיכום החוזה');
+    });
+
+    test('unreadable PDF returns a friendly error without dispatching an agent', async () => {
+        extractPdfText.mockResolvedValue({ ok: false, reason: 'no_text' });
+
+        const res = await request(app)
+            .post('/ask-jarvis')
+            .send({ command: 'סכם', pdf: 'broken' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.answer).toContain('לא הצלחתי לקרוא את המסמך');
+        expect(runChatAgent).not.toHaveBeenCalled();
     });
 
     test('response includes audio field', async () => {

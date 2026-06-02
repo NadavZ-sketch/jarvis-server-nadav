@@ -79,14 +79,14 @@ class CalendarCard extends StatelessWidget {
                         children: [
                           Text(hebrewDays[day.weekday % 7],
                               style: TextStyle(
-                                color: isSelected ? Colors.white : JC.textMuted,
+                                color: isSelected ? JC.onAccent : JC.textMuted,
                                 fontSize: 10,
                                 fontFamily: 'Heebo',
                               )),
                           const SizedBox(height: 3),
                           Text('${day.day}',
                               style: TextStyle(
-                                color: isSelected ? Colors.white : JC.textPrimary,
+                                color: isSelected ? JC.onAccent : JC.textPrimary,
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
                                 fontFamily: 'Heebo',
@@ -98,14 +98,14 @@ class CalendarCard extends StatelessWidget {
                                   horizontal: 4, vertical: 1),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? Colors.white.withOpacity(0.3)
+                                    ? JC.onAccent.withValues(alpha: 0.3)
                                     : const Color(0xFFF59E0B).withOpacity(0.18),
                                 borderRadius: BorderRadius.circular(5),
                               ),
                               child: Text('$remCount',
                                   style: TextStyle(
                                     color: isSelected
-                                        ? Colors.white
+                                        ? JC.onAccent
                                         : const Color(0xFFF59E0B),
                                     fontSize: 8,
                                     fontWeight: FontWeight.w700,

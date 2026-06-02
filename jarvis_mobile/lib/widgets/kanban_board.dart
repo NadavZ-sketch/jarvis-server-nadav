@@ -410,7 +410,7 @@ class _KanbanBoardState extends State<KanbanBoard> {
                               fontSize: 12,
                               fontFamily: 'Heebo',
                               color: selected
-                                  ? Colors.white
+                                  ? JC.onAccent
                                   : JC.textSecondary,
                             ),
                           ),
@@ -658,7 +658,7 @@ class _KanbanBoardState extends State<KanbanBoard> {
                                     fontSize: 12,
                                     fontFamily: 'Heebo',
                                     color: selectedPriority == p
-                                        ? Colors.white
+                                        ? JC.onAccent
                                         : JC.textSecondary,
                                   ),
                                 ),
@@ -685,7 +685,7 @@ class _KanbanBoardState extends State<KanbanBoard> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: JC.blue500,
-                          foregroundColor: Colors.white,
+                          foregroundColor: JC.onAccent,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -830,7 +830,7 @@ class _KanbanBoardState extends State<KanbanBoard> {
                                     fontSize: 12,
                                     fontFamily: 'Heebo',
                                     color: selectedPriority == p
-                                        ? Colors.white
+                                        ? JC.onAccent
                                         : JC.textSecondary,
                                   ),
                                 ),
@@ -857,7 +857,7 @@ class _KanbanBoardState extends State<KanbanBoard> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: JC.blue500,
-                          foregroundColor: Colors.white,
+                          foregroundColor: JC.onAccent,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),

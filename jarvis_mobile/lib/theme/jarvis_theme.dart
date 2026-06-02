@@ -17,6 +17,22 @@ extension AppThemeMeta on AppTheme {
   }
 }
 
+/// User-selectable appearance mode. Independent of [AppTheme]: the theme picks
+/// the *palette personality*, this picks light vs dark. `system` follows the
+/// platform brightness. Kept separate from Flutter's [ThemeMode] so we control
+/// the Hebrew labels and resolve `system` ourselves.
+enum AppBrightnessMode { system, light, dark }
+
+extension AppBrightnessModeMeta on AppBrightnessMode {
+  String get hebrewLabel {
+    switch (this) {
+      case AppBrightnessMode.system: return 'אוטומטי';
+      case AppBrightnessMode.light:  return 'בהיר';
+      case AppBrightnessMode.dark:   return 'כהה';
+    }
+  }
+}
+
 /// A complete set of color tokens. Every token that used to live on the old
 /// `JC` constant class is present here so existing call sites keep working,
 /// plus a handful of theme-specific extras (glass overlay, neo shadows...).
@@ -39,10 +55,21 @@ class JarvisColorScheme {
   final Color glassOverlay;    // translucent layer for glassmorphism cards
   final Color neoShadowLight;  // top-left highlight for neumorphism
   final Color neoShadowDark;   // bottom-right shadow for neumorphism
+  // Semantic tokens — added so dark-assuming hardcoded colors can be migrated
+  // and recolor correctly in light mode. Defaults preserve the historical dark
+  // behaviour so the existing dark schemes need no edits.
+  final Color onAccent;        // text/icon on a filled accent surface
+  final Color scrim;           // modal/backdrop overlay
+  final Color shadow;          // BoxShadow / elevation base
+  final Brightness brightness; // drives ThemeData base + status-bar icons
   // Behavioural flags consumed by widgets that render differently per theme
   final bool usesGlass;
   final bool usesNeo;
   final bool isCyber;
+
+  // TODO(theming): a future phase can add a parallel `JarvisDimens` (spacing /
+  // radius / type) resolved the same theme-keyed way and exposed via a `JD`
+  // shim, so the swap mechanism built here generalizes beyond color.
 
   const JarvisColorScheme({
     required this.bg,
@@ -66,6 +93,10 @@ class JarvisColorScheme {
     required this.glassOverlay,
     required this.neoShadowLight,
     required this.neoShadowDark,
+    this.onAccent = Colors.white,
+    this.scrim = const Color(0x99000000),
+    this.shadow = const Color(0x66000000),
+    this.brightness = Brightness.dark,
     this.usesGlass = false,
     this.usesNeo = false,
     this.isCyber = false,
@@ -198,11 +229,49 @@ class JarvisColorScheme {
     neoShadowDark:  Color(0xFF020308),
     isCyber: true,
   );
+
+  // ── light — the canonical light foundation ──────────────────────────────
+  // Phase-1 fallback: one well-crafted light palette shared by ALL themes when
+  // the user picks light mode. Per-theme light *personalities* (glass/neo/cyber
+  // light variants) are intentionally deferred to a later visual-refresh phase;
+  // `schemeFor` currently returns this for every theme in light mode.
+  static const light = JarvisColorScheme(
+    bg:            Color(0xFFF7F8FA),
+    surface:       Color(0xFFFFFFFF),
+    surfaceAlt:    Color(0xFFEEF1F5),
+    border:        Color(0xFFD8DEE6),
+    blue500:       Color(0xFF2563EB),
+    blue400:       Color(0xFF3B82F6),
+    blue300:       Color(0xFF60A5FA),
+    textPrimary:   Color(0xFF0F172A),
+    textSecondary: Color(0xFF475569),
+    textMuted:     Color(0xFF94A3B8),
+    userBubble:    Color(0xFFDBEAFE),
+    jarvisBubble:  Color(0xFFEEF1F5),
+    cancelRed:     Color(0xFFDC2626),
+    indigo500:     Color(0xFF6366F1),
+    indigo300:     Color(0xFF818CF8),
+    amber400:      Color(0xFFD97706),
+    green500:      Color(0xFF16A34A),
+    accentPrimary: Color(0xFF2563EB),
+    glassOverlay:  Color(0x0A000000),
+    neoShadowLight: Color(0xFFFFFFFF),
+    neoShadowDark:  Color(0xFFD1D9E6),
+    onAccent:      Colors.white,
+    scrim:         Color(0x66000000),
+    shadow:        Color(0x1F000000),
+    brightness:    Brightness.light,
+  );
 }
 
 /// Builds [JarvisColorScheme] and [ThemeData] for a given [AppTheme].
 class JarvisThemeData {
-  static JarvisColorScheme schemeFor(AppTheme t) {
+  static JarvisColorScheme schemeFor(AppTheme t, [Brightness b = Brightness.dark]) {
+    if (b == Brightness.light) {
+      // Phase-1 fallback: every theme shares the generic light foundation.
+      // Later phases can switch(t) here for per-theme light variants.
+      return JarvisColorScheme.light;
+    }
     switch (t) {
       case AppTheme.navyDark:   return JarvisColorScheme.navyDark;
       case AppTheme.glassDark:  return JarvisColorScheme.glassDark;
@@ -212,23 +281,36 @@ class JarvisThemeData {
     }
   }
 
-  static ThemeData themeDataFor(AppTheme t) {
-    final c = schemeFor(t);
-    return ThemeData.dark().copyWith(
+  static ThemeData themeDataFor(AppTheme t, [Brightness b = Brightness.dark]) {
+    final c = schemeFor(t, b);
+    final isLight = b == Brightness.light;
+    final base = isLight ? ThemeData.light() : ThemeData.dark();
+    final colorScheme = (isLight
+            ? ColorScheme.light(
+                primary: c.blue500,
+                surface: c.surface,
+                surfaceContainerHighest: c.surfaceAlt,
+                outline: c.border,
+                onSurface: c.textPrimary,
+                onSurfaceVariant: c.textMuted,
+              )
+            : ColorScheme.dark(
+                primary: c.blue500,
+                surface: c.surface,
+                surfaceContainerHighest: c.surfaceAlt,
+                outline: c.border,
+                onSurface: c.textSecondary,
+                onSurfaceVariant: c.textMuted,
+              ))
+        .copyWith(onPrimary: c.onAccent);
+    return base.copyWith(
       scaffoldBackgroundColor: c.bg,
-      colorScheme: ColorScheme.dark(
-        primary: c.blue500,
-        onPrimary: Colors.white,
-        surface: c.surface,
-        surfaceContainerHighest: c.surfaceAlt,
-        outline: c.border,
-        onSurface: c.textSecondary,
-        onSurfaceVariant: c.textMuted,
-      ),
-      appBarTheme: const AppBarTheme(
+      colorScheme: colorScheme,
+      appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.light,
+        systemOverlayStyle:
+            isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light,
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: c.surfaceAlt,

@@ -159,7 +159,7 @@ class _SmartProductivityPreviewScreenState
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: active ? JC.blue500.withOpacity(0.2) : const Color(0xFF0B1422),
+          color: active ? JC.blue500.withOpacity(0.2) : JC.surface,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(

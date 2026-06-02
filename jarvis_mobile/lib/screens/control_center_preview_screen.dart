@@ -286,7 +286,7 @@ class _ControlCenterPreviewScreenState
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFF0B1422),
+                color: JC.surface,
                 shape: BoxShape.circle,
                 boxShadow: [BoxShadow(
                   color: Colors.black.withOpacity(0.3),
@@ -304,7 +304,7 @@ class _ControlCenterPreviewScreenState
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFF0B1422),
+                color: JC.surface,
                 shape: BoxShape.circle,
                 boxShadow: [BoxShadow(
                   color: Colors.black.withOpacity(0.3),
@@ -572,7 +572,7 @@ class _ControlCenterPreviewScreenState
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFF1A2E4A), JC.surface],
+          colors: [JC.track, JC.surface],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
@@ -705,7 +705,7 @@ class _ControlCenterPreviewScreenState
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F1929),
+          color: JC.surfaceAlt,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: color.withOpacity(0.15), width: 0.8),
         ),
@@ -822,7 +822,7 @@ class _ControlCenterPreviewScreenState
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFF1A2E4A), JC.surface],
+          colors: [JC.track, JC.surface],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
@@ -1520,7 +1520,7 @@ class _ControlCenterPreviewScreenState
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F1929),
+                    color: JC.surfaceAlt,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: color.withOpacity(0.2), width: 0.8),
                   ),
@@ -1639,7 +1639,7 @@ class _ControlCenterPreviewScreenState
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0F1929),
+                        color: JC.surfaceAlt,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(ts.isNotEmpty ? _eventTimestamp(ts) : '--:--',
@@ -1755,7 +1755,7 @@ class _ControlCenterPreviewScreenState
           Container(
             height: 36,
             decoration: BoxDecoration(
-              color: const Color(0xFF0F1929),
+              color: JC.surfaceAlt,
               borderRadius: BorderRadius.circular(10),
             ),
             child: TextField(
@@ -2162,7 +2162,7 @@ class _ControlCenterPreviewScreenState
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F1929),
+        color: JC.surfaceAlt,
         borderRadius: BorderRadius.circular(10),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
@@ -2328,7 +2328,7 @@ class _AgentStatusGroupState extends State<_AgentStatusGroup> {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1929),
+        color: JC.surfaceSunken,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
@@ -2669,7 +2669,7 @@ class _FeatureIdeaCard extends StatelessWidget {
       width: 170,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1929),
+        color: JC.surfaceSunken,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
       ),
@@ -2739,7 +2739,7 @@ class _SurveyQuestionCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isSelected
                         ? JC.blue500.withOpacity(0.2)
-                        : const Color(0xFF0F1929),
+                        : JC.surfaceAlt,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: isSelected ? JC.blue500 : JC.border,
@@ -2807,7 +2807,7 @@ class _SnackOverlay extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A2E4A),
+        color: JC.track,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(

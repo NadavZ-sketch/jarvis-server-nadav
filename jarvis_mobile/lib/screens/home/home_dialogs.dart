@@ -11,7 +11,7 @@ void showAddTaskDialog(BuildContext context, HomeController c) {
     builder: (_) => Directionality(
       textDirection: TextDirection.rtl,
       child: AlertDialog(
-        backgroundColor: const Color(0xFF0B1422),
+        backgroundColor: JC.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text('משימה חדשה',
             style: TextStyle(
@@ -60,7 +60,7 @@ void showAddReminderDialog(BuildContext context, HomeController c) {
       builder: (ctx, setDState) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          backgroundColor: const Color(0xFF0B1422),
+          backgroundColor: JC.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text('תזכורת חדשה',
               style: TextStyle(
@@ -155,7 +155,7 @@ void showBuildDaySheet(BuildContext context, HomeController c) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF0B1422),
+    backgroundColor: JC.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -269,9 +269,9 @@ class _BuildDaySheetState extends State<_BuildDaySheet> {
         minChildSize: 0.4,
         expand: false,
         builder: (_, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF0B1422),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [

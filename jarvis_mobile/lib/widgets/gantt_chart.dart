@@ -533,7 +533,7 @@ class GanttPainter extends CustomPainter {
     // Label column header background
     canvas.drawRect(
       Rect.fromLTWH(0, 0, labelWidth, headerHeight + monthHeaderHeight),
-      Paint()..color = const Color(0xFF0B1422),
+      Paint()..color = JC.surface,
     );
 
     // Re-paint labels on top of the overlay
@@ -584,14 +584,14 @@ class GanttPainter extends CustomPainter {
   ) {
     canvas.drawRect(
       Rect.fromLTWH(startX, 0, endX - startX, monthHeaderHeight),
-      Paint()..color = const Color(0xFF0F1929),
+      Paint()..color = JC.surfaceAlt,
     );
     // Vertical separator
     canvas.drawLine(
       Offset(startX, 0),
       Offset(startX, monthHeaderHeight),
       Paint()
-        ..color = const Color(0xFF1E293B)
+        ..color = JC.surfaceSunken
         ..strokeWidth = 1,
     );
     final tp = TextPainter(
@@ -620,7 +620,7 @@ class GanttPainter extends CustomPainter {
         size.width,
         headerHeight - monthHeaderHeight,
       ),
-      Paint()..color = const Color(0xFF0B1422),
+      Paint()..color = JC.surface,
     );
 
     for (int d = 0; d < range.days; d++) {

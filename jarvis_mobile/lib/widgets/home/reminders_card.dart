@@ -66,7 +66,6 @@ class RemindersCard extends StatelessWidget {
               height: 64,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
-                reverse: true,
                 itemCount: 7,
                 itemBuilder: (_, i) {
                   final offset = i - 3;
@@ -296,7 +295,7 @@ class RemindersCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: accent.withOpacity(0.07),
         borderRadius: BorderRadius.circular(10),
-        border: Border(right: BorderSide(color: accent, width: 2)),
+        border: BorderDirectional(start: BorderSide(color: accent, width: 2)),
       ),
       child: Row(children: [
         Container(

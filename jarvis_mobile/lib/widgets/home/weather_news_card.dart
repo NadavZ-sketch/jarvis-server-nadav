@@ -101,7 +101,6 @@ class _WeatherNewsCardState extends State<WeatherNewsCard> {
       height: 28,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        reverse: true,
         padding: EdgeInsets.zero,
         children: [
           // "הכל" chip
@@ -115,7 +114,7 @@ class _WeatherNewsCardState extends State<WeatherNewsCard> {
           ...available.map((t) {
             final sel = activeKey == t.key;
             return Padding(
-              padding: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsetsDirectional.only(start: 6),
               child: _chip(
                 emoji: t.emoji,
                 label: t.label,

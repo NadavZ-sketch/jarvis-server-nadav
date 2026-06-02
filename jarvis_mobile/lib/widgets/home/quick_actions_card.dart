@@ -40,7 +40,6 @@ class QuickActionsCard extends StatelessWidget {
       height: 88,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        reverse: true,
         padding: EdgeInsets.zero,
         itemCount: actions.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),

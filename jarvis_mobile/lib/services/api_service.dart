@@ -328,12 +328,13 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> addReminder(
-      String text, String scheduledTime, {String? recurrence}) async {
+      String text, String scheduledTime, {String? recurrence, String? projectId}) async {
     final body = <String, dynamic>{
       'text': text,
       'scheduled_time': scheduledTime,
     };
     if (recurrence != null) body['recurrence'] = recurrence;
+    if (projectId != null) body['project_id'] = projectId;
     final res = await _client.post(
       _uri('/reminders'),
       headers: _headers({'Content-Type': 'application/json'}),
@@ -656,6 +657,15 @@ class ApiService {
     return data['project'] as Map<String, dynamic>;
   }
 
+  // Deterministic weekly briefing computed server-side (no LLM tokens).
+  Future<String> getProjectBriefing() async {
+    final res = await _client
+        .get(_uri('/projects/briefing'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return (data['answer'] as String?)?.trim() ?? '';
+  }
+
   Future<Map<String, dynamic>> getProjectDetail(String id) async {
     final res = await _client.get(_uri('/projects/$id'), headers: _baseHeaders).timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
@@ -714,6 +724,17 @@ class ApiService {
     final raw = data['insights'];
     if (raw is List) return raw.map((e) => {'text': e.toString()}).toList();
     return [];
+  }
+
+  // Cached server-side methodology recommendation (capped at 150 tokens).
+  Future<Map<String, dynamic>> recommendMethodology(
+      String name, String description) async {
+    final res = await _client.post(
+      _uri('/projects/recommend-methodology'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'name': name, 'description': description}),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
   // ─── Sprints ──────────────────────────────────────────────────────────────

@@ -137,11 +137,49 @@ async function computeProgress(supabase, projectId) {
     return Math.round((done / allItems.length) * 100);
 }
 
+// Deterministic weekly briefing — builds a Hebrew summary of active projects
+// with progress bars and deadline urgency. Makes NO LLM call (zero tokens).
+// Shared by the projectAgent 'briefing' intent and the GET /projects/briefing endpoint.
+async function buildProjectsBriefing(supabase, userName = 'נדב') {
+    const { data: projects } = await supabase
+        .from('projects')
+        .select('*')
+        .in('status', ['active', 'paused'])
+        .order('priority', { ascending: false });
+
+    if (!projects || projects.length === 0) {
+        return { answer: `אין פרויקטים פעילים כרגע ${userName}. בוא ניצור אחד!` };
+    }
+
+    const today = new Date(todayISO());
+    let answer = `📋 *ברייפינג פרויקטים — ${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' })}*\n\n`;
+
+    for (const p of projects) {
+        const progress = await computeProgress(supabase, p.id);
+        const bar = '█'.repeat(Math.round(progress / 10)) + '░'.repeat(10 - Math.round(progress / 10));
+        const daysLeft = p.due_date ? Math.ceil((new Date(p.due_date) - today) / 86400000) : null;
+        const urgency = daysLeft !== null && daysLeft <= 3 ? ' 🚨' : daysLeft !== null && daysLeft <= 7 ? ' ⚠️' : '';
+
+        answer += `*${p.name}*${urgency}\n`;
+        answer += `${bar} ${progress}%`;
+        if (daysLeft !== null) {
+            answer += daysLeft < 0
+                ? ` | ⚠️ חרג ב-${Math.abs(daysLeft)} ימים`
+                : ` | עוד ${daysLeft} ימים`;
+        }
+        answer += `\n\n`;
+    }
+
+    return { answer, action: { type: 'navigate', target: 'projects', label: 'פתח פרויקטים' } };
+}
+
 async function runProjectAgent(userMessage, supabase, useLocal = true, settings = {}) {
     const userName = settings.userName || 'נדב';
 
     try {
-        const aiText = await callGemma4(PROJECT_PROMPT + userMessage, useLocal);
+        // Intent extraction returns a small fixed-shape JSON object; cap output
+        // tokens to avoid the 800-token default on this high-frequency call.
+        const aiText = await callGemma4(PROJECT_PROMPT + userMessage, useLocal, 200);
 
         const open = aiText.lastIndexOf('{');
         const close = aiText.lastIndexOf('}');
@@ -434,36 +472,7 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
 
         // ── BRIEFING ──────────────────────────────────────────────────────────────
         if (intent === 'briefing') {
-            const { data: projects } = await supabase
-                .from('projects')
-                .select('*')
-                .in('status', ['active', 'paused'])
-                .order('priority', { ascending: false });
-
-            if (!projects || projects.length === 0) {
-                return { answer: `אין פרויקטים פעילים כרגע ${userName}. בוא ניצור אחד!` };
-            }
-
-            const today = new Date(todayISO());
-            let answer = `📋 *ברייפינג פרויקטים — ${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' })}*\n\n`;
-
-            for (const p of projects) {
-                const progress = await computeProgress(supabase, p.id);
-                const bar = '█'.repeat(Math.round(progress / 10)) + '░'.repeat(10 - Math.round(progress / 10));
-                const daysLeft = p.due_date ? Math.ceil((new Date(p.due_date) - today) / 86400000) : null;
-                const urgency = daysLeft !== null && daysLeft <= 3 ? ' 🚨' : daysLeft !== null && daysLeft <= 7 ? ' ⚠️' : '';
-
-                answer += `*${p.name}*${urgency}\n`;
-                answer += `${bar} ${progress}%`;
-                if (daysLeft !== null) {
-                    answer += daysLeft < 0
-                        ? ` | ⚠️ חרג ב-${Math.abs(daysLeft)} ימים`
-                        : ` | עוד ${daysLeft} ימים`;
-                }
-                answer += `\n\n`;
-            }
-
-            return { answer, action: { type: 'navigate', target: 'projects', label: 'פתח פרויקטים' } };
+            return await buildProjectsBriefing(supabase, userName);
         }
 
         // ── LINK REMINDER ─────────────────────────────────────────────────────────
@@ -583,4 +592,4 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
     }
 }
 
-module.exports = { runProjectAgent };
+module.exports = { runProjectAgent, buildProjectsBriefing };

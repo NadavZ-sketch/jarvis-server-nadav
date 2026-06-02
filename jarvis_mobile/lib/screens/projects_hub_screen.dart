@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,7 +15,8 @@ import 'project_detail_screen.dart';
 
 class ProjectsHubScreen extends StatefulWidget {
   final AppSettings settings;
-  const ProjectsHubScreen({super.key, required this.settings});
+  final ValueChanged<String>? onSwitchToChat;
+  const ProjectsHubScreen({super.key, required this.settings, this.onSwitchToChat});
 
   @override
   State<ProjectsHubScreen> createState() => _ProjectsHubScreenState();
@@ -33,6 +32,8 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
   List<Map<String, dynamic>> _conflicts = [];
   Set<String> _dismissedRisks = {};
   String _filter = 'all';
+  String _searchQuery = '';
+  String _sortBy = 'created'; // created | deadline | priority | progress
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -161,9 +162,10 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
       if (createdAtStr != null) {
         final createdAt = DateTime.tryParse(createdAtStr);
         if (createdAt != null && now.difference(createdAt).inDays > 14) {
-          final tasks = p['_tasks'] as List?;
-          final milestones = p['_milestones'] as List?;
-          if (tasks != null && milestones != null) {
+          // Use the server-enriched counts; only flag projects that have items.
+          final totalItems = ((p['total_tasks'] as num?) ?? 0).toInt() +
+              ((p['milestones_total'] as num?) ?? 0).toInt();
+          if (totalItems > 0) {
             final progress = _computeProgress(p);
             if (progress < 0.3) {
               risks.add({
@@ -223,25 +225,11 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
     if (_briefingLoading) return;
     setState(() => _briefingLoading = true);
 
-    final summaryParts = _projects.map((p) {
-      final name = p['name'] ?? '';
-      final status = p['status'] ?? '';
-      final due = p['due_date'] != null ? ', דדליין: ${p['due_date']}' : '';
-      return '$name (סטטוס: $status$due)';
-    }).join('; ');
-
-    final message =
-        'בריפינג שבועי על הפרויקטים שלי: $summaryParts. תן סיכום קצר מה קורה ומה חשוב לשים לב אליו השבוע.';
-
     try {
-      final result = await ApiService(widget.settings)
-          .askJarvis(message, widget.settings, intent: 'chat');
-      final raw = (result['answer'] as String? ?? '').trim();
-      // Don't cache server error replies — they would persist for 7 days.
-      final looksLikeError = (raw.contains('בעיה') && raw.contains('נסה שוב')) ||
-          raw.contains('לא הצלחתי') ||
-          raw.contains('לא ניתן');
-      if (raw.isEmpty || looksLikeError) {
+      // Uses the deterministic server-side briefing (zero LLM tokens) — real
+      // progress %, deadline urgency, computed where the data already lives.
+      final raw = await ApiService(widget.settings).getProjectBriefing();
+      if (raw.isEmpty) {
         if (mounted) setState(() => _briefingLoading = false);
         return;
       }
@@ -283,6 +271,10 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
   // ─── Computed helpers ──────────────────────────────────────────────────────
 
   double _computeProgress(Map<dynamic, dynamic> p) {
+    // Prefer the server-computed progress (from GET /projects enrichment).
+    final serverProgress = p['progress'];
+    if (serverProgress is num) return serverProgress.toDouble().clamp(0.0, 1.0);
+    // Fall back to inline computation for old cached data.
     final tasks = p['_tasks'] as List? ?? [];
     final milestones = p['_milestones'] as List? ?? [];
     final total = tasks.length + milestones.length;
@@ -315,14 +307,85 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
   }
 
   List<Map<String, dynamic>> get _filteredProjects {
-    return _projects.where((p) {
+    final q = _searchQuery.trim().toLowerCase();
+    final list = _projects.where((p) {
       final status = (p['status'] as String?) ?? '';
-      if (_filter == 'active') {
-        return status == 'active' || status == 'paused' || status == 'planning';
-      }
-      if (_filter == 'completed') return status == 'completed';
-      return true;
+      final matchesFilter = _filter == 'active'
+          ? (status == 'active' || status == 'paused' || status == 'planning')
+          : _filter == 'completed'
+              ? status == 'completed'
+              : true;
+      if (!matchesFilter) return false;
+      if (q.isEmpty) return true;
+      return (p['name'] as String? ?? '').toLowerCase().contains(q);
     }).toList();
+
+    int priorityRank(String? pr) {
+      switch (pr) {
+        case 'critical':
+          return 0;
+        case 'high':
+          return 1;
+        case 'medium':
+          return 2;
+        default:
+          return 3;
+      }
+    }
+
+    switch (_sortBy) {
+      case 'deadline':
+        list.sort((a, b) {
+          final da = DateTime.tryParse(a['due_date'] as String? ?? '');
+          final db = DateTime.tryParse(b['due_date'] as String? ?? '');
+          if (da == null && db == null) return 0;
+          if (da == null) return 1; // no deadline → bottom
+          if (db == null) return -1;
+          return da.compareTo(db);
+        });
+        break;
+      case 'priority':
+        list.sort((a, b) => priorityRank(a['priority'] as String?)
+            .compareTo(priorityRank(b['priority'] as String?)));
+        break;
+      case 'progress':
+        list.sort((a, b) => _computeProgress(b).compareTo(_computeProgress(a)));
+        break;
+      default:
+        break; // 'created' — keep server order (created_at desc)
+    }
+    return list;
+  }
+
+  String _sortLabel(String s) {
+    switch (s) {
+      case 'deadline':
+        return 'דדליין';
+      case 'priority':
+        return 'עדיפות';
+      case 'progress':
+        return 'התקדמות';
+      default:
+        return 'נוצר לאחרונה';
+    }
+  }
+
+  // Hand off to the chat tab seeded with a project command, so the user can
+  // create/manage projects in natural language (and by voice). Reuses the
+  // existing onSwitchToChat plumbing and the server-side projectAgent.
+  void _createViaChat([String command = 'צור פרויקט חדש בשם ']) {
+    final cb = widget.onSwitchToChat;
+    if (cb == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('פתח את הצ׳אט ואמור "צור פרויקט..."',
+              style: TextStyle(fontFamily: 'Heebo')),
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).maybePop();
+    cb(command);
   }
 
   String _filterLabel(String f) {
@@ -339,11 +402,24 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
   int get _activeCount => _projects
       .where((p) =>
           (p['status'] as String?) == 'active' ||
-          (p['status'] as String?) == 'paused')
+          (p['status'] as String?) == 'paused' ||
+          (p['status'] as String?) == 'planning')
       .length;
 
-  int get _overdueCount =>
-      _risks.where((r) => r['type'] == 'overdue').length;
+  int get _openTasksCount => _projects.fold<int>(
+      0, (sum, p) => sum + ((p['open_tasks'] as num?) ?? 0).toInt());
+
+  // Computed directly from projects (not from dismissible _risks) so dismissing
+  // a risk card never changes the stat.
+  int get _overdueCount {
+    final now = DateTime.now();
+    return _projects.where((p) {
+      final status = (p['status'] as String?) ?? '';
+      if (status == 'completed' || status == 'archived') return false;
+      final d = DateTime.tryParse(p['due_date'] as String? ?? '');
+      return d != null && d.difference(now).inDays < 0;
+    }).length;
+  }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
 
@@ -384,6 +460,12 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
                 color: JC.textSecondary,
               ),
             IconButton(
+              icon: const Icon(Icons.chat_bubble_outline_rounded),
+              tooltip: 'צור דרך שיחה',
+              onPressed: () => _createViaChat(),
+              color: JC.textSecondary,
+            ),
+            IconButton(
               icon: const Icon(Icons.refresh_rounded),
               tooltip: 'רענן',
               onPressed: _fetch,
@@ -404,7 +486,11 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
                     title: 'לא ניתן לטעון פרויקטים',
                     subtitle: _error!,
                   )
-                : CustomScrollView(
+                : RefreshIndicator(
+                    onRefresh: _fetch,
+                    color: JC.blue400,
+                    child: CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     slivers: [
                       // Stats row
                       SliverToBoxAdapter(child: _buildStatsRow()),
@@ -426,6 +512,9 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
                           ),
                         ),
 
+                      // Search + sort
+                      SliverToBoxAdapter(child: _buildSearchSortBar()),
+
                       // Filter chips
                       SliverToBoxAdapter(
                         child: Padding(
@@ -439,14 +528,37 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.only(top: 40),
-                            child: EmptyState(
-                              icon: Icons.folder_open_rounded,
-                              title: _filter == 'all'
-                                  ? 'אין פרויקטים עדיין'
-                                  : 'אין פרויקטים בקטגוריה זו',
-                              subtitle: _filter == 'all'
-                                  ? 'לחץ + כדי ליצור פרויקט חדש'
-                                  : '',
+                            child: Column(
+                              children: [
+                                EmptyState(
+                                  icon: _searchQuery.isNotEmpty
+                                      ? Icons.search_off_rounded
+                                      : Icons.folder_open_rounded,
+                                  title: _searchQuery.isNotEmpty
+                                      ? 'לא נמצאו פרויקטים'
+                                      : _filter == 'all'
+                                          ? 'אין פרויקטים עדיין'
+                                          : 'אין פרויקטים בקטגוריה זו',
+                                  subtitle: _searchQuery.isNotEmpty
+                                      ? 'נסה חיפוש אחר'
+                                      : _filter == 'all'
+                                          ? 'לחץ + כדי ליצור פרויקט חדש'
+                                          : '',
+                                ),
+                                if (_filter == 'all' && _searchQuery.isEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  TextButton.icon(
+                                    onPressed: () => _createViaChat(),
+                                    icon: Icon(Icons.auto_awesome,
+                                        size: 16, color: JC.blue400),
+                                    label: Text('צור דרך שיחה עם Jarvis',
+                                        style: TextStyle(
+                                            fontFamily: 'Heebo',
+                                            fontSize: 13,
+                                            color: JC.blue400)),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         )
@@ -461,6 +573,7 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
 
                       const SliverToBoxAdapter(child: SizedBox(height: 100)),
                     ],
+                  ),
                   ),
       ),
     );
@@ -479,7 +592,7 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
             accent: JC.blue500,
           ),
           _buildStatCard(
-            value: '—',
+            value: '$_openTasksCount',
             label: 'משימות פתוחות',
             accent: JC.indigo500,
           ),
@@ -632,6 +745,86 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
             Icon(Icons.chevron_left_rounded, color: JC.textMuted, size: 18),
           ],
         ),
+      ),
+    );
+  }
+
+  // ─── Search + sort ───────────────────────────────────────────────────────
+
+  Widget _buildSearchSortBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 40,
+              child: TextField(
+                textDirection: TextDirection.rtl,
+                onChanged: (v) => setState(() => _searchQuery = v),
+                style: TextStyle(
+                    fontFamily: 'Heebo', fontSize: 13, color: JC.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'חיפוש פרויקט...',
+                  hintStyle:
+                      TextStyle(fontFamily: 'Heebo', color: JC.textMuted, fontSize: 13),
+                  prefixIcon:
+                      Icon(Icons.search_rounded, size: 18, color: JC.textMuted),
+                  isDense: true,
+                  filled: true,
+                  fillColor: JC.surface,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: JC.bg),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: JC.bg),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: JC.blue500),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: JC.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: JC.bg),
+            ),
+            child: PopupMenuButton<String>(
+              tooltip: 'מיון',
+              icon: Icon(Icons.sort_rounded, size: 20, color: JC.textSecondary),
+              color: JC.surface,
+              onSelected: (v) => setState(() => _sortBy = v),
+              itemBuilder: (ctx) => ['created', 'deadline', 'priority', 'progress']
+                  .map((s) => PopupMenuItem<String>(
+                        value: s,
+                        child: Row(
+                          children: [
+                            if (_sortBy == s)
+                              Icon(Icons.check_rounded,
+                                  size: 16, color: JC.blue400)
+                            else
+                              const SizedBox(width: 16),
+                            const SizedBox(width: 8),
+                            Text(_sortLabel(s),
+                                style: TextStyle(
+                                    fontFamily: 'Heebo',
+                                    fontSize: 13,
+                                    color: JC.textPrimary)),
+                          ],
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -940,6 +1133,7 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
 
   String _methodology = 'kanban';
   String _priority = 'medium';
+  String _status = 'active';
   DateTime? _startDate;
   DateTime? _dueDate;
   String _color = '#3b82f6';
@@ -962,6 +1156,37 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
 
   static const _methodologies = ['kanban', 'scrum', 'eisenhower', 'gantt'];
   static const _priorities = ['low', 'medium', 'high', 'critical'];
+  static const _statuses = ['active', 'planning', 'paused', 'completed'];
+
+  String _statusLabel(String s) {
+    switch (s) {
+      case 'active':
+        return 'פעיל';
+      case 'planning':
+        return 'בתכנון';
+      case 'paused':
+        return 'מושהה';
+      case 'completed':
+        return 'הושלם';
+      default:
+        return s;
+    }
+  }
+
+  Color _statusColor(String s) {
+    switch (s) {
+      case 'active':
+        return JC.green500;
+      case 'planning':
+        return JC.indigo300;
+      case 'paused':
+        return JC.amber400;
+      case 'completed':
+        return JC.blue400;
+      default:
+        return JC.textMuted;
+    }
+  }
 
   @override
   void dispose() {
@@ -1056,29 +1281,20 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
     if (_loadingRec) return;
     setState(() => _loadingRec = true);
 
-    final prompt =
-        'הפרויקט: $name. $desc. איזו שיטת עבודה תמליץ: kanban/scrum/eisenhower/gantt? הסבר בקצרה. החזר JSON: {"methodology":"...","reason":"..."} בלבד.';
-
     try {
-      final result =
-          await ApiService(widget.settings).askJarvis(prompt, widget.settings);
-      final answer = (result['answer'] as String?) ?? '';
-      // Extract JSON from answer
-      final jsonMatch = RegExp(r'\{[^}]+\}').firstMatch(answer);
-      if (jsonMatch != null) {
-        final parsed =
-            jsonDecode(jsonMatch.group(0)!) as Map<String, dynamic>;
-        final rec = (parsed['methodology'] as String? ?? '').toLowerCase();
-        final reason = parsed['reason'] as String? ?? '';
-        if (mounted) {
-          setState(() {
+      // Server-side, cached (30 min), capped at 150 tokens — no client prompt.
+      final parsed =
+          await ApiService(widget.settings).recommendMethodology(name, desc);
+      final rec = (parsed['methodology'] as String? ?? '').toLowerCase();
+      final reason = parsed['reason'] as String? ?? '';
+      if (mounted) {
+        setState(() {
+          if (rec.isNotEmpty) {
             _methodRec = rec;
             _methodRecReason = reason;
-            _loadingRec = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _loadingRec = false);
+          }
+          _loadingRec = false;
+        });
       }
     } catch (_) {
       if (mounted) setState(() => _loadingRec = false);
@@ -1101,7 +1317,7 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
         'start_date': _startDate!.toIso8601String().substring(0, 10),
       if (_dueDate != null)
         'due_date': _dueDate!.toIso8601String().substring(0, 10),
-      'status': 'active',
+      'status': _status,
     };
 
     try {
@@ -1345,6 +1561,46 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
                       ),
                       child: Text(
                         _priorityLabel(pr),
+                        style: TextStyle(
+                          fontFamily: 'Heebo',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: selected ? color : JC.textMuted,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+
+              // Status selector
+              _buildLabel('סטטוס'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _statuses.map((st) {
+                  final selected = _status == st;
+                  final color = _statusColor(st);
+                  return GestureDetector(
+                    onTap: () => setState(() => _status = st),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? color.withValues(alpha: 0.2)
+                            : JC.bg,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: selected
+                              ? color.withValues(alpha: 0.6)
+                              : JC.bg,
+                        ),
+                      ),
+                      child: Text(
+                        _statusLabel(st),
                         style: TextStyle(
                           fontFamily: 'Heebo',
                           fontSize: 13,

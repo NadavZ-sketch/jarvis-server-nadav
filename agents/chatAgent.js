@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { callGemma4, callGeminiVision } = require('./models');
 const pinecone = require('../services/pineconeMemory');
+const { renderStyleHint } = require('../services/styleLearner');
 
 const PERSONALITY_DESC = {
     friendly: (name) => `ידידותי, חם ואמפתי. אתה מדבר עם ${name} כמו חבר טוב שמבין אותו.
@@ -235,6 +236,13 @@ function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followU
 השתמש במידע הזה כדי להתאים את הסגנון ולהציע צעדים הבאים רלוונטיים.
 -----------------------------------` : '';
 
+    // Style preferences learned from explicit feedback (Phase 2 of the loop).
+    const learnedStyle = renderStyleHint(profile?.auto_learned?.style_prefs);
+    const learnedStyleBlock = learnedStyle ? `
+--- העדפות סגנון שנלמדו מפידבק ---
+${learnedStyle}
+-----------------------------------` : '';
+
     const chatSummary = (settings.chatSummary || '').trim();
     const summaryBlock = chatSummary ? `
 --- סיכום השיחה עד כה ---
@@ -254,7 +262,7 @@ CRITICAL: Never claim you have performed an action (added a task, set a reminder
 ${voiceModeBlock}
 ${emotionalIntelligenceBlock}
 ${clarificationBlock}
-${profileBlock}
+${profileBlock}${learnedStyleBlock}
 ${followUpBlock}${summaryBlock}
 --- Permanent Memories About ${userName} ---
 ${longTermMemories}
@@ -302,6 +310,7 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
     const profileShort = profile
         ? `פרופיל משתמש: טון=${profile.speaking_tone || 'friendly'}; תחומי עניין=${(profile.interests || []).slice(0, 5).join(', ') || 'לא הוגדר'}; משימות חוזרות=${(profile.recurring_tasks || []).slice(0, 5).join(', ') || 'לא הוגדר'}`
         : '';
+    const learnedStyleShort = renderStyleHint(profile?.auto_learned?.style_prefs);
 
     const system = [
         `אתה ${name}, עוזר אישי של ${userName}. ענה תמיד בעברית בלבד.`,
@@ -310,6 +319,7 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
         `תאריך ושעה: ${currentDate} ${currentTime}.`,
         memoriesShort,
         profileShort,
+        learnedStyleShort,
         summaryHint,
         followUp,
     ].filter(Boolean).join('\n');

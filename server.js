@@ -63,6 +63,7 @@ const { runOrchestratorAgent } = require('./agents/orchestratorAgent');
 const contextResolver = require('./services/contextResolver');
 const proactiveEngine = require('./services/proactiveEngine');
 const profileLearner  = require('./services/profileLearner');
+const styleLearner    = require('./services/styleLearner');
 const feedbackStore   = require('./services/feedbackStore');
 const { selectByTokenBudget } = require('./services/contextWindow');
 const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
@@ -2993,6 +2994,15 @@ if (!isTestEnv) cron.schedule('45 3 * * *', async () => {
     try {
         const r = await profileLearner.learnUserProfile(supabase, { getProfile: getUserProfile });
         if (r.updated) console.log('🧠 User profile auto-learned from behaviour');
+        // Refresh the cache so the style learner reads the row profileLearner just
+        // wrote and merges into it rather than clobbering its auto_learned keys.
+        if (r.updated) cacheInvalidate('userProfile');
+        // Style preferences learned from explicit feedback (Phase 2 of the loop).
+        const s = await styleLearner.learnStyle(supabase, {
+            getProfile: getUserProfile,
+            onUpdate: () => cacheInvalidate('userProfile'),
+        });
+        if (s.updated) console.log('🎯 Style prefs learned from feedback:', JSON.stringify(s.learned));
     } catch (err) {
         console.error('Profile learning cron error:', err.message);
     }

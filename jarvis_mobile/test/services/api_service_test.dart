@@ -347,4 +347,29 @@ void main() {
       expect(jsonDecode(sentBody!)['title'], '');
     });
   });
+
+  // ─── ping (offline detection) ───────────────────────────────────────────────
+
+  group('ping', () {
+    test('hits /health and returns true on 200', () async {
+      String? hitPath;
+      final client = MockClient((req) async {
+        hitPath = req.url.path;
+        return _json({'status': 'ok'});
+      });
+      final ok = await _makeService(client).ping();
+      expect(ok, true);
+      expect(hitPath, '/health');
+    });
+
+    test('returns false on a non-200 response', () async {
+      final client = MockClient((req) async => _json({'err': 'down'}, status: 503));
+      expect(await _makeService(client).ping(), false);
+    });
+
+    test('returns false (never throws) on a network error', () async {
+      final client = MockClient((req) async => throw const SocketException('refused'));
+      expect(await _makeService(client).ping(), false);
+    });
+  });
 }

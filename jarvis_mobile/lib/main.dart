@@ -273,6 +273,11 @@ class _ChatBubble extends StatefulWidget {
 
 class _ChatBubbleState extends State<_ChatBubble> {
   bool _showTime = false;
+  bool _expanded = false; // long-message collapse toggle
+
+  // Replies longer than this are collapsed behind a "הצג עוד" toggle so a wall
+  // of text doesn't bury the conversation. User bubbles are never collapsed.
+  static const int _collapseThreshold = 600;
 
   void _showCopyMenu(String text) {
     final isJarvis = widget.msg['sender'] != 'user';
@@ -436,21 +441,62 @@ class _ChatBubbleState extends State<_ChatBubble> {
     );
   }
 
-  Widget _bubbleContent(bool isUser) => Column(
+  Widget _bubbleContent(bool isUser) {
+    final fullText = widget.msg['text'] ?? '';
+    final isLong = !isUser && fullText.length > _collapseThreshold;
+    final displayText = (isLong && !_expanded)
+        ? '${fullText.substring(0, _collapseThreshold).trimRight()}…'
+        : fullText;
+
+    return Column(
         crossAxisAlignment:
             isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          MarkdownLite(
-            text: widget.msg['text']!,
-            textDirection: TextDirection.rtl,
-            baseStyle: TextStyle(
-              fontSize: 15,
-              color: JC.textPrimary,
-              height: 1.6,
-              fontFamily: 'Heebo',
-              fontWeight: FontWeight.w400,
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: MarkdownLite(
+              text: displayText,
+              textDirection: TextDirection.rtl,
+              baseStyle: TextStyle(
+                fontSize: 15,
+                color: JC.textPrimary,
+                height: 1.6,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w400,
+              ),
             ),
           ),
+          if (isLong)
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _expanded ? 'הצג פחות' : 'הצג עוד',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: JC.blue400,
+                        fontFamily: 'Heebo',
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(
+                      _expanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: JC.blue400,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (!isUser && widget.msg['navTarget'] != null) ...[
             const SizedBox(height: 10),
             _navButton(widget.msg['navTarget']!, widget.msg['navLabel'] ?? 'פתח'),
@@ -476,6 +522,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
           ],
         ],
       );
+  }
 
   Widget _navButton(String target, String label) => Align(
         alignment: Alignment.centerRight,
@@ -717,6 +764,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _showOrbAndHint = true;
   bool _showScrollToBottom = false;
 
+  // In-conversation search
+  final TextEditingController _searchController = TextEditingController();
+  bool   _searchMode  = false;
+  String _searchQuery = '';
+
+  // Offline detection: polled via /health + flipped on send failures.
+  bool   _isOffline = false;
+  Timer? _connTimer;
+
   String _getCurrentTime() {
     final now = DateTime.now();
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
@@ -753,6 +809,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
 
     _scrollController.addListener(_onScroll);
+    _startConnectivityWatch();
     _audioPlayer.onPlayerComplete.listen((_) {
       if (_lastTtsPath != null) {
         File(_lastTtsPath!).delete().catchError((_) {});
@@ -967,10 +1024,33 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     });
   }
 
+  void _closeSearch() {
+    _searchController.clear();
+    setState(() {
+      _searchMode  = false;
+      _searchQuery = '';
+    });
+  }
+
+  // ─── Connectivity ─────────────────────────────────────────────────────────
+  void _startConnectivityWatch() {
+    _checkConnectivity();
+    _connTimer = Timer.periodic(
+        const Duration(seconds: 20), (_) => _checkConnectivity());
+  }
+
+  Future<void> _checkConnectivity() async {
+    final ok = await _api.ping();
+    if (!mounted) return;
+    if (_isOffline == ok) setState(() => _isOffline = !ok);
+  }
+
   @override
   void dispose() {
     _bgPollTimer?.cancel();
     _ttsTimeoutTimer?.cancel();
+    _connTimer?.cancel();
+    _searchController.dispose();
     _orbBreathController.dispose();
     _controller.dispose();
     _scrollController.dispose();
@@ -1402,6 +1482,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       final sr = await client.send(request).timeout(const Duration(seconds: 35));
       if (sr.statusCode == 429) throw Exception('rate_limit');
       if (sr.statusCode != 200) throw Exception('server ${sr.statusCode}');
+      if (_isOffline) setState(() => _isOffline = false); // reachable again
 
       String accumulated = '';
       String lineBuffer  = '';
@@ -1465,6 +1546,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       final errStr = e.toString();
       final isTimeout  = errStr.contains('timeout') || errStr.contains('TimeoutException');
       final isRateLimit = errStr.contains('rate_limit') || errStr.contains('429');
+      final isNetwork = errStr.contains('SocketException') ||
+          errStr.contains('Failed host lookup') ||
+          errStr.contains('Connection') ||
+          errStr.contains('refused');
       final msg = isRateLimit ? '⏳ עמוס כרגע — נסה שוב עוד כמה שניות'
                 : isTimeout   ? '⏱ זמן פג — נסה שוב'
                 :               '⚠️ ${ApiService.friendlyError(e)}';
@@ -1472,6 +1557,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         messages.add({'sender': 'jarvis', 'text': msg, 'time': _getCurrentTime()});
         _currentState          = JarvisState.idle;
         _voiceConversationMode = false;
+        if (isNetwork || isTimeout) _isOffline = true;
       });
     } finally {
       client.close();
@@ -1771,6 +1857,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
+  // Ambient background glow tint that cross-fades as Jarvis changes state,
+  // giving a subtle visual cue (calm blue → active cyan → warm thinking).
+  Color get _stateGlowColor {
+    switch (_currentState) {
+      case JarvisState.listening: return JC.blue400;
+      case JarvisState.thinking:  return const Color(0xFFE0A458); // warm amber
+      case JarvisState.speaking:  return const Color(0xFF4ECDC4); // teal
+      default:                    return JC.blue500;
+    }
+  }
+
   String get _orbHint {
     switch (_currentState) {
       case JarvisState.listening:
@@ -1787,8 +1884,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final bool isListening = _currentState == JarvisState.listening;
     final bool keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 60;
-    final int itemCount = messages.length +
-        (_currentState == JarvisState.thinking ? 1 : 0);
+
+    // When searching, the list shows only matching messages (and no thinking
+    // bubble). Otherwise it shows the full conversation.
+    final String q = _searchQuery.trim().toLowerCase();
+    final bool searching = _searchMode && q.isNotEmpty;
+    final List<Map<String, dynamic>> displayMessages = searching
+        ? messages
+            .where((m) => (m['text'] ?? '').toString().toLowerCase().contains(q))
+            .toList()
+        : messages;
+    final bool showThinking =
+        !searching && _currentState == JarvisState.thinking;
+    final int itemCount = displayMessages.length + (showThinking ? 1 : 0);
 
     return Scaffold(
       backgroundColor: JC.bg,
@@ -1806,71 +1914,116 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             ),
           ),
         ),
-        leading: IconButton(
-          icon: Icon(Icons.menu_rounded, color: JC.textSecondary, size: 22),
-          onPressed: () {
-            if (widget.onOpenDrawer != null) {
-              widget.onOpenDrawer!();
-            } else {
-              _openSettings();
-            }
-          },
+        leading: _searchMode
+            ? IconButton(
+                icon: Icon(Icons.arrow_forward_rounded,
+                    color: JC.textSecondary, size: 22),
+                tooltip: 'סגור חיפוש',
+                onPressed: _closeSearch,
+              )
+            : IconButton(
+                icon: Icon(Icons.menu_rounded, color: JC.textSecondary, size: 22),
+                onPressed: () {
+                  if (widget.onOpenDrawer != null) {
+                    widget.onOpenDrawer!();
+                  } else {
+                    _openSettings();
+                  }
+                },
+              ),
+        title: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          child: _searchMode
+              ? TextField(
+                  key: const ValueKey('search'),
+                  controller: _searchController,
+                  autofocus: true,
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                      color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 15),
+                  decoration: InputDecoration(
+                    hintText: 'חיפוש בשיחה…',
+                    hintStyle: TextStyle(
+                        color: JC.textMuted, fontFamily: 'Heebo', fontSize: 15),
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                )
+              : Text(
+                  'ג׳רביס',
+                  key: const ValueKey('title'),
+                  style: TextStyle(
+                    color: JC.textSecondary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.3,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
         ),
-        title: Text(
-          'ג׳רביס',
-          style: TextStyle(
-            color: JC.textSecondary,
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.3,
-            fontFamily: 'Heebo',
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.summarize_outlined,
-                color: JC.textSecondary, size: 22),
-            tooltip: 'סכם שיחה',
-            onPressed: () => _sendCommandStreaming('סכם לי את השיחה הנוכחית בנקודות עיקריות'),
-          ),
-          IconButton(
-            icon: Icon(Icons.refresh_rounded,
-                color: JC.textSecondary, size: 22),
-            tooltip: 'רענן שיחה',
-            onPressed: _loadChatHistory,
-          ),
-          IconButton(
-            icon: Icon(Icons.add_comment_outlined,
-                color: JC.textSecondary, size: 22),
-            tooltip: 'שיחה חדשה',
-            onPressed: _startNewChat,
-          ),
-          IconButton(
-            icon: Icon(Icons.history_rounded,
-                color: JC.textSecondary, size: 22),
-            tooltip: 'היסטוריית שיחות',
-            onPressed: _openHistory,
-          ),
-          const SizedBox(width: 4),
-        ],
+        actions: _searchMode
+            ? [
+                IconButton(
+                  icon: Icon(Icons.close_rounded,
+                      color: JC.textSecondary, size: 22),
+                  tooltip: 'נקה',
+                  onPressed: _closeSearch,
+                ),
+                const SizedBox(width: 4),
+              ]
+            : [
+                IconButton(
+                  icon: Icon(Icons.search_rounded,
+                      color: JC.textSecondary, size: 22),
+                  tooltip: 'חיפוש בשיחה',
+                  onPressed: () => setState(() => _searchMode = true),
+                ),
+                IconButton(
+                  icon: Icon(Icons.summarize_outlined,
+                      color: JC.textSecondary, size: 22),
+                  tooltip: 'סכם שיחה',
+                  onPressed: () => _sendCommandStreaming('סכם לי את השיחה הנוכחית בנקודות עיקריות'),
+                ),
+                IconButton(
+                  icon: Icon(Icons.refresh_rounded,
+                      color: JC.textSecondary, size: 22),
+                  tooltip: 'רענן שיחה',
+                  onPressed: _loadChatHistory,
+                ),
+                IconButton(
+                  icon: Icon(Icons.add_comment_outlined,
+                      color: JC.textSecondary, size: 22),
+                  tooltip: 'שיחה חדשה',
+                  onPressed: _startNewChat,
+                ),
+                IconButton(
+                  icon: Icon(Icons.history_rounded,
+                      color: JC.textSecondary, size: 22),
+                  tooltip: 'היסטוריית שיחות',
+                  onPressed: _openHistory,
+                ),
+                const SizedBox(width: 4),
+              ],
       ),
 
       body: Stack(
         children: [
 
-          // ── Background ambient glow (bottom) ─────────────────────────────────
+          // ── Background ambient glow (bottom) — cross-fades with state ────────
           Positioned(
             bottom: -60,
             left: -40,
             right: -40,
-            child: Container(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeInOut,
               height: 280,
               decoration: BoxDecoration(
                 gradient: RadialGradient(
                   center: Alignment.center,
                   radius: 0.8,
                   colors: [
-                    JC.blue500.withValues(alpha: 0.18),
+                    _stateGlowColor.withValues(alpha: 0.18),
                     JC.bg.withValues(alpha: 0),
                   ],
                 ),
@@ -1880,6 +2033,45 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
           Column(
             children: [
+
+              // ── Offline banner (slides in when the server is unreachable) ─────
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (child, anim) => SizeTransition(
+                  sizeFactor: anim,
+                  axisAlignment: -1,
+                  child: FadeTransition(opacity: anim, child: child),
+                ),
+                child: _isOffline
+                    ? Container(
+                        key: const ValueKey('offline'),
+                        width: double.infinity,
+                        color: const Color(0xFF8A3A3A),
+                        padding: EdgeInsets.only(
+                          top: MediaQuery.of(context).padding.top + 6,
+                          bottom: 8,
+                          left: 16,
+                          right: 16,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.cloud_off_rounded,
+                                color: Colors.white, size: 16),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'אין חיבור לשרת — מצב לא מקוון',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontFamily: 'Heebo',
+                                  fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                      )
+                    : const SizedBox(width: double.infinity),
+              ),
 
               // ── Orb (always visible — primary mic trigger). When the
               //    keyboard is open it shrinks instead of disappearing, so it
@@ -1926,7 +2118,25 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
               // ── Messages ──────────────────────────────────────────────────────
               Expanded(
-                child: ListView.builder(
+                child: (searching && displayMessages.isEmpty)
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.search_off_rounded,
+                                color: JC.textMuted, size: 40),
+                            const SizedBox(height: 10),
+                            Text(
+                              'לא נמצאו הודעות תואמות',
+                              style: TextStyle(
+                                  color: JC.textMuted,
+                                  fontSize: 14,
+                                  fontFamily: 'Heebo'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 8),
@@ -1934,8 +2144,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   itemBuilder: (context, index) {
 
                     // Thinking bubble
-                    if (index == messages.length &&
-                        _currentState == JarvisState.thinking) {
+                    if (showThinking && index == displayMessages.length) {
                       return TweenAnimationBuilder<double>(
                         tween: Tween(begin: 0.0, end: 1.0),
                         duration: const Duration(milliseconds: 240),
@@ -1969,8 +2178,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       );
                     }
 
+                    final msg = displayMessages[index];
                     return _ChatBubble(
-                      msg: messages[index],
+                      msg: msg,
                       index: index,
                       onSpeak: _speakText,
                       onNavigate: widget.onNavigate,
@@ -1979,7 +2189,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                           ? (signal, correction) => _api.sendFeedback(
                                 chatId: _chatId,
                                 messageText:
-                                    (messages[index]['text'] ?? '').toString(),
+                                    (msg['text'] ?? '').toString(),
                                 signal: signal,
                                 correction: correction,
                               )

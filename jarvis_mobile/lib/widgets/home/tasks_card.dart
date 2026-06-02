@@ -4,8 +4,10 @@ import '../../screens/home/home_controller.dart';
 import '../../screens/home/home_dialogs.dart';
 import '../../screens/home/home_helpers.dart';
 
-/// Important tasks with direct interaction: tap the circle or swipe to complete,
-/// swipe the other way to postpone, star to mark important.
+/// The day's actionable task list, ranked urgent → important → queue. Tap the
+/// circle or swipe to complete, swipe the other way to postpone, star to mark
+/// important. Shows every open task (not just the important ones) so nothing
+/// hides behind a "+N in queue" line.
 class TasksCard extends StatelessWidget {
   final HomeController c;
   const TasksCard(this.c, {super.key});
@@ -14,6 +16,7 @@ class TasksCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final done = c.doneTasks;
     final total = c.totalTasks;
+    final open = c.openTasks;
     final progress = total == 0 ? 0.0 : done / total;
 
     bool isHigh(Map t) => (t['priority'] ?? '').toString().toLowerCase() == 'high';
@@ -24,32 +27,30 @@ class TasksCard extends StatelessWidget {
     final starredTasks = c.tasks
         .where((t) => t['done'] != true && !isHigh(t) && starred(t))
         .toList();
-    final otherCount = c.tasks
+    final queueTasks = c.tasks
         .where((t) => t['done'] != true && !isHigh(t) && !starred(t))
-        .length;
-
-    final importantCount = highTasks.length + starredTasks.length;
+        .toList();
 
     return SectionCard(
-      title: 'משימות חשובות ($importantCount)',
-      icon: Icons.priority_high_rounded,
-      iconColor: const Color(0xFFEF4444),
+      title: 'משימות להיום ($open פתוחות)',
+      icon: Icons.checklist_rounded,
+      iconColor: const Color(0xFF3B82F6),
       headerTrailing: GestureDetector(
         onTap: () => showAddTaskDialog(context, c),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: const Color(0xFFEF4444).withOpacity(0.12),
+            color: const Color(0xFF3B82F6).withOpacity(0.12),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-                color: const Color(0xFFEF4444).withOpacity(0.3), width: 0.8),
+                color: const Color(0xFF3B82F6).withOpacity(0.3), width: 0.8),
           ),
           child: const Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.add_rounded, color: Color(0xFFEF4444), size: 14),
+            Icon(Icons.add_rounded, color: Color(0xFF3B82F6), size: 14),
             SizedBox(width: 3),
             Text('חדשה',
                 style: TextStyle(
-                    color: Color(0xFFEF4444),
+                    color: Color(0xFF3B82F6),
                     fontSize: 11,
                     fontFamily: 'Heebo',
                     fontWeight: FontWeight.w600)),
@@ -75,28 +76,17 @@ class TasksCard extends StatelessWidget {
               style: TextStyle(
                   color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
         ]),
-        if (importantCount == 0) ...[
+        if (open == 0) ...[
           const SizedBox(height: 12),
-          EmptyState(
-              message: total == done
-                  ? 'כל המשימות הושלמו! 🎉'
-                  : 'אין משימות דחופות כרגע'),
+          const EmptyState(message: 'כל המשימות הושלמו! 🎉'),
         ] else ...[
           const SizedBox(height: 12),
           if (highTasks.isNotEmpty)
             _group(context, 'דחוף', const Color(0xFFEF4444), highTasks),
           if (starredTasks.isNotEmpty)
             _group(context, 'מסומן חשוב ⭐', const Color(0xFFF59E0B), starredTasks),
-        ],
-        if (otherCount > 0) ...[
-          const SizedBox(height: 6),
-          Row(children: [
-            Icon(Icons.inbox_outlined, color: JC.textMuted, size: 12),
-            const SizedBox(width: 5),
-            Text('+ $otherCount משימות נוספות בתור',
-                style: TextStyle(
-                    color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-          ]),
+          if (queueTasks.isNotEmpty)
+            _group(context, 'בתור', const Color(0xFF3B82F6), queueTasks),
         ],
       ]),
     );

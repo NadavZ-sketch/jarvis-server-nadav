@@ -49,12 +49,6 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   Map<String, dynamic>? dashboardContext;
   bool dashboardLoading = true;
 
-  Map<String, dynamic>? dayPlan;
-  bool dayPlanLoading = true;
-
-  Map<String, dynamic>? stats;
-  bool statsLoading = true;
-
   String jarvisInsight = '';
   bool insightLoading = true;
   String? insightError;
@@ -65,6 +59,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   List<Map<String, String>> insightThread = []; // [{role, text}]
   bool insightReplyLoading = false;
   int _insightSeq = 0; // stale-response guard
+  DateTime? _lastInsightAt; // gates resume-refresh to avoid needless LLM calls
 
   /// Picks the mode that fits the current local hour.
   static InsightMode _autoInsightMode() {
@@ -137,10 +132,10 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   /// Pull-to-refresh: re-runs the full load surfacing errors.
   Future<void> refresh() => load();
 
-  /// App-resume refresh: updates core + cheap/cached secondary data quietly,
-  /// without flipping the screen back into a loading state. Deliberately skips
-  /// the day-plan LLM (it re-runs on the full load and after task mutations); the
-  /// insight is served from the server cache unless it has gone stale.
+  /// App-resume refresh: updates core data quietly, without flipping the screen
+  /// back into a loading state. The insight is the only LLM-backed source left,
+  /// so it is refreshed only when it has gone stale (>15 min) or the time-of-day
+  /// mode has rolled over — every resume otherwise reuses the cached thread.
   Future<void> _silentRefresh() async {
     try {
       final results = await Future.wait([api.getTasks(), api.getReminders()]);
@@ -149,14 +144,22 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
     } catch (_) {/* keep showing the last good data */}
     _loadDashboardContext();
-    _loadStats();
-    loadJarvisInsight(); // fresh:false → returns the server-cached insight cheaply
+    if (_insightRefreshDue) loadJarvisInsight();
+  }
+
+  /// True when the cached insight is old enough, or the auto time-of-day mode no
+  /// longer matches what is shown, to justify another (cheap, server-cached) call.
+  bool get _insightRefreshDue {
+    final autoRolledOver =
+        !_insightModeManual && _autoInsightMode().key != insightMode.key;
+    if (autoRolledOver) return true;
+    final last = _lastInsightAt;
+    return last == null ||
+        DateTime.now().difference(last) > const Duration(minutes: 15);
   }
 
   void _loadSecondary() {
     _loadDashboardContext();
-    _loadDayPlan();
-    _loadStats();
     _loadInsightCache().then((_) => loadJarvisInsight());
   }
 
@@ -172,43 +175,19 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> _loadDayPlan() async {
-    dayPlanLoading = true;
-    notifyListeners();
-    try {
-      dayPlan = await api.getDayPlan();
-    } catch (_) {
-      dayPlan = null;
-    }
-    dayPlanLoading = false;
-    notifyListeners();
-  }
-
-  Future<void> _loadStats() async {
-    statsLoading = true;
-    notifyListeners();
-    try {
-      stats = await api.getStats();
-    } catch (_) {
-      stats = null;
-    }
-    statsLoading = false;
-    notifyListeners();
-  }
-
-  /// Builds a proactive, time-of-day-aware prompt for the insight card. Feeds
-  /// Jarvis the real current state (open/urgent tasks, today's reminders, day
-  /// load) so the message is grounded rather than generic.
+  /// Builds a proactive, time-of-day-aware prompt for the insight card. Kept
+  /// deliberately short to save input tokens: only the top 3 open tasks and the
+  /// next reminder, plus the locally-computed day load, then the mode line.
   String _buildInsightPrompt() {
     final name = settings.userName.isNotEmpty ? settings.userName : 'המשתמש';
 
     final topTasks = tasks
         .where((t) => t['done'] != true)
-        .take(5)
+        .take(3)
         .map((t) => '- ${t['content']} (${t['priority'] ?? 'רגיל'})')
         .join('\n');
 
-    final todayRems = remindersForOffset(0).take(5).map((r) {
+    final nextRem = remindersForOffset(0).take(1).map((r) {
       final iso = r['scheduled_time'] as String?;
       var time = '';
       if (iso != null) {
@@ -219,16 +198,14 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
           time = '$hh:$mm ';
         } catch (_) {}
       }
-      return '- $time${r['text'] ?? ''}';
-    }).join('\n');
+      return '$time${r['text'] ?? ''}';
+    }).join();
 
     final ctx = StringBuffer();
-    ctx.writeln('הקשר נוכחי של $name:');
-    ctx.writeln('• משימות פתוחות: $openTasks (מתוכן $highPriorityCount דחופות).');
-    if (topTasks.isNotEmpty) ctx.writeln('המשימות:\n$topTasks');
-    if (todayRems.isNotEmpty) ctx.writeln('תזכורות להיום:\n$todayRems');
-    final load = (dayPlan?['load'] as Map<String, dynamic>?)?['status']?.toString();
-    if (load != null && load.isNotEmpty) ctx.writeln('• עומס היום: $load.');
+    ctx.writeln(
+        'הקשר: $openTasks משימות פתוחות ($highPriorityCount דחופות), עומס היום: ${dayLoadStatus()}.');
+    if (topTasks.isNotEmpty) ctx.writeln(topTasks);
+    if (nextRem.isNotEmpty) ctx.writeln('תזכורת קרובה: $nextRem');
 
     String modeLine;
     switch (insightMode.key) {
@@ -285,6 +262,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       if (answer.isNotEmpty && !looksLikeError) {
         jarvisInsight = answer;
         insightThread = [{'role': 'assistant', 'text': answer}];
+        _lastInsightAt = DateTime.now();
         _saveInsightCache();
       } else {
         insightError = 'לא ניתן לטעון תובנה כרגע';
@@ -398,8 +376,6 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       completing.remove(id);
       showSnack('משימה הושלמה ✓');
       notifyListeners();
-      _loadStats();
-      _loadDayPlan();
     } catch (e) {
       completing.remove(id);
       showSnack(ApiService.friendlyError(e));
@@ -477,15 +453,45 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
           (t['priority'] ?? '').toString().toLowerCase() == 'high')
       .length;
 
-  String get _dayContextLine {
-    final open = openTasks;
-    final urgent = highPriorityCount;
-    final rem = reminders.length;
-    if (open == 0 && rem == 0) return '';
-    // Avoid Hebrew task/reminder keywords ("משימ", "תזכור") which trigger
-    // the keyword router on old server builds before forced-intent was deployed.
-    return 'הקשר: למשתמש $open פריטים פתוחים ($urgent דחופים) ו-$rem אירועים קרובים. '
-        'התאם את התובנה למצב הזה בעדינות, בלי לחזור על המספרים.';
+  /// Day-load "units": everything still on the plate for today. Used to drive the
+  /// load gauge locally instead of an LLM `/day-plan` round-trip.
+  int get _loadUnits => openTasks + remindersForOffset(0).length;
+
+  /// Load gauge status, derived locally. High-priority pressure escalates a level.
+  String dayLoadStatus() {
+    final u = _loadUnits;
+    String status;
+    if (u == 0) {
+      status = 'empty';
+    } else if (u <= 2) {
+      status = 'light';
+    } else if (u <= 5) {
+      status = 'moderate';
+    } else if (u <= 8) {
+      status = 'heavy';
+    } else {
+      status = 'overloaded';
+    }
+    // Several urgent items make even a short list feel heavy.
+    if (highPriorityCount >= 3 && (status == 'light' || status == 'moderate')) {
+      status = status == 'light' ? 'moderate' : 'heavy';
+    }
+    return status;
+  }
+
+  /// 0..1 fill for the load gauge bar.
+  double dayLoadRatio() => (_loadUnits / 10).clamp(0.0, 1.0);
+
+  /// The single most pressing open task (high priority first), or null.
+  Map<String, dynamic>? get topOpenTask {
+    final open = tasks.where((t) => t['done'] != true).toList();
+    if (open.isEmpty) return null;
+    open.sort((a, b) {
+      int rank(Map t) =>
+          (t['priority'] ?? '').toString().toLowerCase() == 'high' ? 0 : 1;
+      return rank(a).compareTo(rank(b));
+    });
+    return open.first;
   }
 
   List<Map<String, dynamic>> remindersForOffset(int offset) {

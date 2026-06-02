@@ -3,15 +3,19 @@ import '../../main.dart' show JC;
 import '../../screens/home/home_controller.dart';
 import '../../screens/home/home_helpers.dart';
 
-class InsightCard extends StatefulWidget {
+/// The proactive Jarvis card — a merge of the old "what now" (load gauge + top
+/// item) and "Jarvis insight" (time-of-day AI thread) cards. The load gauge is
+/// computed locally from the task/reminder state (no `/day-plan` LLM call); the
+/// insight thread is the only LLM-backed piece.
+class JarvisCard extends StatefulWidget {
   final HomeController c;
-  const InsightCard(this.c, {super.key});
+  const JarvisCard(this.c, {super.key});
 
   @override
-  State<InsightCard> createState() => _InsightCardState();
+  State<JarvisCard> createState() => _JarvisCardState();
 }
 
-class _InsightCardState extends State<InsightCard>
+class _JarvisCardState extends State<JarvisCard>
     with SingleTickerProviderStateMixin {
   final _replyController = TextEditingController();
   final _scrollController = ScrollController();
@@ -37,9 +41,8 @@ class _InsightCardState extends State<InsightCard>
   }
 
   @override
-  void didUpdateWidget(InsightCard old) {
+  void didUpdateWidget(JarvisCard old) {
     super.didUpdateWidget(old);
-    // Auto-scroll to bottom when thread grows or typing indicator appears/disappears.
     if (old.c.insightThread.length != c.insightThread.length ||
         old.c.insightReplyLoading != c.insightReplyLoading) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
@@ -90,6 +93,9 @@ class _InsightCardState extends State<InsightCard>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _buildLoadGauge(),
+                _buildNowLine(),
+                const SizedBox(height: 12),
                 _buildModeChips(),
                 const SizedBox(height: 12),
                 _buildBody(),
@@ -149,6 +155,110 @@ class _InsightCardState extends State<InsightCard>
     );
   }
 
+  // ── Load gauge (local, from task/reminder state) ───────────────────────────
+
+  Widget _buildLoadGauge() {
+    final status = c.dayLoadStatus();
+    final ratio = c.dayLoadRatio();
+    final color = _statusColor(status);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text('עומס היום: ${_statusLabel(status)}',
+              style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Heebo')),
+        ]),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Stack(children: [
+            Container(height: 6, color: const Color(0xFF1A2E4A)),
+            FractionallySizedBox(
+              widthFactor: ratio.clamp(0.0, 1.0),
+              child: Container(height: 6, color: color),
+            ),
+          ]),
+        ),
+      ],
+    );
+  }
+
+  /// A thin "now" line for the most pressing task. Kept subtle so it doesn't
+  /// compete with the dedicated tasks card.
+  Widget _buildNowLine() {
+    final task = c.topOpenTask;
+    if (task == null) return const SizedBox.shrink();
+    final title = task['content'] as String? ?? '';
+    if (title.isEmpty) return const SizedBox.shrink();
+    final isHigh =
+        (task['priority'] ?? '').toString().toLowerCase() == 'high';
+    final accent =
+        isHigh ? const Color(0xFFEF4444) : const Color(0xFF3B82F6);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(children: [
+        Icon(Icons.play_arrow_rounded, color: accent, size: 14),
+        const SizedBox(width: 6),
+        Text('עכשיו: ',
+            style: TextStyle(
+                color: accent,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Heebo')),
+        Expanded(
+          child: Text(title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: JC.textSecondary, fontSize: 12, fontFamily: 'Heebo')),
+        ),
+      ]),
+    );
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'overloaded':
+      case 'heavy':
+        return const Color(0xFFEF4444);
+      case 'moderate':
+        return const Color(0xFFF59E0B);
+      case 'empty':
+        return JC.textMuted;
+      default:
+        return const Color(0xFF22C55E);
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'overloaded':
+        return 'עמוס מאוד';
+      case 'heavy':
+        return 'כבד';
+      case 'moderate':
+        return 'בינוני';
+      case 'light':
+        return 'קל';
+      case 'empty':
+        return 'פנוי';
+      default:
+        return status;
+    }
+  }
+
+  // ── Insight thread ──────────────────────────────────────────────────────────
+
   Widget _buildModeChips() {
     return SizedBox(
       height: 28,
@@ -171,32 +281,27 @@ class _InsightCardState extends State<InsightCard>
     );
   }
 
-  Widget _chip(
-    String label,
-    bool selected,
-    VoidCallback onTap, {
-    Color selectedColor = const Color(0xFF6366F1),
-    Color selectedBorder = const Color(0xFF6366F1),
-    Color? selectedText,
-  }) {
+  Widget _chip(String label, bool selected, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: selected
-              ? selectedColor.withOpacity(0.2)
+              ? const Color(0xFF6366F1).withOpacity(0.2)
               : const Color(0xFF0B1929),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected ? selectedBorder : JC.border.withOpacity(0.7),
+            color: selected
+                ? const Color(0xFF6366F1)
+                : JC.border.withOpacity(0.7),
             width: 0.8,
           ),
         ),
         child: Text(label,
             style: TextStyle(
               color: selected
-                  ? (selectedText ?? const Color(0xFF818CF8))
+                  ? const Color(0xFF818CF8)
                   : JC.textSecondary,
               fontSize: 11,
               fontFamily: 'Heebo',
@@ -264,8 +369,7 @@ class _InsightCardState extends State<InsightCard>
               fontSize: 13.5,
               height: 1.55,
               fontFamily: 'Heebo',
-              fontStyle:
-                  isAssistant ? FontStyle.italic : FontStyle.normal,
+              fontStyle: isAssistant ? FontStyle.italic : FontStyle.normal,
             ),
             textDirection: TextDirection.rtl,
           ),

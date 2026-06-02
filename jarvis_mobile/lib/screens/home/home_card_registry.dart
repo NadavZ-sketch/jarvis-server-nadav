@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 import '../../app_settings.dart';
 import '../../widgets/home/hero_card.dart';
 import '../../widgets/home/quick_actions_card.dart';
-import '../../widgets/home/next_action_card.dart';
-import '../../widgets/home/insight_card.dart';
+import '../../widgets/home/jarvis_card.dart';
 import '../../widgets/home/tasks_card.dart';
-import '../../widgets/home/calendar_card.dart';
 import '../../widgets/home/reminders_card.dart';
-import '../../widgets/home/stats_card.dart';
 import '../../widgets/home/weather_news_card.dart';
 import 'home_controller.dart';
 
@@ -35,23 +32,25 @@ final List<HomeCardSpec> kHomeCards = [
       id: 'quick_actions',
       titleHe: 'פעולות מהירות',
       build: (_, c) => QuickActionsCard(c)),
+  HomeCardSpec(id: 'jarvis', titleHe: 'ג׳רוויס', build: (_, c) => JarvisCard(c)),
   HomeCardSpec(
-      id: 'next_action',
-      titleHe: 'מה עכשיו',
-      build: (_, c) => NextActionCard(c)),
-  HomeCardSpec(
-      id: 'insight', titleHe: 'ג׳רוויס יזום', build: (_, c) => InsightCard(c)),
-  HomeCardSpec(id: 'tasks', titleHe: 'משימות', build: (_, c) => TasksCard(c)),
-  HomeCardSpec(
-      id: 'calendar', titleHe: 'לוח שנה', build: (_, c) => CalendarCard(c)),
+      id: 'tasks', titleHe: 'משימות להיום', build: (_, c) => TasksCard(c)),
   HomeCardSpec(
       id: 'reminders', titleHe: 'תזכורות', build: (_, c) => RemindersCard(c)),
-  HomeCardSpec(id: 'stats', titleHe: 'התקדמות', build: (_, c) => StatsCard(c)),
   HomeCardSpec(
       id: 'weather_news', titleHe: 'סביבה', build: (_, c) => WeatherNewsCard(c)),
 ];
 
 const String kPinnedCardId = 'hero';
+
+/// Maps retired card ids (saved in [AppSettings.homeCardOrder] on existing
+/// installs) to their replacement so a user's layout survives the consolidation.
+/// Ids with no entry and no matching card (e.g. 'calendar', 'stats') are simply
+/// dropped by [orderedCards].
+const Map<String, String> kLegacyCardIds = {
+  'next_action': 'jarvis',
+  'insight': 'jarvis',
+};
 
 HomeCardSpec? cardById(String id) {
   for (final c in kHomeCards) {
@@ -66,7 +65,8 @@ List<HomeCardSpec> orderedCards(AppSettings settings) {
   final saved = settings.homeCardOrder;
   final result = <HomeCardSpec>[];
   final seen = <String>{};
-  for (final id in saved) {
+  for (final rawId in saved) {
+    final id = kLegacyCardIds[rawId] ?? rawId;
     final spec = cardById(id);
     if (spec != null && seen.add(id)) result.add(spec);
   }

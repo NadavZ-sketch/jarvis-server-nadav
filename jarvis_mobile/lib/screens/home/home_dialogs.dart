@@ -101,7 +101,7 @@ void showAddReminderDialog(BuildContext context, HomeController c) {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0B1929),
+                    color: JC.surfaceSunken,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: JC.border),
                   ),
@@ -280,7 +280,7 @@ class _BuildDaySheetState extends State<_BuildDaySheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A2E4A),
+                  color: JC.track,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -335,7 +335,7 @@ class _BuildDaySheetState extends State<_BuildDaySheet> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFF1A2E4A), JC.surface],
+          colors: [JC.track, JC.surface],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
@@ -441,7 +441,7 @@ class _BuildDaySheetState extends State<_BuildDaySheet> {
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: Stack(children: [
-            Container(height: 6, color: const Color(0xFF1A2E4A)),
+            Container(height: 6, color: JC.track),
             FractionallySizedBox(
               widthFactor: (ratio > 1 ? 1.0 : ratio).clamp(0.0, 1.0),
               child: Container(height: 6, color: color),
@@ -483,7 +483,7 @@ class _BuildDaySheetState extends State<_BuildDaySheet> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1929),
+        color: JC.surfaceSunken,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(children: [

@@ -246,7 +246,7 @@ class _KanbanBoardState extends State<KanbanBoard> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: JC.shadow,
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),

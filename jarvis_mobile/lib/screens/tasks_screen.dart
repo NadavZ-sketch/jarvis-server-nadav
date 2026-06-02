@@ -419,16 +419,25 @@ class _ViewSwitcher extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                      horizontal: 14, vertical: 9),
                   decoration: BoxDecoration(
                     color: current == o.$1
                         ? JC.blue500.withValues(alpha: 0.18)
                         : JC.surfaceAlt,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: current == o.$1 ? JC.blue500 : JC.border,
                       width: current == o.$1 ? 1.2 : 0.8,
                     ),
+                    boxShadow: current == o.$1
+                        ? [
+                            BoxShadow(
+                              color: JC.blue500.withValues(alpha: 0.18),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -438,7 +447,7 @@ class _ViewSwitcher extends StatelessWidget {
                           color: current == o.$1
                               ? JC.blue400
                               : JC.textSecondary),
-                      const SizedBox(width: 5),
+                      const SizedBox(width: 6),
                       Text(o.$2,
                           style: TextStyle(
                             color: current == o.$1

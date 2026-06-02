@@ -142,7 +142,7 @@ class _WeatherNewsCardState extends State<WeatherNewsCard> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.18) : const Color(0xFF0B1929),
+          color: selected ? color.withOpacity(0.18) : JC.surfaceSunken,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected ? color : JC.border.withOpacity(0.7),

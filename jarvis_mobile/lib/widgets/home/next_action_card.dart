@@ -86,7 +86,7 @@ class NextActionCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: Stack(children: [
-                Container(height: 6, color: const Color(0xFF1A2E4A)),
+                Container(height: 6, color: JC.track),
                 FractionallySizedBox(
                   widthFactor: ratio.clamp(0.0, 1.0),
                   child: Container(height: 6, color: color),
@@ -106,7 +106,7 @@ class NextActionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1929),
+        color: JC.surfaceSunken,
         borderRadius: BorderRadius.circular(10),
         border: const Border(
           right: BorderSide(color: Color(0xFF3B82F6), width: 3),

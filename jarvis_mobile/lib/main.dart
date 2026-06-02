@@ -93,9 +93,11 @@ class JC {
   static Color get neoShadowDark  => _scheme.neoShadowDark;
 
   // Semantic tokens
-  static Color get onAccent => _scheme.onAccent;
-  static Color get scrim    => _scheme.scrim;
-  static Color get shadow   => _scheme.shadow;
+  static Color get onAccent      => _scheme.onAccent;
+  static Color get scrim         => _scheme.scrim;
+  static Color get shadow        => _scheme.shadow;
+  static Color get surfaceSunken => _scheme.surfaceSunken;
+  static Color get track         => _scheme.track;
 }
 
 class JarvisApp extends StatefulWidget {

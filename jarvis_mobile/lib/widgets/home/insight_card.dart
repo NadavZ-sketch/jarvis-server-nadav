@@ -74,7 +74,7 @@ class _InsightCardState extends State<InsightCard>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
+            color: JC.shadow,
             blurRadius: 8,
             offset: const Offset(0, 2),
           )
@@ -186,7 +186,7 @@ class _InsightCardState extends State<InsightCard>
         decoration: BoxDecoration(
           color: selected
               ? selectedColor.withOpacity(0.2)
-              : const Color(0xFF0B1929),
+              : JC.surfaceSunken,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected ? selectedBorder : JC.border.withOpacity(0.7),
@@ -320,7 +320,7 @@ class _InsightCardState extends State<InsightCard>
   Widget _buildReplyInput() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1929),
+        color: JC.surfaceSunken,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: JC.border.withOpacity(0.6), width: 0.8),
       ),
@@ -405,7 +405,7 @@ class _InsightCardState extends State<InsightCard>
         padding:
             EdgeInsets.symmetric(horizontal: label.isEmpty ? 8 : 10, vertical: 6),
         decoration: BoxDecoration(
-          color: const Color(0xFF0B1929),
+          color: JC.surfaceSunken,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: JC.border.withOpacity(0.7), width: 0.8),
         ),

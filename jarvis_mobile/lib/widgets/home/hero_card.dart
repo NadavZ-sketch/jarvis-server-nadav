@@ -52,14 +52,14 @@ class _HeroCardState extends State<HeroCard> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFF1A2E4A), JC.surface],
+          colors: [JC.track, JC.surface],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.25),
+              color: JC.shadow,
               blurRadius: 8,
               offset: const Offset(0, 2))
         ],
@@ -99,7 +99,7 @@ class _HeroCardState extends State<HeroCard> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.18),
+              color: JC.shadow,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(children: [

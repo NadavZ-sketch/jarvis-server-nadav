@@ -61,6 +61,8 @@ class JarvisColorScheme {
   final Color onAccent;        // text/icon on a filled accent surface
   final Color scrim;           // modal/backdrop overlay
   final Color shadow;          // BoxShadow / elevation base
+  final Color surfaceSunken;   // recessed inner rows (was hardcoded 0xFF0B1929)
+  final Color track;           // progress-bar / meter background (was 0xFF1A2E4A)
   final Brightness brightness; // drives ThemeData base + status-bar icons
   // Behavioural flags consumed by widgets that render differently per theme
   final bool usesGlass;
@@ -96,6 +98,8 @@ class JarvisColorScheme {
     this.onAccent = Colors.white,
     this.scrim = const Color(0x99000000),
     this.shadow = const Color(0x66000000),
+    this.surfaceSunken = const Color(0xFF0B1929),
+    this.track = const Color(0xFF1A2E4A),
     this.brightness = Brightness.dark,
     this.usesGlass = false,
     this.usesNeo = false,
@@ -260,6 +264,8 @@ class JarvisColorScheme {
     onAccent:      Colors.white,
     scrim:         Color(0x66000000),
     shadow:        Color(0x1F000000),
+    surfaceSunken: Color(0xFFEDF1F6),
+    track:         Color(0xFFE2E8F0),
     brightness:    Brightness.light,
   );
 }

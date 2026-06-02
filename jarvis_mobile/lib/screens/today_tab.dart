@@ -278,11 +278,14 @@ class _JarvisMessageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = JC.scheme.brightness == Brightness.light;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1E1B4B), Color(0xFF0F1929)],
+        gradient: LinearGradient(
+          colors: isLight
+              ? [JC.indigo300.withValues(alpha: 0.22), JC.surface]
+              : const [Color(0xFF1E1B4B), Color(0xFF0F1929)],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),

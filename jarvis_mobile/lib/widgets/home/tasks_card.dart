@@ -62,7 +62,7 @@ class TasksCard extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: Stack(children: [
-                Container(height: 5, color: const Color(0xFF1A2E4A)),
+                Container(height: 5, color: JC.track),
                 FractionallySizedBox(
                   widthFactor: progress,
                   child: Container(height: 5, color: const Color(0xFF22C55E)),
@@ -169,7 +169,7 @@ class TasksCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFF0B1929),
+          color: JC.surfaceSunken,
           borderRadius: BorderRadius.circular(10),
           border: Border(right: BorderSide(color: accent, width: 3)),
         ),

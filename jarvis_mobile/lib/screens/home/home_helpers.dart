@@ -252,7 +252,7 @@ class CardSkeleton extends StatelessWidget {
           height: 14,
           width: i == lines - 1 ? 120 : double.infinity,
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2E4A),
+            color: JC.track,
             borderRadius: BorderRadius.circular(6),
           ),
         ),
@@ -339,7 +339,7 @@ class SnackOverlay extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A2E4A),
+        color: JC.track,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -448,7 +448,7 @@ class ProgressMeter extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: Stack(children: [
-              Container(height: 6, color: const Color(0xFF1A2E4A)),
+              Container(height: 6, color: JC.track),
               FractionallySizedBox(
                 widthFactor: fraction.clamp(0.0, 1.0),
                 child: Container(height: 6, color: color),

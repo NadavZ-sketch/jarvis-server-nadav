@@ -26,9 +26,24 @@ function _cacheSet(chatId, value) {
 }
 
 // Minimum new turns since last summary before we re-run.
-const MIN_NEW_TURNS = 8;
+const MIN_NEW_TURNS = 4;
 // Minimum total turns before we ever create a summary.
 const MIN_TOTAL_TURNS = 12;
+
+// Returns the true total message count for a chat, independent of the
+// (capped) context window. Falls back to the window length if the count query
+// fails, so the summary still advances rather than stalling.
+async function _countTurns(chatId, supabase, windowLength) {
+    try {
+        const { count, error } = await supabase
+            .from('chat_history')
+            .select('id', { count: 'exact', head: true })
+            .eq('chat_id', chatId);
+        if (error) throw error;
+        if (typeof count === 'number') return count;
+    } catch { /* fall through */ }
+    return windowLength;
+}
 
 const SUMMARY_PROMPT = `אתה מנגנון זיכרון של עוזר אישי בשם ג'רביס.
 קיבלת שיחה בין המשתמש לעוזר. הכן סיכום תמציתי **בעברית** שיעזור לעוזר להבין את הקונטקסט של ההמשך.
@@ -72,6 +87,11 @@ async function updateSummaryIfNeeded(chatId, chatHistory, supabase, settings = {
     try {
         if (!chatHistory || chatHistory.length < MIN_TOTAL_TURNS) return;
 
+        // Use the true conversation length (not the capped window) so summaries
+        // keep advancing once the chat grows past the context window.
+        const totalTurns = await _countTurns(chatId, supabase, chatHistory.length);
+        if (totalTurns < MIN_TOTAL_TURNS) return;
+
         // Check how many turns the existing summary already covers.
         const { data: existing } = await supabase
             .from('chat_summaries')
@@ -80,7 +100,6 @@ async function updateSummaryIfNeeded(chatId, chatHistory, supabase, settings = {
             .maybeSingle();
 
         const covered = existing?.turns_covered ?? 0;
-        const totalTurns = chatHistory.length;
         if (totalTurns - covered < MIN_NEW_TURNS) return;
 
         const previousSummary = existing?.summary ?? '';

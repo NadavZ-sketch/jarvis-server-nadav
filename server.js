@@ -64,6 +64,7 @@ const contextResolver = require('./services/contextResolver');
 const proactiveEngine = require('./services/proactiveEngine');
 const profileLearner  = require('./services/profileLearner');
 const feedbackStore   = require('./services/feedbackStore');
+const { selectByTokenBudget } = require('./services/contextWindow');
 const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
 const { runPromptAgent }      = require('./agents/promptAgent');
 const { runSettingsAgent }    = require('./agents/settingsAgent');
@@ -364,20 +365,23 @@ async function loadChatHistory(chatId = 'default-session') {
     if (cached) return cached;
 
     try {
+        // Fetch a generous tail, then trim to a token budget so short messages
+        // give more continuity and long ones don't blow the prompt budget.
         const { data, error } = await supabase
             .from('chat_history')
             .select('role, text')
             .eq('chat_id', chatId)
             .order('created_at', { ascending: false })
-            .limit(20);
+            .limit(60);
 
         if (error) throw error;
-        const result = (data || []).reverse();
+        const ordered = (data || []).reverse();
+        const result = selectByTokenBudget(ordered, { maxTokens: 2000, maxMessages: 40 });
         cacheSet(cacheKey, result, TTL_CHAT_HISTORY);
         return result;
     } catch (err) {
         console.error('⚠️ loadChatHistory fallback:', err.message);
-        return chatMemoryFallback.slice(-20);
+        return selectByTokenBudget(chatMemoryFallback, { maxTokens: 2000, maxMessages: 40 });
     }
 }
 
@@ -389,7 +393,7 @@ async function saveChatMessage(role, text, chatId = 'default-session') {
         console.error('⚠️ saveChatMessage fallback:', err.message);
     }
     chatMemoryFallback.push({ role, text });
-    if (chatMemoryFallback.length > 20) chatMemoryFallback = chatMemoryFallback.slice(-20);
+    if (chatMemoryFallback.length > 60) chatMemoryFallback = chatMemoryFallback.slice(-60);
 }
 
 // ─── Memories ─────────────────────────────────────────────────────────────────

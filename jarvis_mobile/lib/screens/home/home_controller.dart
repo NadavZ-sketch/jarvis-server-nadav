@@ -52,6 +52,10 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   String jarvisInsight = '';
   bool insightLoading = true;
   String? insightError;
+  // True when [jarvisInsight] is a locally-composed tip (server/LLM unreachable)
+  // rather than a fresh AI insight. Lets the card show a subtle "offline" hint
+  // instead of a scary error, so the tip is always useful.
+  bool insightIsFallback = false;
   // Proactive mode shown by the card. Auto-derived from the clock unless the
   // user taps a chip, in which case [_insightModeManual] pins their choice.
   InsightMode insightMode = _autoInsightMode();
@@ -261,19 +265,85 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
           answer.contains('לא ניתן');
       if (answer.isNotEmpty && !looksLikeError) {
         jarvisInsight = answer;
+        insightIsFallback = false;
         insightThread = [{'role': 'assistant', 'text': answer}];
         _lastInsightAt = DateTime.now();
         _saveInsightCache();
       } else {
-        insightError = 'לא ניתן לטעון תובנה כרגע';
+        // Server reachable but couldn't produce a tip — degrade to a local one
+        // rather than showing an error.
+        _applyLocalFallbackTip();
       }
       insightLoading = false;
     } catch (e) {
       if (seq != _insightSeq) return;
-      insightError = ApiService.friendlyError(e);
+      // Network/server failure (incl. the HTML cold-start / 404 page). Show a
+      // useful locally-composed tip instead of leaving the card broken.
+      ApiService.friendlyError(e); // keep the debug log line
+      _applyLocalFallbackTip();
       insightLoading = false;
     }
     notifyListeners();
+  }
+
+  /// Composes a deterministic, useful daily tip from already-loaded task and
+  /// reminder state — no LLM, no server. Used when the insight endpoint is
+  /// unreachable so the card always shows something actionable.
+  void _applyLocalFallbackTip() {
+    insightError = null;
+    insightIsFallback = true;
+    jarvisInsight = _buildLocalFallbackTip();
+    insightThread = [{'role': 'assistant', 'text': jarvisInsight}];
+    // Note: do NOT stamp _lastInsightAt — a fallback is not a real insight, so
+    // the refresh gate will keep retrying the server on the next resume.
+  }
+
+  String _buildLocalFallbackTip() {
+    final name = settings.userName.isNotEmpty ? settings.userName : 'נדב';
+    final open = openTasks;
+    final urgent = highPriorityCount;
+    final top = topOpenTask?['content'] as String?;
+    final nextRem = remindersForOffset(0).where((r) {
+      final iso = r['scheduled_time'] as String?;
+      if (iso == null) return false;
+      try {
+        return DateTime.parse(iso).toLocal().isAfter(DateTime.now());
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+
+    final greet = {
+      'briefing': 'בוקר טוב',
+      'checkin': 'היי',
+      'recap': 'ערב טוב',
+      'winddown': 'לילה טוב',
+    }[insightMode.key] ?? 'היי';
+
+    if (open == 0 && nextRem.isEmpty) {
+      return '$greet $name! היומן נקי כרגע — רגע טוב לנשום, או להוסיף משימה אם יש משהו באוויר.';
+    }
+
+    final parts = <String>['$greet $name!'];
+    if (open > 0) {
+      parts.add(urgent > 0
+          ? 'יש לך $open משימות פתוחות, מתוכן $urgent דחופות.'
+          : 'יש לך $open משימות פתוחות.');
+    }
+    if (top != null && top.trim().isNotEmpty) {
+      parts.add('כדאי להתחיל מ"${top.trim()}".');
+    }
+    if (nextRem.isNotEmpty) {
+      final iso = nextRem.first['scheduled_time'] as String?;
+      var time = '';
+      try {
+        final dt = DateTime.parse(iso!).toLocal();
+        time =
+            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} ';
+      } catch (_) {}
+      parts.add('תזכורת קרובה: $time${nextRem.first['text'] ?? ''}.');
+    }
+    return parts.join(' ');
   }
 
   Future<void> replyToInsight(String userMsg) async {

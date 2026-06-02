@@ -114,15 +114,35 @@ class JarvisCard extends StatelessWidget {
     if (c.jarvisInsight.trim().isEmpty) {
       return const EmptyState(message: 'אין תובנה כרגע');
     }
-    return Text(
-      c.jarvisInsight.trim(),
-      style: TextStyle(
-        color: JC.textSecondary,
-        fontSize: JD.body + 0.5,
-        height: JD.lineHeight + 0.05,
-        fontFamily: 'Heebo',
-      ),
-      textDirection: TextDirection.rtl,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          c.jarvisInsight.trim(),
+          style: TextStyle(
+            color: JC.textSecondary,
+            fontSize: JD.body + 0.5,
+            height: JD.lineHeight + 0.05,
+            fontFamily: 'Heebo',
+          ),
+          textDirection: TextDirection.rtl,
+        ),
+        if (c.insightIsFallback) ...[
+          const SizedBox(height: JD.sm),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.cloud_off_rounded, size: 12, color: JC.textMuted),
+              const SizedBox(width: JD.xs),
+              Text('טיפ מקומי — ג׳רוויס לא מחובר כרגע',
+                  style: TextStyle(
+                      color: JC.textMuted,
+                      fontSize: JD.label,
+                      fontFamily: 'Heebo')),
+            ],
+          ),
+        ],
+      ],
     );
   }
 

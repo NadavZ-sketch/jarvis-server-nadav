@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'app_settings.dart';
 import 'main.dart' show JC;
+import 'theme/jarvis_theme.dart';
 import 'theme/theme_notifier.dart';
 import 'widgets/theme_picker.dart';
 import 'services/api_service.dart';
@@ -451,6 +452,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
     endIndent: 16,
   );
 
+  /// Light / Dark / System segmented control. Mirrors the ThemePicker pattern:
+  /// updates the live notifier + local state; persistence happens on save.
+  Widget _brightnessSelector() {
+    const items = [
+      (AppBrightnessMode.system, Icons.brightness_auto_rounded),
+      (AppBrightnessMode.light,  Icons.light_mode_rounded),
+      (AppBrightnessMode.dark,   Icons.dark_mode_rounded),
+    ];
+    return _card([
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
+          children: [
+            Icon(Icons.contrast_rounded, size: 20, color: JC.blue400),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'מצב תצוגה',
+                style: TextStyle(
+                  color: JC.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Heebo',
+                ),
+              ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (mode, icon) in items)
+                  _brightnessChip(mode, icon),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ]);
+  }
+
+  Widget _brightnessChip(AppBrightnessMode mode, IconData icon) {
+    final selected = _s.brightnessMode == mode;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () {
+          setState(() => _s.brightnessMode = mode);
+          BrightnessNotifier.of(context).value = mode; // live preview
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected
+                ? JC.blue500.withValues(alpha: 0.16)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected
+                  ? JC.blue400.withValues(alpha: 0.6)
+                  : JC.border.withValues(alpha: 0.6),
+              width: 0.8,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon,
+                  size: 16,
+                  color: selected ? JC.blue300 : JC.textSecondary),
+              const SizedBox(width: 5),
+              Text(
+                mode.hebrewLabel,
+                style: TextStyle(
+                  color: selected ? JC.textPrimary : JC.textSecondary,
+                  fontSize: 12.5,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontFamily: 'Heebo',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _rowField({
     required String label,
     required IconData icon,
@@ -866,6 +954,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ThemeNotifier.of(context).value = t; // live preview
               },
             ),
+            const SizedBox(height: 6),
+            _brightnessSelector(),
             const SizedBox(height: 6),
             _card([
               _rowSwitch(

@@ -18,6 +18,7 @@ class AppSettings {
 
   // ── Appearance ──
   AppTheme selectedTheme;
+  AppBrightnessMode brightnessMode; // light / dark / system (independent of theme)
   bool animationsEnabled;
   bool quickSettingsEnabled; // show the floating quick-settings button
 
@@ -75,6 +76,7 @@ class AppSettings {
     this.telemetryConsent = false,
     this.bargeInEnabled = true,
     this.selectedTheme = AppTheme.navyDark,
+    this.brightnessMode = AppBrightnessMode.dark,
     this.animationsEnabled = true,
     this.quickSettingsEnabled = false,
     this.orbCustomColors = false,
@@ -109,6 +111,14 @@ class AppSettings {
       if (t.name == name) return t;
     }
     return AppTheme.navyDark;
+  }
+
+  static AppBrightnessMode _parseBrightnessMode(String? name) {
+    if (name == null) return AppBrightnessMode.dark;
+    for (final m in AppBrightnessMode.values) {
+      if (m.name == name) return m;
+    }
+    return AppBrightnessMode.dark;
   }
 
   // Fetch identity fields from the server (best-effort, used on fresh install).
@@ -160,6 +170,7 @@ class AppSettings {
       telemetryConsent: prefs.getBool('telemetryConsent')   ?? false,
       bargeInEnabled:   prefs.getBool('bargeInEnabled')     ?? true,
       selectedTheme:    _parseTheme(prefs.getString('selectedTheme')),
+      brightnessMode:   _parseBrightnessMode(prefs.getString('brightnessMode')),
       animationsEnabled: prefs.getBool('animationsEnabled') ?? true,
       quickSettingsEnabled: prefs.getBool('quickSettingsEnabled') ?? false,
       orbCustomColors:  prefs.getBool('orbCustomColors')    ?? false,
@@ -202,6 +213,7 @@ class AppSettings {
     await prefs.setBool('telemetryConsent', telemetryConsent);
     await prefs.setBool('bargeInEnabled',   bargeInEnabled);
     await prefs.setString('selectedTheme',  selectedTheme.name);
+    await prefs.setString('brightnessMode', brightnessMode.name);
     await prefs.setBool('animationsEnabled', animationsEnabled);
     await prefs.setBool('quickSettingsEnabled', quickSettingsEnabled);
     await prefs.setBool('orbCustomColors',   orbCustomColors);

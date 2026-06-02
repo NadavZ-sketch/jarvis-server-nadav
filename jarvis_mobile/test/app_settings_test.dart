@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:jarvis_mobile/app_settings.dart';
+import 'package:jarvis_mobile/theme/jarvis_theme.dart';
 
 void main() {
   setUpAll(TestWidgetsFlutterBinding.ensureInitialized);
@@ -17,6 +18,10 @@ void main() {
       expect(s.useLocalModel, false);
       expect(s.useLocalServer, false);
       expect(s.obsidianAutoSync, true);
+    });
+
+    test('defaults brightnessMode to dark (preserves dark-first)', () {
+      expect(AppSettings().brightnessMode, AppBrightnessMode.dark);
     });
 
     test('serverUrl returns cloud URL when useLocalServer=false', () {
@@ -74,6 +79,12 @@ void main() {
       expect(s.useLocalServer, false);
     });
 
+    test('falls back to dark for missing/invalid brightnessMode', () async {
+      SharedPreferences.setMockInitialValues({'brightnessMode': 'not-a-mode'});
+      final s = await AppSettings.load();
+      expect(s.brightnessMode, AppBrightnessMode.dark);
+    });
+
     test('reads all persisted values', () async {
       SharedPreferences.setMockInitialValues({
         'assistantName': 'Alexa',
@@ -85,8 +96,10 @@ void main() {
         'useLocalServer': true,
         'localServerUrl': 'http://192.168.0.5:3000',
         'obsidianAutoSync': false,
+        'brightnessMode': 'light',
       });
       final s = await AppSettings.load();
+      expect(s.brightnessMode, AppBrightnessMode.light);
       expect(s.assistantName, 'Alexa');
       expect(s.gender, 'female');
       expect(s.personality, 'formal');
@@ -113,9 +126,11 @@ void main() {
         useLocalServer: true,
         localServerUrl: 'http://localhost:3000',
         obsidianAutoSync: false,
+        brightnessMode: AppBrightnessMode.system,
       );
       await original.save();
       final loaded = await AppSettings.load();
+      expect(loaded.brightnessMode, AppBrightnessMode.system);
       expect(loaded.assistantName, 'Echo');
       expect(loaded.gender, 'female');
       expect(loaded.personality, 'humorous');

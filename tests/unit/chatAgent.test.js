@@ -37,9 +37,12 @@ describe('runChatAgent', () => {
             { role: 'jarvis', text: 'תשובה ראשונה' },
         ];
         await runChatAgent('שאלה שנייה', null, history, '', {});
-        const prompt = callGemma4.mock.calls[0][0][0].content;
-        expect(prompt).toContain('שאלה ראשונה');
-        expect(prompt).toContain('תשובה ראשונה');
+        // History is now passed as structured messages (system + user/assistant turns),
+        // not as a single string in message[0]. Check across the full messages array.
+        const messages = callGemma4.mock.calls[0][0];
+        const allContent = messages.map(m => m.content).join('\n');
+        expect(allContent).toContain('שאלה ראשונה');
+        expect(allContent).toContain('תשובה ראשונה');
     });
 
     test('long-term memories included in system prompt', async () => {

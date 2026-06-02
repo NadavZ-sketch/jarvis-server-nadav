@@ -1055,9 +1055,39 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   // ─── Image ────────────────────────────────────────────────────────────────────
+  // Lets the user choose between camera and gallery before picking.
   Future<void> _pickImage() async {
-    final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery, imageQuality: 70);
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: JC.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: Icon(Icons.camera_alt_rounded, color: JC.textPrimary),
+              title: const Text('צילום מהמצלמה',
+                  style: TextStyle(fontFamily: 'Heebo', fontSize: 16)),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: Icon(Icons.photo_library_rounded, color: JC.textPrimary),
+              title: const Text('בחירה מהגלריה',
+                  style: TextStyle(fontFamily: 'Heebo', fontSize: 16)),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    final XFile? image = await _picker.pickImage(source: source, imageQuality: 70);
     if (image != null) {
       final bytes = await image.readAsBytes(); // XFile.readAsBytes works on web + mobile
       setState(() {

@@ -28,6 +28,12 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
   Map<String, dynamic>? dayPlan;
   bool dayPlanLoading = false;
   String? dayPlanError;
+  DateTime? _lastDayPlanAt;
+
+  static const _dayPlanMinInterval = Duration(minutes: 15);
+  bool get _dayPlanRefreshDue =>
+      _lastDayPlanAt == null ||
+      DateTime.now().difference(_lastDayPlanAt!) > _dayPlanMinInterval;
 
   // ── Per-task AI suggestions cache ─────────────────────────────────────────
   final Map<String, List<Map<String, dynamic>>> suggestions = {};
@@ -60,7 +66,9 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _silentRefresh();
+    if (state == AppLifecycleState.resumed) {
+      _silentRefresh(refreshDayPlan: _dayPlanRefreshDue);
+    }
   }
 
   // ── Loading ───────────────────────────────────────────────────────────────
@@ -103,13 +111,13 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> refresh() => load();
 
-  Future<void> _silentRefresh() async {
+  Future<void> _silentRefresh({bool refreshDayPlan = false}) async {
     try {
       tasks = await api.getTasks();
       CacheService.saveList('tasks', tasks);
       notifyListeners();
     } catch (_) {/* keep last good data */}
-    _loadDayPlan();
+    if (refreshDayPlan || _dayPlanRefreshDue) _loadDayPlan();
   }
 
   Future<void> _loadDayPlan() async {
@@ -118,6 +126,7 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
     try {
       dayPlan = await api.getDayPlan();
+      _lastDayPlanAt = DateTime.now();
     } catch (e) {
       dayPlanError = ApiService.friendlyError(e);
       dayPlan = null;

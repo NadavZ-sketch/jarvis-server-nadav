@@ -1302,7 +1302,12 @@ app.get('/day-plan', async (req, res) => {
             reminders: remindersRes.data || [],
             contacts:  [],
         });
-        const ai = await optimizeDayPlan(plan.items, patterns, plan.load, settings);
+        // Cache only the LLM narrative (costly); deterministic plan data is always fresh.
+        const TTL_DAYPLAN_NARRATIVE = 45 * 60 * 1000; // 45 min
+        const narrativeCacheKey = `dayplan:narrative:${settings.userName}`;
+        const cachedAi = cacheGet(narrativeCacheKey);
+        const ai = cachedAi ?? await optimizeDayPlan(plan.items, patterns, plan.load, settings);
+        if (!cachedAi && ai.ai_available) cacheSet(narrativeCacheKey, ai, TTL_DAYPLAN_NARRATIVE);
 
         res.json({
             generated_at: now.toISOString(),

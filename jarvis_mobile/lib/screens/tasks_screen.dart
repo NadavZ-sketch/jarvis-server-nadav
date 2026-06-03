@@ -96,7 +96,7 @@ class _TasksScreenState extends State<TasksScreen> {
         ),
         if (_c.snack != null)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 8),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(
@@ -108,7 +108,6 @@ class _TasksScreenState extends State<TasksScreen> {
                     color: JC.blue500.withValues(alpha: 0.4), width: 0.8),
               ),
               child: Text(_c.snack!,
-                  textDirection: TextDirection.rtl,
                   style: TextStyle(
                       color: JC.textPrimary,
                       fontFamily: 'Heebo',
@@ -149,11 +148,11 @@ class _TasksScreenState extends State<TasksScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => Padding(
-          padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 20,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+          padding: EdgeInsetsDirectional.fromSTEB(
+              20,
+              20,
+              20,
+              MediaQuery.of(ctx).viewInsets.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -192,7 +191,6 @@ class _TasksScreenState extends State<TasksScreen> {
               ),
               const SizedBox(height: 10),
               Row(
-                textDirection: TextDirection.rtl,
                 children: [
                   for (final entry in [
                     ('high', '🔴 גבוה', JC.cancelRed),
@@ -200,7 +198,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     ('low', '🟢 נמוך', JC.green500),
                   ])
                     Padding(
-                      padding: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsetsDirectional.only(end: 6),
                       child: GestureDetector(
                         onTap: () => setSheet(() => priority = entry.$1),
                         child: Container(
@@ -263,7 +261,6 @@ class _TasksScreenState extends State<TasksScreen> {
                         width: dueDate != null ? 1.2 : 0.8),
                   ),
                   child: Row(
-                    textDirection: TextDirection.rtl,
                     children: [
                       Icon(Icons.calendar_today_outlined,
                           size: 16,
@@ -310,7 +307,6 @@ class _TasksScreenState extends State<TasksScreen> {
                         width: selectedProjectId != null ? 1.2 : 0.8),
                   ),
                   child: Row(
-                    textDirection: TextDirection.rtl,
                     children: [
                       Icon(Icons.folder_open_rounded,
                           size: 16,
@@ -405,15 +401,13 @@ class _ViewSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      reverse: true,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      padding: const EdgeInsetsDirectional.fromSTEB(12, 10, 12, 6),
       child: Row(
-        textDirection: TextDirection.rtl,
         mainAxisSize: MainAxisSize.min,
         children: [
           for (final o in _options)
             Padding(
-              padding: const EdgeInsets.only(left: 6),
+              padding: const EdgeInsetsDirectional.only(end: 6),
               child: GestureDetector(
                 onTap: () => onChange(o.$1),
                 child: AnimatedContainer(

@@ -89,7 +89,7 @@ class _TasksListViewState extends State<TasksListView> {
       children: [
         if (tasks.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 16, 4),
             child:
                 JarvisSearchBar(controller: _searchCtrl, hint: 'חיפוש במשימות...'),
           ),
@@ -104,9 +104,9 @@ class _TasksListViewState extends State<TasksListView> {
           ),
         if (doneCount > 0)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 0),
             child: Align(
-              alignment: Alignment.centerLeft,
+              alignment: AlignmentDirectional.centerEnd,
               child: TextButton(
                 onPressed: () => setState(() => _showDone = !_showDone),
                 child: Text(
@@ -127,7 +127,7 @@ class _TasksListViewState extends State<TasksListView> {
                   subtitle: _query.isEmpty ? 'לחץ + להוספת משימה' : '',
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                  padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 16, 96),
                   itemCount: filtered.length,
                   itemBuilder: (ctx, i) {
                     final task = filtered[i];
@@ -181,92 +181,83 @@ class _FilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _priorityRow(),
-        _categoryRow(),
-      ],
-    );
-  }
-
-  Widget _categoryRow() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      reverse: true,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-      child: Row(
-        textDirection: TextDirection.rtl,
-        children: [
-          _chip('הכל', catFilter == 'all', JC.indigo300,
-              () => onCatFilter('all')),
-          for (final c in kTaskCategories) ...[
+    return SizedBox(
+      height: 36,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 4, 16, 4),
+        child: Row(
+          children: [
+            // Priority filter chips
+            _chip('הכל', filter == 'all', JC.blue400, () => onFilter('all')),
             const SizedBox(width: 6),
-            _chip('${c.emoji} ${c.label}', catFilter == c.id, c.color(),
-                () => onCatFilter(c.id)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _priorityRow() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      reverse: true,
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: Row(
-        textDirection: TextDirection.rtl,
-        children: [
-          _chip('הכל', filter == 'all', JC.blue400, () => onFilter('all')),
-          const SizedBox(width: 6),
-          _chip('🔴 גבוה', filter == 'high', JC.cancelRed,
-              () => onFilter('high')),
-          const SizedBox(width: 6),
-          _chip('🟡 בינוני', filter == 'medium', JC.amber400,
-              () => onFilter('medium')),
-          const SizedBox(width: 6),
-          _chip('🟢 נמוך', filter == 'low', JC.green500,
-              () => onFilter('low')),
-          const SizedBox(width: 8),
-          PopupMenuButton<String>(
-            onSelected: onSort,
-            color: JC.surfaceAlt,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: JC.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: JC.border, width: 0.8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.sort_rounded, size: 14, color: JC.textSecondary),
-                  const SizedBox(width: 4),
-                  Text(
-                    switch (sort) {
-                      'due_date' => 'תאריך',
-                      'created' => 'יצירה',
-                      _ => 'עדיפות'
-                    },
-                    style: TextStyle(
-                        color: JC.textSecondary,
-                        fontSize: 12,
-                        fontFamily: 'Heebo'),
-                  ),
-                ],
+            _chip('🔴 גבוה', filter == 'high', JC.cancelRed,
+                () => onFilter('high')),
+            const SizedBox(width: 6),
+            _chip('🟡 בינוני', filter == 'medium', JC.amber400,
+                () => onFilter('medium')),
+            const SizedBox(width: 6),
+            _chip('🟢 נמוך', filter == 'low', JC.green500,
+                () => onFilter('low')),
+            // Separator
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Container(
+                width: 1,
+                height: 16,
+                color: JC.border.withValues(alpha: 0.5),
               ),
             ),
-            itemBuilder: (_) => [
-              _menu('priority', 'לפי עדיפות', sort),
-              _menu('due_date', 'לפי תאריך', sort),
-              _menu('created', 'לפי יצירה', sort),
+            // Category filter chips
+            _chip('הכל', catFilter == 'all', JC.indigo300,
+                () => onCatFilter('all')),
+            for (final c in kTaskCategories) ...[
+              const SizedBox(width: 6),
+              _chip('${c.emoji} ${c.label}', catFilter == c.id, c.color(),
+                  () => onCatFilter(c.id)),
             ],
-          ),
-        ],
+            const SizedBox(width: 8),
+            // Sort button
+            PopupMenuButton<String>(
+              onSelected: onSort,
+              color: JC.surfaceAlt,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: JC.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: JC.border, width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.sort_rounded, size: 14, color: JC.textSecondary),
+                    const SizedBox(width: 4),
+                    Text(
+                      switch (sort) {
+                        'due_date' => 'תאריך',
+                        'created' => 'יצירה',
+                        _ => 'עדיפות'
+                      },
+                      style: TextStyle(
+                          color: JC.textSecondary,
+                          fontSize: 12,
+                          fontFamily: 'Heebo'),
+                    ),
+                  ],
+                ),
+              ),
+              itemBuilder: (_) => [
+                _menu('priority', 'לפי עדיפות', sort),
+                _menu('due_date', 'לפי תאריך', sort),
+                _menu('created', 'לפי יצירה', sort),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -298,7 +289,6 @@ class _FilterBar extends StatelessWidget {
       PopupMenuItem<String>(
         value: value,
         child: Row(
-          textDirection: TextDirection.rtl,
           children: [
             if (cur == value)
               Icon(Icons.check_rounded, size: 14, color: JC.blue400),
@@ -314,8 +304,8 @@ class _FilterBar extends StatelessWidget {
 }
 
 Widget _dismissBg() => Container(
-      alignment: Alignment.centerLeft,
-      padding: const EdgeInsets.only(left: 20),
+      alignment: AlignmentDirectional.centerStart,
+      padding: const EdgeInsetsDirectional.only(start: 20),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: JC.cancelRed.withValues(alpha: 0.18),

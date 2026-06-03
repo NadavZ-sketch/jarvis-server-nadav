@@ -163,7 +163,6 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                   horizontal: widget.dense ? 10 : 14,
                   vertical: widget.dense ? 8 : 12),
               child: Row(
-                textDirection: TextDirection.rtl,
                 children: [
                   GestureDetector(
                     onTap: () {
@@ -207,7 +206,6 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                                     : () => setState(() => _editing = true),
                                 child: Text(
                                   _title,
-                                  textDirection: TextDirection.rtl,
                                   style: TextStyle(
                                     color: _isDone
                                         ? JC.textMuted
@@ -230,7 +228,6 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                             child: Wrap(
                               spacing: 4,
                               runSpacing: 4,
-                              textDirection: TextDirection.rtl,
                               children: [
                                 if (showCat)
                                   _chip('${cat.emoji} ${cat.label}',

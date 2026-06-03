@@ -259,8 +259,14 @@ class ApiService {
 
   // Smart Day Engine: scored, prioritized, load-aware day plan.
   Future<Map<String, dynamic>> getDashboardContext() async {
+    // Send the user's city so the server fetches weather for the right place.
+    // Passed as a query param (not a header) since city names are non-ASCII.
+    final city = settings.city.trim();
+    final path = city.isNotEmpty
+        ? '/dashboard-context?city=${Uri.encodeQueryComponent(city)}'
+        : '/dashboard-context';
     final res = await _client
-        .get(_uri('/dashboard-context'), headers: _baseHeaders)
+        .get(_uri(path), headers: _baseHeaders)
         .timeout(_timeout);
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
@@ -295,26 +301,6 @@ class ApiService {
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
-  /// Fetches the proactive home-screen insight from the dedicated, server-cached
-  /// endpoint. Pass [fresh] to bypass the server cache (manual refresh). Sending
-  /// [mode] lets the server cache one insight per time-of-day role.
-  Future<Map<String, dynamic>> getInsightCard(
-      String prompt, {String? mode, bool fresh = false}) async {
-    final body = <String, dynamic>{
-      'prompt': prompt,
-      if (mode != null) 'mode': mode,
-      if (fresh) 'fresh': true,
-      'userId': settings.userName,
-    };
-    final res = await _client
-        .post(
-          _uri('/insight-card'),
-          headers: _headers({'Content-Type': 'application/json'}),
-          body: jsonEncode(body),
-        )
-        .timeout(const Duration(seconds: 45));
-    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
-  }
 
   Future<Map<String, dynamic>> askJarvis(
       String command, AppSettings settings, {String? intent}) async {

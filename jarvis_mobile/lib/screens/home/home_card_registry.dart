@@ -32,7 +32,7 @@ final List<HomeCardSpec> kHomeCards = [
       id: 'quick_actions',
       titleHe: 'פעולות מהירות',
       build: (_, c) => QuickActionsCard(c)),
-  HomeCardSpec(id: 'jarvis', titleHe: 'ג׳רוויס', build: (_, c) => JarvisCard(c)),
+  HomeCardSpec(id: 'jarvis', titleHe: 'פוקוס', build: (_, c) => JarvisCard(c)),
   HomeCardSpec(
       id: 'tasks', titleHe: 'משימות להיום', build: (_, c) => TasksCard(c)),
   HomeCardSpec(

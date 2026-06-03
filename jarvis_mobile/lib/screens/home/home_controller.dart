@@ -1,29 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../app_settings.dart';
 import '../../services/api_service.dart';
-
-/// A contextual "role" the proactive Jarvis card takes on depending on the time
-/// of day. The card auto-picks one (see [HomeController._autoInsightMode]) but
-/// the user can override it from the chip row.
-class InsightMode {
-  final String key; // internal id used to branch the prompt
-  final String label; // chip text
-  final String emoji; // header icon
-  final String subtitle; // header sub-line
-  const InsightMode(this.key, this.label, this.emoji, this.subtitle);
-}
-
-/// Order matters: the chip row renders these left-to-right and the auto-picker
-/// maps time windows onto them by index.
-const List<InsightMode> kInsightModes = [
-  InsightMode('briefing', 'תדריך בוקר', '☀️', 'מה הכי חשוב היום'),
-  InsightMode('checkin', 'צ׳ק-אין', '⚡', 'איפה אתה עומד עכשיו'),
-  InsightMode('recap', 'סיכום ערב', '🌙', 'מה הספקת ומה למחר'),
-  InsightMode('winddown', 'רגיעה', '🌌', 'לסגור את היום בנחת'),
-];
 
 /// Owns every piece of state the home screen renders and exposes optimistic
 /// mutations. Cards listen to this via [AnimatedBuilder]/[ListenableBuilder] so
@@ -48,31 +26,9 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   // ── Secondary data (each loads independently; a failure never breaks core) ──
   Map<String, dynamic>? dashboardContext;
   bool dashboardLoading = true;
-
-  String jarvisInsight = '';
-  bool insightLoading = true;
-  String? insightError;
-  // True when [jarvisInsight] is a locally-composed tip (server/LLM unreachable)
-  // rather than a fresh AI insight. Lets the card show a subtle "offline" hint
-  // instead of a scary error, so the tip is always useful.
-  bool insightIsFallback = false;
-  // Proactive mode shown by the card. Auto-derived from the clock unless the
-  // user taps a chip, in which case [_insightModeManual] pins their choice.
-  InsightMode insightMode = _autoInsightMode();
-  bool _insightModeManual = false;
-  List<Map<String, String>> insightThread = []; // [{role, text}]
-  bool insightReplyLoading = false;
-  int _insightSeq = 0; // stale-response guard
-  DateTime? _lastInsightAt; // gates resume-refresh to avoid needless LLM calls
-
-  /// Picks the mode that fits the current local hour.
-  static InsightMode _autoInsightMode() {
-    final h = DateTime.now().hour;
-    if (h >= 5 && h < 11) return kInsightModes[0]; // morning briefing
-    if (h >= 11 && h < 17) return kInsightModes[1]; // midday check-in
-    if (h >= 17 && h < 22) return kInsightModes[2]; // evening recap
-    return kInsightModes[3]; // late-night wind-down
-  }
+  // Gates the resume-refresh of the (network-backed) dashboard so a quick
+  // app switch doesn't re-hit the server on every foreground.
+  DateTime? _lastDashboardAt;
 
   // ── Transient UI state ──
   final Set<String> postponed = {};
@@ -89,8 +45,8 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   void start() {
     WidgetsBinding.instance.addObserver(this);
     load();
-    // No periodic timer: the insight + day-plan are LLM-backed and expensive.
-    // Data refreshes on initial load, pull-to-refresh, and app resume instead.
+    // No periodic timer: the Focus card is computed locally and the dashboard
+    // is gated. Data refreshes on initial load, pull-to-refresh, and app resume.
   }
 
   @override
@@ -137,9 +93,9 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> refresh() => load();
 
   /// App-resume refresh: updates core data quietly, without flipping the screen
-  /// back into a loading state. The insight is the only LLM-backed source left,
-  /// so it is refreshed only when it has gone stale (>15 min) or the time-of-day
-  /// mode has rolled over — every resume otherwise reuses the cached thread.
+  /// back into a loading state. The Focus card is computed locally from this
+  /// data, so there are no LLM calls. The dashboard (weather/news/hero) is
+  /// network-backed, so it's refreshed only when stale to avoid per-resume hits.
   Future<void> _silentRefresh() async {
     try {
       final results = await Future.wait([api.getTasks(), api.getReminders()]);
@@ -147,24 +103,18 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       reminders = results[1];
       notifyListeners();
     } catch (_) {/* keep showing the last good data */}
-    _loadDashboardContext();
-    if (_insightRefreshDue) loadJarvisInsight();
+    if (_dashboardRefreshDue) _loadDashboardContext();
   }
 
-  /// True when the cached insight is old enough, or the auto time-of-day mode no
-  /// longer matches what is shown, to justify another (cheap, server-cached) call.
-  bool get _insightRefreshDue {
-    final autoRolledOver =
-        !_insightModeManual && _autoInsightMode().key != insightMode.key;
-    if (autoRolledOver) return true;
-    final last = _lastInsightAt;
+  /// True when the dashboard context is old enough to justify another fetch.
+  bool get _dashboardRefreshDue {
+    final last = _lastDashboardAt;
     return last == null ||
         DateTime.now().difference(last) > const Duration(minutes: 15);
   }
 
   void _loadSecondary() {
     _loadDashboardContext();
-    _loadInsightCache().then((_) => loadJarvisInsight());
   }
 
   Future<void> _loadDashboardContext() async {
@@ -172,6 +122,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
     try {
       dashboardContext = await api.getDashboardContext();
+      _lastDashboardAt = DateTime.now();
     } catch (_) {
       dashboardContext = null;
     }
@@ -179,256 +130,6 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Builds a proactive, time-of-day-aware prompt for the insight card. Kept
-  /// deliberately short to save input tokens: only the top 3 open tasks and the
-  /// next reminder, plus the locally-computed day load, then the mode line.
-  String _buildInsightPrompt() {
-    final name = settings.userName.isNotEmpty ? settings.userName : 'המשתמש';
-
-    final topTasks = tasks
-        .where((t) => t['done'] != true)
-        .take(3)
-        .map((t) => '- ${t['content']} (${t['priority'] ?? 'רגיל'})')
-        .join('\n');
-
-    final nextRem = remindersForOffset(0).take(1).map((r) {
-      final iso = r['scheduled_time'] as String?;
-      var time = '';
-      if (iso != null) {
-        try {
-          final dt = DateTime.parse(iso).toLocal();
-          final hh = dt.hour.toString().padLeft(2, '0');
-          final mm = dt.minute.toString().padLeft(2, '0');
-          time = '$hh:$mm ';
-        } catch (_) {}
-      }
-      return '$time${r['text'] ?? ''}';
-    }).join();
-
-    final ctx = StringBuffer();
-    ctx.writeln(
-        'הקשר: $openTasks משימות פתוחות ($highPriorityCount דחופות), עומס היום: ${dayLoadStatus()}.');
-    if (topTasks.isNotEmpty) ctx.writeln(topTasks);
-    if (nextRem.isNotEmpty) ctx.writeln('תזכורת קרובה: $nextRem');
-
-    String modeLine;
-    switch (insightMode.key) {
-      case 'briefing':
-        modeLine =
-            'זה תדריך בוקר. פתח ב"בוקר טוב $name", ואז ב-2-3 משפטים הצג את 1-2 הדברים '
-            'הכי חשובים להיום ומאיפה הכי כדאי להתחיל.';
-        break;
-      case 'checkin':
-        modeLine =
-            'זה צ׳ק-אין באמצע היום. ב-2-3 משפטים: איפה $name עומד, מה עוד נשאר, '
-            'ודחיפה קטנה ומעודדת להמשיך.';
-        break;
-      case 'recap':
-        modeLine =
-            'זה סיכום ערב. ב-2-3 משפטים ובטון מרגיע: מה כדאי לסגור עוד היום, '
-            'ומה שווה להכין כבר עכשיו למחר.';
-        break;
-      case 'winddown':
-        modeLine =
-            'זה רגע רגיעה בלילה. משפט-שניים מרגיעים בלי שום לחץ, '
-            'ותזכורת עדינה לדבר הראשון שמחכה מחר.';
-        break;
-      default:
-        modeLine = 'תן תובנה אישית קצרה ורלוונטית למצב.';
-    }
-
-    return 'אתה ג׳רוויס, עוזר אישי יזום של $name.\n'
-        '${ctx.toString()}\n'
-        '$modeLine\n'
-        'דבר ישירות אל $name בגוף שני, חם ואנושי. אל תקריא את המספרים יבש — '
-        'תרגם אותם לתובנה. סיים תמיד בשאלה אחת ישירה שמזמינה תגובה.\n'
-        'כתוב בעברית בלבד.';
-  }
-
-  /// Loads the proactive insight from the server-cached `/insight-card` endpoint.
-  /// Pass [fresh] to force a brand-new LLM generation (manual refresh / new
-  /// suggestion); otherwise the server serves a cached insight for free.
-  Future<void> loadJarvisInsight({bool fresh = false}) async {
-    // Keep the role in sync with the clock unless the user pinned one.
-    if (!_insightModeManual) insightMode = _autoInsightMode();
-    final seq = ++_insightSeq;
-    insightLoading = true;
-    insightError = null;
-    notifyListeners();
-    try {
-      final r = await api.getInsightCard(_buildInsightPrompt(),
-          mode: insightMode.key, fresh: fresh);
-      if (seq != _insightSeq) return;
-      final answer = (r['answer'] as String? ?? '').trim();
-      final looksLikeError = (answer.contains('בעיה') && answer.contains('נסה שוב')) ||
-          answer.contains('לא הצלחתי') ||
-          answer.contains('לא ניתן');
-      if (answer.isNotEmpty && !looksLikeError) {
-        jarvisInsight = answer;
-        insightIsFallback = false;
-        insightThread = [{'role': 'assistant', 'text': answer}];
-        _lastInsightAt = DateTime.now();
-        _saveInsightCache();
-      } else {
-        // Server reachable but couldn't produce a tip — degrade to a local one
-        // rather than showing an error.
-        _applyLocalFallbackTip();
-      }
-      insightLoading = false;
-    } catch (e) {
-      if (seq != _insightSeq) return;
-      // Network/server failure (incl. the HTML cold-start / 404 page). Show a
-      // useful locally-composed tip instead of leaving the card broken.
-      ApiService.friendlyError(e); // keep the debug log line
-      _applyLocalFallbackTip();
-      insightLoading = false;
-    }
-    notifyListeners();
-  }
-
-  /// Composes a deterministic, useful daily tip from already-loaded task and
-  /// reminder state — no LLM, no server. Used when the insight endpoint is
-  /// unreachable so the card always shows something actionable.
-  void _applyLocalFallbackTip() {
-    insightError = null;
-    insightIsFallback = true;
-    jarvisInsight = _buildLocalFallbackTip();
-    insightThread = [{'role': 'assistant', 'text': jarvisInsight}];
-    // Note: do NOT stamp _lastInsightAt — a fallback is not a real insight, so
-    // the refresh gate will keep retrying the server on the next resume.
-  }
-
-  String _buildLocalFallbackTip() {
-    final name = settings.userName.isNotEmpty ? settings.userName : 'נדב';
-    final open = openTasks;
-    final urgent = highPriorityCount;
-    final top = topOpenTask?['content'] as String?;
-    final nextRem = remindersForOffset(0).where((r) {
-      final iso = r['scheduled_time'] as String?;
-      if (iso == null) return false;
-      try {
-        return DateTime.parse(iso).toLocal().isAfter(DateTime.now());
-      } catch (_) {
-        return false;
-      }
-    }).toList();
-
-    final greet = {
-      'briefing': 'בוקר טוב',
-      'checkin': 'היי',
-      'recap': 'ערב טוב',
-      'winddown': 'לילה טוב',
-    }[insightMode.key] ?? 'היי';
-
-    if (open == 0 && nextRem.isEmpty) {
-      return '$greet $name! היומן נקי כרגע — רגע טוב לנשום, או להוסיף משימה אם יש משהו באוויר.';
-    }
-
-    final parts = <String>['$greet $name!'];
-    if (open > 0) {
-      parts.add(urgent > 0
-          ? 'יש לך $open משימות פתוחות, מתוכן $urgent דחופות.'
-          : 'יש לך $open משימות פתוחות.');
-    }
-    if (top != null && top.trim().isNotEmpty) {
-      parts.add('כדאי להתחיל מ"${top.trim()}".');
-    }
-    if (nextRem.isNotEmpty) {
-      final iso = nextRem.first['scheduled_time'] as String?;
-      var time = '';
-      try {
-        final dt = DateTime.parse(iso!).toLocal();
-        time =
-            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} ';
-      } catch (_) {}
-      parts.add('תזכורת קרובה: $time${nextRem.first['text'] ?? ''}.');
-    }
-    return parts.join(' ');
-  }
-
-  Future<void> replyToInsight(String userMsg) async {
-    if (userMsg.trim().isEmpty) return;
-    insightThread = [...insightThread, {'role': 'user', 'text': userMsg.trim()}];
-    insightReplyLoading = true;
-    notifyListeners();
-    try {
-      // Build a conversation context for Jarvis
-      final history = insightThread
-          .map((m) => '${m['role'] == 'assistant' ? 'ג׳רוויס' : 'משתמש'}: ${m['text']}')
-          .join('\n');
-      final prompt = 'המשך את השיחה הבאה בעברית. ענה בקצרה ובאמפתיה, וסיים בשאלה.\n\n$history\nג׳רוויס:';
-      final r = await api.askJarvis(prompt, settings, intent: 'chat');
-      final answer = (r['answer'] as String? ?? '').trim();
-      if (answer.isNotEmpty) {
-        insightThread = [...insightThread, {'role': 'assistant', 'text': answer}];
-        _saveInsightCache();
-      }
-    } catch (_) {/* keep thread as-is */}
-    insightReplyLoading = false;
-    notifyListeners();
-  }
-
-  Future<void> _saveInsightCache() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('insight_thread_v2', jsonEncode(insightThread));
-    } catch (_) {}
-  }
-
-  Future<void> _loadInsightCache() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('insight_thread_v2');
-      if (raw != null) {
-        final decoded = jsonDecode(raw) as List<dynamic>;
-        final thread = decoded
-            .whereType<Map<String, dynamic>>()
-            .map((m) => {'role': m['role']?.toString() ?? '', 'text': m['text']?.toString() ?? ''})
-            .where((m) => m['role']!.isNotEmpty && m['text']!.isNotEmpty)
-            .toList();
-        if (thread.isNotEmpty) {
-          insightThread = thread;
-          jarvisInsight = thread.firstWhere(
-            (m) => m['role'] == 'assistant',
-            orElse: () => {'role': 'assistant', 'text': ''},
-          )['text']!;
-          // Show cached content immediately; loading stays true until fetch completes.
-          notifyListeners();
-        }
-      }
-    } catch (_) {}
-  }
-
-  /// Reports explicit feedback on the current insight to the server's feedback
-  /// loop. Gated on telemetry consent; fire-and-forget.
-  void recordInsightFeedback(String signal) {
-    if (!settings.telemetryConsent) return;
-    final text = jarvisInsight.trim();
-    if (text.isEmpty) return;
-    api.sendFeedback(
-      chatId: 'insight-${insightMode.key}',
-      messageText: text,
-      signal: signal,
-      source: 'insight_card',
-    );
-  }
-
-  void setInsightMode(InsightMode mode) {
-    if (mode.key == insightMode.key && _insightModeManual) return;
-    insightMode = mode;
-    _insightModeManual = true;
-    insightThread = [];
-    loadJarvisInsight();
-  }
-
-  Future<void> insightToTask() async {
-    final firstAssistant = insightThread
-        .where((m) => m['role'] == 'assistant')
-        .map((m) => m['text'] ?? '')
-        .firstWhere((t) => t.isNotEmpty, orElse: () => jarvisInsight);
-    if (firstAssistant.trim().isEmpty) return;
-    await addTask(firstAssistant.trim());
-  }
 
   // ───────────────────────────────────────────────────────────────────────────
   // Mutations (optimistic)
@@ -562,6 +263,44 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       return rank(a).compareTo(rank(b));
     });
     return open.first;
+  }
+
+  /// The soonest reminder that hasn't passed yet (today or later), or null.
+  Map<String, dynamic>? get nextUpcomingReminder {
+    final now = DateTime.now();
+    final upcoming = reminders.where((r) {
+      final iso = r['scheduled_time'] as String?;
+      if (iso == null) return false;
+      try {
+        return DateTime.parse(iso).toLocal().isAfter(now);
+      } catch (_) {
+        return false;
+      }
+    }).toList()
+      ..sort((a, b) => (a['scheduled_time'] as String? ?? '')
+          .compareTo(b['scheduled_time'] as String? ?? ''));
+    return upcoming.isEmpty ? null : upcoming.first;
+  }
+
+  /// The single thing to focus on right now. An imminent reminder (within 2h)
+  /// outranks tasks; otherwise the most pressing open task; otherwise the next
+  /// reminder of any time. Returns (kind: 'task'|'reminder', data) or null when
+  /// there's nothing pending. Computed locally — no server/LLM.
+  ({String kind, Map<String, dynamic> data})? get focusItem {
+    final rem = nextUpcomingReminder;
+    if (rem != null) {
+      final iso = rem['scheduled_time'] as String?;
+      try {
+        final dt = DateTime.parse(iso!).toLocal();
+        if (dt.difference(DateTime.now()) <= const Duration(hours: 2)) {
+          return (kind: 'reminder', data: rem);
+        }
+      } catch (_) {}
+    }
+    final task = topOpenTask;
+    if (task != null) return (kind: 'task', data: task);
+    if (rem != null) return (kind: 'reminder', data: rem);
+    return null;
   }
 
   List<Map<String, dynamic>> remindersForOffset(int offset) {

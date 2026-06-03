@@ -1529,9 +1529,8 @@ app.get('/morning-briefing', async (_req, res) => {
 
 // ─── Dashboard Context ────────────────────────────────────────────────────────
 
-const TTL_DASHBOARD_WEATHER = 2 * 60 * 60 * 1000; // 2 h — weather changes slowly; long TTL cuts LLM calls
+const TTL_DASHBOARD_WEATHER = 2 * 60 * 60 * 1000; // 2 h — weather changes slowly
 const TTL_DASHBOARD_NEWS    = 60 * 60 * 1000;     // 1 h — headlines stay relevant for an hour
-const TTL_DASHBOARD_HERO    =  5 * 60 * 1000;     // 5 min
 
 function _getDashboardTimeSlot(dateJer) {
     const h = dateJer.getHours();
@@ -1552,45 +1551,54 @@ const _SLOT_LABELS = {
     night:        'לילה',
 };
 
-async function _buildHeroCard(slot, tasks, reminders, memories, settings, useLocal) {
-    const { callGemma4 } = require('./agents/models');
+// Builds the hero subtitle locally (no LLM). A slot-aware greeting plus a short
+// state line derived from the already-fetched tasks/reminders. This used to be
+// an LLM call with a 5-minute cache — by far the home screen's most frequent
+// token drain — and the templated version is indistinguishable in practice.
+function _buildHeroCard(slot, tasks, reminders, settings) {
     const userName = settings?.userName || settings?.userProfile?.name || 'שלי';
-    const memorySummary = Array.isArray(memories) && memories.length > 0
-        ? memories.slice(0, 3).map(m => `- ${m}`).join('\n')
-        : '';
 
-    const taskLines = (tasks || []).slice(0, 3).map(t =>
-        `- ${t.content}${t.priority === 'high' ? ' (דחוף)' : ''}`
-    ).join('\n');
+    const greetings = {
+        morning:      `בוקר טוב, ${userName}!`,
+        late_morning: `שלום ${userName},`,
+        noon:         `צהריים טובים, ${userName},`,
+        afternoon:    `אחר צהריים טובים, ${userName},`,
+        evening:      `ערב טוב, ${userName}!`,
+        night:        `לילה טוב, ${userName}!`,
+    };
+    const greeting = greetings[slot] || `שלום, ${userName}!`;
 
-    const reminderLines = (reminders || []).slice(0, 3).map(r => {
-        const timeStr = new Date(r.scheduled_time).toLocaleTimeString('he-IL', {
+    const openTasks = (tasks || []).length;
+    const highCount = (tasks || []).filter(t => t.priority === 'high').length;
+
+    // Soonest upcoming reminder (data is already ordered ascending by time).
+    const nextRem = (reminders || [])[0];
+    let remLine = '';
+    if (nextRem?.scheduled_time) {
+        const timeStr = new Date(nextRem.scheduled_time).toLocaleTimeString('he-IL', {
             timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit',
         });
-        return `- ${r.text} ב-${timeStr}`;
-    }).join('\n');
-
-    const slotLabel = _SLOT_LABELS[slot] || slot;
-
-    const prompt = [
-        { role: 'system', content: 'אתה ג\'רוויס, עוזר אישי בעברית. כתוב תגובה קצרה ובהירה (עד 2 משפטים) המתאימה לשעה ביום ולמצב המשתמש. ללא כותרות וללא תבליטים.' },
-        { role: 'user', content: `שעת יום: ${slotLabel}\nמשתמש: ${userName}\n${taskLines ? `משימות פתוחות:\n${taskLines}\n` : ''}${reminderLines ? `תזכורות קרובות:\n${reminderLines}\n` : ''}${memorySummary ? `פרטים רלוונטיים על המשתמש:\n${memorySummary}\n` : ''}כתוב ברכה/סיכום קצר מתאים לשעה.` },
-    ];
-
-    try {
-        const text = await callGemma4(prompt, useLocal, 150);
-        return { text: typeof text === 'string' ? text.trim() : text, confidence: memorySummary ? 0.8 : 0.5 };
-    } catch {
-        const fallbacks = {
-            morning: `בוקר טוב, ${userName}! מוכן ליום?`,
-            late_morning: `שלום ${userName}, כיצד מתקדם הבוקר?`,
-            noon: `שלום ${userName}, איך מתקדם היום?`,
-            afternoon: `שלום ${userName}, מה הלאה?`,
-            evening: `ערב טוב, ${userName}! איך היה היום?`,
-            night: `לילה טוב, ${userName}! כדאי לסיים ולנוח.`,
-        };
-        return { text: fallbacks[slot] || `שלום, ${userName}!`, confidence: 0.0 };
+        remLine = `הבא: ${nextRem.text} ב-${timeStr}`;
     }
+
+    let stateLine;
+    if (openTasks === 0 && !remLine) {
+        stateLine = slot === 'night' || slot === 'evening'
+            ? 'הכל סגור להיום — מגיע לך לנוח.'
+            : 'אין משימות פתוחות כרגע. רגע טוב להתחיל משהו.';
+    } else {
+        const bits = [];
+        if (openTasks > 0) {
+            bits.push(highCount > 0
+                ? `${openTasks} משימות פתוחות (${highCount} דחופות)`
+                : `${openTasks} משימות פתוחות`);
+        }
+        if (remLine) bits.push(remLine);
+        stateLine = bits.join(' · ');
+    }
+
+    const text = `${greeting} ${stateLine}`.trim();
+    return { text, confidence: 1.0 };
 }
 
 app.get('/dashboard-context', _rl(30), async (req, res) => {
@@ -1604,38 +1612,27 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
             }
         } catch { /* non-fatal */ }
 
-        const useLocal = String(req.headers['x-use-local'] || '').toLowerCase() === 'true';
         const nowJer = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
         const slot = _getDashboardTimeSlot(nowJer);
 
         // ── Parallel data fetch ──────────────────────────────────────────────
         const threeHoursLater = new Date(nowJer.getTime() + 3 * 60 * 60 * 1000).toISOString();
 
-        const [tasksRes, remindersRes, memoriesRaw, weatherData, newsData] = await Promise.all([
+        const [tasksRes, remindersRes, weatherData, newsData] = await Promise.all([
             supabase.from('tasks').select('id,content,priority').eq('done', false)
                 .order('priority', { ascending: false }).limit(6),
             supabase.from('reminders').select('id,text,scheduled_time').eq('fired', false)
                 .lte('scheduled_time', threeHoursLater)
                 .order('scheduled_time', { ascending: true }).limit(6),
             (async () => {
-                try {
-                    if (pinecone.isReady()) {
-                        const hits = await pinecone.searchMemories(`שגרה ${_SLOT_LABELS[slot]}`, 3);
-                        if (hits) return hits;
-                    }
-                } catch { /* fall through */ }
-                const { data } = await supabase.from('memories').select('content').limit(5);
-                return (data || []).map(m => m.content);
-            })(),
-            (async () => {
-                const cacheKey = 'dashboard:weather';
+                const city = req.query.city || settings.userProfile?.city || '';
+                const cacheKey = `dashboard:weather:${city || 'default'}`;
                 const cached = cacheGet(cacheKey);
                 if (cached) return cached;
                 try {
-                    const { runWeatherAgent } = require('./agents/weatherAgent');
-                    const result = await runWeatherAgent('מה מזג האוויר עכשיו', supabase, useLocal, settings);
-                    const data = { summary: result.answer };
-                    cacheSet(cacheKey, data, TTL_DASHBOARD_WEATHER);
+                    const { getWeatherSummary } = require('./services/weatherSource');
+                    const data = await getWeatherSummary(city);
+                    if (data) cacheSet(cacheKey, data, TTL_DASHBOARD_WEATHER);
                     return data;
                 } catch { return null; }
             })(),
@@ -1644,10 +1641,9 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
                 const cached = cacheGet(cacheKey);
                 if (cached) return cached;
                 try {
-                    const { runNewsAgent } = require('./agents/newsAgent');
-                    const result = await runNewsAgent('חדשות עדכניות קצרות', supabase, useLocal, settings);
-                    const data = { summary: result.answer };
-                    cacheSet(cacheKey, data, TTL_DASHBOARD_NEWS);
+                    const { getNewsSummary } = require('./services/newsSource');
+                    const data = await getNewsSummary();
+                    if (data) cacheSet(cacheKey, data, TTL_DASHBOARD_NEWS);
                     return data;
                 } catch { return null; }
             })(),
@@ -1655,16 +1651,10 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
 
         const tasks     = tasksRes.data     || [];
         const reminders = remindersRes.data  || [];
-        const memories  = memoriesRaw        || [];
 
-        // ── Hero card (cached per slot) ──────────────────────────────────────
-        const heroCacheKey = `dashboard:hero:${slot}`;
-        let heroCard = cacheGet(heroCacheKey);
-        if (!heroCard) {
-            const { text, confidence } = await _buildHeroCard(slot, tasks, reminders, memories, settings, useLocal);
-            heroCard = { text, confidence, slot };
-            cacheSet(heroCacheKey, heroCard, TTL_DASHBOARD_HERO);
-        }
+        // ── Hero card (built locally each request — cheap, reflects live state) ─
+        const { text: heroText, confidence } = _buildHeroCard(slot, tasks, reminders, settings);
+        const heroCard = { text: heroText, confidence, slot };
 
         // ── Build widget list ─────────────────────────────────────────────────
         const widgets = [];

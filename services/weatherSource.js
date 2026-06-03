@@ -137,7 +137,7 @@ async function getWeatherSummary(city) {
         let summary = parts.join(' · ');
         if (advice) summary += ` — ${advice}`;
 
-        const data = { summary };
+        const data = { summary, temp, desc, emoji, max, min, rain, advice, city: target };
         _cacheSet(cacheKey, data, TTL_FORECAST);
         return data;
     } catch (err) {

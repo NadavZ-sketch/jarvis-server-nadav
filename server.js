@@ -830,7 +830,7 @@ async function askJarvisHandler(req, res) {
             if (!pinecone.isReady()) {
                 longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
             } else {
-                longTermMemories = await filterRelevantMemoriesAsync(longTermMemories, userMessage);
+                longTermMemories = await filterRelevantMemoriesAsync(longTermMemories, userMessage, 8);
             }
             // Inject rolling conversation summary so agent remembers context beyond 20 msgs.
             // Cap at 1500 chars (~500 tokens) so a long summary can't flood the context.
@@ -1326,35 +1326,6 @@ app.get('/day-plan', async (req, res) => {
     }
 });
 
-// ─── POST /insight-card — proactive home-screen insight, server-cached ────────
-// The home screen used to drive this through /ask-jarvis (full chat agent, which
-// also injects 20 history messages + memories) on a 60s timer — burning tokens.
-// This dedicated endpoint calls the model directly with the self-contained prompt
-// and caches the result per user+mode, so repeat loads are free. `fresh:true`
-// bypasses the cache for an explicit manual refresh.
-const TTL_INSIGHT_CARD = 3 * 60 * 60 * 1000; // 3 h — insight only meaningfully changes every few hours
-app.post('/insight-card', _rl(30), async (req, res) => {
-    try {
-        const { prompt, mode, fresh, userId } = req.body || {};
-        if (!prompt || typeof prompt !== 'string') {
-            return res.status(400).json({ error: 'prompt required' });
-        }
-
-        const cacheKey = `insight:${userId || 'default'}:${mode || 'auto'}`;
-        if (!fresh) {
-            const cached = cacheGet(cacheKey);
-            if (cached) return res.json({ answer: cached, cached: true });
-        }
-
-        const { callGemma4 } = require('./agents/models');
-        const answer = ((await callGemma4(prompt, false, 500)) || '').trim();
-        if (answer) cacheSet(cacheKey, answer, TTL_INSIGHT_CARD);
-        res.json({ answer, cached: false });
-    } catch (err) {
-        console.error('POST /insight-card error:', err.message);
-        res.status(500).json({ error: 'insight failed' });
-    }
-});
 
 // ─── Feedback & Telemetry — foundation of the self-improvement loop ──────────
 // Records explicit user feedback (👍/👎 + optional correction) and arbitrary
@@ -1507,20 +1478,17 @@ app.get('/today-message', async (_req, res) => {
 // ─── Check Reminders (polled by Flutter) ──────────────────────────────────────
 
 // ─── Morning Briefing endpoint ────────────────────────────────────────────────
-app.get('/morning-briefing', async (_req, res) => {
+const TTL_MORNING_BRIEFING = 30 * 60 * 1000; // 30 min in-process cache
+app.get('/morning-briefing', _rl(30), async (req, res) => {
     try {
-        const nowJer = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-        const todayISO = `${nowJer.getFullYear()}-${String(nowJer.getMonth()+1).padStart(2,'0')}-${String(nowJer.getDate()).padStart(2,'0')}`;
+        const city = req.query.city || '';
+        const cacheKey = `morning-briefing:${city || 'default'}`;
+        const cached = cacheGet(cacheKey);
+        if (cached) return res.json({ briefing: cached, cached: true });
 
-        // Try cached briefing first
-        try {
-            const { data } = await supabase.from('daily_briefings').select('content').eq('date', todayISO).single();
-            if (data?.content) return res.json({ briefing: data.content, cached: true, date: todayISO });
-        } catch { /* table may not exist or no row */ }
-
-        // Generate fresh
-        const briefing = await buildMorningBriefing();
-        res.json({ briefing, cached: false, date: todayISO });
+        const briefing = await buildMorningBriefing(city);
+        cacheSet(cacheKey, briefing, TTL_MORNING_BRIEFING);
+        res.json({ briefing, cached: false });
     } catch (err) {
         console.error('GET /morning-briefing error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
@@ -3020,59 +2988,69 @@ async function enqueueNotification(text) {
 
 // ─── Morning briefing builder ─────────────────────────────────────────────────
 
-async function buildMorningBriefing() {
+async function buildMorningBriefing(city = '') {
     const nowJer = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-    const todayISO = `${nowJer.getFullYear()}-${String(nowJer.getMonth()+1).padStart(2,'0')}-${String(nowJer.getDate()).padStart(2,'0')}`;
     const dayName = nowJer.toLocaleDateString('he-IL', { weekday: 'long', timeZone: 'Asia/Jerusalem' });
 
     const dayStart = new Date(nowJer); dayStart.setHours(0, 0, 0, 0);
     const dayEnd   = new Date(nowJer); dayEnd.setHours(23, 59, 59, 999);
 
-    const [{ data: pendingTasks }, { data: todayReminders }, { data: dueTodayTasks }] = await Promise.all([
-        supabase.from('tasks').select('id, content, priority').eq('done', false).order('created_at', { ascending: true }).limit(10),
+    const [{ data: pendingTasks }, { data: todayReminders }, weatherData, newsData] = await Promise.all([
+        supabase.from('tasks').select('id, content, priority').eq('done', false)
+            .order('priority', { ascending: false }).limit(10),
         supabase.from('reminders').select('text, scheduled_time').eq('fired', false)
             .gte('scheduled_time', dayStart.toISOString())
             .lt('scheduled_time', dayEnd.toISOString())
             .order('scheduled_time', { ascending: true }),
-        supabase.from('tasks').select('content, priority, due_date').eq('done', false).eq('due_date', todayISO),
+        (async () => { try { const { getWeatherSummary } = require('./services/weatherSource'); return await getWeatherSummary(city); } catch { return null; } })(),
+        (async () => { try { const { getNewsSummary }    = require('./services/newsSource');    return await getNewsSummary();         } catch { return null; } })(),
     ]);
 
-    let briefing = `🌅 *בוקר טוב! ${dayName}*\n`;
+    let briefing = `🌅 בוקר טוב! ${dayName}\n`;
 
-    if (dueTodayTasks?.length > 0) {
-        briefing += `\n📅 *משימות ליום זה (${dueTodayTasks.length}):*\n`;
-        dueTodayTasks.forEach((t, i) => {
+    // Weather block
+    if (weatherData?.summary) {
+        briefing += `\n${weatherData.summary}\n`;
+    }
+
+    // Tasks block
+    if (pendingTasks?.length > 0) {
+        const high = pendingTasks.filter(t => t.priority === 'high');
+        briefing += `\n📋 ${pendingTasks.length} משימות פתוחות`;
+        if (high.length > 0) briefing += ` (${high.length} דחופות)`;
+        briefing += ':\n';
+        pendingTasks.slice(0, 5).forEach((t, i) => {
             const prio = t.priority === 'high' ? ' 🔴' : '';
             briefing += `${i + 1}. ${t.content}${prio}\n`;
         });
-    } else if (pendingTasks?.length > 0) {
-        briefing += `\n📋 יש לך ${pendingTasks.length} משימות פתוחות.`;
-        const high = pendingTasks.filter(t => t.priority === 'high');
-        if (high.length > 0) briefing += ` ${high.length} דחופות 🔴`;
     } else {
-        briefing += `\n✅ אין משימות פתוחות — יום נקי!`;
+        briefing += '\n✅ אין משימות פתוחות — יום נקי!\n';
     }
 
+    // Reminders block
     if (todayReminders?.length > 0) {
-        briefing += `\n\n⏰ *תזכורות להיום (${todayReminders.length}):*\n`;
+        briefing += `\n⏰ תזכורות להיום:\n`;
         todayReminders.slice(0, 5).forEach(r => {
             const timeStr = new Date(r.scheduled_time).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
             briefing += `• ${r.text} — ${timeStr}\n`;
         });
     }
 
-    // Store in Supabase daily_briefings table (best-effort)
-    try {
-        await supabase.from('daily_briefings').upsert([{ date: todayISO, content: briefing }], { onConflict: 'date' });
-    } catch { /* table may not exist yet */ }
+    // News headlines
+    if (newsData?.headlines?.length > 0) {
+        briefing += `\n📰 כותרות:\n`;
+        newsData.headlines.slice(0, 3).forEach(h => { briefing += `• ${h}\n`; });
+    }
 
-    return briefing;
+    return briefing.trim();
 }
 
 // Morning briefing — 7:00 AM Jerusalem
 if (!isTestEnv) cron.schedule('0 7 * * *', async () => {
     try {
-        const briefingText = await buildMorningBriefing();
+        const profile = await getUserProfile().catch(() => null);
+        const city = profile?.city || '';
+        const briefingText = await buildMorningBriefing(city);
         await enqueueNotification(briefingText);
         console.log('🌅 Morning briefing queued');
     } catch (err) {

@@ -18,7 +18,7 @@ class EisenhowerView extends StatelessWidget {
   Widget build(BuildContext context) {
     final buckets = controller.quadrants;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
+      padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 12, 96),
       children: [
         GridView.count(
           shrinkWrap: true,
@@ -93,7 +93,6 @@ class _QuadrantCell extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
-                textDirection: TextDirection.rtl,
                 children: [
                   Container(
                     width: 6,
@@ -107,14 +106,12 @@ class _QuadrantCell extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(title,
-                            textDirection: TextDirection.rtl,
                             style: TextStyle(
                                 color: _accent,
                                 fontFamily: 'Heebo',
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700)),
                         Text(hint,
-                            textDirection: TextDirection.rtl,
                             style: TextStyle(
                                 color: JC.textMuted,
                                 fontFamily: 'Heebo',
@@ -134,7 +131,6 @@ class _QuadrantCell extends StatelessWidget {
                 child: tasks.isEmpty
                     ? Center(
                         child: Text('גרור משימה',
-                            textDirection: TextDirection.rtl,
                             style: TextStyle(
                                 color: JC.textMuted,
                                 fontFamily: 'Heebo',
@@ -176,7 +172,6 @@ class _UnclassifiedSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('לא מסווג (${tasks.length}) — גרור לרביע מתאים',
-              textDirection: TextDirection.rtl,
               style: TextStyle(
                   color: JC.textSecondary,
                   fontFamily: 'Heebo',

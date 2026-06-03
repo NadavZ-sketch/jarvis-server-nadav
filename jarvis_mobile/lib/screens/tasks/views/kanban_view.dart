@@ -23,15 +23,13 @@ class KanbanView extends StatelessWidget {
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      reverse: true,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
+      padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 12, 96),
       child: Row(
-        textDirection: TextDirection.rtl,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final id in order)
             Padding(
-              padding: const EdgeInsets.only(left: 10),
+              padding: const EdgeInsetsDirectional.only(end: 10),
               child: _Column(
                 controller: controller,
                 id: id,
@@ -97,10 +95,8 @@ class _Column extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
-                textDirection: TextDirection.rtl,
                 children: [
                   Text(label,
-                      textDirection: TextDirection.rtl,
                       style: TextStyle(
                           color: JC.textPrimary,
                           fontFamily: 'Heebo',

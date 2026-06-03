@@ -42,6 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _localServerUrlCtrl;
   late TextEditingController _localModelCtrl;
   late TextEditingController _briefingFocusCtrl;
+  late TextEditingController _cityCtrl;
   String? _pingResult;
   int _selectedPreset = -1; // index into _kPresets, -1 = custom
   String? _obsidianSyncStatus;
@@ -90,12 +91,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       quietHoursEnd:    w.quietHoursEnd,
       homeCardOrder:    w.homeCardOrder,
       homeCardsHidden:  w.homeCardsHidden,
+      city:             w.city,
     );
     _assistantNameCtrl  = TextEditingController(text: _s.assistantName);
     _userNameCtrl       = TextEditingController(text: _s.userName);
     _localServerUrlCtrl = TextEditingController(text: _s.localServerUrl);
     _localModelCtrl     = TextEditingController(text: _s.localModelName);
     _briefingFocusCtrl  = TextEditingController(text: _s.todayBriefingFocus);
+    _cityCtrl           = TextEditingController(text: _s.city);
     _detectPreset(_s.localServerUrl);
     _loadPermissions();
     _loadVoices();
@@ -201,6 +204,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _localServerUrlCtrl.dispose();
     _localModelCtrl.dispose();
     _briefingFocusCtrl.dispose();
+    _cityCtrl.dispose();
     _tts.stop();
     super.dispose();
   }
@@ -211,6 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
     _s.localModelName = _localModelCtrl.text.trim().isEmpty    ? 'llama3'                     : _localModelCtrl.text.trim();
     _s.todayBriefingFocus = _briefingFocusCtrl.text.trim();
+    _s.city = _cityCtrl.text.trim().isEmpty ? 'תל אביב' : _cityCtrl.text.trim();
     widget.onSave(_s);
     // Fire-and-forget: sync identity fields to Supabase so they survive
     // device reinstalls. SharedPreferences remains the source of truth locally.
@@ -1051,6 +1056,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   textDir: TextDirection.rtl,
                 ),
               ],
+            ]),
+
+            // ── סביבה ────────────────────────────────────────────────────────
+            _sectionHeader('סביבה', Icons.public_rounded),
+            _card([
+              _rowField(
+                label: 'עיר למזג אוויר',
+                icon: Icons.location_city_outlined,
+                ctrl: _cityCtrl,
+                hint: 'תל אביב',
+                textDir: TextDirection.rtl,
+              ),
             ]),
 
             // ── זהות ─────────────────────────────────────────────────────────

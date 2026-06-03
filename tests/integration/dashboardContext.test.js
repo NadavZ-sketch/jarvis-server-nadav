@@ -22,11 +22,11 @@ jest.mock('../../services/obsidianSync', () => ({
     appendChatMessage: jest.fn().mockResolvedValue(undefined),
     syncAll: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('../../agents/weatherAgent', () => ({
-    runWeatherAgent: jest.fn().mockResolvedValue({ answer: 'שמש, 22°C' }),
+jest.mock('../../services/weatherSource', () => ({
+    getWeatherSummary: jest.fn().mockResolvedValue({ summary: 'שמש, 22°C' }),
 }));
-jest.mock('../../agents/newsAgent', () => ({
-    runNewsAgent: jest.fn().mockResolvedValue({ answer: 'חדשות: ישראל בחדשות.' }),
+jest.mock('../../services/newsSource', () => ({
+    getNewsSummary: jest.fn().mockResolvedValue({ summary: 'חדשות: ישראל בחדשות.' }),
 }));
 jest.mock('../../agents/models', () => ({
     callGemma4: jest.fn().mockResolvedValue('שלום! יש לך 2 משימות פתוחות ותזכורת בשעה 10:00.'),
@@ -142,12 +142,14 @@ describe('GET /dashboard-context', () => {
         expect(res.body).toHaveProperty('heroCard');
     });
 
-    it('returns 200 when LLM call fails (fallback text used)', async () => {
-        require('../../agents/models').callGemma4.mockRejectedValueOnce(new Error('LLM timeout'));
+    it('builds the hero locally (no LLM) — always a non-empty greeting', async () => {
+        // The hero subtitle is now templated server-side; it never calls the LLM,
+        // so even with no data it returns a valid, non-empty greeting.
         supabaseClient.from.mockImplementation(() => makeChain([]));
         const res = await request(app).get('/dashboard-context');
         expect(res.status).toBe(200);
         expect(typeof res.body.heroCard.text).toBe('string');
-        expect(res.body.heroCard.confidence).toBe(0);
+        expect(res.body.heroCard.text.length).toBeGreaterThan(0);
+        expect(typeof res.body.heroCard.confidence).toBe('number');
     });
 });

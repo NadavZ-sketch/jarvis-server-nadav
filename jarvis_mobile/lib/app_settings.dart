@@ -34,6 +34,9 @@ class AppSettings {
   bool todayBriefingEnabled;   // show the weekly briefing card in the Today tab
   String todayBriefingFocus;   // optional focus the briefing should emphasise
 
+  // ── Environment ──
+  String city; // city used for the home-screen weather (Open-Meteo geocoding)
+
   // ── Voice / TTS ──
   double ttsSpeed;     // 0.3 – 1.0 (flutter_tts speech rate)
   double ttsPitch;     // 0.5 – 2.0
@@ -87,6 +90,7 @@ class AppSettings {
     this.orbExplosionEnabled = true,
     this.todayBriefingEnabled = true,
     this.todayBriefingFocus = '',
+    this.city = 'תל אביב',
     this.ttsSpeed = 0.7,
     this.ttsPitch = 1.0,
     this.ttsLanguage = 'he-IL',
@@ -181,6 +185,7 @@ class AppSettings {
       orbExplosionEnabled: prefs.getBool('orbExplosionEnabled') ?? true,
       todayBriefingEnabled: prefs.getBool('todayBriefingEnabled') ?? true,
       todayBriefingFocus:  prefs.getString('todayBriefingFocus') ?? '',
+      city:             prefs.getString('city')             ?? 'תל אביב',
       ttsSpeed:         prefs.getDouble('ttsSpeed')         ?? 0.7,
       ttsPitch:         prefs.getDouble('ttsPitch')         ?? 1.0,
       ttsLanguage:      prefs.getString('ttsLanguage')      ?? 'he-IL',
@@ -224,6 +229,7 @@ class AppSettings {
     await prefs.setBool('orbExplosionEnabled', orbExplosionEnabled);
     await prefs.setBool('todayBriefingEnabled', todayBriefingEnabled);
     await prefs.setString('todayBriefingFocus', todayBriefingFocus);
+    await prefs.setString('city', city);
     await prefs.setDouble('ttsSpeed',       ttsSpeed);
     await prefs.setDouble('ttsPitch',       ttsPitch);
     await prefs.setString('ttsLanguage',    ttsLanguage);

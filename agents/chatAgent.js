@@ -298,7 +298,7 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
     };
 
     const memoriesShort = longTermMemories && longTermMemories.trim() && longTermMemories !== 'אין זיכרונות'
-        ? `עובדות על ${userName}: ${longTermMemories.slice(0, 600)}`
+        ? `עובדות על ${userName}: ${longTermMemories.slice(0, 800)}`
         : '';
 
     const followUp = followUpContext ? `\nהקשר: ${followUpContext}` : '';
@@ -309,11 +309,18 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
         : '';
     const learnedStyleShort = renderStyleHint(profile?.auto_learned?.style_prefs);
 
+    // Time-slot tone hint — brief nudge so tone matches the time of day.
+    const h = now.getHours();
+    const timeSlotHint = h >= 5 && h < 9   ? 'שעת בוקר — טון מעורר ואנרגטי.'
+                       : h >= 21 || h < 1  ? 'שעת לילה — טון רגוע ומרגיע.'
+                       : '';
+
     const system = [
         `אתה ${name}, עוזר אישי של ${userName}. ענה תמיד בעברית בלבד.`,
         genderInstr,
         `אופי: ${personalityShort[personality] || personalityShort.friendly}`,
         `תאריך ושעה: ${currentDate} ${currentTime}.`,
+        timeSlotHint,
         memoriesShort,
         profileShort,
         learnedStyleShort,

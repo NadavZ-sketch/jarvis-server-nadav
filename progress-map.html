@@ -602,6 +602,11 @@ h1 span{color:var(--accent)}
     <div class="settings-nav">
       <div class="settings-nav-item active" onclick="switchSettings('profile',this)">👤 פרופיל</div>
       <div class="settings-nav-item" onclick="switchSettings('assistant',this)">🤖 עוזר</div>
+      <div class="settings-nav-item" onclick="switchSettings('ai',this)">🧠 AI ומודל</div>
+      <div class="settings-nav-item" onclick="switchSettings('voice',this)">🔊 קול</div>
+      <div class="settings-nav-item" onclick="switchSettings('appearance',this)">🎨 מראה</div>
+      <div class="settings-nav-item" onclick="switchSettings('today',this)">📅 היום</div>
+      <div class="settings-nav-item" onclick="switchSettings('notifications',this)">🔔 התראות</div>
       <div class="settings-nav-item" onclick="switchSettings('apikeys',this)">🔑 ספקים</div>
       <div class="settings-nav-item" onclick="switchSettings('advanced',this)">🛠 מתקדם</div>
     </div>
@@ -622,11 +627,64 @@ h1 span{color:var(--accent)}
           <div class="settings-card-title">הגדרות עוזר</div>
           <div class="settings-2col">
             <div class="settings-field"><label>שם העוזר</label><input type="text" id="cfg-assistantName" placeholder="Jarvis"/></div>
-            <div class="settings-field"><label>אישיות</label><select id="cfg-personality"><option value="professional">מקצועי</option><option value="casual">ידידותי</option><option value="funny">מצחיק</option><option value="motivating">מעודד</option></select></div>
+            <div class="settings-field"><label>אישיות</label><select id="cfg-personality"><option value="friendly">ידידותי</option><option value="formal">רשמי</option><option value="concise">תמציתי</option><option value="humorous">מצחיק</option></select></div>
           </div>
-          <div class="toggle-row"><span>מצב קול (תגובות קצרות ל-TTS)</span><label class="sw"><input type="checkbox" id="cfg-voiceMode"/><span class="sw-slider"></span></label></div>
+        </div>
+      </div>
+      <!-- AI / model -->
+      <div class="settings-panel" id="sp-ai">
+        <div class="settings-card">
+          <div class="settings-card-title">AI ומודל</div>
+          <div class="settings-2col">
+            <div class="settings-field"><label>ספק ענן</label><select id="cfg-cloudProvider"><option value="groq">Groq</option><option value="deepseek">DeepSeek</option><option value="openrouter">OpenRouter</option><option value="gemini">Gemini</option></select></div>
+            <div class="settings-field"><label>אורך תשובה</label><select id="cfg-responseLength"><option value="short">קצר</option><option value="medium">בינוני</option><option value="long">ארוך</option></select></div>
+          </div>
+          <div class="settings-field"><label>מודל OpenRouter</label><input type="text" id="cfg-openrouterModel" placeholder="deepseek/deepseek-v4-flash:free" style="direction:ltr;text-align:left"/></div>
+          <div class="settings-field"><label>טמפרטורה (<span id="cfg-temperature-val">0.7</span>)</label><input type="range" id="cfg-temperature" min="0" max="1" step="0.1" oninput="document.getElementById('cfg-temperature-val').textContent=this.value"/></div>
           <div class="toggle-row"><span>שימוש במודל מקומי (Ollama)</span><label class="sw"><input type="checkbox" id="cfg-useLocal"/><span class="sw-slider"></span></label></div>
-          <div class="toggle-row"><span>הפעל TTS (טקסט לדיבור)</span><label class="sw"><input type="checkbox" id="cfg-ttsEnabled"/><span class="sw-slider"></span></label></div>
+          <div class="toggle-row"><span>מצב חיסכון (מקטין צריכת טוקנים)</span><label class="sw"><input type="checkbox" id="cfg-saverMode"/><span class="sw-slider"></span></label></div>
+        </div>
+      </div>
+      <!-- Voice / TTS -->
+      <div class="settings-panel" id="sp-voice">
+        <div class="settings-card">
+          <div class="settings-card-title">קול ודיבור</div>
+          <div class="toggle-row"><span>קול פעיל (TTS)</span><label class="sw"><input type="checkbox" id="cfg-voiceEnabled"/><span class="sw-slider"></span></label></div>
+          <div class="settings-field"><label>שפת דיבור</label><select id="cfg-ttsLanguage"><option value="he-IL">עברית</option><option value="en-US">אנגלית</option></select></div>
+          <div class="settings-field"><label>מהירות דיבור (<span id="cfg-ttsSpeed-val">0.7</span>)</label><input type="range" id="cfg-ttsSpeed" min="0.3" max="1" step="0.05" oninput="document.getElementById('cfg-ttsSpeed-val').textContent=this.value"/></div>
+          <div class="settings-field"><label>גובה צליל (<span id="cfg-ttsPitch-val">1.0</span>)</label><input type="range" id="cfg-ttsPitch" min="0.5" max="2" step="0.1" oninput="document.getElementById('cfg-ttsPitch-val').textContent=this.value"/></div>
+          <div class="toggle-row"><span>קטיעת דיבור (Barge-in)</span><label class="sw"><input type="checkbox" id="cfg-bargeIn"/><span class="sw-slider"></span></label></div>
+        </div>
+      </div>
+      <!-- Appearance -->
+      <div class="settings-panel" id="sp-appearance">
+        <div class="settings-card">
+          <div class="settings-card-title">מראה</div>
+          <div class="settings-2col">
+            <div class="settings-field"><label>ערכת נושא</label><select id="cfg-selectedTheme"><option value="navyDark">כחול כהה</option><option value="glassDark">זכוכית</option><option value="neoDark">ניאו</option><option value="material3">Material 3</option><option value="cyberpunk">סייברפאנק</option></select></div>
+            <div class="settings-field"><label>בהירות</label><select id="cfg-brightnessMode"><option value="system">אוטומטי</option><option value="light">בהיר</option><option value="dark">כהה</option></select></div>
+          </div>
+          <div class="toggle-row"><span>אנימציות</span><label class="sw"><input type="checkbox" id="cfg-animationsEnabled"/><span class="sw-slider"></span></label></div>
+        </div>
+      </div>
+      <!-- Today -->
+      <div class="settings-panel" id="sp-today">
+        <div class="settings-card">
+          <div class="settings-card-title">מסך היום</div>
+          <div class="toggle-row"><span>הצג תדריך שבועי</span><label class="sw"><input type="checkbox" id="cfg-todayBriefingEnabled"/><span class="sw-slider"></span></label></div>
+          <div class="settings-field"><label>פוקוס לתדריך</label><input type="text" id="cfg-todayBriefingFocus" placeholder="על מה להתמקד"/></div>
+          <div class="settings-field"><label>עיר (למזג אוויר)</label><input type="text" id="cfg-city" placeholder="תל אביב"/></div>
+        </div>
+      </div>
+      <!-- Notifications -->
+      <div class="settings-panel" id="sp-notifications">
+        <div class="settings-card">
+          <div class="settings-card-title">התראות</div>
+          <div class="toggle-row"><span>התראות פעילות</span><label class="sw"><input type="checkbox" id="cfg-notificationsEnabled"/><span class="sw-slider"></span></label></div>
+          <div class="settings-2col">
+            <div class="settings-field"><label>תחילת שעות שקט</label><input type="number" id="cfg-quietHoursStart" min="0" max="23" placeholder="22"/></div>
+            <div class="settings-field"><label>סיום שעות שקט</label><input type="number" id="cfg-quietHoursEnd" min="0" max="23" placeholder="8"/></div>
+          </div>
         </div>
       </div>
       <!-- Providers / API keys -->
@@ -640,9 +698,8 @@ h1 span{color:var(--accent)}
       <div class="settings-panel" id="sp-advanced">
         <div class="settings-card">
           <div class="settings-card-title">הגדרות מתקדמות</div>
-          <div class="settings-field"><label>Pinecone Index</label><input type="text" id="cfg-pineconeIndex" placeholder="שם האינדקס"/></div>
-          <div class="settings-field"><label>נתיב Obsidian Vault</label><input type="text" id="cfg-obsidianPath" placeholder="/path/to/vault" style="direction:ltr;text-align:left"/></div>
           <div class="toggle-row"><span>סנכרון Obsidian אוטומטי</span><label class="sw"><input type="checkbox" id="cfg-obsidianSync"/><span class="sw-slider"></span></label></div>
+          <div class="toggle-row"><span>שיתוף נתוני שימוש (טלמטריה)</span><label class="sw"><input type="checkbox" id="cfg-telemetry"/><span class="sw-slider"></span></label></div>
         </div>
       </div>
     </div>
@@ -1275,22 +1332,81 @@ function switchSettings(id, el){
   el.classList.add('active');
   if (id==='apikeys') loadProviders();
 }
+// Sets a range/number input's value AND its adjacent "-val" label span.
+function _setRange(id,v,fallback){ const n=(v===undefined||v===null||v==='')?fallback:v; _setVal(id,n); const lab=document.getElementById(id+'-val'); if(lab) lab.textContent=n; }
 async function loadSettings(){
   try { const r=await fetch('/user-profile'); if (r.ok) _profileData = await r.json(); } catch {}
-  const p=_profileData || {};
-  _setVal('cfg-userName', p.userName || p.name || '');
-  _setVal('cfg-gender', p.gender || 'male');
-  _setVal('cfg-assistantName', p.assistantName || 'Jarvis');
-  _setVal('cfg-personality', p.personality || 'professional');
-  _setChk('cfg-voiceMode', p.voiceMode || false);
-  _setChk('cfg-useLocal', p.useLocalModel || false);
-  _setChk('cfg-ttsEnabled', p.ttsEnabled !== false);
+  // GET /user-profile returns { profile: {...} }; portable settings live in profile.preferences.
+  const profile=(_profileData && _profileData.profile) || {};
+  const pf=(profile.preferences && typeof profile.preferences==='object') ? profile.preferences : {};
+  // ── Identity (snake_case columns) ──
+  _setVal('cfg-userName', profile.user_name || '');
+  _setVal('cfg-gender', profile.gender || 'male');
+  _setVal('cfg-assistantName', profile.assistant_name || 'Jarvis');
+  _setVal('cfg-personality', profile.personality || 'friendly');
+  // ── AI / model ──
+  _setVal('cfg-cloudProvider', pf.cloudProvider || 'groq');
+  _setVal('cfg-responseLength', pf.responseLength || 'medium');
+  _setVal('cfg-openrouterModel', pf.openrouterModel || '');
+  _setRange('cfg-temperature', pf.temperature, 0.7);
+  _setChk('cfg-useLocal', pf.useLocalModel || false);
+  _setChk('cfg-saverMode', pf.saverMode || false);
+  // ── Voice / TTS ──
+  _setChk('cfg-voiceEnabled', pf.voiceEnabled !== false);
+  _setVal('cfg-ttsLanguage', pf.ttsLanguage || 'he-IL');
+  _setRange('cfg-ttsSpeed', pf.ttsSpeed, 0.7);
+  _setRange('cfg-ttsPitch', pf.ttsPitch, 1.0);
+  _setChk('cfg-bargeIn', pf.bargeInEnabled !== false);
+  // ── Appearance ──
+  _setVal('cfg-selectedTheme', pf.selectedTheme || 'navyDark');
+  _setVal('cfg-brightnessMode', pf.brightnessMode || 'dark');
+  _setChk('cfg-animationsEnabled', pf.animationsEnabled !== false);
+  // ── Today ──
+  _setChk('cfg-todayBriefingEnabled', pf.todayBriefingEnabled !== false);
+  _setVal('cfg-todayBriefingFocus', pf.todayBriefingFocus || '');
+  _setVal('cfg-city', pf.city || '');
+  // ── Notifications ──
+  _setChk('cfg-notificationsEnabled', pf.notificationsEnabled !== false);
+  _setVal('cfg-quietHoursStart', pf.quietHoursStart ?? 22);
+  _setVal('cfg-quietHoursEnd', pf.quietHoursEnd ?? 8);
+  // ── Advanced ──
+  _setChk('cfg-obsidianSync', pf.obsidianAutoSync !== false);
+  _setChk('cfg-telemetry', pf.telemetryConsent || false);
   loadProviders();
 }
 async function saveSettings(){
-  const body={ userName:_getVal('cfg-userName'), gender:_getVal('cfg-gender'),
-    assistantName:_getVal('cfg-assistantName'), personality:_getVal('cfg-personality'),
-    voiceMode:_getChk('cfg-voiceMode'), useLocalModel:_getChk('cfg-useLocal'), ttsEnabled:_getChk('cfg-ttsEnabled') };
+  // Identity → snake_case columns; everything else → preferences JSONB (shallow-merged
+  // server-side). Keys MUST match AppSettings.toPreferences() in app_settings.dart.
+  const _num=(id,d)=>{ const v=parseFloat(_getVal(id)); return isNaN(v)?d:v; };
+  const _int=(id,d)=>{ const v=parseInt(_getVal(id),10); return isNaN(v)?d:v; };
+  const body={
+    user_name:_getVal('cfg-userName'), gender:_getVal('cfg-gender'),
+    assistant_name:_getVal('cfg-assistantName'), personality:_getVal('cfg-personality'),
+    preferences:{
+      cloudProvider:_getVal('cfg-cloudProvider'),
+      responseLength:_getVal('cfg-responseLength'),
+      openrouterModel:_getVal('cfg-openrouterModel'),
+      temperature:_num('cfg-temperature',0.7),
+      useLocalModel:_getChk('cfg-useLocal'),
+      saverMode:_getChk('cfg-saverMode'),
+      voiceEnabled:_getChk('cfg-voiceEnabled'),
+      ttsLanguage:_getVal('cfg-ttsLanguage'),
+      ttsSpeed:_num('cfg-ttsSpeed',0.7),
+      ttsPitch:_num('cfg-ttsPitch',1.0),
+      bargeInEnabled:_getChk('cfg-bargeIn'),
+      selectedTheme:_getVal('cfg-selectedTheme'),
+      brightnessMode:_getVal('cfg-brightnessMode'),
+      animationsEnabled:_getChk('cfg-animationsEnabled'),
+      todayBriefingEnabled:_getChk('cfg-todayBriefingEnabled'),
+      todayBriefingFocus:_getVal('cfg-todayBriefingFocus'),
+      city:_getVal('cfg-city'),
+      notificationsEnabled:_getChk('cfg-notificationsEnabled'),
+      quietHoursStart:_int('cfg-quietHoursStart',22),
+      quietHoursEnd:_int('cfg-quietHoursEnd',8),
+      obsidianAutoSync:_getChk('cfg-obsidianSync'),
+      telemetryConsent:_getChk('cfg-telemetry'),
+    },
+  };
   try { await fetch('/user-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); showToast('הגדרות נשמרו ✓','success'); }
   catch { showToast('שגיאה בשמירה','error'); }
 }

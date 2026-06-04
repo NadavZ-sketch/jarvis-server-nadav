@@ -76,7 +76,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       telemetryConsent: w.telemetryConsent,
       bargeInEnabled:   w.bargeInEnabled,
       selectedTheme:    w.selectedTheme,
+      brightnessMode:   w.brightnessMode,
       animationsEnabled: w.animationsEnabled,
+      quickSettingsEnabled: w.quickSettingsEnabled,
+      orbCustomColors:  w.orbCustomColors,
+      orbBaseColor:     w.orbBaseColor,
+      orbTipColor:      w.orbTipColor,
+      orbVoiceSensitivity:    w.orbVoiceSensitivity,
+      orbRotationSensitivity: w.orbRotationSensitivity,
+      orbExplosionEnabled:    w.orbExplosionEnabled,
+      todayBriefingEnabled:   w.todayBriefingEnabled,
+      todayBriefingFocus:     w.todayBriefingFocus,
       ttsSpeed:         w.ttsSpeed,
       ttsPitch:         w.ttsPitch,
       ttsLanguage:      w.ttsLanguage,
@@ -86,11 +96,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       localModelName:   w.localModelName,
       temperature:      w.temperature,
       responseLength:   w.responseLength,
+      saverMode:        w.saverMode,
       notificationsEnabled: w.notificationsEnabled,
       quietHoursStart:  w.quietHoursStart,
       quietHoursEnd:    w.quietHoursEnd,
       homeCardOrder:    w.homeCardOrder,
       homeCardsHidden:  w.homeCardsHidden,
+      tasksDefaultView: w.tasksDefaultView,
       city:             w.city,
     );
     _assistantNameCtrl  = TextEditingController(text: _s.assistantName);
@@ -217,13 +229,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.todayBriefingFocus = _briefingFocusCtrl.text.trim();
     _s.city = _cityCtrl.text.trim().isEmpty ? 'תל אביב' : _cityCtrl.text.trim();
     widget.onSave(_s);
-    // Fire-and-forget: sync identity fields to Supabase so they survive
-    // device reinstalls. SharedPreferences remains the source of truth locally.
+    // Fire-and-forget: sync identity fields + portable preferences to Supabase so
+    // they survive device reinstalls. SharedPreferences remains the source of
+    // truth locally; the server only fills gaps on a fresh install.
     ApiService(_s).saveUserProfile(
       userName:      _s.userName,
       assistantName: _s.assistantName,
       gender:        _s.gender,
       personality:   _s.personality,
+      preferences:   _s.toPreferences(),
     ).catchError((_) {});
     Navigator.pop(context);
   }
@@ -1508,6 +1522,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   DropdownMenuItem(value: 'long',   child: Text('ארוך')),
                 ],
                 onChanged: (val) => setState(() => _s.responseLength = val!),
+              ),
+              _divider(),
+              _rowSwitch(
+                label: 'מצב חיסכון',
+                subtitle: 'מקטין צריכת טוקנים — תשובות קצרות וטמפרטורה נמוכה',
+                icon: Icons.energy_savings_leaf_outlined,
+                value: _s.saverMode,
+                onChanged: (val) => setState(() => _s.saverMode = val),
               ),
             ]),
 

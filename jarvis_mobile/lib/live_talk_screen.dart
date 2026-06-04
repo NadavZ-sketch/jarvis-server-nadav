@@ -58,6 +58,12 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
   Timer? _ttsTimeoutTimer;
   bool _disposed = false;
 
+  // Barge-in debounce: require sustained speech above threshold before interrupting.
+  int _bargeInFrames = 0;
+  static const double _kBargeInThreshold = 4.0;
+  static const int _kBargeInFramesRequired = 4; // ~4 callbacks ≈ 400 ms
+  static const int _kPostTtsCooldownMs = 500; // mic settle time after TTS ends
+
   late final AnimationController _waveController;
 
   @override
@@ -76,8 +82,8 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
         _lastTtsPath = null;
       }
       if (!mounted) return;
-      setState(() => _state = JarvisState.idle);
-      _listen();
+      // Route through _onTtsDone to apply the post-TTS cooldown.
+      _onTtsDone();
     });
 
     _bootstrap();
@@ -122,9 +128,13 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
   void _onTtsDone() {
     _ttsTimeoutTimer?.cancel();
     _ttsTimeoutTimer = null;
+    _bargeInFrames = 0;
     if (!mounted) return;
     setState(() => _state = JarvisState.idle);
-    _listen();
+    // Wait for the microphone to settle after speaker output before listening.
+    Future.delayed(const Duration(milliseconds: _kPostTtsCooldownMs), () {
+      if (mounted && !_disposed) _listen();
+    });
   }
 
   // ─── History ─────────────────────────────────────────────────────────────
@@ -319,17 +329,24 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
       onSoundLevelChange: (level) {
         if (!mounted || _disposed) return;
         setState(() => _soundLevel = level);
-        if (level > 0 && _hint == 'מקשיב...') {
+        // Only show "שומע..." when audio level is clearly above ambient noise.
+        if (level > 2.0 && _hint == 'מקשיב...') {
           setState(() => _hint = 'שומע...');
         }
-        // Barge-in: user speaks while assistant is talking → cut TTS + tell server.
-        if (widget.settings.bargeInEnabled &&
-            level > 1.5 &&
-            _state == JarvisState.speaking) {
-          _flutterTts.stop();
-          _audioPlayer.stop();
-          _sendWs({'type': 'barge_in'});
-          _onTtsDone();
+        // Barge-in: require sustained speech above threshold to avoid false triggers.
+        if (widget.settings.bargeInEnabled && _state == JarvisState.speaking) {
+          if (level > _kBargeInThreshold) {
+            _bargeInFrames++;
+            if (_bargeInFrames >= _kBargeInFramesRequired) {
+              _bargeInFrames = 0;
+              _flutterTts.stop();
+              _audioPlayer.stop();
+              _sendWs({'type': 'barge_in'});
+              _onTtsDone();
+            }
+          } else {
+            _bargeInFrames = 0;
+          }
         }
       },
     );
@@ -340,24 +357,27 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
   }
 
   void _onUtteranceFinal(String text) {
-    if (text.trim().isEmpty) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || trimmed.replaceAll(' ', '').length < 2) {
+      // Filter out noise artifacts (single chars, whitespace-only).
       _listen();
       return;
     }
     HapticFeedback.lightImpact();
+    _hardCapTimer?.cancel(); // don't restart listening while processing
     setState(() {
-      _messages.add({'sender': 'user', 'text': text});
+      _messages.add({'sender': 'user', 'text': trimmed});
       _partialUser = '';
       _state = JarvisState.thinking;
       _hint = 'חושב...';
     });
     _scrollToBottom();
     if (_wsConnected) {
-      _sendWs({'type': 'user_text', 'text': text});
+      _sendWs({'type': 'user_text', 'text': trimmed});
     } else {
       // WS unavailable — fall back to SSE streaming.
       _sseMode = true;
-      _sendViaSSE(text);
+      _sendViaSSE(trimmed);
     }
   }
 
@@ -504,6 +524,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
   @override
   void dispose() {
     _disposed = true;
+    _bargeInFrames = 0;
     _hardCapTimer?.cancel();
     _ttsTimeoutTimer?.cancel();
     _wsAckTimer?.cancel();

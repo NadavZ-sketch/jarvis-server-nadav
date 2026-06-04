@@ -1453,6 +1453,191 @@ app.get('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
     res.json({ counts: r.counts, total: r.total });
 });
 
+// ─── Analytics — time-series for the dashboard's Analytics tab ────────────────
+// Buckets recent activity (system + personal) into daily series. Every query is
+// scoped to the requested window and degrades to empty data if a table is
+// missing, so the endpoint never hard-fails. callGemma4/feedbackStore/supabase
+// are resolved at request time (defined elsewhere in this module).
+const ANALYTICS_RANGES = { '7d': 7, '30d': 30, '90d': 90 };
+
+function _dayKey(d) { return new Date(d).toISOString().slice(0, 10); }
+
+function _dateAxis(days) {
+    const out = [];
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    for (let i = days - 1; i >= 0; i--) out.push(_dayKey(new Date(today.getTime() - i * 86400000)));
+    return out;
+}
+
+async function computeAnalytics(days) {
+    const sinceISO = new Date(Date.now() - days * 86400000).toISOString();
+    const axis = _dateAxis(days);
+    const zero = () => Object.fromEntries(axis.map(k => [k, 0]));
+
+    const [chatRes, tasksRes, remindersRes, metricsRes, eventsAgg] = await Promise.allSettled([
+        supabase.from('chat_history').select('role, created_at').gte('created_at', sinceISO).limit(20000),
+        supabase.from('tasks').select('done, created_at').gte('created_at', sinceISO).limit(20000),
+        supabase.from('reminders').select('created_at').gte('created_at', sinceISO).limit(20000),
+        supabase.from('agent_metrics').select('agent, ms, intent_mode, created_at').gte('created_at', sinceISO).limit(20000),
+        feedbackStore.aggregateEvents(supabase, { sinceDays: days, limit: 5000 }),
+    ]);
+    const rows = (r) => (r.status === 'fulfilled' && r.value && !r.value.error && Array.isArray(r.value.data)) ? r.value.data : [];
+    const seriesFrom = (obj) => axis.map(k => obj[k] || 0);
+
+    // ── Personal: chat volume per day + active-hour histogram (Jerusalem) ──
+    const chatRows = rows(chatRes);
+    const chatPerDay = zero();
+    const hours = Array(24).fill(0);
+    let userMsgs = 0;
+    for (const r of chatRows) {
+        const k = _dayKey(r.created_at);
+        if (k in chatPerDay) chatPerDay[k]++;
+        hours[(new Date(r.created_at).getUTCHours() + 3) % 24]++;
+        if (r.role === 'user') userMsgs++;
+    }
+
+    // ── Personal: tasks created per day + completion rate ──
+    const taskRows = rows(tasksRes);
+    const tasksPerDay = zero();
+    let tasksDone = 0;
+    for (const r of taskRows) {
+        const k = _dayKey(r.created_at);
+        if (k in tasksPerDay) tasksPerDay[k]++;
+        if (r.done) tasksDone++;
+    }
+    const completionRate = taskRows.length ? Math.round(tasksDone / taskRows.length * 100) : 0;
+
+    // ── Personal: reminders created per day ──
+    const remPerDay = zero();
+    for (const r of rows(remindersRes)) { const k = _dayKey(r.created_at); if (k in remPerDay) remPerDay[k]++; }
+
+    // ── System: agent latency + intent trend + top agents ──
+    const metricRows = rows(metricsRes);
+    const latPerDay = {}, intentPerDay = {}, byAgent = {};
+    for (const k of axis) { latPerDay[k] = { sum: 0, count: 0 }; intentPerDay[k] = { fast: 0, llm: 0 }; }
+    for (const r of metricRows) {
+        const k = _dayKey(r.created_at);
+        const ms = Number(r.ms) || 0;
+        if (latPerDay[k]) { latPerDay[k].sum += ms; latPerDay[k].count++; }
+        if (intentPerDay[k]) { if (r.intent_mode === 'fast') intentPerDay[k].fast++; else if (r.intent_mode === 'llm') intentPerDay[k].llm++; }
+        const a = (r.agent || '').replace('Agent', '') || 'unknown';
+        byAgent[a] = byAgent[a] || { sum: 0, count: 0 };
+        byAgent[a].sum += ms; byAgent[a].count++;
+    }
+    const topAgents = Object.entries(byAgent)
+        .map(([agent, v]) => ({ agent, count: v.count, avgMs: Math.round(v.sum / v.count) }))
+        .sort((a, b) => b.count - a.count).slice(0, 8);
+
+    // ── System: event volume per day + top event types ──
+    const events = (eventsAgg.status === 'fulfilled' && eventsAgg.value) ? (eventsAgg.value.events || []) : [];
+    const eventsPerDay = zero();
+    const eventTypes = {};
+    for (const e of events) {
+        const k = _dayKey(e.created_at);
+        if (k in eventsPerDay) eventsPerDay[k]++;
+        eventTypes[e.event_name] = (eventTypes[e.event_name] || 0) + 1;
+    }
+    const topEvents = Object.entries(eventTypes).map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count).slice(0, 8);
+
+    return {
+        range: `${days}d`, days, generatedAt: new Date().toISOString(), axis,
+        kpis: {
+            chatMessages: chatRows.length, userMessages: userMsgs,
+            tasksCreated: taskRows.length, completionRate,
+            remindersCreated: rows(remindersRes).length,
+            agentCalls: metricRows.length, events: events.length,
+        },
+        personal: {
+            chatVolume: seriesFrom(chatPerDay),
+            tasksCreated: seriesFrom(tasksPerDay),
+            reminders: seriesFrom(remPerDay),
+            activeHours: hours, completionRate,
+        },
+        system: {
+            agentLatency: axis.map(k => latPerDay[k].count ? Math.round(latPerDay[k].sum / latPerDay[k].count) : 0),
+            intentFast: axis.map(k => intentPerDay[k].fast),
+            intentLlm: axis.map(k => intentPerDay[k].llm),
+            eventVolume: seriesFrom(eventsPerDay),
+            topAgents, topEvents,
+        },
+    };
+}
+
+app.get('/dashboard/analytics', _rl(30), async (req, res) => {
+    try {
+        const days = ANALYTICS_RANGES[String(req.query.range)] || 7;
+        res.json(await computeAnalytics(days));
+    } catch (err) {
+        console.error('❌ /dashboard/analytics:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// AI-driven insights over the same window — compact summary → LLM → Hebrew tips.
+app.post('/dashboard/analytics/insights', _rl(10), async (req, res) => {
+    try {
+        const days = ANALYTICS_RANGES[String(req.body && req.body.range)] || 7;
+        const a = await computeAnalytics(days);
+        const peakHour = a.personal.activeHours.indexOf(Math.max(...a.personal.activeHours));
+        const compact = {
+            range: a.range,
+            kpis: a.kpis,
+            peakHour,
+            topAgents: a.system.topAgents.slice(0, 5).map(x => `${x.agent}: ${x.count} קריאות, ${x.avgMs}ms ממוצע`),
+            topEvents: a.system.topEvents.slice(0, 5).map(x => `${x.name}: ${x.count}`),
+            chatTrend: a.personal.chatVolume,
+            taskTrend: a.personal.tasksCreated,
+            latencyTrend: a.system.agentLatency,
+        };
+        const prompt = `אתה אנליסט מוצר של ג'ארביס, עוזר אישי. נתח את נתוני השימוש (טווח ${days} ימים) והפק תובנות מעשיות בעברית.
+נתונים: ${JSON.stringify(compact)}
+החזר JSON בלבד: {"insights":[{"icon":"אמוג'י","title":"כותרת קצרה","detail":"משפט הסבר + המלצה"}]}
+כלול 3-5 תובנות: מגמות בולטות, אנומליות (קפיצות/ירידות חריגות), שעת שיא הפעילות, ביצועי agents, והמלצה אחת לשיפור. פנה ישירות אל המשתמש.`;
+
+        let insights = [];
+        try {
+            const raw = await callGemma4(prompt, false, 700);
+            const m = String(raw).match(/\{[\s\S]*\}/);
+            if (m) insights = JSON.parse(m[0]).insights || [];
+            if ((!Array.isArray(insights) || !insights.length) && raw) {
+                insights = [{ icon: '📊', title: 'תובנות', detail: String(raw).slice(0, 400) }];
+            }
+        } catch (llmErr) {
+            console.error('⚠️ analytics insights LLM failed, using deterministic fallback:', llmErr.message);
+        }
+
+        // Deterministic fallback so the panel is never empty when the LLM is down.
+        if (!Array.isArray(insights) || !insights.length) {
+            insights = _deterministicInsights(a, peakHour);
+        }
+        res.json({ insights, generatedAt: new Date().toISOString(), source: insights._llm === false ? 'computed' : 'ai' });
+    } catch (err) {
+        console.error('❌ /dashboard/analytics/insights:', err.message);
+        res.status(500).json({ error: 'Internal server error', insights: [] });
+    }
+});
+
+// Build a handful of factual insights straight from the aggregated numbers — no
+// LLM. Used as a graceful fallback when the model is unavailable.
+function _deterministicInsights(a, peakHour) {
+    const out = [];
+    const k = a.kpis;
+    out.push({ icon: '💬', title: 'נפח פעילות', detail: `${k.chatMessages} הודעות ו-${k.tasksCreated} משימות נוצרו בטווח ${a.days} הימים האחרונים.` });
+    if (k.tasksCreated > 0) {
+        out.push({ icon: k.completionRate >= 60 ? '✅' : '📌', title: 'שיעור השלמה',
+            detail: `השלמת ${k.completionRate}% מהמשימות. ${k.completionRate >= 60 ? 'קצב מצוין — המשך כך!' : 'שווה לפנות זמן לסגירת משימות פתוחות.'}` });
+    }
+    if (k.chatMessages > 0) {
+        out.push({ icon: '🕐', title: 'שעת שיא', detail: `הכי פעיל סביב השעה ${peakHour}:00. תזמון משימות מורכבות לשעה זו עשוי לעזור.` });
+    }
+    const ta = a.system.topAgents[0];
+    if (ta) out.push({ icon: '🤖', title: 'סוכן מוביל', detail: `הסוכן "${ta.agent}" טופל הכי הרבה (${ta.count} קריאות, ${ta.avgMs}ms בממוצע).` });
+    out._llm = false;
+    return out;
+}
+
 // ─── Today Message — personalized AI morning/motivation card ──────────────────
 
 app.get('/today-message', async (_req, res) => {

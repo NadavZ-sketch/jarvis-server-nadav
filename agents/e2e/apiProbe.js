@@ -30,6 +30,8 @@ function classifyLatency(ms) {
 async function runApiProbe({ baseUrl = 'http://localhost:3000', learnedContext = {} } = {}) {
     const findings = [];
     const samples = [];
+    let okRequests = 0;   // count of requests that actually reached the server
+    let totalRequests = 0;
 
     const queries = [
         ...(learnedContext.sampleBank || []),
@@ -46,8 +48,10 @@ async function runApiProbe({ baseUrl = 'http://localhost:3000', learnedContext =
     // GET endpoints — quick correctness + latency
     for (const ep of GET_ENDPOINTS) {
         const t0 = Date.now();
+        totalRequests++;
         try {
             const res = await axios.get(`${baseUrl}${ep.path}`, { timeout: 8000 });
+            okRequests++;
             const elapsed = Date.now() - t0;
             const okShape = ep.key
                 ? (res.data && typeof res.data === 'object' && ep.key in res.data)
@@ -87,8 +91,10 @@ async function runApiProbe({ baseUrl = 'http://localhost:3000', learnedContext =
     // POST /ask-jarvis — Hebrew sample queries
     for (const query of dedup) {
         const t0 = Date.now();
+        totalRequests++;
         try {
             const res = await axios.post(`${baseUrl}/ask-jarvis`, { command: query }, { timeout: 30000 });
+            okRequests++;
             const elapsed = Date.now() - t0;
             const answer = (res.data && res.data.answer) || '';
             samples.push({ query, answer, latency_ms: elapsed });
@@ -132,7 +138,9 @@ async function runApiProbe({ baseUrl = 'http://localhost:3000', learnedContext =
         }
     }
 
-    return { findings, samples };
+    // reachable: at least one request actually got a response from the server.
+    // When false, the run has no measured API data and should not show a score.
+    return { findings, samples, reachable: okRequests > 0, okRequests, totalRequests };
 }
 
 module.exports = { runApiProbe, DEFAULT_QUERIES };

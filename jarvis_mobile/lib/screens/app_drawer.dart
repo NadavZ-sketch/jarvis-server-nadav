@@ -5,7 +5,6 @@ import '../app_settings.dart';
 import '../settings_screen.dart';
 import '../history_screen.dart';
 import '../transitions/slide_fade_route.dart';
-import 'progress_map_screen.dart';
 import 'lists_screen.dart';
 import 'projects_hub_screen.dart';
 
@@ -126,25 +125,6 @@ class AppDrawer extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
-                _DrawerTile(
-                  icon: Icons.insights_rounded,
-                  label: 'מפת התקדמות',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      SlideFadeRoute(
-                        page: ProgressMapScreen(
-                          settings: settings,
-                          onSwitchToChat: (cmd) {
-                            Navigator.pop(context);
-                            onSwitchToChat?.call(cmd);
-                          },
-                        ),
-                      ),
-                    );
-                  },
-                ),
                 _DrawerTile(
                   icon: Icons.folder_open_rounded,
                   label: 'פרויקטים',

@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // AgentDetailSheet — 4 tabs: כרטיס · מידע · חיבורים · דאשבורד
-// Shared between ProgressMapScreen and ControlCenterPreviewScreen.
+// Used by the unified ProgressMapScreen (Control Center).
 // ══════════════════════════════════════════════════════════════════════════════
 
 class AgentDetailSheet extends StatefulWidget {

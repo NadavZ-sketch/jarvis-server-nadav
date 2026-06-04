@@ -1,19 +1,26 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../main.dart' show JC;
 import '../widgets/agent_detail_sheet.dart';
 import '../app_settings.dart';
+import '../settings_screen.dart';
 import '../services/proposal_scoring.dart';
 import '../services/telemetry_policy.dart';
+import '../transitions/slide_fade_route.dart';
 import 'user_profile_screen.dart';
 import 'e2e_reports_screen.dart';
-import 'survey_screen.dart';
 
-enum ControlCenterTab { overview, development, agents, insights, surveys }
+/// Unified Control Center tabs. Order drives both the TabBar and the per-tab
+/// badge mapping from /control-center/events.
+///   overview     → סקירה ובריאות
+///   agents       → סוכנים
+///   development  → פיתוח / Roadmap
+///   testsSurveys → בדיקות וסקרים (E2E reports + read-only survey summary)
+///   settings     → הגדרות
+enum ControlCenterTab { overview, agents, development, testsSurveys, settings }
 
 class _CcAlert {
   final String id;
@@ -64,46 +71,6 @@ class ProgressMapScreen extends StatefulWidget {
   State<ProgressMapScreen> createState() => _ProgressMapScreenState();
 }
 
-class _GraphNode {
-  final String nodeId;
-  final String label;
-  final String type;
-  final double impact;
-  final double score;
-  final String whyNow;
-  const _GraphNode({
-    required this.label,
-    this.nodeId = '',
-    required this.type,
-    required this.impact,
-    required this.score,
-    this.whyNow = 'נבחר בגלל עדיפות נוכחית',
-  });
-}
-
-class _GraphEdge {
-  final int from;
-  final int to;
-  final String relationshipType; // dependency | similarity | user-goal
-  const _GraphEdge({
-    required this.from,
-    required this.to,
-    required this.relationshipType,
-  });
-}
-
-String _ensureStableNodeId({
-  required String rawNodeId,
-  required String label,
-  required String type,
-  required String fallbackSeed,
-}) {
-  final trimmed = rawNodeId.trim();
-  if (trimmed.isNotEmpty) return trimmed;
-  final seed = '${type.trim()}|${label.trim()}|${fallbackSeed.trim()}';
-  return 'auto-${_stableHash(seed)}';
-}
-
 int _stableHash(String input) {
   // FNV-1a 32-bit hash: deterministic across app runs/devices.
   var hash = 0x811C9DC5;
@@ -112,91 +79,6 @@ int _stableHash(String input) {
     hash = (hash * 0x01000193) & 0xFFFFFFFF;
   }
   return hash;
-}
-
-List<Offset> _buildStableGraphPoints({
-  required List<_GraphNode> nodes,
-  required double width,
-  required double height,
-}) {
-  if (nodes.isEmpty) return const <Offset>[];
-  final safeWidth = width < 120 ? 120.0 : width;
-  final safeHeight = height < 120 ? 120.0 : height;
-  const marginX = 24.0;
-  const marginY = 28.0;
-  final usableW = safeWidth - (marginX * 2);
-  final usableH = safeHeight - (marginY * 2);
-  final points = <Offset>[];
-
-  for (final node in nodes) {
-    final baseHash = _stableHash(node.nodeId);
-    final mixHash = _stableHash('${node.nodeId}|${node.type}|${node.label}');
-    final x = marginX + (baseHash % 10000) / 10000.0 * usableW;
-    final y = marginY + (mixHash % 10000) / 10000.0 * usableH;
-    points.add(Offset(x, y));
-  }
-
-  // Basic collision mitigation: small deterministic push when nodes are too close.
-  const minDistance = 30.0;
-  for (var i = 0; i < points.length; i++) {
-    for (var j = i + 1; j < points.length; j++) {
-      final delta = points[j] - points[i];
-      final distance = delta.distance;
-      if (distance >= minDistance) continue;
-      final angleSeed = _stableHash('${nodes[i].nodeId}|${nodes[j].nodeId}');
-      final angle = (angleSeed % 360) * 3.1415926535 / 180.0;
-      final shift = (minDistance - distance) / 2 + 2;
-      final push = Offset(shift * cos(angle), shift * sin(angle));
-      points[i] = _clampPoint(points[i] - push, marginX, safeWidth - marginX, marginY, safeHeight - marginY);
-      points[j] = _clampPoint(points[j] + push, marginX, safeWidth - marginX, marginY, safeHeight - marginY);
-    }
-  }
-  return points;
-}
-
-Offset _clampPoint(Offset p, double minX, double maxX, double minY, double maxY) {
-  return Offset(
-    p.dx.clamp(minX, maxX).toDouble(),
-    p.dy.clamp(minY, maxY).toDouble(),
-  );
-}
-
-class _InnovationGraphPainter extends CustomPainter {
-  final List<_GraphNode> nodes;
-  final List<_GraphEdge> edges;
-  final double width;
-  final double height;
-  const _InnovationGraphPainter({required this.nodes, required this.edges, required this.width, required this.height});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Stable layout by nodeId improves long-term user learning:
-    // the same concept appears in (almost) the same visual area between sessions,
-    // so users build spatial memory and understand graph changes faster.
-    final points = _buildStableGraphPoints(nodes: nodes, width: width, height: height);
-    for (final e in edges) {
-      if (e.from >= points.length || e.to >= points.length) continue;
-      final edgePaint = Paint()
-        ..color = switch (e.relationshipType) {
-          'dependency' => const Color(0x88F59E0B),
-          'user-goal' => const Color(0x8834D399),
-          _ => const Color(0x8894A3B8),
-        }
-        ..strokeWidth = e.relationshipType == 'dependency' ? 1.8 : 1.2;
-      canvas.drawLine(points[e.from], points[e.to], edgePaint);
-    }
-    for (var i = 0; i < nodes.length; i++) {
-      final n = nodes[i];
-      final p = points[i];
-      final color = n.type == 'proposal' ? const Color(0xFFA78BFA) : n.type == 'agent' ? const Color(0xFF34D399) : const Color(0xFF38BDF8);
-      final r = 6 + (n.impact / 2.4);
-      canvas.drawCircle(p, r + 2, Paint()..color = color.withValues(alpha: 0.25));
-      canvas.drawCircle(p, r, Paint()..color = color);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _InnovationGraphPainter oldDelegate) => oldDelegate.nodes != nodes || oldDelegate.edges != edges;
 }
 
 abstract final class _PS {
@@ -267,8 +149,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   String? _generatedPrompt;
   bool _generatingPrompt = false;
   bool _promptCopied     = false;
-  bool _smartCompactMode = true;
-  _GraphNode? _selectedGraphNode;
   final Map<String, int> _smartTelemetry = {
     'action_start_first': 0,
     'action_sprint_prompt': 0,
@@ -445,11 +325,18 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     raw.forEach((k, v) {
       if (v is! num) return;
       final key = k.toString();
-      final tab = ControlCenterTab.values.firstWhere(
-        (t) => t.name == key,
-        orElse: () => ControlCenterTab.overview,
-      );
-      if (tab.name == key) out[tab] = v.toInt();
+      // Legacy server keys (insights / surveys) now both fold into the merged
+      // "בדיקות וסקרים" tab so existing event payloads keep working.
+      final tab = switch (key) {
+        'insights' || 'surveys' => ControlCenterTab.testsSurveys,
+        _ => ControlCenterTab.values.firstWhere(
+              (t) => t.name == key,
+              orElse: () => ControlCenterTab.overview,
+            ),
+      };
+      if (key == 'insights' || key == 'surveys' || tab.name == key) {
+        out[tab] = (out[tab] ?? 0) + v.toInt();
+      }
     });
     return out;
   }
@@ -484,7 +371,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         _dismissAlert(alert.id);
         break;
       case 'open_e2e_report':
-        _tabController.animateTo(ControlCenterTab.insights.index);
+        _tabController.animateTo(ControlCenterTab.testsSurveys.index);
         _dismissAlert(alert.id);
         break;
       case 'promote_proposal':
@@ -505,8 +392,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         _dismissAlert(alert.id);
         break;
       case 'start_survey':
-        _tabController.animateTo(ControlCenterTab.surveys.index);
-        await _startSurveyNow();
+        _tabController.animateTo(ControlCenterTab.testsSurveys.index);
         _dismissAlert(alert.id);
         break;
       case 'open_chat':
@@ -602,15 +488,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     final raw = widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim();
     final hash = _stableHash(raw).toUnsigned(32).toRadixString(16).padLeft(8, '0');
     return 'u-$hash';
-  }
-
-  Map<String, dynamic> _redactMetadata(Map<String, dynamic>? metadata) {
-    final source = metadata ?? const <String, dynamic>{};
-    final allowedActions = {'start_first', 'sprint_prompt', 'memory_focus'};
-    return {
-      if (source['compactMode'] is bool) 'compactMode': source['compactMode'],
-      if (allowedActions.contains(source['action'])) 'action': source['action'],
-    };
   }
 
   // Compatibility shim for legacy telemetry calls in merge commits.
@@ -770,47 +647,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       _loadingSurveys = false;
       _surveyError = failures == 2 ? 'שגיאת רשת — לא ניתן לטעון סקרים' : null;
     });
-  }
-
-  Future<void> _startSurveyNow() async {
-    final userName = widget.settings.userName.trim();
-    if (userName.isEmpty) {
-      _showSnack('צריך להגדיר שם משתמש בהגדרות לפני סקר');
-      return;
-    }
-    try {
-      final res = await http.get(
-        Uri.parse('$_base/survey-check?force=true&userName=${Uri.encodeQueryComponent(userName)}'),
-      ).timeout(const Duration(seconds: 8));
-      if (!mounted) return;
-      if (res.statusCode != 200) {
-        _showSnack('לא ניתן להתחיל סקר עכשיו');
-        return;
-      }
-      final d = jsonDecode(res.body);
-      if (d['showSurvey'] != true) {
-        _showSnack('אין סקר זמין');
-        return;
-      }
-      final questions = List<Map<String, dynamic>>.from(d['questions'] ?? []);
-      if (questions.isEmpty) {
-        _showSnack('אין סקר זמין');
-        return;
-      }
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: JC.surface,
-        builder: (ctx) => SurveyModal(
-          questions: questions,
-          settings: widget.settings,
-          onDismiss: () => Navigator.of(ctx).pop(),
-        ),
-      );
-      if (mounted) await _loadSurveys();
-    } catch (_) {
-      if (mounted) _showSnack('שגיאת רשת');
-    }
   }
 
   // ── Quick actions ─────────────────────────────────────────────────────────
@@ -1332,11 +1168,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13),
             unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
             tabs: [
-              _tabWithBadge('סקירה', ControlCenterTab.overview),
-              _tabWithBadge('פיתוח', ControlCenterTab.development),
+              _tabWithBadge('סקירה ובריאות', ControlCenterTab.overview),
               _tabWithBadge('סוכנים', ControlCenterTab.agents),
-              _tabWithBadge('מידע', ControlCenterTab.insights),
-              _tabWithBadge('סקרים', ControlCenterTab.surveys),
+              _tabWithBadge('פיתוח', ControlCenterTab.development),
+              _tabWithBadge('בדיקות וסקרים', ControlCenterTab.testsSurveys),
+              _tabWithBadge('הגדרות', ControlCenterTab.settings),
             ],
           ),
         ),
@@ -1348,10 +1184,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                 controller: _tabController,
                 children: [
                   _buildOverviewTab(),
-                  _buildDevelopmentTab(),
                   _buildAgentsTab(),
-                  _buildInsightsTab(),
-                  _buildSurveysTab(),
+                  _buildDevelopmentTab(),
+                  _buildTestsSurveysTab(),
+                  _buildSettingsTab(),
                 ],
               ),
             ),
@@ -1486,11 +1322,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         const SizedBox(height: 14),
         _buildMetrics(),
         const SizedBox(height: 14),
-        _buildSmartRoadmapLab(),
-        const SizedBox(height: 14),
-        _sectionTitle('🧠 מפת חדשנות'),
+        _sectionTitle('📊 שימוש מודלים (מהשרת)'),
         const SizedBox(height: 8),
-        _buildInnovationGraphCard(),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: JC.border, width: 0.8),
+          ),
+          child: _buildProviderBreakdown(),
+        ),
       ]);
 
   Widget _buildOverviewQuickActions() {
@@ -1557,40 +1399,65 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         _buildAgentCenter(),
       ]);
 
-  Widget _buildInsightsTab() => _tabListView([
-        Row(children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => widget.onSwitchToChat?.call('צור משימה חדשה'),
-              icon: const Icon(Icons.add_task_rounded, size: 18),
-              label: const Text('צור משימה', style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: JC.blue400,
-                side: BorderSide(color: JC.blue400, width: 0.8),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
+  // ── בדיקות וסקרים: E2E reports (live) + read-only survey summary ───────────
+  Widget _buildTestsSurveysTab() {
+    final hasUserName = widget.settings.userName.trim().isNotEmpty;
+    return _tabListView([
+      _buildOverviewQuickActions(),
+      const SizedBox(height: 18),
+      _sectionTitle('🧪 דוחות בדיקות E2E'),
+      const SizedBox(height: 8),
+      E2eReportsPanel(settings: widget.settings),
+      const SizedBox(height: 24),
+      _sectionTitle('📋 סקרים (לקריאה בלבד)'),
+      const SizedBox(height: 8),
+      if (!hasUserName)
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: JC.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.6), width: 0.8),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () {
-                _tabController.animateTo(ControlCenterTab.surveys.index);
-                _startSurveyNow();
-              },
-              icon: const Icon(Icons.poll_outlined, size: 18),
-              label: const Text('סקר חדש', style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF22C55E),
-                side: const BorderSide(color: Color(0xFF22C55E), width: 0.8),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
+          child: Text(
+            'צריך להגדיר שם משתמש בהגדרות כדי לצפות בסיכום הסקרים.',
+            textAlign: TextAlign.right,
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13),
           ),
-        ]),
-        const SizedBox(height: 14),
+        )
+      else ...[
+        if (_surveyError != null) ...[
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: JC.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: JC.cancelRed.withValues(alpha: 0.5), width: 0.8),
+            ),
+            child: Row(children: [
+              Icon(Icons.error_outline, color: JC.cancelRed, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(_surveyError!,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
+              ),
+              TextButton(onPressed: _loadSurveys, child: const Text('נסה שוב', style: TextStyle(fontFamily: 'Heebo'))),
+            ]),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _buildSurveyInsightsCard(),
+        const SizedBox(height: 18),
+        _sectionTitle('📜 היסטוריית סקרים'),
+        const SizedBox(height: 8),
+        _buildSurveyHistory(),
+      ],
+    ]);
+  }
+
+  // ── הגדרות: profile snapshot + launcher to the full settings screen ────────
+  Widget _buildSettingsTab() => _tabListView([
         _sectionTitle('👤 מה למדנו עליך'),
         const SizedBox(height: 8),
         Container(
@@ -1603,74 +1470,54 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           child: UserProfilePanel(settings: widget.settings),
         ),
         const SizedBox(height: 24),
-        _sectionTitle('🧪 דוחות בדיקות E2E'),
+        _sectionTitle('⚙️ הגדרות עוזר'),
         const SizedBox(height: 8),
-        E2eReportsPanel(settings: widget.settings),
+        _buildSettingsLauncher(),
       ]);
 
-  Widget _buildSurveysTab() {
-    final hasUserName = widget.settings.userName.trim().isNotEmpty;
-    return _tabListView([
-      if (!hasUserName)
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: JC.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.6), width: 0.8),
-          ),
-          child: Text(
-            'צריך להגדיר שם משתמש בהגדרות כדי לצפות בסקרים.',
+  Widget _buildSettingsLauncher() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'שם העוזר, אישיות, מצב קול, TTS, מודל מקומי, כתובת שרת ועוד.',
             textAlign: TextAlign.right,
-            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13),
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13, height: 1.5),
           ),
-        )
-      else if (_surveyError != null) ...[
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: JC.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: JC.cancelRed.withValues(alpha: 0.5), width: 0.8),
-          ),
-          child: Row(children: [
-            Icon(Icons.error_outline, color: JC.cancelRed, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(_surveyError!,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13)),
-            ),
-            TextButton(onPressed: _loadSurveys, child: const Text('נסה שוב', style: TextStyle(fontFamily: 'Heebo'))),
-          ]),
-        ),
-        const SizedBox(height: 12),
-      ],
-      _sectionTitle('📊 תובנות מצטברות'),
-      const SizedBox(height: 8),
-      _buildSurveyInsightsCard(),
-      const SizedBox(height: 18),
-      Row(children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: hasUserName ? _startSurveyNow : null,
-            icon: const Icon(Icons.poll_outlined, size: 18),
-            label: const Text('התחל סקר עכשיו', style: TextStyle(fontFamily: 'Heebo')),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: _openFullSettings,
+            icon: const Icon(Icons.tune_rounded, size: 18),
+            label: const Text('פתח הגדרות מלאות', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
             style: ElevatedButton.styleFrom(
               backgroundColor: JC.blue500,
               foregroundColor: Colors.white,
-              disabledBackgroundColor: JC.surfaceAlt,
-              disabledForegroundColor: JC.textMuted,
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openFullSettings() async {
+    await Navigator.of(context).push(
+      SlideFadeRoute(
+        page: SettingsScreen(
+          settings: widget.settings,
+          onSave: (updated) async {
+            await updated.save();
+          },
         ),
-      ]),
-      const SizedBox(height: 18),
-      _sectionTitle('📋 היסטוריית סקרים'),
-      const SizedBox(height: 8),
-      _buildSurveyHistory(),
-    ]);
+      ),
+    );
   }
 
   Widget _buildSurveyInsightsCard() {
@@ -1927,246 +1774,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     );
   }
 
-  // ── Smart lab (visual + actionable) ─────────────────────────────────────
-
-  Widget _buildSmartRoadmapLab() {
-    final doneCount = _done.length;
-    final buildingCount = _building.length;
-    final plannedCount = _planned.length;
-    final total = (doneCount + buildingCount + plannedCount).clamp(1, 99999);
-    final maturity = (doneCount / total).clamp(0.0, 1.0);
-    final delivery = ((doneCount + (buildingCount * 0.6)) / total).clamp(0.0, 1.0);
-    final innovation = ((_proposals.where((p) => p['status'] != _PS.done).length) / 8).clamp(0.2, 1.0);
-    final stability = ((_serverOk == true ? 0.9 : 0.55) - ((_latencyMs / 1000).clamp(0.0, 0.2))).clamp(0.2, 1.0);
-    final scale = ((_stats['memories']?['total'] ?? 0) / 80).clamp(0.2, 1.0);
-
-    final smartSuggestions = _buildSmartSuggestions();
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: JC.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.border, width: 0.8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Row(children: [
-            Switch.adaptive(
-              value: _smartCompactMode,
-              onChanged: (v) => setState(() => _smartCompactMode = v),
-              activeColor: JC.blue400,
-            ),
-            Text('MVP', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-            const Spacer(),
-            Text('מעבדת התפתחות חכמה',
-                textAlign: TextAlign.right,
-                style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 15)),
-          ]),
-          const SizedBox(height: 6),
-          Text('מנוע תעדוף חי: מציג כיווני שיפור ועוזר להתחיל ביצוע עכשיו. מצב MVP פעיל כברירת מחדל.',
-              textAlign: TextAlign.right,
-              style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
-          const SizedBox(height: 12),
-          _build3DSignalCard(maturity, delivery, innovation, stability, scale),
-          const SizedBox(height: 12),
-          ...smartSuggestions.map((s) => _buildSmartSuggestionTile(s)).toList(),
-          const SizedBox(height: 6),
-          _buildLearnedInsights(),
-          const SizedBox(height: 6),
-          _buildSmartTelemetryPanel(),
-          if (!_smartCompactMode) _buildSmartExplainPanel(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLearnedInsights() {
-    if (_learnedInsights.isEmpty) return const SizedBox.shrink();
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: JC.bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: JC.border, width: 0.7),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text('למדנו ש...',
-              style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          for (final line in _learnedInsights.take(3))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text('• $line',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5)),
-            ),
-        ],
-      ),
-    );
-  }
-
-  List<Map<String, String>> _buildSmartSuggestions() {
-    final suggestions = <Map<String, String>>[];
-    if (_proposals.where((p) => p['status'] == _PS.active).isEmpty) {
-      suggestions.add({
-        'title': 'להפעיל הצעה אחת עכשיו',
-        'reason': 'אין כרגע הצעה פעילה, לכן הלמידה בפועל תקועה.',
-        'action': 'start_first',
-      });
-    }
-    if ((_stats['memories']?['total'] ?? 0) < 10) {
-      suggestions.add({
-        'title': 'לחזק זיכרון אישי',
-        'reason': 'פחות מ-10 זיכרונות מורידים איכות פרסונליזציה.',
-        'action': 'memory_focus',
-      });
-    }
-    suggestions.add({
-      'title': _smartCompactMode ? 'לנסח ספרינט MVP' : 'לנסח ספרינט שיפורים',
-      'reason': 'ממפה שינויים, סוכנים ופיצ׳רים לפורמט אחד שניתן להריץ.',
-      'action': 'sprint_prompt',
-    });
-    return suggestions.take(3).toList();
-  }
-
-  Widget _build3DSignalCard(double m, double d, double i, double s, double sc) {
-    return Container(
-      height: 160,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1D4ED8), Color(0xFF0F172A)],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Center(
-        child: Transform(
-          alignment: Alignment.center,
-          transform: Matrix4.identity()
-            ..setEntry(3, 2, 0.001)
-            ..rotateX(0.2)
-            ..rotateY(-0.28),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _signalBar('בשלות', m),
-              _signalBar('מסירה', d),
-              _signalBar('חדשנות', i),
-              _signalBar('יציבות', s),
-              _signalBar('סקייל', sc),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _signalBar(String label, double value) {
-    final h = 24 + (90 * value);
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Text('${(value * 100).round()}%', style: const TextStyle(color: Colors.white70, fontSize: 10)),
-        const SizedBox(height: 4),
-        Container(
-          width: 22,
-          height: h,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(7),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF38BDF8), Color(0xFF22D3EE), Color(0xFF34D399)],
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-            ),
-            boxShadow: const [BoxShadow(color: Color(0x5538BDF8), blurRadius: 8, offset: Offset(0, 3))],
-          ),
-        ),
-        const SizedBox(height: 6),
-        SizedBox(
-          width: 52,
-          child: Text(label, textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontFamily: 'Heebo', fontSize: 10)),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSmartSuggestionTile(Map<String, String> suggestion) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: JC.bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: JC.border, width: 0.7),
-      ),
-      child: ListTile(
-        dense: true,
-        title: Text(suggestion['title'] ?? '',
-            textAlign: TextAlign.right,
-            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
-        subtitle: Text(suggestion['reason'] ?? '',
-            textAlign: TextAlign.right,
-            style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
-        trailing: TextButton(
-          onPressed: () => _confirmSmartAction(suggestion),
-          child: const Text('הפעל', style: TextStyle(fontFamily: 'Heebo')),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSmartExplainPanel() {
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: JC.bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: JC.border, width: 0.7),
-      ),
-      child: Text(
-        'פרטיות והרשאות: פעולות המעבדה משתמשות רק בנתונים שכבר נטענו למסך. מומלץ להוסיף בהמשך פרופיל הרשאות פר-משתמש לפני אוטומציה מלאה.',
-        textAlign: TextAlign.right,
-        style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
-      ),
-    );
-  }
-
-  Widget _buildSmartTelemetryPanel() {
-    int v(String k) => _smartTelemetry[k] ?? 0;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: JC.bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: JC.border, width: 0.7),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text('מדדי שימוש (MVP מקומי)',
-              textAlign: TextAlign.right,
-              style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Text('אישורים: ${v('confirm_yes')} | ביטולים: ${v('confirm_no')}',
-              style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-          Text('הפעל הצעה: ${v('action_start_first')} | חיזוק זיכרון: ${v('action_memory_focus')}',
-              style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-          Text('Sprint MVP: ${v('action_sprint_prompt_mvp')} | Sprint מורחב: ${v('action_sprint_prompt_full')}',
-              style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-          const SizedBox(height: 10),
-          _buildProviderBreakdown(),
-        ],
-      ),
-    );
-  }
 
   /// Show a per-provider usage breakdown sourced from smart_telemetry counters
   /// where event_name follows the pattern "llm_provider:<name>".
@@ -2232,270 +1839,6 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         }),
       ],
     );
-  }
-
-  Widget _buildInnovationGraphCard() {
-    final nodes = _buildGraphNodes();
-    final edges = _buildGraphEdges(nodes);
-    final weakMode = MediaQuery.of(context).size.width < 390;
-    if (weakMode) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text('מצב 2D פשוט · ${nodes.length} ישויות', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-          const SizedBox(height: 8),
-          ...nodes.take(8).map((n) => Container(
-            margin: const EdgeInsets.only(bottom: 6),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: JC.bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: JC.border, width: .7)),
-            child: Text('${n.label} · ${n.type} · score ${n.score}', textAlign: TextAlign.right, style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
-          )),
-        ]),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text('גרף חי · ${nodes.length} ישויות · ${edges.length} קשרים', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 250,
-          child: LayoutBuilder(builder: (_, c) {
-            return GestureDetector(
-              onTapUp: (d) => _onGraphTap(d.localPosition, c.maxWidth, 250, nodes),
-              child: CustomPaint(
-                painter: _InnovationGraphPainter(nodes: nodes, edges: edges, width: c.maxWidth, height: 250),
-                child: Container(),
-              ),
-            );
-          }),
-        ),
-        if (_selectedGraphNode != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            'נבחר: ${_selectedGraphNode!.label}',
-            textAlign: TextAlign.right,
-            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11),
-          ),
-        ]
-      ]),
-    );
-  }
-
-  void _onGraphTap(Offset tap, double width, double height, List<_GraphNode> nodes) {
-    final points = _buildStableGraphPoints(nodes: nodes, width: width, height: height);
-    int nearest = -1;
-    double best = 999999;
-    for (var i = 0; i < points.length; i++) {
-      final d = (points[i] - tap).distance;
-      if (d < best) {
-        best = d;
-        nearest = i;
-      }
-    }
-    if (nearest < 0 || best > 26) return;
-    final node = nodes[nearest];
-    setState(() => _selectedGraphNode = node);
-    _showGraphNodeActions(node);
-  }
-
-  Future<void> _showGraphNodeActions(_GraphNode node) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: JC.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(node.label, textAlign: TextAlign.right, style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 16)),
-              const SizedBox(height: 6),
-              Text(
-                'why_now: ${node.whyNow}\nscore: ${node.score.toStringAsFixed(0)} · impact: ${node.impact.toStringAsFixed(1)}',
-                textAlign: TextAlign.right,
-                style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.end,
-                children: [
-                  _graphActionBtn('⚡ activate', () => _runGraphAction('activate', node)),
-                  _graphActionBtn('🕒 defer', () => _runGraphAction('defer', node)),
-                  _graphActionBtn('✂️ split', () => _runGraphAction('split', node)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _graphActionBtn(String label, VoidCallback onTap) => OutlinedButton(
-    onPressed: onTap,
-    style: OutlinedButton.styleFrom(side: BorderSide(color: JC.border), foregroundColor: JC.textPrimary),
-    child: Text(label, style: const TextStyle(fontFamily: 'Heebo')),
-  );
-
-  void _runGraphAction(String action, _GraphNode node) {
-    Navigator.pop(context);
-    _trackSmartEvent('graph_action_$action', metadata: {'node': node.label, 'type': node.type});
-    _applyGraphAction(action, node);
-  }
-
-  Future<void> _applyGraphAction(String action, _GraphNode node) async {
-    try {
-      final resp = await http.post(
-        Uri.parse('$_base/dashboard/graph/action'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'nodeId': node.nodeId,
-          'nodeLabel': node.label,
-          'nodeType': node.type,
-          'action': action,
-          'source': 'mobile',
-          'actor': widget.settings.userName.trim().isEmpty ? 'anonymous' : widget.settings.userName.trim(),
-        }),
-      ).timeout(const Duration(seconds: 6));
-      if (resp.statusCode >= 200 && resp.statusCode < 300) {
-        _showSnack('בוצע: $action עבור ${node.label}');
-        await _loadBacklog();
-      } else {
-        _showSnack('הפעולה נכשלה (${resp.statusCode})');
-      }
-    } catch (_) {
-      _showSnack('שגיאת רשת בזמן ביצוע פעולה');
-    }
-  }
-
-  List<_GraphNode> _buildGraphNodes() {
-    final out = <_GraphNode>[];
-    final features = [..._done, ..._building, ..._planned];
-    for (var i = 0; i < features.length; i++) {
-      final f = features[i];
-      final label = (f['name'] ?? 'Feature').toString();
-      final fallbackSeed = (f['createdAt'] ?? f['updatedAt'] ?? i).toString();
-      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (f['id'] ?? '').toString(), label: label, type: 'feature', fallbackSeed: fallbackSeed), label: label, type: 'feature', impact: ((f['impact'] ?? 6) as num).toDouble(), score: ((f['score'] ?? 72) as num).toDouble(), whyNow: (f['why_now'] ?? f['desc'] ?? 'משפיע על תפקוד ליבה').toString()));
-    }
-    final context = _userContext;
-    final proposals = _proposals.take(12).toList();
-    for (var i = 0; i < proposals.length; i++) {
-      final p = proposals[i];
-      final computed = _scoreProposal(p, context);
-      final label = (p['title'] ?? 'Proposal').toString();
-      final fallbackSeed = (p['createdAt'] ?? p['updatedAt'] ?? i).toString();
-      out.add(_GraphNode(nodeId: _ensureStableNodeId(rawNodeId: (p['id'] ?? '').toString(), label: label, type: 'proposal', fallbackSeed: fallbackSeed), label: label, type: 'proposal', impact: computed.impact, score: computed.score, whyNow: computed.whyNow));
-    }
-    out.add(const _GraphNode(nodeId: 'agent-jarvis', label: 'Jarvis Agent', type: 'agent', impact: 8, score: 88, whyNow: 'מרכז תיאום בין יכולות להצעות'));
-    return out;
-  }
-
-  List<_GraphEdge> _buildGraphEdges(List<_GraphNode> nodes) {
-    final edges = <_GraphEdge>[];
-    if (nodes.length < 2) return edges;
-    for (var i = 0; i < nodes.length - 1; i++) {
-      final type = i % 3 == 0 ? 'dependency' : i % 3 == 1 ? 'similarity' : 'user-goal';
-      edges.add(_GraphEdge(from: i, to: i + 1, relationshipType: type));
-    }
-    return edges;
-  }
-
-  Future<void> _confirmSmartAction(Map<String, String> suggestion) async {
-    final action = suggestion['action'] ?? '';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: JC.surface,
-        title: Text(suggestion['title'] ?? 'הפעלת פעולה',
-            textAlign: TextAlign.right,
-            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
-        content: Text('לבצע עכשיו את הפעולה הזו?',
-            textAlign: TextAlign.right,
-            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('ביטול')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('הפעל')),
-        ],
-      ),
-    );
-    if (ok == true) {
-      setState(() => _smartTelemetry['confirm_yes'] = (_smartTelemetry['confirm_yes'] ?? 0) + 1);
-      _trackSmartEvent('confirm_yes', metadata: {
-        'action': action,
-        'compactMode': _smartCompactMode,
-      });
-      await _runSmartAction(action);
-    } else {
-      setState(() => _smartTelemetry['confirm_no'] = (_smartTelemetry['confirm_no'] ?? 0) + 1);
-      _trackSmartEvent('confirm_no', metadata: {
-        'action': action,
-        'compactMode': _smartCompactMode,
-      });
-    }
-  }
-
-  Future<void> _runSmartAction(String action) async {
-    if (action == 'start_first') {
-      setState(() => _smartTelemetry['action_start_first'] = (_smartTelemetry['action_start_first'] ?? 0) + 1);
-      _trackSmartEvent('action_start_first', metadata: {'compactMode': _smartCompactMode});
-      final firstProposal = _proposals.firstWhere(
-        (p) => p['status'] == _PS.proposal,
-        orElse: () => <String, dynamic>{},
-      );
-      if (firstProposal.isNotEmpty) {
-        await _runProposalAction(firstProposal, 'activate');
-        return;
-      }
-    }
-    if (action == 'sprint_prompt') {
-      setState(() => _smartTelemetry['action_sprint_prompt'] = (_smartTelemetry['action_sprint_prompt'] ?? 0) + 1);
-      setState(() {
-        final key = _smartCompactMode ? 'action_sprint_prompt_mvp' : 'action_sprint_prompt_full';
-        _smartTelemetry[key] = (_smartTelemetry[key] ?? 0) + 1;
-      });
-      _trackSmartEvent(
-        _smartCompactMode ? 'action_sprint_prompt_mvp' : 'action_sprint_prompt_full',
-        metadata: {'compactMode': _smartCompactMode},
-      );
-      _promptCtrl.text =
-          _smartCompactMode
-              ? 'בנה ספרינט MVP לשבוע הקרוב במערכת Jarvis: 3 משימות בלבד, בסדר עדיפויות ברור, כולל פרטיות והרשאות.'
-              : 'בנה ספרינט שבועי חכם למערכת Jarvis: שינויים בארכיטקטורה, שדרוג סוכנים, פיצ׳רים חדשים, '
-                    'שיפורי UI/UX, פרטיות והרשאות. הוסף סדר עדיפויות + משימות MVP.';
-      await _generatePrompt();
-      return;
-    }
-    setState(() => _smartTelemetry['action_memory_focus'] = (_smartTelemetry['action_memory_focus'] ?? 0) + 1);
-    _trackSmartEvent('action_memory_focus', metadata: {'compactMode': _smartCompactMode});
-    widget.onSwitchToChat?.call('בוא נבנה תכנית ממוקדת לשיפור זיכרון אישי ולמידת משתמש בצורה פרטית ובטוחה.');
-  }
-
-  Future<void> _trackSmartEvent(String eventName, {Map<String, dynamic>? metadata}) async {
-    if (!_hasTelemetryConsent) return;
-    try {
-      await http.post(
-        Uri.parse('$_base/dashboard/smart-telemetry'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'userId': _pseudoUserId(),
-          'eventName': eventName,
-          'eventValue': 1,
-          'timestamp': DateTime.now().toUtc().toIso8601String(),
-          'ttl': TelemetryPolicy.ttlForEvent(eventName),
-          'metadata': _redactMetadata(metadata),
-        }),
-      ).timeout(const Duration(seconds: 6));
-    } catch (_) {
-      // Telemetry must never block UX.
-    }
   }
 
   Widget _dot(Color color, String label) => Row(

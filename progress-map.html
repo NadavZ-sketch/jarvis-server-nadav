@@ -404,6 +404,21 @@ h1 span{color:var(--accent)}
 .sev-medium{background:rgba(96,165,250,.12);color:var(--blue)}
 .sev-low{background:rgba(148,163,184,.12);color:var(--muted)}
 .scan-result{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:11px 13px;margin-top:8px;font-size:.8rem;color:var(--muted);white-space:pre-wrap;direction:ltr;text-align:left;max-height:280px;overflow:auto}
+.scan-summary{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:8px}
+.scan-summary-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.scan-sev-line{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.scan-copy-btn{margin:0;padding:6px 11px;font-size:.74rem;width:auto;flex:0 0 auto}
+.scan-summary-text{font-size:.78rem;color:var(--muted);margin-top:8px;line-height:1.5}
+.scan-bucket-title{font-size:.78rem;font-weight:700;margin:14px 0 7px}
+.scan-empty-bucket{font-size:.76rem;color:var(--muted);padding:4px 2px}
+.scan-finding{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin-bottom:7px;border-right:3px solid var(--border)}
+.scan-finding.scan-sev-critical{border-right-color:var(--red)}
+.scan-finding.scan-sev-high{border-right-color:var(--amber)}
+.scan-finding.scan-sev-medium{border-right-color:var(--blue)}
+.scan-finding-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.scan-target{font-size:.76rem;font-weight:600;direction:ltr;color:var(--text,#e5e7eb)}
+.scan-issue{font-size:.78rem;margin-top:5px;line-height:1.5}
+.scan-fix{font-size:.76rem;color:var(--muted);margin-top:4px;line-height:1.5}
 
 /* ── settings tab ── */
 .save-bar{display:flex;justify-content:flex-end;margin-bottom:12px}
@@ -1310,6 +1325,25 @@ async function triggerE2E() {
   } catch { showToast('שגיאת רשת','error'); }
   finally { btn.disabled=false; sp.style.display='none'; tx.textContent='▶️ הרץ בדיקות E2E'; setTimeout(loadE2E, 5000); }
 }
+// ── Code error scan (QA tab) ─────────────────────────────────────────────────
+const SCAN_SEV = { critical:{he:'קריטי',emoji:'🔴'}, high:{he:'גבוה',emoji:'🟠'}, medium:{he:'בינוני',emoji:'🟡'}, low:{he:'נמוך',emoji:'🟢'} };
+const SCAN_SEV_ORDER = { critical:0, high:1, medium:2, low:3 };
+
+function renderScanFindings(findings) {
+  const sorted = [...findings].sort((a,b)=>(SCAN_SEV_ORDER[a.severity]??9)-(SCAN_SEV_ORDER[b.severity]??9));
+  return sorted.map(f => {
+    const s = SCAN_SEV[f.severity] || { he:f.severity||'', emoji:'⚪' };
+    return `<div class="scan-finding scan-sev-${f.severity||'low'}">
+      <div class="scan-finding-head">
+        <span class="sev-pill sev-${f.severity||'low'}">${s.emoji} ${s.he}</span>
+        <span class="scan-target">${escapeHtml(f.target||'')}</span>
+      </div>
+      <div class="scan-issue">${escapeHtml(f.finding||'')}</div>
+      ${f.recommendation?`<div class="scan-fix">✅ ${escapeHtml(f.recommendation)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
 async function scanErrors() {
   const btn=document.getElementById('scanBtn'), sp=document.getElementById('scanSpinner'), tx=document.getElementById('scanBtnText');
   const out=document.getElementById('scanResult');
@@ -1319,9 +1353,46 @@ async function scanErrors() {
     const r = await fetch('/scan/errors',{ signal: AbortSignal.timeout(30000) });
     if (r.status===429) { out.innerHTML='<div class="err-state"><span>⏳</span>הגעת למגבלת סריקות (5 לדקה) — נסה מאוחר יותר</div>'; return; }
     const d = await r.json();
-    out.innerHTML = `<div class="scan-result">${escapeHtml(JSON.stringify(d, null, 2)).slice(0,4000)}</div>`;
+    const findings = d.findings || [];
+    // Stash the Claude-ready prompt so it can be copied and pasted here for fixing.
+    window._scanPrompt = d.claudePrompt || '';
+
+    if (!findings.length) {
+      out.innerHTML = `<div class="empty-state"><span>✅</span>לא נמצאו שגיאות קוד (ציון: ${d.score ?? 100}/100)</div>`;
+      return;
+    }
+
+    // Separate verifiable regex matches from AI evaluations that need validation.
+    const measured  = findings.filter(f => f.source === 'pattern');
+    const evaluated = findings.filter(f => f.source !== 'pattern');
+    const counts = { critical:0, high:0, medium:0, low:0 };
+    findings.forEach(f => { if (f.severity in counts) counts[f.severity]++; });
+    const sevLine = Object.entries(counts).filter(([,n])=>n>0)
+      .map(([k,n])=>`<span class="sev-pill sev-${k}">${n} ${SCAN_SEV[k].he}</span>`).join('');
+
+    out.innerHTML = `
+      <div class="scan-summary">
+        <div class="scan-summary-top">
+          <div class="e2e-score ${scoreClass(d.score ?? 100)}">${d.score ?? 100}</div>
+          <div class="scan-sev-line">${sevLine || '<span class="sev-pill sev-low">נקי</span>'}</div>
+          <button class="qa-btn scan-copy-btn" onclick="copyScanPrompt(this)">📋 העתק דוח לתיקון בקלוד</button>
+        </div>
+        ${d.summary?`<div class="scan-summary-text">${escapeHtml(d.summary)}</div>`:''}
+      </div>
+      <div class="scan-bucket-title">✅ נמדד ודאית — דפוסי קוד (regex) · ${measured.length}</div>
+      ${measured.length?renderScanFindings(measured):'<div class="scan-empty-bucket">אין ממצאים מדידים.</div>'}
+      <div class="scan-bucket-title">🤖 הערכת AI — מומלץ לאמת לפני תיקון · ${evaluated.length}</div>
+      ${evaluated.length?renderScanFindings(evaluated):'<div class="scan-empty-bucket">אין הערכות AI.</div>'}`;
   } catch { out.innerHTML=`<div class="err-state"><span>⚠️</span>שגיאת סריקה<button class="retry-btn" onclick="scanErrors()">נסה שוב</button></div>`; }
   finally { btn.disabled=false; sp.style.display='none'; tx.textContent='🔍 סרוק שגיאות קוד'; }
+}
+
+function copyScanPrompt(btn) {
+  const text = window._scanPrompt || '';
+  if (!text) { showToast('אין דוח להעתקה','error'); return; }
+  navigator.clipboard.writeText(text).then(() => {
+    if (btn) { const o=btn.textContent; btn.textContent='✓ הועתק! הדבק כאן בצ׳אט לתיקון'; setTimeout(()=>{btn.textContent=o;},2500); }
+  }).catch(() => showToast('לא ניתן להעתיק אוטומטית','error'));
 }
 async function loadSurveySummary() {
   const el = document.getElementById('surveySummary');

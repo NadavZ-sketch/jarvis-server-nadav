@@ -2031,6 +2031,93 @@ app.delete('/shopping/:id', async (req, res) => {
     }
 });
 
+// ─── Memories REST API ────────────────────────────────────────────────────────
+app.get('/memories', async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (q && pinecone.isReady()) {
+            const hits = await pinecone.searchMemories(q, 20);
+            if (hits) return res.json({ memories: hits.map(content => ({ content })) });
+        }
+        const { data, error } = await supabase
+            .from('memories')
+            .select('id, content, scope, created_at')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json({ memories: data || [] });
+    } catch (err) {
+        console.error('GET /memories error:', err.message);
+        res.status(500).json({ memories: [] });
+    }
+});
+
+app.post('/memories', async (req, res) => {
+    try {
+        const { content, scope = 'long_term' } = req.body;
+        if (!content || typeof content !== 'string' || !content.trim()) {
+            return res.status(400).json({ error: 'content is required' });
+        }
+        const { data, error } = await supabase
+            .from('memories')
+            .insert([{ content: content.trim(), scope }])
+            .select('id, content, scope, created_at')
+            .limit(1);
+        if (error) throw error;
+        const row = data?.[0];
+        if (row?.id) pinecone.upsertMemory(row.id, row.content).catch(() => {});
+        cacheInvalidate('memories');
+        res.json({ memory: row });
+    } catch (err) {
+        console.error('POST /memories error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.put('/memories/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { content, scope } = req.body;
+        if (!content || typeof content !== 'string' || !content.trim()) {
+            return res.status(400).json({ error: 'content is required' });
+        }
+        const patch = { content: content.trim() };
+        if (scope) patch.scope = scope;
+        const { data, error } = await supabase
+            .from('memories')
+            .update(patch)
+            .eq('id', id)
+            .select('id, content, scope, created_at')
+            .limit(1);
+        if (error) throw error;
+        if (!data || data.length === 0) return res.status(404).json({ error: 'Memory not found' });
+        pinecone.upsertMemory(data[0].id, data[0].content).catch(() => {});
+        cacheInvalidate('memories');
+        res.json({ memory: data[0] });
+    } catch (err) {
+        console.error('PUT /memories/:id error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.delete('/memories/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { data, error } = await supabase
+            .from('memories')
+            .delete()
+            .eq('id', id)
+            .select('id, content');
+        if (error) throw error;
+        if (!data || data.length === 0) return res.status(404).json({ error: 'Memory not found' });
+        await pinecone.deleteMemory(id);
+        cacheInvalidate('memories');
+        res.json({ deleted: true, memory: data[0] });
+    } catch (err) {
+        console.error('DELETE /memories/:id error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ─── Notes ────────────────────────────────────────────────────────────────────
 app.get('/notes', async (_req, res) => {
     try {

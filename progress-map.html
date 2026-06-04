@@ -355,22 +355,81 @@ h1 span{color:var(--accent)}
 .ac-svg-wrap{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:10px;overflow:hidden}
 @media(max-width:640px){.ac-svg-wrap{display:none}}
 
-/* innovation graph */
-.graph-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:18px;position:relative}
-#innovationGraph{height:360px;background:linear-gradient(180deg,rgba(15,23,42,.55),rgba(2,6,23,.75));border:1px solid var(--border);border-radius:10px;position:relative;overflow:hidden}
-#innovationGraph svg{width:100%;height:100%;display:block}
-.graph-legend{display:flex;gap:7px;flex-wrap:wrap;font-size:.72rem;color:var(--muted);margin:10px 0 8px}
-.legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-left:4px}
-.graph-tooltip{position:absolute;pointer-events:none;background:rgba(15,23,42,.95);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:.72rem;color:var(--text);display:none;z-index:5}
-.graph-sidepanel{position:absolute;top:14px;left:16px;width:210px;max-width:85%;background:rgba(15,23,42,.96);border:1px solid var(--border);border-radius:10px;padding:10px 11px;z-index:6;display:none}
-.graph-sidepanel h4{font-size:.85rem;margin-bottom:5px}
-.graph-sidepanel .meta{font-size:.72rem;color:var(--muted);margin-bottom:9px}
-.graph-actions{display:flex;gap:6px;flex-wrap:wrap}
-.graph-actions button{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 9px;font-size:.72rem;cursor:pointer}
-.graph-actions button:hover{border-color:var(--accent);color:var(--accent)}
-.graph-fallback{height:100%;padding:10px;overflow:auto;display:flex;flex-direction:column;gap:6px}
-.graph-fallback-item{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:.74rem}
-.graph-status{font-size:.72rem;color:var(--muted);margin-top:8px}
+/* ── charts (real data via Chart.js) ── */
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:8px}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column}
+.chart-card h3{font-size:.85rem;margin-bottom:10px;color:var(--text);display:flex;align-items:center;gap:6px}
+.chart-canvas-wrap{position:relative;height:210px}
+.chart-empty{color:var(--muted);font-size:.8rem;text-align:center;padding:34px 10px;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;height:210px}
+.chart-empty span{font-size:1.5rem}
+
+/* ── skeleton loading ── */
+.skeleton{background:linear-gradient(90deg,var(--card) 25%,var(--surface) 50%,var(--card) 75%);background-size:200% 100%;animation:shimmer 1.3s infinite;border-radius:8px}
+@keyframes shimmer{to{background-position:-200% 0}}
+.skel-line{height:14px;margin:8px 0;border-radius:6px}
+.skel-block{height:64px;margin:8px 0;border-radius:10px}
+
+/* ── error / retry state ── */
+.err-state{color:var(--muted);font-size:.83rem;text-align:center;padding:18px;display:flex;flex-direction:column;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px}
+.err-state span{font-size:1.6rem}
+.retry-btn{background:var(--surface);border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:6px 16px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s}
+.retry-btn:hover{background:rgba(99,102,241,.1)}
+
+/* ── E2E / QA tab ── */
+.qa-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.qa-btn{background:var(--surface);border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:8px 16px;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;transition:background .15s}
+.qa-btn:hover:not(:disabled){background:rgba(99,102,241,.1)}
+.qa-btn:disabled{opacity:.5;cursor:not-allowed}
+.e2e-report{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:12px 15px;margin-bottom:8px;border-right:3px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.e2e-score{font-size:1.4rem;font-weight:700;min-width:48px;text-align:center;line-height:1}
+.e2e-score.good{color:var(--green)}.e2e-score.mid{color:var(--amber)}.e2e-score.bad{color:var(--red)}
+.e2e-meta{flex:1;min-width:120px}
+.e2e-runid{font-size:.8rem;font-weight:600;direction:ltr;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.e2e-date{font-size:.7rem;color:var(--muted);margin-top:2px}
+.e2e-sev{display:flex;gap:6px;flex-wrap:wrap}
+.sev-pill{font-size:.66rem;font-weight:700;border-radius:5px;padding:2px 7px}
+.sev-critical{background:rgba(239,68,68,.15);color:var(--red)}
+.sev-high{background:rgba(245,158,11,.15);color:var(--amber)}
+.sev-medium{background:rgba(96,165,250,.12);color:var(--blue)}
+.sev-low{background:rgba(148,163,184,.12);color:var(--muted)}
+.scan-result{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:11px 13px;margin-top:8px;font-size:.8rem;color:var(--muted);white-space:pre-wrap;direction:ltr;text-align:left;max-height:280px;overflow:auto}
+
+/* ── settings tab ── */
+.save-bar{display:flex;justify-content:flex-end;margin-bottom:12px}
+.settings-grid{display:grid;grid-template-columns:190px 1fr;gap:14px}
+@media(max-width:700px){.settings-grid{grid-template-columns:1fr}}
+.settings-nav{display:flex;flex-direction:column;gap:4px}
+@media(max-width:700px){.settings-nav{flex-direction:row;flex-wrap:wrap}}
+.settings-nav-item{padding:9px 13px;border-radius:9px;font-size:.83rem;font-weight:600;color:var(--muted);cursor:pointer;border:1px solid transparent;transition:all .12s}
+.settings-nav-item:hover{color:var(--text);background:var(--surface)}
+.settings-nav-item.active{background:var(--accent);color:#fff}
+.settings-panel{display:none;flex-direction:column;gap:14px}
+.settings-panel.active{display:flex}
+.settings-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.settings-card-title{font-size:.76rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px}
+.settings-field{margin-bottom:12px}
+.settings-field:last-child{margin-bottom:0}
+.settings-field label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:5px}
+.settings-field input,.settings-field select{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:.84rem;font-family:inherit;outline:none;direction:rtl}
+.settings-field input:focus,.settings-field select:focus{border-color:var(--accent)}
+.settings-2col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:520px){.settings-2col{grid-template-columns:1fr}}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;font-size:.84rem;border-top:1px solid var(--border)}
+.toggle-row:first-of-type{border-top:none}
+.sw{position:relative;width:42px;height:23px;flex-shrink:0}
+.sw input{opacity:0;width:0;height:0}
+.sw-slider{position:absolute;inset:0;background:var(--card);border:1px solid var(--border);border-radius:23px;transition:.2s;cursor:pointer}
+.sw-slider::before{content:'';position:absolute;height:17px;width:17px;right:2px;top:2px;background:var(--muted);border-radius:50%;transition:.2s}
+.sw input:checked+.sw-slider{background:rgba(99,102,241,.3);border-color:var(--accent)}
+.sw input:checked+.sw-slider::before{transform:translateX(-19px);background:var(--accent)}
+.api-key-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:.83rem}
+.api-key-row:first-child{border-top:none}
+.api-key-name{flex:1}
+.api-key-status{font-size:.74rem;color:var(--muted);direction:ltr}
+.api-key-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+
+/* ── survey summary (read-only) ── */
+.survey-summary{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:14px 16px;font-size:.84rem;color:var(--muted);line-height:1.6}
 </style>
 </head>
 <body>
@@ -380,11 +439,15 @@ h1 span{color:var(--accent)}
 <h1>🤖 <span>Jarvis</span> — לוח ניהול</h1>
 
 <div class="page-tabs">
-  <button class="page-tab-btn active" onclick="switchPageTab('dashboard',this)">📊 לוח ניהול</button>
-  <button class="page-tab-btn" onclick="switchPageTab('agents',this)">🤖 מרכז סוכנים</button>
+  <button class="page-tab-btn active" onclick="switchPageTab('overview',this)">📊 סקירה ובריאות</button>
+  <button class="page-tab-btn" onclick="switchPageTab('agents',this)">🤖 סוכנים</button>
+  <button class="page-tab-btn" onclick="switchPageTab('dev',this)">🛠️ פיתוח</button>
+  <button class="page-tab-btn" onclick="switchPageTab('qa',this)">🧪 בדיקות וסקרים</button>
+  <button class="page-tab-btn" onclick="switchPageTab('settings',this)">⚙️ הגדרות</button>
 </div>
 
-<div id="page-tab-dashboard" class="page-tab-panel active">
+<!-- ════════ TAB 1: סקירה ובריאות ════════ -->
+<div id="page-tab-overview" class="page-tab-panel active">
 <p class="subtitle" id="subtitle">טוען...</p>
 
 <!-- SERVER STATUS -->
@@ -408,46 +471,39 @@ h1 span{color:var(--accent)}
 </div>
 <div class="refresh-row">מתעדכן כל 30 שניות · <span id="last-refresh">—</span></div>
 
-<!-- PROJECT COCKPIT -->
-<div class="section-title">🧭 מרכז פרויקט</div>
-<div class="cockpit-grid">
+<!-- HEALTH SNAPSHOT -->
+<div class="section-title">🧭 תמונת מצב</div>
 <div class="panel">
-    <h3>תמונת מצב מהירה</h3>
-    <div class="health-list" id="project-health">
-      <div class="health-item"><div class="k">שלב נוכחי</div><div class="v" id="phaseNow">—</div></div>
-      <div class="health-item"><div class="k">כיסוי MVP</div><div class="v" id="mvpCoverage">—</div></div>
-      <div class="health-item"><div class="k">עדיפות מיידית</div><div class="v" id="nextFocus">—</div></div>
-      <div class="health-item"><div class="k">שינויים פעילים</div><div class="v" id="activeChanges">—</div></div>
-    </div>
-    <div class="section-title" style="margin-top:14px">🛣️ מסלול התקדמות</div>
-    <div class="roadmap-line" id="roadmapLine"></div>
-    <div class="panel-meta" id="healthUpdatedAt">עודכן: —</div>
-    <div class="panel-warn" id="healthWarn" style="display:none"></div>
+  <div class="health-list" id="project-health">
+    <div class="health-item"><div class="k">שלב נוכחי</div><div class="v" id="phaseNow">—</div></div>
+    <div class="health-item"><div class="k">כיסוי MVP</div><div class="v" id="mvpCoverage">—</div></div>
+    <div class="health-item"><div class="k">עדיפות מיידית</div><div class="v" id="nextFocus">—</div></div>
+    <div class="health-item"><div class="k">שינויים פעילים</div><div class="v" id="activeChanges">—</div></div>
   </div>
-  <div class="panel">
-    <h3>שינויים אחרונים לבדיקה</h3>
-    <div class="changes-list" id="changesFeed"></div>
-    <div class="panel-meta" id="changesUpdatedAt">עודכן: —</div>
-    <div class="panel-warn" id="changesWarn" style="display:none"></div>
-  </div>
+  <div class="panel-meta" id="healthUpdatedAt">עודכן: —</div>
+  <div class="panel-warn" id="healthWarn" style="display:none"></div>
 </div>
 
-<!-- INNOVATION GRAPH -->
-<div class="section-title">🧠 מפת חדשנות</div>
-<div class="graph-wrap">
-  <div class="graph-legend">
-    <span><i class="legend-dot" style="background:#a78bfa"></i>הצעות</span>
-    <span><i class="legend-dot" style="background:#38bdf8"></i>יכולות</span>
-    <span><i class="legend-dot" style="background:#34d399"></i>סוכנים</span>
+<!-- LIVE CHARTS (real data) -->
+<div class="section-title">📈 ביצועים חיים</div>
+<div class="charts-grid">
+  <div class="chart-card">
+    <h3>🤖 פעילות סוכנים (24ש')</h3>
+    <div class="chart-canvas-wrap" id="wrap-agents"><canvas id="chart-agents"></canvas></div>
   </div>
-  <div id="innovationGraph">
-    <div class="empty-state"><span>🕸️</span>טוען גרף...</div>
+  <div class="chart-card">
+    <h3>🎯 זיהוי כוונות</h3>
+    <div class="chart-canvas-wrap" id="wrap-intent"><canvas id="chart-intent"></canvas></div>
   </div>
-  <div class="graph-status" id="graphStatus">מכין ויזואליזציה...</div>
-  <div class="graph-tooltip" id="graphTooltip"></div>
-  <aside class="graph-sidepanel" id="graphPanel"></aside>
+  <div class="chart-card">
+    <h3>📊 שימוש מערכת</h3>
+    <div class="chart-canvas-wrap" id="wrap-providers"><canvas id="chart-providers"></canvas></div>
+  </div>
 </div>
+</div><!-- /page-tab-overview -->
 
+<!-- ════════ TAB 3: פיתוח / Roadmap ════════ -->
+<div id="page-tab-dev" class="page-tab-panel">
 
 <!-- PROGRESS BAR -->
 <div class="section-title">📊 מצב הפרויקט</div>
@@ -473,6 +529,14 @@ h1 span{color:var(--accent)}
   <div><div class="col-header planned">📋 <span id="planned-count">—</span> מתוכנן</div><div id="col-planned"></div></div>
 </div>
 <p class="edit-hint">לעדכון הרשימה — ערוך <code>features.json</code> בשרת</p>
+
+<!-- RECENT CHANGES -->
+<div class="section-title">🔄 שינויים אחרונים</div>
+<div class="panel">
+  <div class="changes-list" id="changesFeed"></div>
+  <div class="panel-meta" id="changesUpdatedAt">עודכן: —</div>
+  <div class="panel-warn" id="changesWarn" style="display:none"></div>
+</div>
 
 <!-- AI BACKLOG -->
 <div class="section-title">🤖 Backlog AI</div>
@@ -510,7 +574,80 @@ h1 span{color:var(--accent)}
   <div id="backlogList"><div class="empty-state"><span>📋</span>אין פריטים ידניים</div></div>
 </div>
 
-</div><!-- /page-tab-dashboard -->
+</div><!-- /page-tab-dev -->
+
+<!-- ════════ TAB 4: בדיקות וסקרים ════════ -->
+<div id="page-tab-qa" class="page-tab-panel">
+  <div class="section-title">🧪 בדיקות אוטומטיות (E2E)</div>
+  <div class="qa-actions">
+    <button class="qa-btn" id="e2eTriggerBtn" onclick="triggerE2E()">
+      <div class="spinner" id="e2eSpinner"></div><span id="e2eTriggerText">▶️ הרץ בדיקות E2E</span>
+    </button>
+    <button class="qa-btn" id="scanBtn" onclick="scanErrors()">
+      <div class="spinner" id="scanSpinner"></div><span id="scanBtnText">🔍 סרוק שגיאות קוד</span>
+    </button>
+    <button class="qa-btn" onclick="loadE2E()">🔄 רענן דוחות</button>
+  </div>
+  <div id="e2eList"><div class="empty-state"><span>🧪</span>טוען דוחות...</div></div>
+  <div id="scanResult"></div>
+
+  <div class="section-title" style="margin-top:22px">📋 סקרים</div>
+  <div class="survey-summary" id="surveySummary">טוען סיכום סקרים...</div>
+</div><!-- /page-tab-qa -->
+
+<!-- ════════ TAB 5: הגדרות ════════ -->
+<div id="page-tab-settings" class="page-tab-panel">
+  <div class="save-bar"><button class="qa-btn" onclick="saveSettings()">💾 שמור שינויים</button></div>
+  <div class="settings-grid">
+    <div class="settings-nav">
+      <div class="settings-nav-item active" onclick="switchSettings('profile',this)">👤 פרופיל</div>
+      <div class="settings-nav-item" onclick="switchSettings('assistant',this)">🤖 עוזר</div>
+      <div class="settings-nav-item" onclick="switchSettings('apikeys',this)">🔑 ספקים</div>
+      <div class="settings-nav-item" onclick="switchSettings('advanced',this)">🛠 מתקדם</div>
+    </div>
+    <div>
+      <!-- Profile -->
+      <div class="settings-panel active" id="sp-profile">
+        <div class="settings-card">
+          <div class="settings-card-title">פרטי משתמש</div>
+          <div class="settings-2col">
+            <div class="settings-field"><label>שם המשתמש</label><input type="text" id="cfg-userName" placeholder="הכנס שם"/></div>
+            <div class="settings-field"><label>מגדר</label><select id="cfg-gender"><option value="male">זכר</option><option value="female">נקבה</option></select></div>
+          </div>
+        </div>
+      </div>
+      <!-- Assistant -->
+      <div class="settings-panel" id="sp-assistant">
+        <div class="settings-card">
+          <div class="settings-card-title">הגדרות עוזר</div>
+          <div class="settings-2col">
+            <div class="settings-field"><label>שם העוזר</label><input type="text" id="cfg-assistantName" placeholder="Jarvis"/></div>
+            <div class="settings-field"><label>אישיות</label><select id="cfg-personality"><option value="professional">מקצועי</option><option value="casual">ידידותי</option><option value="funny">מצחיק</option><option value="motivating">מעודד</option></select></div>
+          </div>
+          <div class="toggle-row"><span>מצב קול (תגובות קצרות ל-TTS)</span><label class="sw"><input type="checkbox" id="cfg-voiceMode"/><span class="sw-slider"></span></label></div>
+          <div class="toggle-row"><span>שימוש במודל מקומי (Ollama)</span><label class="sw"><input type="checkbox" id="cfg-useLocal"/><span class="sw-slider"></span></label></div>
+          <div class="toggle-row"><span>הפעל TTS (טקסט לדיבור)</span><label class="sw"><input type="checkbox" id="cfg-ttsEnabled"/><span class="sw-slider"></span></label></div>
+        </div>
+      </div>
+      <!-- Providers / API keys -->
+      <div class="settings-panel" id="sp-apikeys">
+        <div class="settings-card">
+          <div class="settings-card-title">סטטוס ספקים (בדיקה חיה)</div>
+          <div id="apikeys-list"><div class="empty-state"><span>🔑</span>בודק...</div></div>
+        </div>
+      </div>
+      <!-- Advanced -->
+      <div class="settings-panel" id="sp-advanced">
+        <div class="settings-card">
+          <div class="settings-card-title">הגדרות מתקדמות</div>
+          <div class="settings-field"><label>Pinecone Index</label><input type="text" id="cfg-pineconeIndex" placeholder="שם האינדקס"/></div>
+          <div class="settings-field"><label>נתיב Obsidian Vault</label><input type="text" id="cfg-obsidianPath" placeholder="/path/to/vault" style="direction:ltr;text-align:left"/></div>
+          <div class="toggle-row"><span>סנכרון Obsidian אוטומטי</span><label class="sw"><input type="checkbox" id="cfg-obsidianSync"/><span class="sw-slider"></span></label></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /page-tab-settings -->
 
 <!-- ── Agent Center Tab ── -->
 <div id="page-tab-agents" class="page-tab-panel">
@@ -539,6 +676,7 @@ h1 span{color:var(--accent)}
 
 </div>
 
+<script src="/chart.js"></script>
 <script>
 // ── Toast Notifications ────────────────────────────────────────────────────────
 function showToast(message, type = 'error', duration = 4000) {
@@ -571,7 +709,11 @@ function switchPageTab(name, btn) {
   btn.classList.add('active');
   document.getElementById('page-tab-' + name).classList.add('active');
   if (name === 'agents' && !acInitDone) acInit();
+  if (name === 'overview') loadMetricsCharts();
+  if (name === 'qa' && !qaInitDone) { qaInitDone = true; loadE2E(); loadSurveySummary(); }
+  if (name === 'settings' && !settingsInitDone) { settingsInitDone = true; loadSettings(); }
 }
+let qaInitDone = false, settingsInitDone = false;
 
 // ── Health ─────────────────────────────────────────────────────────────────────
 async function checkHealth() {
@@ -619,8 +761,6 @@ function pill(f, status) {
 
 let _featureCtx = { done: [], building: [], planned: [] };
 let _proposalCtx = [];
-let _graph2DMode = false;
-let _graphAnimFrame = null;
 
 async function loadFeatures() {
   try {
@@ -638,7 +778,6 @@ async function loadFeatures() {
     document.getElementById('col-planned').innerHTML      = planned.map(f => pill(f,'planned')).join('');
     _featureCtx = { done, building, planned };
     renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });
-    renderInnovationGraph({ ..._featureCtx, proposals: _proposalCtx });
 
     document.getElementById('subtitle').textContent =
       `עוזר אישי AI · ${done.length} יכולות פעילות · עודכן: ${d.lastUpdated || '—'}`;
@@ -776,7 +915,6 @@ async function generateProposals() {
       _proposalCtx = d.proposals;
       renderProposals(_proposalCtx);
       renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });
-      renderInnovationGraph({ ..._featureCtx, proposals: _proposalCtx });
       document.getElementById('backlog-meta').textContent = `נוצר: ${d.generated_at || '—'}`;
     } else {
       const errMsg = d.error || 'שגיאה ביצירת הצעות';
@@ -885,7 +1023,6 @@ async function loadBacklog() {
     _proposalCtx = d.proposals || [];
     renderProposals(_proposalCtx);
     renderProjectCockpit({ ..._featureCtx, proposals: _proposalCtx });
-    renderInnovationGraph({ ..._featureCtx, proposals: _proposalCtx });
     if (d._lastGenerated) document.getElementById('backlog-meta').textContent = `נוצר: ${d._lastGenerated}`;
     renderManual(d.items || []);
   } catch {
@@ -958,17 +1095,6 @@ function renderProjectCockpit(ctx, opts = {}) {
   document.getElementById('activeChanges').textContent = proposals.filter(p => p.status === 'active').length;
   document.getElementById('healthUpdatedAt').textContent = `עודכן: ${nowLabel}${stale ? ' (נתונים חלקיים)' : ''}`;
 
-  const roadmap = [
-    { cls: done.length ? 'done' : '', title: 'MVP Core', desc: `${done.length} יכולות יציבות` },
-    { cls: building.length ? 'active' : '', title: 'שיפורים בתהליך', desc: `${building.length} יכולות בבנייה` },
-    { cls: planned.length ? '' : 'done', title: 'תכנון והרחבה', desc: `${planned.length} פריטים בתכנון` },
-  ];
-  document.getElementById('roadmapLine').innerHTML = roadmap.map(r => `
-    <div class="roadmap-node ${r.cls}">
-      <div class="t">${escapeHtml(r.title)}</div>
-      <div class="d">${escapeHtml(r.desc)}</div>
-    </div>`).join('');
-
   const allChanges = [
     ...building.map(f => ({ type: 'feature', title: f.name, text: f.desc || 'בבנייה כעת', tag: 'בפיתוח' })),
     ...proposals.filter(p => p.status !== 'proposal').map(p => ({ type: p.category, title: p.title, text: p.plan, tag: p.status === 'done' ? 'הושלם' : 'פעיל' })),
@@ -1004,130 +1130,187 @@ function hideCockpitWarning(id) {
   el.style.display = 'none';
 }
 
-function renderInnovationGraph(ctx) {
-  const root = document.getElementById('innovationGraph');
-  const statusEl = document.getElementById('graphStatus');
-  if (!root) return;
-  if (_graphAnimFrame) {
-    cancelAnimationFrame(_graphAnimFrame);
-    _graphAnimFrame = null;
-  }
-  const isWeakMobile = window.matchMedia('(max-width: 720px)').matches || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
-  _graph2DMode = isWeakMobile;
 
-  const featureNodes = [...(ctx.done || []), ...(ctx.building || []), ...(ctx.planned || [])].map((f, i) => ({
-    id: `feature-${(f.name || 'f').replace(/\s+/g,'-')}-${i}`, type: 'feature', label: f.name, impact: Number(f.impact || 6), why_now: f.why_now || f.desc || 'משימה קריטית לשלב הנוכחי', score: Number(f.score || 72)
-  }));
-  const proposalNodes = (ctx.proposals || []).map(p => ({
-    id: `proposal-${p.id}`, type: 'proposal', label: p.title, impact: Number(p.impact || (p.priority === 'high' ? 10 : p.priority === 'medium' ? 7 : 5)), why_now: p.why_now || p.plan || 'הזדמנות לשיפור מיידי', score: Number(p.score || (p.status === 'active' ? 90 : 65))
-  }));
-  const agentNodes = [{ id: 'agent-jarvis', type: 'agent', label: 'Jarvis Core Agent', impact: 8, why_now: 'מתאם בין הצעות, פיצ\'רים והרשאות', score: 88 }];
-  const nodes = [...featureNodes, ...proposalNodes, ...agentNodes];
-  if (!nodes.length) {
-    root.innerHTML = `<div class="empty-state"><span>🧩</span>אין עדיין ישויות להצגה</div>`;
-    if (statusEl) statusEl.textContent = 'אין נתונים להצגת גרף כרגע';
-    return;
-  }
+// ── Live Charts (real data via Chart.js) ─────────────────────────────────────
+const CHART_PALETTE = ['#6366f1','#60a5fa','#22c55e','#a78bfa','#f59e0b','#ec4899','#22d3ee','#f87171'];
+const _charts = {};
+function chartEmpty(wrapId, msg) {
+  const wrap = document.getElementById(wrapId);
+  if (wrap) wrap.innerHTML = `<div class="chart-empty"><span>📭</span>${escapeHtml(msg)}</div>`;
+}
+function ensureCanvas(wrapId, canvasId) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return null;
+  let cv = document.getElementById(canvasId);
+  if (!cv) { wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`; cv = document.getElementById(canvasId); }
+  return cv;
+}
+function drawChart(wrapId, canvasId, config) {
+  if (typeof Chart === 'undefined') { chartEmpty(wrapId, 'ספריית גרפים לא נטענה'); return; }
+  const cv = ensureCanvas(wrapId, canvasId);
+  if (!cv) return;
+  if (_charts[canvasId]) _charts[canvasId].destroy();
+  _charts[canvasId] = new Chart(cv.getContext('2d'), config);
+}
+const CHART_BASE = { responsive:true, maintainAspectRatio:false,
+  plugins:{ legend:{ labels:{ color:'#94a3b8', font:{ family:'Segoe UI', size:11 } } } } };
 
-  const pick = (arr, i) => arr[i % arr.length];
-  const edges = [];
-  proposalNodes.forEach((p, i) => featureNodes.length && edges.push({ source: p.id, target: pick(featureNodes, i).id, relation: 'improves' }));
-  featureNodes.forEach((f, i) => edges.push({ source: f.id, target: 'agent-jarvis', relation: i % 2 ? 'owned_by' : 'dependency' }));
-  proposalNodes.filter(p => p.status === 'proposal').forEach((p, i) => proposalNodes[i + 1] && edges.push({ source: p.id, target: proposalNodes[i + 1].id, relation: 'blocked_by' }));
-
-  if (_graph2DMode) {
-    root.innerHTML = `<div class="graph-fallback">${
-      nodes.map(n => `<div class="graph-fallback-item"><b>${escapeHtml(n.label)}</b><br><span class="muted">${n.type} · score ${n.score}</span></div>`).join('')
-    }</div>`;
-    if (statusEl) statusEl.textContent = `מצב 2D פשוט (${nodes.length} ישויות)`;
-    return;
-  }
-
-  root.innerHTML = '<svg viewBox="0 0 1000 520" preserveAspectRatio="none"></svg>';
-  if (statusEl) statusEl.textContent = `גרף חי (${nodes.length} ישויות, ${edges.length} קשרים)`;
-  const svg = root.querySelector('svg');
-  const colors = { proposal: '#a78bfa', feature: '#38bdf8', agent: '#34d399' };
-  const nodeMap = new Map(nodes.map((n, i) => [n.id, { ...n, x: 100 + ((i * 150) % 800), y: 70 + ((i * 90) % 380), z: (Math.random() * 2 - 1), vx: 0, vy: 0 }]));
-  const tooltip = document.getElementById('graphTooltip');
-  const panel = document.getElementById('graphPanel');
-
-  const showPanel = (n) => {
-    panel.innerHTML = `<h4>${escapeHtml(n.label)}</h4><div class="meta">score: ${n.score} · impact: ${n.impact}</div>
-      <div class="graph-actions">
-        <button onclick="graphAction('${n.id}','activate')">⚡ activate</button>
-        <button onclick="graphAction('${n.id}','defer')">🕒 defer</button>
-        <button onclick="graphAction('${n.id}','split')">✂️ split</button>
-      </div>`;
-    panel.style.display = 'block';
-  };
-
-  window.graphAction = (id, action) => {
-    const n = nodeMap.get(id);
-    if (!n) return;
-    n.why_now = `${n.why_now} · action: ${action}`;
-    panel.style.display = 'none';
-  };
-
-  let loopCount = 0;
-  const loop = () => {
-    nodes.forEach(a => {
-      const na = nodeMap.get(a.id);
-      nodes.forEach(b => {
-        if (a.id === b.id) return;
-        const nb = nodeMap.get(b.id);
-        const dx = nb.x - na.x, dy = nb.y - na.y;
-        const dist2 = (dx*dx + dy*dy) || 1;
-        na.vx -= (dx / dist2) * 45; na.vy -= (dy / dist2) * 45;
+async function loadMetricsCharts() {
+  // Agent activity + intent ratio from /progress-map/metrics
+  try {
+    const m = await fetch('/progress-map/metrics', { signal: AbortSignal.timeout(6000) }).then(r => r.json());
+    const lat = Array.isArray(m.latency) ? m.latency.slice() : [];
+    const top = lat.filter(x => x.count > 0).sort((a,b)=>b.count-a.count).slice(0,7);
+    if (top.length) {
+      drawChart('wrap-agents','chart-agents',{
+        type:'bar',
+        data:{ labels: top.map(x=>(x.agent||'').replace('Agent','')), datasets:[{ label:'קריאות', data: top.map(x=>x.count), backgroundColor:'#6366f1', borderRadius:5 }] },
+        options:{ ...CHART_BASE, indexAxis:'y', plugins:{ legend:{ display:false } },
+          scales:{ x:{ ticks:{ color:'#94a3b8' }, grid:{ color:'#334155' } }, y:{ ticks:{ color:'#cbd5e1' }, grid:{ display:false } } } }
       });
-    });
-    edges.forEach(e => {
-      const s = nodeMap.get(e.source), t = nodeMap.get(e.target);
-      if (!s || !t) return;
-      const dx = t.x - s.x, dy = t.y - s.y;
-      s.vx += dx * 0.0008; s.vy += dy * 0.0008;
-      t.vx -= dx * 0.0008; t.vy -= dy * 0.0008;
-    });
+    } else chartEmpty('wrap-agents','אין עדיין נתוני סוכנים');
 
-    nodeMap.forEach(n => {
-      n.vx *= 0.9; n.vy *= 0.9;
-      n.x = Math.max(35, Math.min(965, n.x + n.vx));
-      n.y = Math.max(35, Math.min(485, n.y + n.vy));
-      n.z += (Math.random() - 0.5) * 0.03;
-      n.z = Math.max(-1, Math.min(1, n.z));
-    });
+    const fast = m.intent?.fast || 0, llm = m.intent?.llm || 0;
+    if (fast + llm > 0) {
+      drawChart('wrap-intent','chart-intent',{
+        type:'doughnut',
+        data:{ labels:['זיהוי מהיר','זיהוי LLM'], datasets:[{ data:[fast, llm], backgroundColor:['#22c55e','#6366f1'], borderColor:'#1e293b', borderWidth:2 }] },
+        options:{ ...CHART_BASE, cutout:'62%' }
+      });
+    } else chartEmpty('wrap-intent','אין עדיין נתוני כוונות');
+  } catch { chartEmpty('wrap-agents','שגיאת טעינת מדדים'); chartEmpty('wrap-intent','שגיאת טעינה'); }
 
-    const edgeEls = edges.map(e => {
-      const s = nodeMap.get(e.source), t = nodeMap.get(e.target);
-      return `<line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="rgba(148,163,184,.52)" stroke-width="1.3"/>`;
+  // System usage from /dashboard/smart-telemetry
+  try {
+    const t = await fetch('/dashboard/smart-telemetry', { signal: AbortSignal.timeout(6000) }).then(r => r.json());
+    const counts = t.counts || {};
+    const entries = Object.entries(counts).filter(([,v])=>Number(v)>0).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    if (entries.length) {
+      drawChart('wrap-providers','chart-providers',{
+        type:'bar',
+        data:{ labels: entries.map(e=>e[0]), datasets:[{ label:'אירועים', data: entries.map(e=>Number(e[1])), backgroundColor: entries.map((_,i)=>CHART_PALETTE[i%CHART_PALETTE.length]), borderRadius:5 }] },
+        options:{ ...CHART_BASE, plugins:{ legend:{ display:false } },
+          scales:{ x:{ ticks:{ color:'#cbd5e1' }, grid:{ display:false } }, y:{ ticks:{ color:'#94a3b8' }, grid:{ color:'#334155' } } } }
+      });
+    } else chartEmpty('wrap-providers','אין עדיין נתוני שימוש');
+  } catch { chartEmpty('wrap-providers','שגיאת טעינה'); }
+}
+
+// ── E2E reports + code scan (QA tab) ─────────────────────────────────────────
+function scoreClass(s){ return s>=80?'good':(s>=50?'mid':'bad'); }
+async function loadE2E() {
+  const list = document.getElementById('e2eList');
+  if (!list) return;
+  list.innerHTML = '<div class="skeleton skel-block"></div><div class="skeleton skel-block"></div>';
+  try {
+    const d = await fetch('/e2e-reports', { signal: AbortSignal.timeout(8000) }).then(r=>r.json());
+    const reports = d.reports || [];
+    if (!reports.length) { list.innerHTML = '<div class="empty-state"><span>✅</span>אין דוחות — הרץ בדיקות E2E כדי להתחיל</div>'; return; }
+    const SEV_HE = { critical:'קריטי', high:'גבוה', medium:'בינוני', low:'נמוך' };
+    list.innerHTML = reports.slice(0,20).map(r => {
+      const sev = [['critical',r.critical],['high',r.high],['medium',r.medium],['low',r.low]]
+        .filter(([,n])=>n>0).map(([k,n])=>`<span class="sev-pill sev-${k}">${n} ${SEV_HE[k]}</span>`).join('');
+      return `<div class="e2e-report">
+        <div class="e2e-score ${scoreClass(r.score)}">${r.score}</div>
+        <div class="e2e-meta">
+          <div class="e2e-runid">${escapeHtml(r.run_id||'')}</div>
+          <div class="e2e-date">${r.count} ממצאים פתוחים · ${r.done||0} טופלו · ${r.created_at ? new Date(r.created_at).toLocaleString('he-IL') : ''}</div>
+        </div>
+        <div class="e2e-sev">${sev || '<span class="sev-pill sev-low">נקי</span>'}</div>
+      </div>`;
     }).join('');
-    const nodeEls = [...nodeMap.values()].sort((a,b)=>a.z-b.z).map(n => {
-      const r = 7 + n.impact + (n.z * 2.5);
-      const opacity = 0.45 + ((n.z + 1) / 2) * 0.55;
-      const shadow = 3 + ((n.z + 1) * 4);
-      return `<g data-id="${n.id}" class="g-node">
-        <circle cx="${n.x}" cy="${n.y}" r="${r}" fill="${colors[n.type]}" stroke="rgba(255,255,255,.65)" stroke-width="0.8" fill-opacity="${opacity}" style="filter:drop-shadow(0 0 ${shadow}px ${colors[n.type]})"></circle>
-        <text x="${n.x}" y="${n.y + r + 12}" text-anchor="middle" font-size="11" fill="#cbd5e1">${escapeHtml(n.label.slice(0,22))}</text>
-      </g>`;
-    }).join('');
-    svg.innerHTML = `${edgeEls}${nodeEls}`;
+  } catch {
+    list.innerHTML = `<div class="err-state"><span>⚠️</span>שגיאת טעינת דוחות<button class="retry-btn" onclick="loadE2E()">נסה שוב</button></div>`;
+  }
+}
+async function triggerE2E() {
+  const btn=document.getElementById('e2eTriggerBtn'), sp=document.getElementById('e2eSpinner'), tx=document.getElementById('e2eTriggerText');
+  btn.disabled=true; sp.style.display='block'; tx.textContent='מריץ...';
+  try {
+    const r = await fetch('/e2e/trigger',{ method:'POST' });
+    if (r.ok) showToast('בדיקות E2E הופעלו ברקע — הדוחות יתעדכנו בקרוב','success');
+    else { const e=await r.json().catch(()=>({})); showToast(e.error||'לא ניתן להפעיל כעת (rate limit)','error'); }
+  } catch { showToast('שגיאת רשת','error'); }
+  finally { btn.disabled=false; sp.style.display='none'; tx.textContent='▶️ הרץ בדיקות E2E'; setTimeout(loadE2E, 5000); }
+}
+async function scanErrors() {
+  const btn=document.getElementById('scanBtn'), sp=document.getElementById('scanSpinner'), tx=document.getElementById('scanBtnText');
+  const out=document.getElementById('scanResult');
+  btn.disabled=true; sp.style.display='block'; tx.textContent='סורק...';
+  out.innerHTML='<div class="skeleton skel-line" style="width:60%"></div>';
+  try {
+    const r = await fetch('/scan/errors',{ signal: AbortSignal.timeout(30000) });
+    if (r.status===429) { out.innerHTML='<div class="err-state"><span>⏳</span>הגעת למגבלת סריקות (5 לדקה) — נסה מאוחר יותר</div>'; return; }
+    const d = await r.json();
+    out.innerHTML = `<div class="scan-result">${escapeHtml(JSON.stringify(d, null, 2)).slice(0,4000)}</div>`;
+  } catch { out.innerHTML=`<div class="err-state"><span>⚠️</span>שגיאת סריקה<button class="retry-btn" onclick="scanErrors()">נסה שוב</button></div>`; }
+  finally { btn.disabled=false; sp.style.display='none'; tx.textContent='🔍 סרוק שגיאות קוד'; }
+}
+async function loadSurveySummary() {
+  const el = document.getElementById('surveySummary');
+  if (!el) return;
+  try {
+    // No dedicated survey API — derive a light read-only summary from control-center events.
+    const d = await fetch('/control-center/events', { signal: AbortSignal.timeout(6000) }).then(r=>r.json()).catch(()=>null);
+    const pending = d && (d.surveyPending || d.survey ||
+      (Array.isArray(d.alerts) && d.alerts.some(a=>String(a.type||a.kind||'').toLowerCase().includes('survey'))));
+    el.innerHTML = pending
+      ? '📋 יש סקר ממתין למילוי — פתח את האפליקציה כדי להשלים אותו.'
+      : '✅ אין סקרים ממתינים כרגע. סקרים נאספים מתוך השימוש ומוצגים כאן לקריאה בלבד.';
+  } catch {
+    el.innerHTML = 'סקרים נאספים מתוך השימוש ומוצגים כאן לקריאה בלבד.';
+  }
+}
 
-    svg.querySelectorAll('.g-node').forEach(g => {
-      const n = nodeMap.get(g.getAttribute('data-id'));
-      g.onmousemove = (ev) => {
-        tooltip.style.display = 'block';
-        tooltip.style.right = `${Math.max(16, window.innerWidth - ev.clientX + 14)}px`;
-        tooltip.style.top = `${ev.clientY + 6}px`;
-        tooltip.textContent = `why_now: ${n.why_now} | score: ${n.score}`;
-      };
-      g.onmouseleave = () => tooltip.style.display = 'none';
-      g.onclick = () => showPanel(n);
-    });
-    loopCount += 1;
-    if (document.contains(root) && loopCount < 18000) {
-      _graphAnimFrame = window.requestAnimationFrame(loop);
-    }
-  };
-  loop();
+// ── Settings tab ─────────────────────────────────────────────────────────────
+let _profileData = {};
+function _setVal(id,v){ const el=document.getElementById(id); if(el) el.value = v ?? ''; }
+function _getVal(id){ const el=document.getElementById(id); return el? el.value : ''; }
+function _setChk(id,v){ const el=document.getElementById(id); if(el) el.checked = !!v; }
+function _getChk(id){ const el=document.getElementById(id); return el? el.checked : false; }
+function switchSettings(id, el){
+  document.querySelectorAll('.settings-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.settings-nav-item').forEach(i=>i.classList.remove('active'));
+  document.getElementById('sp-'+id)?.classList.add('active');
+  el.classList.add('active');
+  if (id==='apikeys') loadProviders();
+}
+async function loadSettings(){
+  try { const r=await fetch('/user-profile'); if (r.ok) _profileData = await r.json(); } catch {}
+  const p=_profileData || {};
+  _setVal('cfg-userName', p.userName || p.name || '');
+  _setVal('cfg-gender', p.gender || 'male');
+  _setVal('cfg-assistantName', p.assistantName || 'Jarvis');
+  _setVal('cfg-personality', p.personality || 'professional');
+  _setChk('cfg-voiceMode', p.voiceMode || false);
+  _setChk('cfg-useLocal', p.useLocalModel || false);
+  _setChk('cfg-ttsEnabled', p.ttsEnabled !== false);
+  loadProviders();
+}
+async function saveSettings(){
+  const body={ userName:_getVal('cfg-userName'), gender:_getVal('cfg-gender'),
+    assistantName:_getVal('cfg-assistantName'), personality:_getVal('cfg-personality'),
+    voiceMode:_getChk('cfg-voiceMode'), useLocalModel:_getChk('cfg-useLocal'), ttsEnabled:_getChk('cfg-ttsEnabled') };
+  try { await fetch('/user-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); showToast('הגדרות נשמרו ✓','success'); }
+  catch { showToast('שגיאה בשמירה','error'); }
+}
+async function loadProviders(){
+  const el=document.getElementById('apikeys-list');
+  if (!el) return;
+  el.innerHTML='<div class="skeleton skel-line" style="width:70%"></div><div class="skeleton skel-line" style="width:55%"></div>';
+  try {
+    const d=await fetch('/health/providers',{ signal:AbortSignal.timeout(12000) }).then(r=>r.json());
+    const prov=d.providers||{};
+    const LABELS={groq:'Groq',deepseek:'DeepSeek',gemini:'Gemini',openrouter:'OpenRouter',ollama:'Ollama (מקומי)'};
+    const keys=Object.keys(prov);
+    if (!keys.length){ el.innerHTML='<div class="empty-state"><span>🔑</span>אין נתוני ספקים</div>'; return; }
+    el.innerHTML=keys.map(k=>{
+      const v=String(prov[k]||'');
+      const ok=v==='ok'||v.startsWith('configured');
+      const color=ok?'var(--green)':((v.includes('missing')||v.includes('not configured'))?'var(--muted)':'var(--red)');
+      return `<div class="api-key-row"><div class="api-key-name">${LABELS[k]||k}</div><div class="api-key-status">${escapeHtml(v)}</div><div class="api-key-dot" style="background:${color}"></div></div>`;
+    }).join('');
+  } catch { el.innerHTML='<div class="err-state"><span>⚠️</span>שגיאת בדיקת ספקים<button class="retry-btn" onclick="loadProviders()">נסה שוב</button></div>'; }
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────────
@@ -1135,7 +1318,8 @@ checkHealth();
 loadStats();
 loadFeatures();
 loadBacklog();
-setInterval(() => { checkHealth(); loadStats(); }, 30000);
+loadMetricsCharts();
+setInterval(() => { checkHealth(); loadStats(); loadMetricsCharts(); }, 30000);
 
 // ── Agent Center ───────────────────────────────────────────────────────────────
 let acAgents = [], acCurrent = null, acInitDone = false, acMetrics = {};

@@ -7,7 +7,7 @@ import 'widgets/animated_indexed_stack.dart';
 import 'screens/app_drawer.dart';
 import 'screens/smart_productivity_preview_screen.dart';
 import 'screens/productivity_screen.dart';
-import 'screens/control_center_preview_screen.dart';
+import 'screens/progress_map_screen.dart';
 import 'screens/notes_screen.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
@@ -232,8 +232,14 @@ class _MainShellState extends State<MainShell> {
                 onOpenDrawer: _openDrawer,
                 jumpToTab: _productivityTab,
               ),
-              // 3 — Control Center
-              ControlCenterPreviewScreen(settings: _settings),
+              // 3 — Control Center (unified status + control area)
+              ProgressMapScreen(
+                settings: _settings,
+                onSwitchToChat: (cmd) {
+                  setState(() => _pendingChatCommand = cmd);
+                  _onTabTapped(1);
+                },
+              ),
             ],
           ),
           bottomNavigationBar: _buildBottomNav(),

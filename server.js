@@ -2838,6 +2838,121 @@ app.get('/scan/errors', _rl(5), async (_req, res) => {
     }
 });
 
+// ─── GET /dashboard/error-report/export — Claude-ready Markdown report ────────
+// Runs the code error scanner and enriches every finding with real code context
+// (±4 lines around the flagged line) so Claude can verify genuine vs. false positives.
+app.get('/dashboard/error-report/export', _rl(5), async (_req, res) => {
+    try {
+        const fsSync = require('fs');
+        const { runCodeErrorScanner } = require('./agents/e2e/codeErrorScanner');
+        const { findings, score, summary } = await runCodeErrorScanner({});
+
+        // ── Attach code context to each finding ───────────────────────────────
+        const fileLineCache = {};
+        const withCtx = await Promise.all(findings.map(async (f) => {
+            const m = (f.target || '').match(/^(.+?):(\d+)$/);
+            if (!m) return { ...f, codeContext: null };
+            const [, relPath, lineStr] = m;
+            const lineNum = parseInt(lineStr, 10);
+            if (!fileLineCache[relPath]) {
+                try {
+                    const src = await fsSync.promises.readFile(
+                        require('path').join(__dirname, relPath), 'utf8');
+                    fileLineCache[relPath] = src.split('\n');
+                } catch { fileLineCache[relPath] = null; }
+            }
+            const lines = fileLineCache[relPath];
+            if (!lines) return { ...f, codeContext: null };
+            const start = Math.max(0, lineNum - 4);
+            const end   = Math.min(lines.length, lineNum + 3);
+            const ctx   = lines.slice(start, end).map((l, i) => {
+                const ln = start + i + 1;
+                return `${String(ln).padStart(4)}: ${l}${ln === lineNum ? '  // ← ממצא' : ''}`;
+            }).join('\n');
+            return { ...f, codeContext: ctx };
+        }));
+
+        // ── Build Markdown ─────────────────────────────────────────────────────
+        const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+        for (const f of withCtx) if (f.severity in counts) counts[f.severity]++;
+        const now = new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' });
+
+        const header = [
+            '# דוח שגיאות קוד — Jarvis | ייצוא לקלוד קוד',
+            `**תאריך:** ${now} | **ציון:** ${score}/100 | 🔴 ${counts.critical} · 🟠 ${counts.high} · 🟡 ${counts.medium} · 🟢 ${counts.low}`,
+            `**סיכום:** ${summary}`,
+            '',
+            '---',
+            '',
+            '## הוראות לקלוד',
+            '',
+            'אתה מקבל דוח שגיאות שנוצר אוטומטית — חלק מהממצאים עלולים להיות **false positives**.',
+            '',
+            '**בצע לפי הסדר עבור כל ממצא:**',
+            '1. **בדוק** אם השגיאה אמיתית — הסתכל על קוד ההקשר המצורף',
+            '2. **תקן** שגיאות אמיתיות (שינוי מינימלי, ללא refactor)',
+            '3. **דלג** על false positives עם הסבר קצר',
+            '4. **הרץ** `npm test` אחרי תיקונים קריטיים/גבוהים',
+            '',
+            '**בסוף, צור סיכום בפורמט:**',
+            '```',
+            '✅ תוקנו: [רשימת קבצים]',
+            '⏭️ דולגו (false positive): [רשימה + הסבר]',
+            '⚠️ נותרו פתוחים: [רשימה]',
+            'ציון חדש משוער: X/100',
+            '```',
+            '',
+            '---',
+            '',
+        ].join('\n');
+
+        const sevHeader = { critical: '## 🔴 קריטי', high: '## 🟠 גבוה', medium: '## 🟡 בינוני', low: '## 🟢 נמוך' };
+        const order     = { critical: 0, high: 1, medium: 2, low: 3 };
+        const sorted    = [...withCtx].sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
+        const grouped   = { critical: [], high: [], medium: [], low: [] };
+        for (const f of sorted) if (f.severity in grouped) grouped[f.severity].push(f);
+
+        const sections = [];
+        for (const sev of ['critical', 'high', 'medium', 'low']) {
+            if (!grouped[sev].length) continue;
+            sections.push('\n' + sevHeader[sev] + '\n');
+            grouped[sev].forEach((f, i) => {
+                const src = f.source === 'llm' ? 'ניתוח LLM' : 'סריקת regex';
+                sections.push(`### ${i + 1}. \`${f.target}\``);
+                sections.push(`**קטגוריה:** ${f.category} | **מקור:** ${src}`);
+                sections.push(`**בעיה:** ${f.finding}`);
+                sections.push(`**תיקון מוצע:** ${f.recommendation}`);
+                if (f.codeContext) {
+                    sections.push('\n**קוד בהקשר:**');
+                    sections.push('```javascript');
+                    sections.push(f.codeContext);
+                    sections.push('```');
+                }
+                sections.push('\n---');
+            });
+        }
+
+        const checklist = [
+            '\n## רשימת תיקונים (Checklist)',
+            '',
+            sorted.slice(0, 30).map(f =>
+                `- [ ] **[${(f.severity || '').toUpperCase()}]** \`${f.target}\` — ${f.recommendation || f.finding}`
+            ).join('\n'),
+        ].join('\n');
+
+        const markdown = findings.length
+            ? header + sections.join('\n') + checklist
+            : '# דוח שגיאות קוד — Jarvis\n\n✅ לא נמצאו שגיאות קוד.';
+
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="jarvis-error-report-${new Date().toISOString().slice(0,10)}.md"`);
+        res.send(markdown);
+    } catch (err) {
+        console.error('❌ /dashboard/error-report/export:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ─── POST /e2e/trigger — fire-and-forget e2e run ─────────────────────────────
 // Used by the mobile control center "run e2e now" quick action and by the
 // re-trigger automation when the last report's score drops sharply.

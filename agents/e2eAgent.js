@@ -23,6 +23,23 @@ function selectedProbes(settings) {
     return ALL_PROBES.filter(p => !skip.has(p));
 }
 
+// Tag each finding with how it was produced so the report can separate
+// hard measurements (HTTP/latency/regex) from LLM evaluations (which can err).
+// `defaultSource` of null means: keep the finding's own `source` (e.g. the code
+// error scanner already tags 'pattern' | 'llm'); we normalize those below.
+function tagSource(findings, defaultSource) {
+    return (findings || []).map(f => ({ ...f, source: normalizeSource(f.source || defaultSource) }));
+}
+
+// 'measured' = deterministic/verifiable; 'evaluated' = LLM judgment, needs validation.
+function normalizeSource(source) {
+    if (source === 'pattern' || source === 'measured') return 'measured';
+    if (source === 'llm' || source === 'evaluated') return 'evaluated';
+    return 'measured';
+}
+
+function isMeasured(f) { return normalizeSource(f.source) === 'measured'; }
+
 function computeScore(findings) {
     const w = { critical: 25, high: 10, medium: 4, low: 1 };
     const penalty = findings.reduce((s, f) => s + (w[f.severity] || 0), 0);
@@ -71,11 +88,12 @@ function buildClaudePrompt({ runId, findings, score, counts }) {
         body += `\n${sevHeader[sev]}\n\n`;
         grouped[sev].forEach((f, i) => {
             const tag = f.status && f.status !== 'new' ? ` _(${f.status})_` : '';
+            const srcTag = isMeasured(f) ? ' `[MEASURED]`' : ' `[AI-EVALUATED — verify first]`';
             const lat = f.latency_ms != null ? ` — ${f.latency_ms}ms` : '';
             const readHint = /^(GET|POST|PUT|DELETE|PATCH)\s/.test(f.target)
                 ? '_(validate in `server.js`)_'
                 : `_(Read \`${f.target}\` to validate)_`;
-            body += `### ${i + 1}. \`${f.target}\`${lat}${tag}\n`;
+            body += `### ${i + 1}. \`${f.target}\`${lat}${srcTag}${tag}\n`;
             body += `- **Validate:** ${readHint}\n`;
             body += `- **Category:** ${f.category}\n`;
             body += `- **Issue:** ${f.finding}\n`;
@@ -116,32 +134,50 @@ function buildClaudePrompt({ runId, findings, score, counts }) {
     ].join('\n');
 }
 
-function buildSimpleUserReport({ score, findings }) {
-    const criticals = findings.filter(f => f.severity === 'critical');
-    const highs = findings.filter(f => f.severity === 'high');
-    const mediums = findings.filter(f => f.severity === 'medium');
+function buildSimpleUserReport({ score, findings, inconclusive = false }) {
+    // No real data → never invent a score. Be honest about it.
+    if (inconclusive) {
+        return [
+            '🧪 בדיקת מערכת — לא נאספו מספיק נתונים לבדיקה אמינה.',
+            '',
+            'לא הצלחנו ליצור קשר עם השרת, אז אין מדידות אמיתיות להצגה.',
+            'ודא שהשרת רץ ושכתובת הבדיקה נכונה, ואז הרץ שוב.',
+        ].join('\n');
+    }
 
-    let status = '✅ מעולה! הכל עובד כמו שצריך.';
+    // Measured findings are verifiable facts; evaluated findings are AI judgment
+    // that needs validation. We base the headline conclusion only on measured data.
+    const measured = findings.filter(isMeasured);
+    const evaluated = findings.filter(f => !isMeasured(f));
+
+    const criticals = measured.filter(f => f.severity === 'critical');
+    const highs = measured.filter(f => f.severity === 'high');
+    const mediums = measured.filter(f => f.severity === 'medium');
+
+    let status = '✅ מעולה! כל מה שנבדק במדידה עובד כמו שצריך.';
     let action = '';
 
     if (criticals.length > 0) {
-        status = `🚨 יש ${criticals.length} בעיה קריטית שצריך לתקן מייד!`;
+        status = `🚨 נמדדו ${criticals.length} בעיות קריטיות שצריך לתקן מייד!`;
         action = criticals.slice(0, 3).map(f =>
             `• ${f.finding} → ${f.recommendation || 'צריך לתקן'}`
         ).join('\n');
     } else if (highs.length > 0) {
-        status = `⚠️ יש ${highs.length} בעיות חשובות שצריך לתקן.`;
+        status = `⚠️ נמדדו ${highs.length} בעיות חשובות שצריך לתקן.`;
         action = highs.slice(0, 3).map(f =>
             `• ${f.finding} → ${f.recommendation || 'צריך לשפר'}`
         ).join('\n');
     } else if (mediums.length > 0) {
-        status = `🔧 יש ${mediums.length} שיפורים שאפשר לעשות.`;
+        status = `🔧 נמדדו ${mediums.length} שיפורים שאפשר לעשות.`;
         action = mediums.slice(0, 2).map(f =>
             `• ${f.finding}`
         ).join('\n');
     }
 
     const scoreColor = score >= 85 ? '💚' : score >= 70 ? '💛' : '❤️';
+    const evalNote = evaluated.length
+        ? `🤖 בנוסף, ה-AI סימן ${evaluated.length} הערכות שדורשות אימות לפני פעולה (לא נמדדו ודאית).`
+        : '';
 
     return [
         `🧪 בדיקת מערכת — ציון: ${score}/100 ${scoreColor}`,
@@ -149,17 +185,15 @@ function buildSimpleUserReport({ score, findings }) {
         status,
         '',
         ...(action ? [action, ''] : []),
+        ...(evalNote ? [evalNote, ''] : []),
         `תגובה מפורטת לדחיסה בקלוד זמינה — בקש אם צריך עזרה בתיקון.`,
     ].filter(Boolean).join('\n');
 }
 
-function formatAnswer({ runId, findings, score, deltas, learnedContext, distillSummary, summary }) {
-    const counts = countsBySeverity(findings);
-
+function renderSections(findings) {
     const groups = groupBy(findings, f => categoryOfTarget(f.target));
     const sectionOrder = ['API', 'Static', 'Flutter UI', 'Hebrew Quality', 'Other'];
-
-    const sections = sectionOrder
+    return sectionOrder
         .filter(s => groups.has(s))
         .map(name => {
             const lines = groups.get(name).slice(0, 8).map(f => {
@@ -169,6 +203,25 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
             }).join('\n\n');
             return `— ${name} —\n${lines}`;
         }).join('\n\n');
+}
+
+function formatAnswer({ runId, findings, score, deltas, learnedContext, distillSummary, summary, inconclusive = false }) {
+    const counts = countsBySeverity(findings);
+
+    const measured = findings.filter(isMeasured);
+    const evaluated = findings.filter(f => !isMeasured(f));
+    const measuredSections = renderSections(measured);
+    const evaluatedSections = renderSections(evaluated);
+
+    const findingsBlock = inconclusive
+        ? 'לא נאספו נתונים מדודים בריצה זו (השרת לא היה נגיש).'
+        : [
+            '✅ נמדד ודאית (מדידות אמיתיות — HTTP/latency/דפוסי קוד):',
+            measuredSections || '   אין ממצאים מדודים — מה שנבדק במדידה תקין.',
+            '',
+            '🤖 הערכת AI — מומלץ לאמת לפני פעולה (ניתוח מודל, עלול לכלול false-positive):',
+            evaluatedSections || '   אין הערכות AI בריצה זו.',
+        ].join('\n');
 
     const learning = [
         '🧠 לימוד עצמי:',
@@ -191,7 +244,11 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
         : '';
 
     // For users, show simple report. For developers, show detailed.
-    const simpleUserReport = buildSimpleUserReport({ score, findings });
+    const simpleUserReport = buildSimpleUserReport({ score, findings, inconclusive });
+
+    const scoreLine = inconclusive
+        ? `דוח בדיקות E2E (run_id: ${runId}) — ⚠️ ללא נתונים מספיקים, אין ציון.`
+        : `דוח בדיקות E2E (run_id: ${runId}) — ציון כללי: ${score}/100 (מבוסס מדידות; ${measured.length} מדודים, ${evaluated.length} הערכות AI)`;
 
     return [
         simpleUserReport,
@@ -199,11 +256,11 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
         '═══════════════════════════════════════════',
         '🔬 דוח מפורט (טכני):',
         '═══════════════════════════════════════════',
-        `דוח בדיקות E2E (run_id: ${runId}) — ציון כללי: ${score}/100`,
+        scoreLine,
         `${SEV_EMOJI.critical} קריטי: ${counts.critical}   ${SEV_EMOJI.high} גבוה: ${counts.high}   ${SEV_EMOJI.medium} בינוני: ${counts.medium}   ${SEV_EMOJI.low} נמוך: ${counts.low}`,
         `🆕 חדש: ${deltas.newCount}   🔁 רגרסיה: ${deltas.regressionCount}   ✅ נפתר: ${deltas.resolvedCount}   📉 פלייקי: ${deltas.flakyCount}`,
         '',
-        sections || 'לא נמצאו ממצאים.',
+        findingsBlock,
         '',
         learning,
         '',
@@ -225,6 +282,7 @@ async function persistFindings(supabase, runId, findings) {
         score: f.score ?? null,
         fingerprint: f.fingerprint || fingerprint(f.target, f.finding),
         status: f.status || 'new',
+        source: normalizeSource(f.source),
     }));
     try {
         // Insert in chunks of 50 to stay under request limits
@@ -270,12 +328,22 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
     ]);
 
     const allFindings = [
-        ...(apiResult.findings || []),
-        ...(staticRes.findings || []),
-        ...(flutterRes.findings || []),
-        ...(uxRes.findings || []),
-        ...(errorsRes.findings || []),
+        ...tagSource(apiResult.findings, 'measured'),
+        ...tagSource(staticRes.findings, 'evaluated'),
+        ...tagSource(flutterRes.findings, 'evaluated'),
+        ...tagSource(uxRes.findings, 'evaluated'),
+        // codeErrorScanner keeps its own per-finding `source` ('pattern' | 'llm')
+        ...tagSource(errorsRes.findings, null),
     ];
+
+    // A run is "inconclusive" when we couldn't measure anything real.
+    // Note: when the server is unreachable, the API findings are only
+    // connection errors — not real measurements of behavior — so they don't
+    // count as signal. Regex code findings (source 'pattern') still do.
+    const ranApi = probes.includes('api');
+    const apiReachable = !ranApi || apiResult.reachable !== false;
+    const hasCodeMeasured = (errorsRes.findings || []).some(f => normalizeSource(f.source) === 'measured');
+    const inconclusive = ranApi && !apiReachable && !hasCodeMeasured;
 
     const deltas = computeDeltas(allFindings, learnedContext);
     const score = computeScore(allFindings);
@@ -299,7 +367,7 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
         console.log('🧪 E2EAgent: offloading narrative analysis to Manus');
         const claudePrompt = buildClaudePrompt({ runId, findings: allFindings, score, counts: countsBySeverity(allFindings) });
         const { answer: manusAnswer } = await runManusTask(claudePrompt).catch(() => ({ answer: null }));
-        answer = manusAnswer || formatAnswer({ runId, findings: allFindings, score, deltas, learnedContext, distillSummary, summary: staticRes.summary || '' });
+        answer = manusAnswer || formatAnswer({ runId, findings: allFindings, score, deltas, learnedContext, distillSummary, summary: staticRes.summary || '', inconclusive });
     } else {
         answer = formatAnswer({
             runId,
@@ -309,12 +377,13 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
             learnedContext,
             distillSummary,
             summary: staticRes.summary || '',
+            inconclusive,
         });
     }
 
     return {
         answer,
-        action: { type: 'e2e_report', runId, score, counts: countsBySeverity(allFindings), deltas },
+        action: { type: 'e2e_report', runId, score: inconclusive ? null : score, inconclusive, counts: countsBySeverity(allFindings), deltas },
     };
 }
 

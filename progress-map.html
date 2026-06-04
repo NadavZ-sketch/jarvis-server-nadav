@@ -386,7 +386,18 @@ h1 span{color:var(--accent)}
 .e2e-meta{flex:1;min-width:120px}
 .e2e-runid{font-size:.8rem;font-weight:600;direction:ltr;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .e2e-date{font-size:.7rem;color:var(--muted);margin-top:2px}
+.e2e-src{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.e2e-score.nodata{font-size:.74rem;color:var(--muted);font-weight:600}
 .e2e-sev{display:flex;gap:6px;flex-wrap:wrap}
+.survey-head{font-size:.8rem;font-weight:700;color:var(--text,#e5e7eb);margin-bottom:8px}
+.survey-insights{margin:0 0 12px;padding-inline-start:18px;font-size:.8rem;line-height:1.7}
+.survey-q{margin-bottom:12px}
+.survey-q-title{font-size:.8rem;font-weight:600;margin-bottom:5px}
+.survey-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:.74rem}
+.survey-bar-label{flex:0 0 38%;text-align:right;color:var(--muted)}
+.survey-bar{flex:1;height:9px;background:rgba(148,163,184,.15);border-radius:5px;overflow:hidden}
+.survey-bar-fill{display:block;height:100%;background:var(--blue,#60a5fa);border-radius:5px}
+.survey-bar-pct{flex:0 0 auto;color:var(--muted);min-width:62px}
 .sev-pill{font-size:.66rem;font-weight:700;border-radius:5px;padding:2px 7px}
 .sev-critical{background:rgba(239,68,68,.15);color:var(--red)}
 .sev-high{background:rgba(245,158,11,.15);color:var(--amber)}
@@ -1267,11 +1278,20 @@ async function loadE2E() {
     list.innerHTML = reports.slice(0,20).map(r => {
       const sev = [['critical',r.critical],['high',r.high],['medium',r.medium],['low',r.low]]
         .filter(([,n])=>n>0).map(([k,n])=>`<span class="sev-pill sev-${k}">${n} ${SEV_HE[k]}</span>`).join('');
+      // A run with zero measured findings AND no severity findings is "no data" — don't show a misleading score.
+      const noData = (r.measured||0) === 0 && r.count === 0;
+      const scoreCell = noData
+        ? `<div class="e2e-score nodata" title="לא נאספו נתונים מדודים">ללא נתונים</div>`
+        : `<div class="e2e-score ${scoreClass(r.score)}">${r.score}</div>`;
+      // Separate verifiable measurements from AI evaluations (which need validation).
+      const srcPills = `<span class="sev-pill sev-low" title="מדידות ודאיות">✅ ${r.measured||0} נמדד</span>`
+        + `<span class="sev-pill sev-medium" title="הערכת AI — דורש אימות">🤖 ${r.evaluated||0} הערכת AI</span>`;
       return `<div class="e2e-report">
-        <div class="e2e-score ${scoreClass(r.score)}">${r.score}</div>
+        ${scoreCell}
         <div class="e2e-meta">
           <div class="e2e-runid">${escapeHtml(r.run_id||'')}</div>
           <div class="e2e-date">${r.count} ממצאים פתוחים · ${r.done||0} טופלו · ${r.created_at ? new Date(r.created_at).toLocaleString('he-IL') : ''}</div>
+          <div class="e2e-src">${srcPills}</div>
         </div>
         <div class="e2e-sev">${sev || '<span class="sev-pill sev-low">נקי</span>'}</div>
       </div>`;
@@ -1307,15 +1327,40 @@ async function loadSurveySummary() {
   const el = document.getElementById('surveySummary');
   if (!el) return;
   try {
-    // No dedicated survey API — derive a light read-only summary from control-center events.
-    const d = await fetch('/control-center/events', { signal: AbortSignal.timeout(6000) }).then(r=>r.json()).catch(()=>null);
-    const pending = d && (d.surveyPending || d.survey ||
-      (Array.isArray(d.alerts) && d.alerts.some(a=>String(a.type||a.kind||'').toLowerCase().includes('survey'))));
-    el.innerHTML = pending
-      ? '📋 יש סקר ממתין למילוי — פתח את האפליקציה כדי להשלים אותו.'
-      : '✅ אין סקרים ממתינים כרגע. סקרים נאספים מתוך השימוש ומוצגים כאן לקריאה בלבד.';
+    // Resolve the user, then pull REAL aggregated survey results (counts/percentages).
+    let userName = (_profileData && _profileData.profile && _profileData.profile.user_name) || '';
+    if (!userName) {
+      try { const p = await fetch('/user-profile').then(r=>r.json()); userName = (p.profile && p.profile.user_name) || ''; } catch {}
+    }
+    if (!userName) { el.innerHTML = '<div class="empty-state"><span>👤</span>הגדר שם משתמש כדי לראות תוצאות סקר</div>'; return; }
+
+    const d = await fetch('/survey-insights?userName=' + encodeURIComponent(userName), { signal: AbortSignal.timeout(8000) })
+      .then(r=>r.json());
+
+    // Not enough real data → say so, don't invent conclusions.
+    if (!d.enough) {
+      el.innerHTML = `<div class="empty-state"><span>📋</span>עדיין אין מספיק תשובות סקר להצגת מסקנות (${d.surveyCount||0}/${d.minRequired||2}).</div>`;
+      return;
+    }
+
+    const insights = (d.insights || []).map(t => `<li>${escapeHtml(t)}</li>`).join('');
+    const agg = d.aggregation || { questions: [] };
+    const blocks = (agg.questions || []).map(q => {
+      const bars = (q.distribution || []).map(item => `
+        <div class="survey-bar-row">
+          <span class="survey-bar-label">${escapeHtml(item.answer)}</span>
+          <span class="survey-bar"><span class="survey-bar-fill" style="width:${item.pct}%"></span></span>
+          <span class="survey-bar-pct">${item.pct}% (${item.count})</span>
+        </div>`).join('');
+      return `<div class="survey-q"><div class="survey-q-title">${escapeHtml(q.question)}</div>${bars}</div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="survey-head">📊 מבוסס ${d.surveyCount} סקרים אמיתיים</div>
+      ${insights ? `<ul class="survey-insights">${insights}</ul>` : ''}
+      ${blocks}`;
   } catch {
-    el.innerHTML = 'סקרים נאספים מתוך השימוש ומוצגים כאן לקריאה בלבד.';
+    el.innerHTML = `<div class="err-state"><span>⚠️</span>שגיאת טעינת תוצאות סקר<button class="retry-btn" onclick="loadSurveySummary()">נסה שוב</button></div>`;
   }
 }
 

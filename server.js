@@ -49,6 +49,7 @@ const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
 const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = require('./agents/e2eAgent');
+const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, buildSurveySummary, aggregateSurveys, insightsFromAggregation } = require('./agents/surveyAgent');
 const { runManusAgent, isManusConfigured } = require('./agents/manusAgent');
 const { analyzePatterns, optimizeDayPlan } = require('./agents/insightAgent');
 const priorityEngine          = require('./services/priorityEngine');
@@ -2342,6 +2343,7 @@ app.get('/e2e-reports', async (_req, res) => {
                     created_at: row.created_at,
                     count: 0,
                     critical: 0, high: 0, medium: 0, low: 0,
+                    measured: 0, evaluated: 0,
                     done: 0,
                 });
             }
@@ -2350,6 +2352,8 @@ app.get('/e2e-reports', async (_req, res) => {
             if (row.status === 'done') { g.done++; continue; }
             g.count++;
             if (g[row.severity] !== undefined) g[row.severity]++;
+            // 'source' may be absent on rows from before the migration → treat as measured.
+            if (row.source === 'evaluated') g.evaluated++; else g.measured++;
         }
         const reports = Array.from(byRun.values())
             .map(r => {
@@ -2448,6 +2452,192 @@ app.post('/e2e-reports/:runId/mark-done', async (req, res) => {
     } catch (err) {
         console.error('POST /e2e-reports/:id/mark-done error:', err.message);
         res.status(500).json({ ok: false, error: 'Internal server error' });
+    }
+});
+
+// ─── Survey check (should user take survey?) ──────────────────────────────
+// Per-user 48h cooldown after a completed submission; questions answered in
+// the last 7 days are excluded from the next survey so it feels fresh.
+const SURVEY_COOLDOWN_HOURS = 48;
+const SURVEY_EXCLUDE_WINDOW_DAYS = 7;
+// Minimum number of completed surveys before we show aggregated conclusions.
+// Below this we report "not enough data" instead of inventing insights.
+const SURVEY_MIN_FOR_INSIGHTS = 2;
+
+app.get('/survey-check', async (req, res) => {
+    try {
+        const { sessionMinutes, agentCallCount, force, userName } = req.query;
+        const minutes = parseInt(sessionMinutes) || 0;
+        const calls = parseInt(agentCallCount) || 0;
+        const forced = force === 'true' || force === '1';
+
+        // Trigger survey after 25+ minutes OR 8+ agent calls (or forced by user).
+        // Higher thresholds keep the survey from interrupting short, active sessions.
+        const shouldShowSurvey = forced || minutes >= 25 || calls >= 8;
+        if (!shouldShowSurvey) return res.json({ showSurvey: false });
+
+        // Cooldown + recent-question exclusion (requires userName).
+        let excludeIds = [];
+        if (userName) {
+            try {
+                const cooldownCutoff = new Date(Date.now() - SURVEY_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
+                const excludeCutoff  = new Date(Date.now() - SURVEY_EXCLUDE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+                // 1) Cooldown: any completed survey since cutoff blocks new prompts.
+                if (!forced) {
+                    const { data: recent } = await supabase
+                        .from('user_surveys')
+                        .select('id, completed_at')
+                        .eq('user_name', userName)
+                        .gte('completed_at', cooldownCutoff)
+                        .limit(1);
+                    if (recent && recent.length > 0) {
+                        return res.json({ showSurvey: false, cooldown: true });
+                    }
+                }
+
+                // 2) Build exclude list from question_ids of surveys in the last 7 days.
+                const { data: recentWeek } = await supabase
+                    .from('user_surveys')
+                    .select('question_ids')
+                    .eq('user_name', userName)
+                    .gte('completed_at', excludeCutoff)
+                    .limit(20);
+                for (const row of (recentWeek || [])) {
+                    for (const qid of (row.question_ids || [])) excludeIds.push(qid);
+                }
+            } catch (cooldownErr) {
+                // If the cooldown columns don't exist yet (migration not applied), proceed without filtering.
+                console.warn('⚠️ /survey-check cooldown query failed (will still serve survey):', cooldownErr.message);
+            }
+        }
+
+        const questions = selectSurveyQuestions({ minutes, calls }, excludeIds);
+        if (Object.keys(questions).length === 0) {
+            return res.json({ showSurvey: false, exhausted: true });
+        }
+        const surveyJson = buildSurveyJson(questions);
+        res.json({ showSurvey: true, questions: surveyJson });
+    } catch (err) {
+        console.error('⚠️ /survey-check error:', err.message);
+        res.json({ showSurvey: false });
+    }
+});
+
+// ─── Survey submission ─────────────────────────────────────────────────────
+app.post('/survey-submit', async (req, res) => {
+    try {
+        const { responses, userName } = req.body;
+        if (!responses || !userName) {
+            return res.status(400).json({ error: 'Missing responses or userName' });
+        }
+
+        // Build survey structure from the actually-answered questions.
+        const surveyQIds = Object.keys(responses);
+        const survey = surveyQIds.map(id => ({
+            id,
+            question: SURVEY_QUESTIONS[id]?.question || id,
+        }));
+
+        // Build a factual summary straight from the answers — no LLM, no invented text.
+        const { text: summary, breakdown } = buildSurveySummary(survey, responses, userName);
+
+        // Save survey to DB with completion tracking so future /survey-check
+        // calls can enforce the per-user cooldown and exclude answered question_ids.
+        const nowIso = new Date().toISOString();
+        const insertRow = {
+            user_name: userName,
+            responses: JSON.stringify(responses),
+            summary,
+            created_at: nowIso,
+            completed_at: nowIso,
+            question_ids: surveyQIds,
+        };
+        let { error } = await supabase.from('user_surveys').insert([insertRow]);
+
+        // If the migration hasn't been applied yet, retry without the new columns
+        // so old deployments don't break on submit.
+        if (error && /completed_at|question_ids/i.test(error.message || '')) {
+            delete insertRow.completed_at;
+            delete insertRow.question_ids;
+            ({ error } = await supabase.from('user_surveys').insert([insertRow]));
+        }
+        if (error) throw error;
+
+        res.json({ success: true, summary, breakdown });
+    } catch (err) {
+        console.error('⚠️ /survey-submit error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── Survey history (past surveys for a user) ─────────────────────────────
+app.get('/survey-history', async (req, res) => {
+    try {
+        const { userName } = req.query;
+        if (!userName) return res.status(400).json({ error: 'userName required' });
+
+        const { data, error } = await supabase
+            .from('user_surveys')
+            .select('id, created_at, summary, responses')
+            .eq('user_name', userName)
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        if (error) throw error;
+
+        const surveys = (data || []).map(s => {
+            let parsed = s.responses;
+            if (typeof parsed === 'string') {
+                try { parsed = JSON.parse(parsed); } catch (_) { parsed = {}; }
+            }
+            return { id: s.id, createdAt: s.created_at, summary: s.summary, responses: parsed };
+        });
+
+        res.json({ surveys });
+    } catch (err) {
+        console.error('⚠️ /survey-history error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── Survey aggregate insights ─────────────────────────────────────────────
+// Real aggregation of stored responses (counts + percentages) — NOT LLM text.
+// Returns enough:false (and no conclusions) until there are enough surveys.
+app.get('/survey-insights', async (req, res) => {
+    try {
+        const { userName } = req.query;
+        if (!userName) return res.status(400).json({ error: 'userName required' });
+
+        const { data, error } = await supabase
+            .from('user_surveys')
+            .select('responses, created_at')
+            .eq('user_name', userName)
+            .order('created_at', { ascending: false })
+            .limit(50);
+        if (error) throw error;
+
+        const agg = aggregateSurveys(data || []);
+        if (agg.surveyCount < SURVEY_MIN_FOR_INSIGHTS) {
+            return res.json({
+                enough: false,
+                surveyCount: agg.surveyCount,
+                minRequired: SURVEY_MIN_FOR_INSIGHTS,
+                insights: [],
+                aggregation: agg,
+            });
+        }
+
+        res.json({
+            enough: true,
+            surveyCount: agg.surveyCount,
+            insights: insightsFromAggregation(agg),
+            aggregation: agg,
+            generatedAt: new Date().toISOString(),
+        });
+    } catch (err) {
+        console.error('⚠️ /survey-insights error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

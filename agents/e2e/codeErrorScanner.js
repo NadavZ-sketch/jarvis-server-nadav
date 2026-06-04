@@ -352,8 +352,8 @@ async function runCodeErrorScanner({ learnedContext = {} } = {}) {
         ? `נמצאו ${allFindings.length} ממצאים (ציון: ${score}/100).`
         : 'לא נמצאו שגיאות קוד.');
 
-    // Clean internal fields
-    const findings = allFindings.map(({ source: _s, _summary: _sum, ...rest }) => rest);
+    // Clean internal fields (keep `source` so downstream can tell measured vs LLM-evaluated)
+    const findings = allFindings.map(({ _summary: _sum, ...rest }) => rest);
 
     const claudePrompt = findings.length
         ? buildClaudeReadyPrompt(findings, score)

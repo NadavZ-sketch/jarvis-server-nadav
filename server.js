@@ -3171,6 +3171,7 @@ app.get('/chart.js', (_req, res) => {
 const { createAgentCenterRouter } = require('./routes/agentCenter');
 app.use('/progress-map', _rl(20), createAgentCenterRouter({ callGemma4, agentMetrics }));
 app.get('/agent-center', (_req, res) => res.redirect(301, '/progress-map'));
+app.get('/control-center', (_req, res) => res.redirect(301, '/progress-map'));
 
 app.get('/projects-dashboard', (_req, res) => {
     res.setHeader(

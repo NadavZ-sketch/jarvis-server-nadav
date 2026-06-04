@@ -646,6 +646,20 @@ async function getUserProfile() {
     return profile;
 }
 
+// ─── Saver mode ────────────────────────────────────────────────────────────────
+// A single client toggle (settings.saverMode) that trims token usage end-to-end:
+// forces short responses, lowers temperature, and caps maxTokens for chat. Mutates
+// the settings object in place so the constraints ride along to every agent and to
+// the provider opts. Safe to call on both /ask-jarvis and /stream-jarvis.
+function applySaverMode(settings) {
+    if (!settings || settings.saverMode !== true) return settings;
+    settings.responseLength = 'short';
+    const t = typeof settings.temperature === 'number' ? settings.temperature : 0.7;
+    settings.temperature = Math.min(t, 0.3);
+    settings._maxTokensCap = 350;
+    return settings;
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 async function askJarvisHandler(req, res) {
@@ -664,6 +678,7 @@ async function askJarvisHandler(req, res) {
         const t0 = Date.now();
 
         const settings  = req.body.settings || {};
+        applySaverMode(settings);
         const userProfile = await getUserProfile();
         settings.userProfile = userProfile;
         const useLocal  = settings.useLocalModel === true;
@@ -1142,6 +1157,25 @@ app.post('/user-profile', async (req, res) => {
         if ('personality' in rawBody && VALID_PERSONALITIES.includes(rawBody.personality)) {
             payload.personality = rawBody.personality;
             userOverridden.add('personality');
+        }
+
+        // Portable app/web preferences (AI, voice, appearance, etc.) — stored in a
+        // single JSONB column so they survive reinstalls and sync across devices.
+        // Shallow-merged onto whatever is already stored (partial updates allowed).
+        // Keys must stay in sync with AppSettings.toPreferences() (Flutter) and the
+        // settings blob in progress-map.html.
+        if (rawBody.preferences && typeof rawBody.preferences === 'object' && !Array.isArray(rawBody.preferences)) {
+            const existingPrefs = (existing && typeof existing.preferences === 'object' && existing.preferences) || {};
+            const incoming = {};
+            // Keep only primitive scalars (string/number/boolean); cap key count.
+            for (const [k, v] of Object.entries(rawBody.preferences)) {
+                if (Object.keys(incoming).length >= 40) break;
+                if (v === null) continue;
+                const t = typeof v;
+                if (t === 'string') incoming[k] = v.slice(0, 200);
+                else if (t === 'number' || t === 'boolean') incoming[k] = v;
+            }
+            payload.preferences = { ...existingPrefs, ...incoming };
         }
 
         payload.auto_learned = { ...existingAuto, user_overridden: Array.from(userOverridden) };
@@ -2893,6 +2927,7 @@ async function streamJarvisHandler(req, res) {
         let userMessage = originalMessage; // may be rewritten by reference resolution
         const chatId = req.body.chatId || req.body.chat_id || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const settings    = req.body.settings || {};
+        applySaverMode(settings);
         const useLocal    = settings.useLocalModel === true;
 
         if (userMessage.length > 5000) {
@@ -3035,7 +3070,12 @@ async function streamJarvisHandler(req, res) {
             ? chatSummary.slice(0, 600) + '…'
             : chatSummary;
         const voiceMode = settings.voiceMode === true;
-        const maxTokens = voiceMode ? 200 : 800;
+        // Honor responseLength (and saver mode's _maxTokensCap) — mirrors runChatAgent.
+        const _lengthCaps = { short: 350, medium: 800, long: 1400 };
+        let maxTokens = voiceMode ? 200 : (_lengthCaps[settings.responseLength] || 800);
+        if (typeof settings._maxTokensCap === 'number') {
+            maxTokens = Math.min(maxTokens, settings._maxTokensCap);
+        }
 
         const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, null, userMessage);
         const msgs = [
@@ -3994,7 +4034,7 @@ IMPORTANT: Respond with ONLY a JSON array. No markdown, no explanation, no code 
 Output format (copy exactly, replace the values):
 [{"title":"short title in Hebrew (max 60 chars)","plan":"detailed plan in Hebrew (3-4 sentences: what to do, why it matters, how to implement technically)","priority":"high","category":"improvement"},{"title":"...","plan":"...","priority":"medium","category":"feature"}]`;
 
-        const raw = await callGemma4(prompt, false, 2000);
+        const raw = await callGemma4(prompt, false, 1000);
 
         // Extract JSON array — strip markdown code fences, find first [ ... ] block
         const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '');
@@ -4109,7 +4149,7 @@ app.post('/dashboard/generate-prompt', async (req, res) => {
 
 כתוב את הפרומפט בעברית, מוכן להדבקה ב-Claude Code:`;
 
-        const result = await callGemma4(prompt, false, 1500);
+        const result = await callGemma4(prompt, false, 1000);
         res.json({ prompt: result });
     } catch (e) {
         console.error('generate-prompt error:', e.message);

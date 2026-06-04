@@ -203,6 +203,12 @@ function buildSystemPrompt(chatHistory, longTermMemories, settings = {}, followU
     const clarificationLine =
         `\nClarify only when a critical detail is missing (who/what). One short Hebrew question max; skip if intent is clear from context.`;
 
+    // Short response preference (token-saver / explicit short setting). Voice
+    // mode already enforces brevity via voiceModeBlock, so skip it there.
+    const briefLine = (!voiceMode && settings.responseLength === 'short')
+        ? `\nKeep answers short and to the point — 2-3 sentences max unless the question truly requires more.`
+        : '';
+
     const followUpBlock = followUpContext
         ? `\n--- הקשר להמשך שיחה ---\n${followUpContext}\n-----------------------------------\n`
         : '';
@@ -258,7 +264,7 @@ ${genderInstr}
 Personality: ${personalityDesc}
 CRITICAL: Mirror ${userName}'s writing style, vocabulary and tone.${styleHint}
 CRITICAL: Never claim you performed an action unless you actually executed it.
-${voiceModeBlock}${emotionalIntelligenceBlock}${clarificationLine}
+${voiceModeBlock}${emotionalIntelligenceBlock}${clarificationLine}${briefLine}
 ${profileBlock}${learnedStyleBlock}
 ${followUpBlock}${summaryBlock}
 --- Permanent Memories About ${userName} ---
@@ -353,7 +359,13 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
     try {
         const useLocal  = settings.useLocalModel === true;
         const voiceMode = settings.voiceMode === true;
-        const maxTokens = voiceMode ? 200 : 800;
+        // Honor the client's responseLength preference (was hard-coded for months).
+        // Saver mode lowers the cap further via settings._maxTokensCap (set server-side).
+        const lengthCaps = { short: 350, medium: 800, long: 1400 };
+        let maxTokens = voiceMode ? 200 : (lengthCaps[settings.responseLength] || 800);
+        if (typeof settings._maxTokensCap === 'number') {
+            maxTokens = Math.min(maxTokens, settings._maxTokensCap);
+        }
         const chatSummary = (settings.chatSummary || '').trim();
         let followUpContext = null;
 

@@ -617,6 +617,7 @@ class ApiService {
     String? assistantName,
     String? gender,
     String? personality,
+    Map<String, dynamic>? preferences,
   }) async {
     final body = <String, dynamic>{};
     if (speakingTone  != null) body['speaking_tone']   = speakingTone;
@@ -627,6 +628,7 @@ class ApiService {
     if (assistantName  != null) body['assistant_name']  = assistantName;
     if (gender         != null) body['gender']          = gender;
     if (personality    != null) body['personality']     = personality;
+    if (preferences    != null) body['preferences']     = preferences;
     final res = await _client.post(
       _uri('/user-profile'),
       headers: {'Content-Type': 'application/json'},

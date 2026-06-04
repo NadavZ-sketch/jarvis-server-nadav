@@ -49,6 +49,7 @@ class AppSettings {
   String localModelName;
   double temperature;   // 0.0 – 1.0
   String responseLength; // 'short' | 'medium' | 'long'
+  bool saverMode;        // token-saver: forces short replies + low temperature server-side
 
   // ── Notifications ──
   bool notificationsEnabled;
@@ -100,6 +101,7 @@ class AppSettings {
     this.localModelName = 'llama3',
     this.temperature = 0.7,
     this.responseLength = 'medium',
+    this.saverMode = false,
     this.notificationsEnabled = true,
     this.quietHoursStart = 22,
     this.quietHoursEnd = 8,
@@ -125,22 +127,18 @@ class AppSettings {
     return AppBrightnessMode.dark;
   }
 
-  // Fetch identity fields from the server (best-effort, used on fresh install).
-  static Future<Map<String, String>?> _fetchServerIdentity(String serverUrl) async {
+  // Fetch the raw server profile (best-effort, used on fresh install) so identity
+  // fields AND portable preferences can be recovered after a reinstall / device
+  // switch. Returns the `profile` object as-is (snake_case identity columns plus a
+  // `preferences` JSONB blob), or null on any failure.
+  static Future<Map<String, dynamic>?> _fetchServerProfile(String serverUrl) async {
     try {
       final res = await http
           .get(Uri.parse('$serverUrl/user-profile'))
           .timeout(const Duration(seconds: 5));
       if (res.statusCode != 200) return null;
       final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final profile = data['profile'] as Map<String, dynamic>?;
-      if (profile == null) return null;
-      return {
-        if (profile['user_name']      is String) 'userName':      profile['user_name']      as String,
-        if (profile['assistant_name'] is String) 'assistantName': profile['assistant_name'] as String,
-        if (profile['gender']         is String) 'gender':        profile['gender']         as String,
-        if (profile['personality']    is String) 'personality':   profile['personality']    as String,
-      };
+      return data['profile'] as Map<String, dynamic>?;
     } catch (_) {
       return null;
     }
@@ -153,20 +151,22 @@ class AppSettings {
     // In that case, try to recover them from the server profile so the user
     // doesn't have to re-enter their name/personality after switching devices.
     final isFirstLoad = prefs.getString('userName') == null;
-    Map<String, String>? serverIdentity;
+    Map<String, dynamic>? serverProfile;
     if (isFirstLoad) {
       final useLocal = prefs.getBool('useLocalServer') ?? false;
       final localUrl = prefs.getString('localServerUrl') ?? 'http://192.168.1.100:3000';
       const cloudUrl = cloudServerUrl;
-      serverIdentity = await _fetchServerIdentity(useLocal ? localUrl : cloudUrl);
+      serverProfile = await _fetchServerProfile(useLocal ? localUrl : cloudUrl);
     }
+    String? _ident(String key) =>
+        (serverProfile != null && serverProfile[key] is String) ? serverProfile[key] as String : null;
 
-    return AppSettings(
-      assistantName:    prefs.getString('assistantName')    ?? serverIdentity?['assistantName'] ?? 'Jarvis',
-      gender:           prefs.getString('gender')           ?? serverIdentity?['gender']         ?? 'male',
-      personality:      prefs.getString('personality')      ?? serverIdentity?['personality']    ?? 'friendly',
+    final s = AppSettings(
+      assistantName:    prefs.getString('assistantName')    ?? _ident('assistant_name') ?? 'Jarvis',
+      gender:           prefs.getString('gender')           ?? _ident('gender')         ?? 'male',
+      personality:      prefs.getString('personality')      ?? _ident('personality')    ?? 'friendly',
       voiceEnabled:     prefs.getBool('voiceEnabled')       ?? true,
-      userName:         prefs.getString('userName')         ?? serverIdentity?['userName']       ?? 'נדב',
+      userName:         prefs.getString('userName')         ?? _ident('user_name')      ?? 'נדב',
       useLocalModel:    prefs.getBool('useLocalModel')      ?? false,
       useLocalServer:   prefs.getBool('useLocalServer')     ?? false,
       localServerUrl:   prefs.getString('localServerUrl')   ?? 'http://192.168.1.100:3000',
@@ -195,6 +195,7 @@ class AppSettings {
       localModelName:   prefs.getString('localModelName')   ?? 'llama3',
       temperature:      prefs.getDouble('temperature')      ?? 0.7,
       responseLength:   prefs.getString('responseLength')   ?? 'medium',
+      saverMode:        prefs.getBool('saverMode')          ?? false,
       notificationsEnabled: prefs.getBool('notificationsEnabled') ?? true,
       quietHoursStart:  prefs.getInt('quietHoursStart')     ?? 22,
       quietHoursEnd:    prefs.getInt('quietHoursEnd')       ?? 8,
@@ -202,6 +203,15 @@ class AppSettings {
       homeCardsHidden:  (prefs.getStringList('homeCardsHidden') ?? []).toSet(),
       tasksDefaultView: prefs.getString('tasksDefaultView') ?? 'list',
     );
+
+    // Fresh install: fill in portable preferences from the server profile, then
+    // persist so SharedPreferences becomes the source of truth from here on.
+    if (isFirstLoad && serverProfile != null && serverProfile['preferences'] is Map) {
+      s.applyPreferences(Map<String, dynamic>.from(serverProfile['preferences'] as Map));
+      await s.save();
+    }
+
+    return s;
   }
 
   Future<void> save() async {
@@ -239,6 +249,7 @@ class AppSettings {
     await prefs.setString('localModelName', localModelName);
     await prefs.setDouble('temperature',    temperature);
     await prefs.setString('responseLength', responseLength);
+    await prefs.setBool('saverMode',        saverMode);
     await prefs.setBool('notificationsEnabled', notificationsEnabled);
     await prefs.setInt('quietHoursStart',   quietHoursStart);
     await prefs.setInt('quietHoursEnd',     quietHoursEnd);
@@ -273,5 +284,79 @@ class AppSettings {
     'localModelName':  localModelName,
     'temperature':    temperature,
     'responseLength': responseLength,
+    'saverMode':      saverMode,
   };
+
+  // ── Portable preferences (synced to the server `preferences` JSONB column) ──
+  // CANONICAL KEY LIST — must stay identical to the server-side merge in
+  // POST /user-profile and the settings blob in progress-map.html. Enums are
+  // serialised via .name so the web <select> values match.
+  Map<String, dynamic> toPreferences() => {
+    // AI / model
+    'cloudProvider':   cloudProvider,
+    'useLocalModel':   useLocalModel,
+    'localModelName':  localModelName,
+    'openrouterModel': openrouterModel,
+    'temperature':     temperature,
+    'responseLength':  responseLength,
+    'saverMode':       saverMode,
+    // Voice / TTS
+    'voiceEnabled':    voiceEnabled,
+    'ttsSpeed':        ttsSpeed,
+    'ttsPitch':        ttsPitch,
+    'ttsLanguage':     ttsLanguage,
+    'ttsVoiceName':    ttsVoiceName,
+    'bargeInEnabled':  bargeInEnabled,
+    // Appearance
+    'selectedTheme':   selectedTheme.name,
+    'brightnessMode':  brightnessMode.name,
+    'animationsEnabled': animationsEnabled,
+    // Today tab
+    'todayBriefingEnabled': todayBriefingEnabled,
+    'todayBriefingFocus':   todayBriefingFocus,
+    'city':            city,
+    // Notifications
+    'notificationsEnabled': notificationsEnabled,
+    'quietHoursStart': quietHoursStart,
+    'quietHoursEnd':   quietHoursEnd,
+    // Advanced
+    'telemetryConsent': telemetryConsent,
+    'obsidianAutoSync': obsidianAutoSync,
+  };
+
+  // Apply a (partial) preferences blob fetched from the server. Each key is
+  // guarded + falls back to the current value, mirroring load()'s defaults.
+  void applyPreferences(Map<String, dynamic> p) {
+    T pick<T>(String key, T current) => p[key] is T ? p[key] as T : current;
+    // AI / model
+    cloudProvider   = pick('cloudProvider', cloudProvider);
+    useLocalModel   = pick('useLocalModel', useLocalModel);
+    localModelName  = pick('localModelName', localModelName);
+    openrouterModel = pick('openrouterModel', openrouterModel);
+    temperature     = (p['temperature'] is num) ? (p['temperature'] as num).toDouble() : temperature;
+    responseLength  = pick('responseLength', responseLength);
+    saverMode       = pick('saverMode', saverMode);
+    // Voice / TTS
+    voiceEnabled    = pick('voiceEnabled', voiceEnabled);
+    ttsSpeed        = (p['ttsSpeed'] is num) ? (p['ttsSpeed'] as num).toDouble() : ttsSpeed;
+    ttsPitch        = (p['ttsPitch'] is num) ? (p['ttsPitch'] as num).toDouble() : ttsPitch;
+    ttsLanguage     = pick('ttsLanguage', ttsLanguage);
+    ttsVoiceName    = pick('ttsVoiceName', ttsVoiceName);
+    bargeInEnabled  = pick('bargeInEnabled', bargeInEnabled);
+    // Appearance
+    if (p['selectedTheme'] is String) selectedTheme = _parseTheme(p['selectedTheme'] as String);
+    if (p['brightnessMode'] is String) brightnessMode = _parseBrightnessMode(p['brightnessMode'] as String);
+    animationsEnabled = pick('animationsEnabled', animationsEnabled);
+    // Today tab
+    todayBriefingEnabled = pick('todayBriefingEnabled', todayBriefingEnabled);
+    todayBriefingFocus   = pick('todayBriefingFocus', todayBriefingFocus);
+    city            = pick('city', city);
+    // Notifications
+    notificationsEnabled = pick('notificationsEnabled', notificationsEnabled);
+    quietHoursStart = (p['quietHoursStart'] is num) ? (p['quietHoursStart'] as num).toInt() : quietHoursStart;
+    quietHoursEnd   = (p['quietHoursEnd'] is num) ? (p['quietHoursEnd'] as num).toInt() : quietHoursEnd;
+    // Advanced
+    telemetryConsent = pick('telemetryConsent', telemetryConsent);
+    obsidianAutoSync = pick('obsidianAutoSync', obsidianAutoSync);
+  }
 }

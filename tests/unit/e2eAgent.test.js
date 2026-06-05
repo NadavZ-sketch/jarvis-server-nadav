@@ -86,6 +86,6 @@ describe('runE2EAgent', () => {
         const result = await runE2EAgent('בצע בדיקות קצה', null, false, { disableLearning: true });
         expect(result.action.inconclusive).toBe(true);
         expect(result.action.score).toBeNull();
-        expect(result.answer).toContain('לא נאספו מספיק נתונים');
+        expect(result.answer).toContain('השרת לא מגיב');
     });
 });

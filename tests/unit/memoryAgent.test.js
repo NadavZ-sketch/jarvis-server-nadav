@@ -5,7 +5,7 @@ jest.mock('../../agents/models', () => ({
     callGeminiVision: jest.fn(),
     GEMINI_URL: 'https://mock.gemini.url',
 }));
-jest.mock('../../services/obsidianSync', () => ({ dbToVault: jest.fn() }));
+jest.mock('../../services/obsidianSync', () => ({ dbToVault: jest.fn(), removeFromVault: jest.fn() }));
 jest.mock('../../services/pineconeMemory', () => ({
     upsertMemory:      jest.fn().mockResolvedValue(true),
     searchMemories:    jest.fn().mockResolvedValue(null),

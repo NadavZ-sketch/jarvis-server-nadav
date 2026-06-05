@@ -173,6 +173,7 @@ async function deleteMemory(userMessage, supabase) {
     if (error) throw error;
     if (!data || data.length === 0) return { answer: `לא מצאתי זיכרון על "${textToDelete}".` };
     await Promise.allSettled(data.map(m => pinecone.deleteMemory(m.id)));
+    data.forEach(m => obsidianSync.removeFromVault('memories', m));
     _invalidateMemoryCache();
     return { answer: `בסדר, מחקתי את הזיכרון: "${data[0].content}"` };
 }

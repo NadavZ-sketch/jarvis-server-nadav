@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../app_settings.dart';
@@ -105,11 +104,11 @@ class ApiService {
         msg.contains('TimeoutException')) {
       return 'תם הזמן. בדוק את החיבור לאינטרנט';
     }
-    if (error is SocketException ||
-        msg.contains('SocketException') ||
+    if (msg.contains('SocketException') ||
         msg.contains('refused') ||
         msg.contains('ECONNREFUSED') ||
         msg.contains('NetworkError') ||
+        msg.contains('ClientException') ||
         msg.contains('Failed host lookup')) {
       return 'השרת לא זמין. ודא שהשרת המקומי פועל';
     }

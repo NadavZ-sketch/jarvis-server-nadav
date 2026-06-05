@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -78,11 +77,17 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
       } else {
         setState(() => _pingMsg = '❌ שגיאה: ${resp.statusCode}');
       }
-    } on SocketException {
-      setState(() => _pingMsg =
-          '❌ לא ניתן להתחבר. ודא ש-Ollama רץ ושהמחשב והטלפון על אותה רשת.');
     } catch (e) {
-      setState(() => _pingMsg = '❌ ${e.toString().split('\n').first}');
+      final s = e.toString();
+      if (s.contains('SocketException') ||
+          s.contains('ClientException') ||
+          s.contains('Failed host lookup') ||
+          s.contains('refused')) {
+        setState(() => _pingMsg =
+            '❌ לא ניתן להתחבר. ודא ש-Ollama רץ ושהמחשב והטלפון על אותה רשת.');
+      } else {
+        setState(() => _pingMsg = '❌ ${s.split('\n').first}');
+      }
     } finally {
       setState(() => _pinging = false);
     }

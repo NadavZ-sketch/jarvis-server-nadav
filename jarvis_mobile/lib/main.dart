@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show ImageFilter;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -13,8 +13,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'platform/audio_support.dart';
 import 'app_settings.dart';
 import 'theme/jarvis_theme.dart';
 import 'theme/theme_notifier.dart';
@@ -859,13 +859,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _startConnectivityWatch();
     _audioPlayer.onPlayerComplete.listen((_) {
       if (_lastTtsPath != null) {
-        File(_lastTtsPath!).delete().catchError((_) {});
+        deleteTempAudio(_lastTtsPath);
         _lastTtsPath = null;
       }
       if (!mounted) return;
       setState(() => _currentState = JarvisState.idle);
     });
-    NotificationService.init().catchError((_) {});
+    // Local notifications are mobile-only; skip init on web.
+    if (!kIsWeb) NotificationService.init().catchError((_) {});
 
     // Track session start for survey
     _sessionStartTime = DateTime.now();
@@ -1164,17 +1165,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
     try {
       setState(() => _currentState = JarvisState.speaking);
-      // BytesSource is unreliable on Android in audioplayers v6 — write to temp file
       final bytes = base64Decode(base64String);
-      final tmpDir = await getTemporaryDirectory();
-      final tmpPath =
-          '${tmpDir.path}/jarvis_tts_${DateTime.now().millisecondsSinceEpoch}.mp3';
-      await File(tmpPath).writeAsBytes(bytes);
-      _lastTtsPath = tmpPath;
-      await _audioPlayer.play(DeviceFileSource(tmpPath));
+      // Native writes a temp file (BytesSource is unreliable on Android in
+      // audioplayers v6); web plays the bytes directly. See platform/audio_support.
+      _lastTtsPath = await playBase64Audio(_audioPlayer, bytes);
     } catch (e) {
       if (_lastTtsPath != null) {
-        File(_lastTtsPath!).delete().catchError((_) {});
+        deleteTempAudio(_lastTtsPath);
         _lastTtsPath = null;
       }
       setState(() => _currentState = JarvisState.idle);
@@ -1299,6 +1296,21 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   // ─── Live Talk launcher ──────────────────────────────────────────────────────
   Future<void> _openLiveTalk() async {
+    // Live Talk relies on live audio recording / speech-to-text, neither of
+    // which is supported on web. Nudge the user toward the text input instead.
+    if (kIsWeb) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'שיחה חיה אינה זמינה בדפדפן. הקלד את הבקשה ואשמח לעזור.',
+            style: TextStyle(fontFamily: 'Heebo'),
+            textDirection: TextDirection.rtl,
+          ),
+        ),
+      );
+      return;
+    }
     HapticFeedback.mediumImpact();
     // Make sure no STT/TTS from the chat screen is running before pushing.
     _speech.stop();
@@ -2368,12 +2380,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       active: _imageBytes != null,
                       onTap: _pickImage,
                     ),
-                    // Mic
-                    _InputIconButton(
-                      icon: isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                      active: isListening,
-                      onTap: _listen,
-                    ),
+                    // Mic — speech_to_text has no web support, so hide on web.
+                    if (!kIsWeb)
+                      _InputIconButton(
+                        icon: isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                        active: isListening,
+                        onTap: _listen,
+                      ),
                     // Text input
                     Expanded(
                       child: TextField(

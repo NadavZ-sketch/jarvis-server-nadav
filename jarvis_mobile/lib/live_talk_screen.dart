@@ -1,19 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'app_settings.dart';
 import 'main.dart' show JC, JarvisState;
+import 'platform/audio_support.dart';
 import 'widgets/jarvis_orb.dart';
 
 class LiveTalkScreen extends StatefulWidget {
@@ -78,7 +77,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
     _initTts();
     _audioPlayer.onPlayerComplete.listen((_) {
       if (_lastTtsPath != null) {
-        File(_lastTtsPath!).delete().catchError((_) => File(''));
+        deleteTempAudio(_lastTtsPath);
         _lastTtsPath = null;
       }
       if (!mounted) return;
@@ -465,12 +464,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
     try {
       setState(() => _state = JarvisState.speaking);
       final bytes = base64Decode(base64Audio);
-      final tmpDir = await getTemporaryDirectory();
-      final tmpPath =
-          '${tmpDir.path}/jarvis_live_${DateTime.now().millisecondsSinceEpoch}.mp3';
-      await File(tmpPath).writeAsBytes(bytes);
-      _lastTtsPath = tmpPath;
-      await _audioPlayer.play(DeviceFileSource(tmpPath));
+      _lastTtsPath = await playBase64Audio(_audioPlayer, bytes);
     } catch (_) {
       _onTtsDone();
     }
@@ -534,7 +528,7 @@ class _LiveTalkScreenState extends State<LiveTalkScreen>
     _audioPlayer.stop();
     _audioPlayer.dispose();
     if (_lastTtsPath != null) {
-      File(_lastTtsPath!).delete().catchError((_) => File(''));
+      deleteTempAudio(_lastTtsPath);
       _lastTtsPath = null;
     }
     try {

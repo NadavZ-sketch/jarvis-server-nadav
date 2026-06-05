@@ -179,36 +179,53 @@ function storeConsent(userId, actionType) {
     consentLedger.set(`${userId}:${actionDomain(actionType)}`, { approvedAt: new Date().toISOString() });
 }
 
+// Pure policy decision: given the action, its flags, the actor, and the
+// consent/confirmation signals already extracted from the request, decide the
+// outcome. No req/res, no env checks, no side effects — so it's unit-testable
+// directly (the requirePolicy middleware below is a thin wrapper around it).
+function evaluatePolicy({
+    actionType,
+    sensitive = false,
+    irreversible = false,
+    actor,
+    explicitConsent = false,
+    consentAlreadyGranted = false,
+    confirmed = false,
+}) {
+    if (isBlockedAction(actionType)) {
+        return { result: 'blocked', status: 403, code: 'ACTION_BLOCKED', message: 'This action is blocked by policy.', storeConsent: false };
+    }
+    if (!isAllowedByRolePlan({ actionType, role: actor.role, plan: actor.plan })) {
+        return { result: 'denied_not_allowed', status: 403, code: 'INSUFFICIENT_PERMISSION', message: 'Your role/plan is not allowed to perform this action.', storeConsent: false };
+    }
+    if (sensitive && !explicitConsent && !consentAlreadyGranted) {
+        return { result: 'denied_no_consent', status: 403, code: 'CONSENT_REQUIRED', message: 'Explicit consent is required for sensitive actions.', storeConsent: false };
+    }
+    // Consent granted now is persisted regardless of a later confirmation gate.
+    const storeConsent = !!(sensitive && explicitConsent);
+    if (irreversible && !confirmed) {
+        return { result: 'denied_missing_confirmation', status: 409, code: 'CONFIRMATION_REQUIRED', message: 'Are you sure? confirmation is required for irreversible action.', storeConsent };
+    }
+    return { result: 'allowed', storeConsent };
+}
+
 function requirePolicy(actionType, options = {}) {
     const { sensitive = false, irreversible = false } = options;
     return (req, res, next) => {
         if (process.env.NODE_ENV === 'test') return next();
         const actor = getActor(req);
-        if (isBlockedAction(actionType)) {
-            auditPolicy({ userId: actor.userId, actionType, result: 'blocked' });
-            return res.status(403).json({ ok: false, code: 'ACTION_BLOCKED', message: 'This action is blocked by policy.' });
+        const explicitConsent = req.body?.consent === true || String(req.headers['x-user-consent'] || '').toLowerCase() === 'true';
+        const consentAlreadyGranted = hasStoredConsent(actor.userId, actionType);
+        const confirmed = req.body?.confirm === true || String(req.headers['x-confirm-action'] || '').toLowerCase() === 'yes';
+
+        const decision = evaluatePolicy({ actionType, sensitive, irreversible, actor, explicitConsent, consentAlreadyGranted, confirmed });
+
+        if (decision.storeConsent) storeConsent(actor.userId, actionType);
+        auditPolicy({ userId: actor.userId, actionType, result: decision.result });
+
+        if (decision.result !== 'allowed') {
+            return res.status(decision.status).json({ ok: false, code: decision.code, message: decision.message });
         }
-        if (!isAllowedByRolePlan({ actionType, role: actor.role, plan: actor.plan })) {
-            auditPolicy({ userId: actor.userId, actionType, result: 'denied_not_allowed' });
-            return res.status(403).json({ ok: false, code: 'INSUFFICIENT_PERMISSION', message: 'Your role/plan is not allowed to perform this action.' });
-        }
-        if (sensitive) {
-            const explicitConsentNow = req.body?.consent === true || String(req.headers['x-user-consent'] || '').toLowerCase() === 'true';
-            const consentAlreadyGranted = hasStoredConsent(actor.userId, actionType);
-            if (!explicitConsentNow && !consentAlreadyGranted) {
-                auditPolicy({ userId: actor.userId, actionType, result: 'denied_no_consent' });
-                return res.status(403).json({ ok: false, code: 'CONSENT_REQUIRED', message: 'Explicit consent is required for sensitive actions.' });
-            }
-            if (explicitConsentNow) storeConsent(actor.userId, actionType);
-        }
-        if (irreversible) {
-            const confirmed = req.body?.confirm === true || String(req.headers['x-confirm-action'] || '').toLowerCase() === 'yes';
-            if (!confirmed) {
-                auditPolicy({ userId: actor.userId, actionType, result: 'denied_missing_confirmation' });
-                return res.status(409).json({ ok: false, code: 'CONFIRMATION_REQUIRED', message: 'Are you sure? confirmation is required for irreversible action.' });
-            }
-        }
-        auditPolicy({ userId: actor.userId, actionType, result: 'allowed' });
         next();
     };
 }
@@ -3555,37 +3572,46 @@ function computeNextOccurrence(scheduledTimeISO, recurrence) {
     return d;
 }
 
-if (!isTestEnv) cron.schedule('* * * * *', async () => {
+// Fire due reminders: mark one-time reminders fired, reschedule recurring ones
+// to their next occurrence. Extracted from the per-minute cron so the logic is
+// unit-testable independent of node-cron and the test-env guard.
+async function fireDueReminders(db = supabase, nowIso = new Date().toISOString()) {
     try {
-        const now = new Date().toISOString();
-        const { data: due, error } = await supabase
+        const { data: due, error } = await db
             .from('reminders')
             .select('id, text, scheduled_time, recurrence')
             .eq('fired', false)
-            .lte('scheduled_time', now);
+            .lte('scheduled_time', nowIso);
 
-        if (error) { console.error('⏰ Cron error:', error.message); return; }
-        if (!due || due.length === 0) return;
+        if (error) { console.error('⏰ Cron error:', error.message); return { fired: 0, rescheduled: 0 }; }
+        if (!due || due.length === 0) return { fired: 0, rescheduled: 0 };
 
         due.forEach(r => console.log(`🔔 REMINDER: ${r.text} [${r.scheduled_time}]${r.recurrence ? ` 🔁 ${r.recurrence}` : ''}`));
 
+        let fired = 0, rescheduled = 0;
         for (const r of due) {
             const next = r.recurrence ? computeNextOccurrence(r.scheduled_time, r.recurrence) : null;
             if (next) {
                 // Recurring: reschedule to next occurrence
-                await supabase.from('reminders')
+                await db.from('reminders')
                     .update({ scheduled_time: next.toISOString(), fired: false })
                     .eq('id', r.id);
                 console.log(`🔁 Rescheduled "${r.text}" → ${next.toISOString()}`);
+                rescheduled++;
             } else {
                 // One-time: mark as fired
-                await supabase.from('reminders').update({ fired: true }).eq('id', r.id);
+                await db.from('reminders').update({ fired: true }).eq('id', r.id);
+                fired++;
             }
         }
+        return { fired, rescheduled };
     } catch (err) {
         console.error('⏰ Cron unexpected error:', err.message);
+        return { fired: 0, rescheduled: 0 };
     }
-});
+}
+
+if (!isTestEnv) cron.schedule('* * * * *', () => fireDueReminders());
 
 // Hourly cleanup of expired session/recent memories (24h / 7d TTLs).
 if (!isTestEnv) cron.schedule('17 * * * *', async () => {
@@ -4615,7 +4641,7 @@ cron.schedule('17 2 * * *', async () => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-module.exports = { app, cacheInvalidate };
+module.exports = { app, cacheInvalidate, evaluatePolicy, requirePolicy, fireDueReminders };
 
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;

@@ -1601,7 +1601,15 @@ async function scanErrors() {
     // Stash the Claude-ready prompt so it can be copied and pasted here for fixing.
     window._scanPrompt = d.claudePrompt || '';
     // The scan is now saved as a report — refresh the list so it shows up there too.
-    loadE2E();
+    if (d.persisted) {
+      loadE2E();
+    } else if (d.findings && d.findings.length) {
+      // Persist failed (probably missing DB migration) — still refresh to show the inline result.
+      loadE2E();
+      showToast('⚠️ הדוח לא נשמר בבסיס הנתונים — יש להחיל את מיגרציות Supabase', 'error');
+    } else {
+      loadE2E();
+    }
 
     if (!findings.length) {
       out.innerHTML = `<div class="empty-state"><span>✅</span>לא נמצאו שגיאות קוד (ציון: ${d.score ?? 100}/100)</div>`;

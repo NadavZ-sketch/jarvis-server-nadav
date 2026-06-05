@@ -3074,10 +3074,19 @@ app.post('/scan/errors/run', _rl(5), async (_req, res) => {
         const { runCodeErrorScanner } = require('./agents/e2e/codeErrorScanner');
         const { findings, claudePrompt, summary, score } = await runCodeErrorScanner({});
         const runId = require('crypto').randomUUID();
-        await persistFindings(supabase, runId, findings, 'code_scan');
+        let persisted = false;
+        if (findings.length) {
+            try {
+                await persistFindings(supabase, runId, findings, 'code_scan');
+                persisted = true;
+            } catch (pe) {
+                console.error('❌ /scan/errors/run: persist failed:', pe.message);
+            }
+        }
         res.json({
             run_id: runId,
             kind: 'code_scan',
+            persisted,
             findings,
             counts: countsBySeverity(findings),
             score,

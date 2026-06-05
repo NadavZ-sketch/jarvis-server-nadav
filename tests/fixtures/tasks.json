@@ -1,0 +1,5 @@
+[
+  { "id": 1, "content": "לסיים את הדוח השבועי", "priority": "high", "category": "work", "done": false, "created_at": "2026-06-01T08:00:00.000Z" },
+  { "id": 2, "content": "לקנות חלב", "priority": "low", "category": "personal", "done": false, "created_at": "2026-06-02T09:30:00.000Z" },
+  { "id": 3, "content": "להעביר תשלום לרואה חשבון", "priority": "medium", "category": "financial", "done": true, "created_at": "2026-05-28T12:00:00.000Z" }
+]

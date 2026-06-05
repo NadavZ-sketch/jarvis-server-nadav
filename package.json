@@ -25,7 +25,10 @@
     ],
     "collectCoverageFrom": [
       "server.js",
-      "agents/**/*.js"
+      "agents/**/*.js",
+      "services/**/*.js",
+      "controllers/**/*.js",
+      "routes/**/*.js"
     ]
   },
   "repository": {

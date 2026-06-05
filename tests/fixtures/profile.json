@@ -1,0 +1,9 @@
+{
+  "userName": "נדב",
+  "assistantName": "ג'רוויס",
+  "gender": "male",
+  "personality": "friendly",
+  "voiceEnabled": true,
+  "ttsSpeed": 0.7,
+  "responseLength": "medium"
+}

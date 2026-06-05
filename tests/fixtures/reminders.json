@@ -1,0 +1,5 @@
+[
+  { "id": 11, "text": "להתקשר לאמא", "scheduled_time": "2026-06-05T18:00:00.000Z", "fired": false, "recurrence": null },
+  { "id": 12, "text": "לקחת תרופה", "scheduled_time": "2026-06-05T07:00:00.000Z", "fired": false, "recurrence": "daily" },
+  { "id": 13, "text": "פגישה עם הצוות", "scheduled_time": "2026-06-10T09:00:00.000Z", "fired": false, "recurrence": "weekly" }
+]

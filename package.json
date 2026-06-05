@@ -25,8 +25,19 @@
     ],
     "collectCoverageFrom": [
       "server.js",
-      "agents/**/*.js"
-    ]
+      "agents/**/*.js",
+      "services/**/*.js",
+      "controllers/**/*.js",
+      "routes/**/*.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 50,
+        "branches": 40,
+        "functions": 48,
+        "lines": 52
+      }
+    }
   },
   "repository": {
     "type": "git",

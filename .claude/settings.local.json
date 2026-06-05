@@ -5,7 +5,8 @@
       "Bash(node -e \"require\\('./server.js'\\)\")",
       "Bash(kill %1)",
       "Bash(flutter --version)",
-      "Bash(flutter devices:*)"
+      "Bash(flutter devices:*)",
+      "Bash(npx jest *)"
     ]
   }
 }

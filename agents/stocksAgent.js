@@ -18,7 +18,6 @@ async function runStocksAgent(userMessage) {
             console.warn('⚠️ Gemini Search failed (stocks), fallback to Groq:', e.message);
             answer = await callGemma4(STOCKS_PROMPT + userMessage, false);
         }
-        console.log('📈 StocksAgent answered');
         return { answer: answer || 'לא הצלחתי להביא נתוני שוק כרגע.' };
     } catch (err) {
         console.error('StocksAgent Error:', err.message);

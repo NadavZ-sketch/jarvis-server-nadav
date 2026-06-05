@@ -30,7 +30,7 @@ async function sendEmail(to, body) {
         subject: 'הודעה מג\'רביס',
         text: body,
     });
-    console.log(`📧 Email sent to ${to}`);
+    console.info(`[email] sent to ${to}`);
 }
 
 const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCustomRegistry } = require('./agents/router');

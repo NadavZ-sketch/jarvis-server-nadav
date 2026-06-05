@@ -19,7 +19,7 @@ let _initPromise = null;
 
 async function _init() {
     if (!PINECONE_API_KEY) {
-        console.log('🔵 Pinecone: PINECONE_API_KEY not set — semantic search disabled');
+        console.info('[Pinecone] PINECONE_API_KEY not set — semantic search disabled');
         return;
     }
     try {
@@ -29,7 +29,7 @@ async function _init() {
         const listRes  = await pc.listIndexes();
         const existing = (listRes.indexes || []).some(i => i.name === INDEX_NAME);
         if (!existing) {
-            console.log(`🔵 Pinecone: creating index "${INDEX_NAME}" (768 dims, cosine)...`);
+            console.info(`[Pinecone] creating index "${INDEX_NAME}" (768 dims, cosine)...`);
             await pc.createIndex({
                 name:   INDEX_NAME,
                 dimension: EMBED_DIM,
@@ -46,7 +46,7 @@ async function _init() {
 
         _index = pc.index(INDEX_NAME);
         _ready = true;
-        console.log('🔵 Pinecone: ready ✅');
+        console.info('[Pinecone] ready');
     } catch (err) {
         console.error('🔵 Pinecone: init failed —', err.message, '— falling back to keyword search');
     }
@@ -178,7 +178,7 @@ async function syncFromSupabase(supabase) {
         const memories = data || [];
         const supabaseIds = new Set(memories.map(m => String(m.id)));
 
-        console.log(`🔵 Pinecone: syncing ${memories.length} memories...`);
+        console.info(`[Pinecone] syncing ${memories.length} memories...`);
         for (let i = 0; i < memories.length; i += 10) {
             const batch = memories.slice(i, i + 10);
             await Promise.allSettled(batch.map(m => upsertMemory(m.id, m.content)));
@@ -197,7 +197,7 @@ async function syncFromSupabase(supabase) {
             } while (paginationToken);
 
             if (orphanIds.length > 0) {
-                console.log(`🔵 Pinecone: removing ${orphanIds.length} orphaned vector(s)...`);
+                console.info(`[Pinecone] removing ${orphanIds.length} orphaned vector(s)...`);
                 for (let i = 0; i < orphanIds.length; i += 100) {
                     await _index.deleteMany(orphanIds.slice(i, i + 100));
                 }
@@ -206,7 +206,7 @@ async function syncFromSupabase(supabase) {
             console.warn('🔵 Pinecone: orphan cleanup skipped —', orphanErr.message);
         }
 
-        console.log('🔵 Pinecone: sync complete');
+        console.info('[Pinecone] sync complete');
     } catch (err) {
         console.error('🔵 Pinecone sync error:', err.message);
     }

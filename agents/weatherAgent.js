@@ -21,7 +21,6 @@ async function runWeatherAgent(userMessage, settings = {}) {
             console.warn('⚠️ Gemini Search failed (weather), falling back to Groq:', geminiErr.message);
             answer = await callGemma4(prompt, false);
         }
-        console.log('🌤️ WeatherAgent answered');
         return { answer: answer || 'לא הצלחתי להביא תחזית מזג אוויר כרגע.' };
     } catch (err) {
         console.error('WeatherAgent Error:', err.message);

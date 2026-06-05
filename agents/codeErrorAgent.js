@@ -17,7 +17,7 @@ async function runCodeErrorAgent(userMessage = '', _useLocal, sendEmailFn) {
 
         // Optionally offload the LLM analysis step to Manus
         if (process.env.MANUS_OFFLOAD_CODE_ERROR === 'true' && isManusConfigured() && findings.length > 0) {
-            console.log('🔍 CodeErrorAgent: offloading analysis to Manus');
+            console.debug('[CodeErrorAgent] offloading analysis to Manus');
             const { answer: manusAnswer } = await runManusTask(claudePrompt).catch(() => ({ answer: null }));
             if (manusAnswer) return { answer: manusAnswer };
             // fall through to normal formatting on Manus failure

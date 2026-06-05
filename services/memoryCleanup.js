@@ -46,7 +46,7 @@ async function cleanupExpiredMemories(supabase) {
                 ...rows.map(r => Promise.resolve(obsidianSync.removeFromVault('memories', r))),
             ]);
             totalDeleted += ids.length;
-            console.log(`🧹 memoryCleanup: deleted ${ids.length} ${scope} memories older than ${cutoff}`);
+            console.info(`[memoryCleanup] deleted ${ids.length} ${scope} memories older than ${cutoff}`);
         } catch (err) {
             errors.push(`${scope}: ${err.message}`);
         }

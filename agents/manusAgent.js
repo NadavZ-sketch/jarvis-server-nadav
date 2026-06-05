@@ -99,7 +99,7 @@ async function runManusTask(prompt, opts = {}) {
 
     const profile = opts.profile || MANUS_PROFILE;
 
-    console.log(`🦾 Manus: creating task (profile=${profile}) — "${prompt.slice(0, 80)}"`);
+    console.debug(`[Manus] creating task (profile=${profile})`);
 
     const createResp = await axios.post(`${MANUS_BASE}/tasks`, {
         prompt,
@@ -113,10 +113,9 @@ async function runManusTask(prompt, opts = {}) {
     const taskId  = createResp.data?.task_id || createResp.data?.id;
     const taskUrl = createResp.data?.task_url || createResp.data?.share_url || '';
     if (!taskId) throw new Error('Manus did not return a task ID');
-    console.log(`🦾 Manus: task created — id=${taskId}${taskUrl ? ' url=' + taskUrl : ''}`);
 
     const { answer } = await _pollTask(taskId);
-    console.log(`🦾 Manus: task completed — ${answer.slice(0, 80)}`);
+    console.debug(`[Manus] task ${taskId} completed`);
 
     return { answer, taskUrl, taskId };
 }

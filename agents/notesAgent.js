@@ -40,7 +40,6 @@ function _parseIntent(msg) {
 async function runNotesAgent(userMessage, supabase, useLocal = true) {
     try {
         const parsed = _parseIntent(userMessage);
-        console.log('📝 NotesAgent:', parsed);
 
         if (parsed.intent === 'add') {
             const { data: inserted } = await supabase.from('notes').insert([{

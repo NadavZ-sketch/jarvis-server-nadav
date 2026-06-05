@@ -388,6 +388,10 @@ h1 span{color:var(--accent)}
 .e2e-date{font-size:.7rem;color:var(--muted);margin-top:2px}
 .e2e-src{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
 .e2e-score.nodata{font-size:.74rem;color:var(--muted);font-weight:600}
+.kind-badge{font-size:.64rem;font-weight:700;border-radius:5px;padding:2px 6px;margin-inline-end:4px}
+.kind-badge.kind-scan{background:rgba(168,85,247,.16);color:#a855f7}
+.kind-badge.kind-e2e{background:rgba(96,165,250,.14);color:var(--blue)}
+.report-send-btn{margin:0;padding:5px 10px;font-size:.7rem;width:auto;flex:0 0 auto}
 .e2e-sev{display:flex;gap:6px;flex-wrap:wrap}
 .survey-head{font-size:.8rem;font-weight:700;color:var(--text,#e5e7eb);margin-bottom:8px}
 .survey-insights{margin:0 0 12px;padding-inline-start:18px;font-size:.8rem;line-height:1.7}
@@ -1508,6 +1512,7 @@ async function loadE2E() {
     const reports = d.reports || [];
     if (!reports.length) { list.innerHTML = '<div class="empty-state"><span>✅</span>אין דוחות — הרץ בדיקות E2E כדי להתחיל</div>'; return; }
     const SEV_HE = { critical:'קריטי', high:'גבוה', medium:'בינוני', low:'נמוך' };
+    const KIND = { code_scan:{label:'🔍 סריקת קוד',cls:'kind-scan'}, e2e:{label:'🧪 בדיקת קצה',cls:'kind-e2e'} };
     list.innerHTML = reports.slice(0,20).map(r => {
       const sev = [['critical',r.critical],['high',r.high],['medium',r.medium],['low',r.low]]
         .filter(([,n])=>n>0).map(([k,n])=>`<span class="sev-pill sev-${k}">${n} ${SEV_HE[k]}</span>`).join('');
@@ -1519,18 +1524,38 @@ async function loadE2E() {
       // Separate verifiable measurements from AI evaluations (which need validation).
       const srcPills = `<span class="sev-pill sev-low" title="מדידות ודאיות">✅ ${r.measured||0} נמדד</span>`
         + `<span class="sev-pill sev-medium" title="הערכת AI — דורש אימות">🤖 ${r.evaluated||0} הערכת AI</span>`;
+      const k = KIND[r.kind] || KIND.e2e;
+      const sendBtn = r.count > 0
+        ? `<button class="qa-btn report-send-btn" onclick="copyReportPrompt('${escapeHtml(r.run_id||'')}', this)">📋 שלח לקלוד</button>`
+        : '';
       return `<div class="e2e-report">
         ${scoreCell}
         <div class="e2e-meta">
-          <div class="e2e-runid">${escapeHtml(r.run_id||'')}</div>
+          <div class="e2e-runid"><span class="kind-badge ${k.cls}">${k.label}</span> ${escapeHtml(r.run_id||'')}</div>
           <div class="e2e-date">${r.count} ממצאים פתוחים · ${r.done||0} טופלו · ${r.created_at ? new Date(r.created_at).toLocaleString('he-IL') : ''}</div>
           <div class="e2e-src">${srcPills}</div>
         </div>
-        <div class="e2e-sev">${sev || '<span class="sev-pill sev-low">נקי</span>'}</div>
+        <div class="e2e-sev">${sev || '<span class="sev-pill sev-low">נקי</span>'}${sendBtn}</div>
       </div>`;
     }).join('');
   } catch {
     list.innerHTML = `<div class="err-state"><span>⚠️</span>שגיאת טעינת דוחות<button class="retry-btn" onclick="loadE2E()">נסה שוב</button></div>`;
+  }
+}
+// Fetch a report's Claude-ready prompt and copy it so it can be pasted into Claude.
+async function copyReportPrompt(runId, btn) {
+  if (!runId) return;
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '...טוען'; }
+  try {
+    const d = await fetch('/e2e-reports/' + encodeURIComponent(runId), { signal: AbortSignal.timeout(8000) }).then(r=>r.json());
+    const prompt = d.claudePrompt || '';
+    if (!prompt) { showToast('אין דוח להעתקה','error'); return; }
+    await navigator.clipboard.writeText(prompt);
+    if (btn) { btn.textContent = '✓ הועתק! הדבק בקלוד'; setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2500); }
+  } catch {
+    showToast('שגיאה בהעתקת הדוח','error');
+    if (btn) { btn.textContent = orig; btn.disabled = false; }
   }
 }
 async function triggerE2E() {
@@ -1568,12 +1593,15 @@ async function scanErrors() {
   btn.disabled=true; sp.style.display='block'; tx.textContent='סורק...';
   out.innerHTML='<div class="skeleton skel-line" style="width:60%"></div>';
   try {
-    const r = await fetch('/scan/errors',{ signal: AbortSignal.timeout(30000) });
+    // POST /scan/errors/run persists the scan as a report so it appears in the reports list.
+    const r = await fetch('/scan/errors/run',{ method:'POST', signal: AbortSignal.timeout(30000) });
     if (r.status===429) { out.innerHTML='<div class="err-state"><span>⏳</span>הגעת למגבלת סריקות (5 לדקה) — נסה מאוחר יותר</div>'; return; }
     const d = await r.json();
     const findings = d.findings || [];
     // Stash the Claude-ready prompt so it can be copied and pasted here for fixing.
     window._scanPrompt = d.claudePrompt || '';
+    // The scan is now saved as a report — refresh the list so it shows up there too.
+    loadE2E();
 
     if (!findings.length) {
       out.innerHTML = `<div class="empty-state"><span>✅</span>לא נמצאו שגיאות קוד (ציון: ${d.score ?? 100}/100)</div>`;

@@ -510,6 +510,15 @@ class ApiService {
         .timeout(_timeout);
   }
 
+  /// Run a standalone code-error scan and persist it as a 'code_scan' report.
+  /// Returns the saved run map (including run_id) so it shows in the reports list.
+  Future<Map<String, dynamic>> runCodeScan() async {
+    final res = await _client
+        .post(_uri('/scan/errors/run'), headers: _headers({'Content-Type': 'application/json'}))
+        .timeout(const Duration(seconds: 45));
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
 
   // ─── Agents ───────────────────────────────────────────────────────────────
 

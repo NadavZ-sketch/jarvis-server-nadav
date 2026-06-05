@@ -269,10 +269,11 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
     ].filter(Boolean).join('\n');
 }
 
-async function persistFindings(supabase, runId, findings) {
+async function persistFindings(supabase, runId, findings, kind = 'e2e') {
     if (!supabase || !findings.length) return;
     const rows = findings.map(f => ({
         run_id: runId,
+        kind,
         category: f.category || 'bug',
         severity: f.severity || 'low',
         target: (f.target || 'unknown').slice(0, 500),
@@ -284,12 +285,23 @@ async function persistFindings(supabase, runId, findings) {
         status: f.status || 'new',
         source: normalizeSource(f.source),
     }));
-    try {
-        // Insert in chunks of 50 to stay under request limits
-        for (let i = 0; i < rows.length; i += 50) {
-            await supabase.from('e2e_reports').insert(rows.slice(i, i + 50));
+    // Insert in chunks of 50 to stay under request limits. supabase-js returns
+    // { error } rather than throwing, so we surface it to allow a graceful retry.
+    const insertChunks = async (rs) => {
+        for (let i = 0; i < rs.length; i += 50) {
+            const { error } = await supabase.from('e2e_reports').insert(rs.slice(i, i + 50));
+            if (error) throw new Error(error.message || 'insert failed');
         }
+    };
+    try {
+        await insertChunks(rows);
     } catch (err) {
+        // If the `kind` column hasn't been migrated yet, retry without it so
+        // older deployments keep working.
+        if (/kind/i.test(err.message || '')) {
+            try { await insertChunks(rows.map(({ kind: _k, ...r }) => r)); return; }
+            catch (e2) { console.warn('e2eAgent: persistFindings retry failed:', e2.message); return; }
+        }
         console.warn('e2eAgent: persistFindings failed:', err.message);
     }
 }
@@ -387,5 +399,5 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
     };
 }
 
-module.exports = { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore };
+module.exports = { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore, persistFindings };
 

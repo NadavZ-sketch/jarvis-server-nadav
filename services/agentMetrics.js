@@ -92,6 +92,15 @@ function _format(byAgent, intent) {
   return { latency, intent };
 }
 
+function stop() {
+  if (_flushTimer) {
+    clearInterval(_flushTimer);
+    _flushTimer = null;
+  }
+  _supabase = null;
+  pending = [];
+}
+
 async function snapshot() {
   // Fallback aggregate (always available).
   const fallback = () => _format(new Map(lifetime), { ...lifetimeIntent });
@@ -125,4 +134,4 @@ async function snapshot() {
   }
 }
 
-module.exports = { init, record, flush, snapshot };
+module.exports = { init, record, flush, snapshot, stop };

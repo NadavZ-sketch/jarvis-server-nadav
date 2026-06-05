@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -9,6 +10,7 @@ class NotificationService {
   static const _channelName = 'תזכורות ג׳רביס';
 
   static Future<void> init() async {
+    if (kIsWeb) return; // flutter_local_notifications has no web support.
     tz_data.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Asia/Jerusalem'));
 
@@ -26,6 +28,7 @@ class NotificationService {
 
   static Future<void> schedule(
       String id, String text, DateTime scheduledTime) async {
+    if (kIsWeb) return;
     final tzTime = tz.TZDateTime.from(scheduledTime, tz.local);
     if (tzTime.isBefore(tz.TZDateTime.now(tz.local))) return;
 
@@ -50,6 +53,7 @@ class NotificationService {
   }
 
   static Future<void> showNow(int id, String body) async {
+    if (kIsWeb) return;
     await _plugin.show(
       id,
       'ג׳רביס 🔔',
@@ -67,10 +71,12 @@ class NotificationService {
   }
 
   static Future<void> cancel(String id) async {
+    if (kIsWeb) return;
     await _plugin.cancel(id.hashCode);
   }
 
   static Future<void> cancelAll() async {
+    if (kIsWeb) return;
     await _plugin.cancelAll();
   }
 

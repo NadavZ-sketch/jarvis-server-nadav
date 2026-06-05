@@ -296,13 +296,15 @@ async function persistFindings(supabase, runId, findings, kind = 'e2e') {
     try {
         await insertChunks(rows);
     } catch (err) {
-        // If the `kind` column hasn't been migrated yet, retry without it so
-        // older deployments keep working.
-        if (/kind/i.test(err.message || '')) {
-            try { await insertChunks(rows.map(({ kind: _k, ...r }) => r)); return; }
+        // If a new optional column hasn't been migrated yet, strip it and retry so
+        // older deployments (missing `kind` or `source` columns) keep working.
+        const msg = err.message || '';
+        if (/kind|source|column/i.test(msg)) {
+            const stripped = rows.map(({ kind: _k, source: _s, ...r }) => r);
+            try { await insertChunks(stripped); return; }
             catch (e2) { console.warn('e2eAgent: persistFindings retry failed:', e2.message); return; }
         }
-        console.warn('e2eAgent: persistFindings failed:', err.message);
+        console.warn('e2eAgent: persistFindings failed:', msg);
     }
 }
 

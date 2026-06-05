@@ -35,6 +35,8 @@ describe('agentMetrics (in-memory fallback)', () => {
 });
 
 describe('agentMetrics (supabase-backed)', () => {
+    afterEach(() => agentMetrics.stop()); // prevent timer leak between tests
+
     test('flush writes the pending batch to agent_metrics and then no-ops when empty', async () => {
         const chain = makeChain([], null);
         const supabase = { from: jest.fn(() => chain) };

@@ -436,6 +436,48 @@ function dbToVault(entity, record) {
     }
 }
 
+/**
+ * Remove a single record from its vault file.
+ * Memory lines are removed from the category file; tasks/reminders removed from the list file.
+ * No-op if vault is not initialized or the file doesn't exist.
+ */
+function removeFromVault(entity, record) {
+    if (!vaultPath || !record) return;
+    try {
+        const relPath = filePathForRecord(entity, record);
+        const absPath = absInVault(relPath);
+        if (!fs.existsSync(absPath)) return;
+
+        const raw    = fs.readFileSync(absPath, 'utf8');
+        const parsed = matter(raw);
+
+        if (entity === 'memories') {
+            const idTag  = `[${record.id}]`;
+            const lines  = parsed.content.split('\n').filter(l => !l.includes(idTag));
+            const body   = lines.join('\n').trim();
+            if (!body) {
+                suppressUntil.set(relPath, Date.now() + 2000);
+                fs.unlinkSync(absPath);
+                delete syncState[relPath];
+            } else {
+                const out = matter.stringify(body + '\n', { ...parsed.data, updated_at: new Date().toISOString() });
+                writeFileSuppressed(absPath, out);
+                syncState[relPath] = { hash: hashContent(out), updated_at: new Date().toISOString() };
+            }
+        } else if (entity === 'tasks' || entity === 'reminders') {
+            const idTag = `<!-- id:${record.id} -->`;
+            const lines = parsed.content.split('\n').filter(l => !l.includes(idTag));
+            const body  = lines.filter(l => l.trim()).join('\n');
+            const out   = matter.stringify(body + '\n', { ...parsed.data, updated_at: new Date().toISOString() });
+            writeFileSuppressed(absPath, out);
+            syncState[relPath] = { hash: hashContent(out), updated_at: new Date().toISOString() };
+        }
+        writeSyncState();
+    } catch (err) {
+        console.error(`[ObsidianSync] removeFromVault(${entity}):`, err.message);
+    }
+}
+
 function stop() {
     if (watcher) { watcher.close(); watcher = null; }
 }
@@ -445,6 +487,7 @@ module.exports = {
     syncAll,
     fullSyncFromDb,
     dbToVault,
+    removeFromVault,
     appendChatMessage,
     gitPull,
     gitPush,

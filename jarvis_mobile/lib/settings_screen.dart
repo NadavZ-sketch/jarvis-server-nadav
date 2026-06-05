@@ -1381,6 +1381,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ]),
+            // ── כפתור מדריך הפעלת השרת (מופיע תמיד בקטגוריית החיבור) ──────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: JC.blue500,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: () async {
+                  final result = await Navigator.of(context).push<bool>(
+                    MaterialPageRoute(
+                      builder: (_) => LocalModelSetupScreen(settings: _s),
+                    ),
+                  );
+                  if (result == true && mounted) {
+                    setState(() {
+                      _localServerUrlCtrl.text = _s.localServerUrl;
+                    });
+                  }
+                },
+                icon: const Icon(Icons.laptop_outlined),
+                label: const Text('מדריך הפעלת השרת המקומי',
+                    style: TextStyle(fontFamily: 'Heebo')),
+              ),
+            ),
 
             // ── מודל AI ──────────────────────────────────────────────────────
             _sectionHeader('מנוע AI (מי מייצר את התשובות)', Icons.memory_outlined),
@@ -1407,34 +1433,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Text(
                     'במצב מקומי משתמשים אך ורק במודל שלך. אם הוא לא זמין — תוצג שגיאה (אין מעבר אוטומטי לענן).',
                     style: TextStyle(color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo'),
-                  ),
-                ),
-                _divider(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: JC.blue500,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: () async {
-                      final result = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              LocalModelSetupScreen(settings: _s),
-                        ),
-                      );
-                      if (result == true && mounted) {
-                        setState(() {
-                          _localServerUrlCtrl.text = _s.localServerUrl;
-                          _localModelCtrl.text = _s.localModelName;
-                        });
-                      }
-                    },
-                    icon: const Icon(Icons.school_outlined),
-                    label: const Text('מדריך התקנה אינטראקטיבי',
-                        style: TextStyle(fontFamily: 'Heebo')),
                   ),
                 ),
               ] else ...[

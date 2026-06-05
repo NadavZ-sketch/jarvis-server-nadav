@@ -38,7 +38,6 @@ function _parseIntent(msg) {
 async function runShoppingAgent(userMessage, supabase, useLocal = true) {
     try {
         const parsed = _parseIntent(userMessage);
-        console.log('🛒 ShoppingAgent:', parsed);
 
         if (parsed.intent === 'add') {
             await supabase.from('shopping_items').insert([{ item: parsed.item }]);

@@ -80,7 +80,7 @@ async function scanChunk(chunk) {
 }
 
 async function runFlutterScan({ learnedContext = {} } = {}) {
-    if (!fs.existsSync(FLUTTER_LIB)) return { findings: [] };
+    try { await fs.promises.access(FLUTTER_LIB); } catch { return { findings: [] }; }
 
     const all = walk(FLUTTER_LIB);
     const hot = new Set(learnedContext.hotTargets || []);

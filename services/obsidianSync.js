@@ -43,18 +43,18 @@ function sanitizeFilename(str) {
         .slice(0, 80) || 'untitled';
 }
 
-function ensureDirSync(dir) {
-    fs.mkdirSync(dir, { recursive: true });
+async function ensureDir(dir) {
+    await fs.promises.mkdir(dir, { recursive: true });
 }
 
-function readSyncState() {
+async function readSyncState() {
     const p = path.join(vaultPath, SYNC_STATE_FILE);
-    try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return {}; }
+    try { return JSON.parse(await fs.promises.readFile(p, 'utf8')); } catch { return {}; }
 }
 
 async function writeSyncStateAsync() {
     const p = path.join(vaultPath, SYNC_STATE_FILE);
-    ensureDirSync(path.dirname(p));
+    await ensureDir(path.dirname(p));
     await fs.promises.writeFile(p, JSON.stringify(syncState, null, 2));
 }
 
@@ -94,11 +94,11 @@ function extractCategory(content) {
 
 // ─── DB → Vault ──────────────────────────────────────────────────────────────
 
-function writeEntityFile(entity, record) {
+async function writeEntityFile(entity, record) {
     if (!vaultPath) return;
     const relPath  = filePathForRecord(entity, record);
     const absPath  = absInVault(relPath);
-    ensureDirSync(path.dirname(absPath));
+    await ensureDir(path.dirname(absPath));
 
     let body;
     let frontmatter;
@@ -114,8 +114,12 @@ function writeEntityFile(entity, record) {
         body = record.content || '';
     } else if (entity === 'memories') {
         // Append-style: one file per category, each memory is a line with its id
-        const existing = fs.existsSync(absPath) ? matter.read(absPath) : { data: { type: 'memories', category: extractCategory(record.content) || 'General' }, content: '' };
-        const line     = `- [${record.id}] ${record.content}`;
+        let existing = { data: { type: 'memories', category: extractCategory(record.content) || 'General' }, content: '' };
+        try {
+            const raw = await fs.promises.readFile(absPath, 'utf8');
+            existing = matter(raw);
+        } catch { /* file doesn't exist yet */ }
+        const line = `- [${record.id}] ${record.content}`;
         if (!existing.content.includes(`[${record.id}]`)) {
             existing.content = (existing.content.trim() + '\n' + line).trim() + '\n';
         }
@@ -135,15 +139,18 @@ function writeEntityFile(entity, record) {
     }
 
     const output = matter.stringify(body, frontmatter);
-    writeFileSuppressed(absPath, output);
+    await writeFileSuppressed(absPath, output);
     syncState[relPath] = { hash: hashContent(output), id: record.id, updated_at: record.updated_at || record.created_at };
     writeSyncState();
 }
 
-function upsertListFile(entity, record, absPath, lineFormatter) {
-    ensureDirSync(path.dirname(absPath));
+async function upsertListFile(entity, record, absPath, lineFormatter) {
+    await ensureDir(path.dirname(absPath));
     let existing = { data: { type: entity }, content: '' };
-    if (fs.existsSync(absPath)) existing = matter.read(absPath);
+    try {
+        const raw = await fs.promises.readFile(absPath, 'utf8');
+        existing = matter(raw);
+    } catch { /* file doesn't exist yet */ }
 
     const newLine = lineFormatter(record);
     const lines   = existing.content.split('\n');
@@ -155,16 +162,16 @@ function upsertListFile(entity, record, absPath, lineFormatter) {
 
     const body = lines.filter(l => l.trim().length > 0).join('\n') + '\n';
     const out  = matter.stringify(body, { ...existing.data, updated_at: new Date().toISOString() });
-    writeFileSuppressed(absPath, out);
+    await writeFileSuppressed(absPath, out);
 
     const rel = relFromVault(absPath);
     syncState[rel] = { hash: hashContent(out), updated_at: new Date().toISOString() };
     writeSyncState();
 }
 
-function writeFileSuppressed(absPath, content) {
+async function writeFileSuppressed(absPath, content) {
     suppressUntil.set(relFromVault(absPath), Date.now() + 2000);
-    fs.writeFileSync(absPath, content, 'utf8');
+    await fs.promises.writeFile(absPath, content, 'utf8');
 }
 
 async function appendChatMessage(role, text, timestamp) {
@@ -173,18 +180,21 @@ async function appendChatMessage(role, text, timestamp) {
     const date    = ts.toISOString().slice(0, 10);
     const relPath = `${ENTITY_DIRS.chat_history}/${date}.md`;
     const absPath = absInVault(relPath);
-    ensureDirSync(path.dirname(absPath));
+    await ensureDir(path.dirname(absPath));
 
     const time    = ts.toTimeString().slice(0, 5);
     const speaker = role === 'user' ? 'אתה' : 'ג׳רביס';
     const line    = `**${time} — ${speaker}:** ${text}\n\n`;
 
     let existing = { data: { type: 'chat_history', date }, content: '' };
-    if (fs.existsSync(absPath)) existing = matter.read(absPath);
+    try {
+        const raw = await fs.promises.readFile(absPath, 'utf8');
+        existing = matter(raw);
+    } catch { /* file doesn't exist yet */ }
 
     existing.content = (existing.content.trim() + '\n\n' + line).trim() + '\n';
     const out = matter.stringify(existing.content, { ...existing.data, updated_at: new Date().toISOString() });
-    writeFileSuppressed(absPath, out);
+    await writeFileSuppressed(absPath, out);
     syncState[relPath] = { hash: hashContent(out), updated_at: new Date().toISOString() };
     writeSyncState();
 }
@@ -332,10 +342,10 @@ async function initSync({ vaultPath: vp, supabase: sb, enableWatch = true, enabl
     }
 
     // ensure structure
-    for (const dir of Object.values(ENTITY_DIRS)) ensureDirSync(path.join(vaultPath, dir));
-    ensureDirSync(path.join(vaultPath, 'Projects', 'Work'));
-    ensureDirSync(path.join(vaultPath, 'Projects', 'Personal'));
-    syncState = readSyncState();
+    await Promise.all(Object.values(ENTITY_DIRS).map(dir => ensureDir(path.join(vaultPath, dir))));
+    await ensureDir(path.join(vaultPath, 'Projects', 'Work'));
+    await ensureDir(path.join(vaultPath, 'Projects', 'Personal'));
+    syncState = await readSyncState();
 
     if (enableGit) {
         try {
@@ -388,10 +398,10 @@ async function fullSyncFromDb() {
             safeSelect('chat_history','*', 'created_at'),
         ]);
 
-        for (const r of notes)     { writeEntityFile('notes',     r); counts.notes++; }
-        for (const r of memories)  { writeEntityFile('memories',  r); counts.memories++; }
-        for (const r of tasks)     { writeEntityFile('tasks',     { ...r, title: r.content || r.title }); counts.tasks++; }
-        for (const r of reminders) { writeEntityFile('reminders', { ...r, title: r.text || r.title, remind_at: r.scheduled_time }); counts.reminders++; }
+        for (const r of notes)     { await writeEntityFile('notes',     r); counts.notes++; }
+        for (const r of memories)  { await writeEntityFile('memories',  r); counts.memories++; }
+        for (const r of tasks)     { await writeEntityFile('tasks',     { ...r, title: r.content || r.title }); counts.tasks++; }
+        for (const r of reminders) { await writeEntityFile('reminders', { ...r, title: r.text || r.title, remind_at: r.scheduled_time }); counts.reminders++; }
 
         // Contacts — כל איש קשר = שורה ב-contacts.md
         if (contacts.length > 0) {
@@ -427,10 +437,10 @@ async function syncAll() {
     return { ok: true, pull, push, sync: syncResult };
 }
 
-function dbToVault(entity, record) {
+async function dbToVault(entity, record) {
     if (!vaultPath || !record) return;
     try {
-        writeEntityFile(entity, record);
+        await writeEntityFile(entity, record);
     } catch (err) {
         console.error(`[ObsidianSync] dbToVault(${entity}):`, err.message);
     }
@@ -441,14 +451,14 @@ function dbToVault(entity, record) {
  * Memory lines are removed from the category file; tasks/reminders removed from the list file.
  * No-op if vault is not initialized or the file doesn't exist.
  */
-function removeFromVault(entity, record) {
+async function removeFromVault(entity, record) {
     if (!vaultPath || !record) return;
     try {
         const relPath = filePathForRecord(entity, record);
         const absPath = absInVault(relPath);
-        if (!fs.existsSync(absPath)) return;
+        try { await fs.promises.access(absPath); } catch { return; }
 
-        const raw    = fs.readFileSync(absPath, 'utf8');
+        const raw    = await fs.promises.readFile(absPath, 'utf8');
         const parsed = matter(raw);
 
         if (entity === 'memories') {
@@ -457,11 +467,11 @@ function removeFromVault(entity, record) {
             const body   = lines.join('\n').trim();
             if (!body) {
                 suppressUntil.set(relPath, Date.now() + 2000);
-                fs.unlinkSync(absPath);
+                await fs.promises.unlink(absPath);
                 delete syncState[relPath];
             } else {
                 const out = matter.stringify(body + '\n', { ...parsed.data, updated_at: new Date().toISOString() });
-                writeFileSuppressed(absPath, out);
+                await writeFileSuppressed(absPath, out);
                 syncState[relPath] = { hash: hashContent(out), updated_at: new Date().toISOString() };
             }
         } else if (entity === 'tasks' || entity === 'reminders') {
@@ -469,7 +479,7 @@ function removeFromVault(entity, record) {
             const lines = parsed.content.split('\n').filter(l => !l.includes(idTag));
             const body  = lines.filter(l => l.trim()).join('\n');
             const out   = matter.stringify(body + '\n', { ...parsed.data, updated_at: new Date().toISOString() });
-            writeFileSuppressed(absPath, out);
+            await writeFileSuppressed(absPath, out);
             syncState[relPath] = { hash: hashContent(out), updated_at: new Date().toISOString() };
         }
         writeSyncState();

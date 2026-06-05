@@ -106,13 +106,10 @@ async function runSecurityAgent(userMessage, useLocal, sendEmailFn) {
             .map(([name, src]) => `// ── ${name} ──\n${src}`)
             .join('\n\n');
 
-        console.log(`🔐 SecurityAgent: scanning ${Object.keys(files).length} files...`);
-
         // Optionally offload analysis to Manus to save LLM tokens
         const useManusOffload = process.env.MANUS_OFFLOAD_SECURITY === 'true' && isManusConfigured();
         let raw;
         if (useManusOffload) {
-            console.log('🔐 SecurityAgent: offloading analysis to Manus');
             const { answer } = await runManusTask(buildScanPrompt(codeBlock));
             raw = answer;
         } else {

@@ -22,7 +22,6 @@ async function runNewsAgent(userMessage, settings = {}) {
             console.warn('⚠️ Gemini Search failed (news), falling back to Groq:', geminiErr.message);
             answer = await callGemma4(prompt, false);
         }
-        console.log('📰 NewsAgent answered');
         return { answer: answer || 'לא הצלחתי לטעון חדשות כרגע.' };
     } catch (err) {
         console.error('NewsAgent Error:', err.message);

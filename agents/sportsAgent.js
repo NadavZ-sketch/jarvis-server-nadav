@@ -10,7 +10,6 @@ async function runSportsAgent(userMessage) {
     try {
         const answer = await callGeminiWithSearch(SYSTEM_PROMPT + '\n\nשאלת המשתמש: ' + userMessage);
         if (answer) {
-            console.log('⚽ SportsAgent answered (Gemini)');
             return { answer };
         }
     } catch (err) {
@@ -23,7 +22,6 @@ async function runSportsAgent(userMessage) {
             { role: 'system', content: SYSTEM_PROMPT },
             { role: 'user', content: userMessage },
         ], false, 400);
-        console.log('⚽ SportsAgent answered (fallback)');
         return { answer: answer || 'לא הצלחתי למצוא מידע ספורטיבי כרגע.' };
     } catch (err) {
         console.error('SportsAgent fallback failed:', err.message);

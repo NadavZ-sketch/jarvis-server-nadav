@@ -8,7 +8,8 @@
 //
 // Also removes the corresponding Pinecone vectors so semantic search stays clean.
 
-const pinecone = require('./pineconeMemory');
+const pinecone      = require('./pineconeMemory');
+const obsidianSync  = require('./obsidianSync');
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const RECENT_TTL_MS  = 7 * 24 * 60 * 60 * 1000;
@@ -25,10 +26,10 @@ async function cleanupExpiredMemories(supabase) {
         { scope: 'recent',  cutoff: nowIso(RECENT_TTL_MS)  },
     ]) {
         try {
-            // Fetch ids first so we can also remove vectors.
+            // Fetch id + content so we can remove both vectors and vault entries.
             const { data: rows, error } = await supabase
                 .from('memories')
-                .select('id')
+                .select('id, content')
                 .eq('scope', scope)
                 .lt('created_at', cutoff)
                 .limit(500);
@@ -39,8 +40,11 @@ async function cleanupExpiredMemories(supabase) {
             const { error: delErr } = await supabase.from('memories').delete().in('id', ids);
             if (delErr) throw delErr;
 
-            // Best-effort vector cleanup; ignore failures.
-            await Promise.allSettled(ids.map(id => pinecone.deleteMemory(id)));
+            // Best-effort vector + vault cleanup; ignore individual failures.
+            await Promise.allSettled([
+                ...rows.map(r => pinecone.deleteMemory(r.id)),
+                ...rows.map(r => Promise.resolve(obsidianSync.removeFromVault('memories', r))),
+            ]);
             totalDeleted += ids.length;
             console.log(`🧹 memoryCleanup: deleted ${ids.length} ${scope} memories older than ${cutoff}`);
         } catch (err) {

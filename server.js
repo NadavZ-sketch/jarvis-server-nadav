@@ -86,6 +86,7 @@ const AGENTS = {
 };
 
 const pinecone                = require('./services/pineconeMemory');
+const obsidianSync            = require('./services/obsidianSync');
 const { createTasksRouter } = require('./routes/tasks');
 const { createRemindersRouter } = require('./routes/reminders');
 const { createRemindersController } = require('./controllers/remindersController');
@@ -2081,7 +2082,10 @@ app.post('/memories', async (req, res) => {
             .limit(1);
         if (error) throw error;
         const row = data?.[0];
-        if (row?.id) pinecone.upsertMemory(row.id, row.content).catch(() => {});
+        if (row?.id) {
+            pinecone.upsertMemory(row.id, row.content).catch(() => {});
+            obsidianSync.dbToVault('memories', row);
+        }
         cacheInvalidate('memories');
         res.json({ memory: row });
     } catch (err) {
@@ -2108,6 +2112,7 @@ app.put('/memories/:id', async (req, res) => {
         if (error) throw error;
         if (!data || data.length === 0) return res.status(404).json({ error: 'Memory not found' });
         pinecone.upsertMemory(data[0].id, data[0].content).catch(() => {});
+        obsidianSync.dbToVault('memories', data[0]);
         cacheInvalidate('memories');
         res.json({ memory: data[0] });
     } catch (err) {
@@ -2127,6 +2132,7 @@ app.delete('/memories/:id', async (req, res) => {
         if (error) throw error;
         if (!data || data.length === 0) return res.status(404).json({ error: 'Memory not found' });
         await pinecone.deleteMemory(id);
+        obsidianSync.removeFromVault('memories', data[0]);
         cacheInvalidate('memories');
         res.json({ deleted: true, memory: data[0] });
     } catch (err) {
@@ -3762,28 +3768,21 @@ if (!isTestEnv) cron.schedule('0 9 * * *', async () => {
     }
 }, { timezone: 'Asia/Jerusalem' });
 
-// Daily cleanup: remove ephemeral memories past their TTL.
-// 'session' scope: 7 days; 'recent' scope: 24 hours.
+// Daily deep-clean at 03:30 — re-run the same cleanupExpiredMemories that runs
+// hourly, but with full Pinecone + Obsidian sync. Catches anything the hourly
+// job missed and keeps the three stores aligned.
 if (!isTestEnv) cron.schedule('30 3 * * *', async () => {
     try {
-        const now = new Date();
-        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const oneDayAgo    = new Date(now - 24 * 60 * 60 * 1000).toISOString();
-        const { count: c1 } = await supabase.from('memories')
-            .delete({ count: 'exact' })
-            .eq('scope', 'session')
-            .lt('created_at', sevenDaysAgo);
-        const { count: c2 } = await supabase.from('memories')
-            .delete({ count: 'exact' })
-            .eq('scope', 'recent')
-            .lt('created_at', oneDayAgo);
-        if ((c1 || 0) + (c2 || 0) > 0) {
-            console.log(`🧹 Memory cleanup: removed ${c1 || 0} session + ${c2 || 0} recent memories`);
+        const res = await cleanupExpiredMemories(supabase);
+        if (res.deleted > 0) {
+            cacheInvalidate('memories');
+            console.log(`🧹 nightly memoryCleanup: removed ${res.deleted} expired memories`);
         }
+        if (res.errors?.length) console.warn('🧹 nightly memoryCleanup errors:', res.errors);
     } catch (err) {
         console.error('Memory cleanup cron error:', err.message);
     }
-});
+}, { timezone: 'Asia/Jerusalem' });
 
 // Daily user-profile learning — 03:45 Jerusalem (after the 03:30 memory cleanup).
 // Derives preferred hours / interests / recurring tasks from behaviour and
@@ -4649,6 +4648,12 @@ if (require.main === module) {
         console.log(`🚀 JARVIS ONLINE | MULTI-AGENT v3 | PORT: ${PORT}`);
         // Init Pinecone and sync existing memories in background (non-blocking)
         pinecone.ensureInit().then(() => pinecone.syncFromSupabase(supabase)).catch(() => {});
+        // Init Obsidian bidirectional sync if vault path is configured
+        if (process.env.OBSIDIAN_VAULT_PATH) {
+            obsidianSync.initSync({ vaultPath: process.env.OBSIDIAN_VAULT_PATH, supabase })
+                .then(() => obsidianSync.fullSyncFromDb())
+                .catch(err => console.warn('[ObsidianSync] startup init failed:', err.message));
+        }
     });
 
     // ── Live talk WebSocket ─────────────────────────────────────────────────

@@ -137,11 +137,15 @@ function buildClaudePrompt({ runId, findings, score, counts }) {
 function buildSimpleUserReport({ score, findings, inconclusive = false }) {
     // No real data → never invent a score. Be honest about it.
     if (inconclusive) {
+        const staticFindings = findings.filter(f => !isMeasured(f));
+        const staticNote = staticFindings.length > 0
+            ? `\n\nנמצאו ${staticFindings.length} ממצאים בסריקת קוד סטטית — אך הם אינם מחושבים לציון כל עוד השרת לא נבדק.`
+            : '';
         return [
-            '🧪 בדיקת מערכת — לא נאספו מספיק נתונים לבדיקה אמינה.',
+            '🔴 בדיקת מערכת — השרת לא מגיב.',
             '',
-            'לא הצלחנו ליצור קשר עם השרת, אז אין מדידות אמיתיות להצגה.',
-            'ודא שהשרת רץ ושכתובת הבדיקה נכונה, ואז הרץ שוב.',
+            '⚠️ כל בקשות ה-API נכשלו בשגיאת רשת (תוך 1–4ms) — השרת כנראה לא רץ.',
+            'ודא שהשרת רץ ושכתובת הבדיקה נכונה (`http://localhost:3000`), ואז הרץ שוב.' + staticNote,
         ].join('\n');
     }
 
@@ -336,14 +340,12 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
         ...tagSource(errorsRes.findings, null),
     ];
 
-    // A run is "inconclusive" when we couldn't measure anything real.
-    // Note: when the server is unreachable, the API findings are only
-    // connection errors — not real measurements of behavior — so they don't
-    // count as signal. Regex code findings (source 'pattern') still do.
+    // A run is "inconclusive" when the server wasn't reachable.
+    // Static code findings (medium/low) don't change this — a score of 0/100
+    // caused by network errors is misleading, not meaningful.
     const ranApi = probes.includes('api');
     const apiReachable = !ranApi || apiResult.reachable !== false;
-    const hasCodeMeasured = (errorsRes.findings || []).some(f => normalizeSource(f.source) === 'measured');
-    const inconclusive = ranApi && !apiReachable && !hasCodeMeasured;
+    const inconclusive = ranApi && !apiReachable;
 
     const deltas = computeDeltas(allFindings, learnedContext);
     const score = computeScore(allFindings);

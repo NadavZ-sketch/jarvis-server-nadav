@@ -48,7 +48,7 @@ const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
-const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore } = require('./agents/e2eAgent');
+const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore, persistFindings } = require('./agents/e2eAgent');
 const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, buildSurveySummary, aggregateSurveys, insightsFromAggregation } = require('./agents/surveyAgent');
 const { runManusAgent, isManusConfigured } = require('./agents/manusAgent');
 const { analyzePatterns, optimizeDayPlan } = require('./agents/insightAgent');
@@ -2635,6 +2635,7 @@ app.get('/e2e-reports', async (_req, res) => {
             if (!byRun.has(row.run_id)) {
                 byRun.set(row.run_id, {
                     run_id: row.run_id,
+                    kind: row.kind || 'e2e',
                     created_at: row.created_at,
                     count: 0,
                     critical: 0, high: 0, medium: 0, low: 0,
@@ -2643,6 +2644,7 @@ app.get('/e2e-reports', async (_req, res) => {
                 });
             }
             const g = byRun.get(row.run_id);
+            if (row.kind) g.kind = row.kind;
             if (row.created_at > g.created_at) g.created_at = row.created_at;
             if (row.status === 'done') { g.done++; continue; }
             g.count++;
@@ -2680,6 +2682,7 @@ app.get('/e2e-reports/:runId', async (req, res) => {
         const claudePrompt = buildClaudePrompt({ runId: req.params.runId, findings, score, counts });
         res.json({
             run_id:  req.params.runId,
+            kind:    findings[0]?.kind || 'e2e',
             findings,
             counts,
             score,
@@ -3059,6 +3062,30 @@ app.get('/dashboard/error-report/export', _rl(5), async (_req, res) => {
         res.send(markdown);
     } catch (err) {
         console.error('❌ /dashboard/error-report/export:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── POST /scan/errors/run — run code scan AND persist it as a report ─────────
+// Saved as a 'code_scan' run in e2e_reports so it shows up in the same reports
+// list as E2E runs and can be sent to Claude from there (returns a run_id).
+app.post('/scan/errors/run', _rl(5), async (_req, res) => {
+    try {
+        const { runCodeErrorScanner } = require('./agents/e2e/codeErrorScanner');
+        const { findings, claudePrompt, summary, score } = await runCodeErrorScanner({});
+        const runId = require('crypto').randomUUID();
+        await persistFindings(supabase, runId, findings, 'code_scan');
+        res.json({
+            run_id: runId,
+            kind: 'code_scan',
+            findings,
+            counts: countsBySeverity(findings),
+            score,
+            summary,
+            claudePrompt,
+        });
+    } catch (err) {
+        console.error('❌ /scan/errors/run:', err.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

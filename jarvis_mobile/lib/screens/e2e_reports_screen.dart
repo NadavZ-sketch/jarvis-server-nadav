@@ -11,7 +11,11 @@ const _sevLabel  = {'critical':'קריטי','high':'גבוה','medium':'בינו
 const _sevEmoji  = {'critical':'🔴','high':'🟠','medium':'🟡','low':'🟢'};
 const _statLabel = {'new':'🆕 חדש','regression':'🔁 רגרסיה','flaky':'📉 פלייקי','done':'✅ בוצע'};
 const _catHe     = {'API':'ממשק API','Flutter UI':'Flutter','Static':'קוד סטטי',
-                    'Hebrew Quality':'איכות עברית','Other':'כללי'};
+                    'Hebrew Quality':'איכות עברית','Other':'כללי',
+                    // code-scan categories
+                    'security':'אבטחה','reliability':'אמינות','performance':'ביצועים',
+                    'ux_backend':'חוויית שימוש','bug':'באג','quality':'איכות',
+                    'ui':'ממשק','accessibility':'נגישות'};
 
 // ─── List screen ───────────────────────────────────────────────────────────
 
@@ -76,6 +80,50 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
     return JC.cancelRed;
   }
 
+  // Labels a report as a standalone code scan vs a full end-to-end run.
+  Widget _kindBadge(String kind) {
+    final isScan = kind == 'code_scan';
+    final color  = isScan ? const Color(0xFFA855F7) : JC.blue400;
+    final label  = isScan ? '🔍 סריקת קוד' : '🧪 בדיקת קצה';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.35), width: 0.6),
+      ),
+      child: Text(label,
+          style: TextStyle(color: color, fontSize: 10,
+              fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
+    );
+  }
+
+  bool _scanning = false;
+
+  // Run a standalone code-error scan; it's saved as a report and shows in this list.
+  Future<void> _runScan() async {
+    if (_scanning) return;
+    if (mounted) setState(() => _scanning = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('🔍 סורק שגיאות קוד...')),
+    );
+    try {
+      await _api.runCodeScan();
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ הסריקה נשמרה כדוח — פתח אותו כדי לשלוח לקלוד')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('שגיאת סריקה: ${ApiService.friendlyError(e)}')),
+      );
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
   Future<void> _open(Map<String, dynamic> report) async {
     final updated = await Navigator.push<bool>(
       context,
@@ -126,6 +174,16 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
             style: TextStyle(color: JC.textPrimary, fontSize: 16,
                 fontWeight: FontWeight.w600, fontFamily: 'Heebo', letterSpacing: 0.3),
           ),
+          actions: [
+            IconButton(
+              tooltip: 'סרוק שגיאות קוד',
+              icon: _scanning
+                  ? SizedBox(width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400))
+                  : Icon(Icons.bug_report_outlined, color: JC.textPrimary),
+              onPressed: _scanning ? null : _runScan,
+            ),
+          ],
         ),
         body: _buildBody(),
       ),
@@ -260,9 +318,12 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
                             fontSize: 11, fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
                   ),
                   const SizedBox(width: 8),
-                  Text(date,
+                  _kindBadge((r['kind'] as String?) ?? 'e2e'),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(date,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: JC.textPrimary,
-                          fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
+                          fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'Heebo'))),
                 ]),
                 const SizedBox(height: 4),
                 Text('$count ממצאים · 🔴 $critical · 🟠 $high · 🟡 $medium · 🟢 $low',

@@ -1011,7 +1011,7 @@ async function askJarvisHandler(req, res) {
             let nudgeTimer;
             try {
                 const sug = await Promise.race([
-                    proactiveEngine.computeProactiveSuggestion(supabase),
+                    proactiveEngine.computeProactiveSuggestion(supabase, userMessage),
                     new Promise(resolve => { nudgeTimer = setTimeout(() => resolve(null), 400); }),
                 ]);
                 if (sug) {
@@ -3549,7 +3549,7 @@ async function streamJarvisHandler(req, res) {
             let nudgeTimer;
             try {
                 const sug = await Promise.race([
-                    proactiveEngine.computeProactiveSuggestion(supabase),
+                    proactiveEngine.computeProactiveSuggestion(supabase, userMessage),
                     new Promise(resolve => { nudgeTimer = setTimeout(() => resolve(null), 400); }),
                 ]);
                 if (sug) {

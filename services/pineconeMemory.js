@@ -4,7 +4,7 @@ const { Pinecone } = require('@pinecone-database/pinecone');
 
 const PINECONE_API_KEY  = process.env.PINECONE_API_KEY;
 const PINECONE_HOST     = process.env.PINECONE_INDEX_HOST;
-const INDEX_NAME        = 'jarvis-memories';
+const INDEX_NAME        = 'jarvis-memory';
 const SCORE_THRESHOLD   = 0.55;
 
 let _index       = null;

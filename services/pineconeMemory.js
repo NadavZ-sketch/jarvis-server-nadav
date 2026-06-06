@@ -39,7 +39,7 @@ async function upsertMemory(id, content) {
     await ensureInit();
     if (!_ready) return false;
     try {
-        await _index.upsertRecords([{ id: String(id), text: content }]);
+        await _index.upsertRecords({ records: [{ id: String(id), text: content }] });
         return true;
     } catch (err) {
         const src = err.config?.url?.includes('generativelanguage') ? '[Google Embed]' : '[Pinecone]';

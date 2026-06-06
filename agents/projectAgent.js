@@ -35,15 +35,9 @@
 
 require('dotenv').config();
 const { callGemma4 } = require('./models');
+const { nowJerusalem, todayISODate: todayISO, extractJSON } = require('./utils');
 
-function nowJerusalem() {
-    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-}
-
-function todayISO() {
-    const d = nowJerusalem();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
+// nowJerusalem / todayISO now live in ./utils (shared across agents).
 
 function formatDate(iso) {
     if (!iso) return null;
@@ -181,14 +175,8 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
         // tokens to avoid the 800-token default on this high-frequency call.
         const aiText = await callGemma4(PROJECT_PROMPT + userMessage, useLocal, 200);
 
-        const open = aiText.lastIndexOf('{');
-        const close = aiText.lastIndexOf('}');
-        if (open === -1 || close === -1) throw new Error('No JSON in projectAgent response');
-
-        let parsed;
-        try {
-            parsed = JSON.parse(aiText.substring(open, close + 1));
-        } catch {
+        const parsed = extractJSON(aiText);
+        if (!parsed) {
             return { answer: 'לא הצלחתי לעבד את הבקשה, נסה לנסח אחרת.' };
         }
 

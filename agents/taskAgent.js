@@ -1,19 +1,12 @@
-const { sanitizeLike } = require('./utils');
+const { sanitizeLike, nowJerusalem, todayISODate, extractJSON } = require('./utils');
+const { parseRecurrence, RECURRENCE_LABELS } = require('./reminderAgent');
 require('dotenv').config();
 const { callGemma4 } = require('./models');
 const obsidianSync   = require('../services/obsidianSync');
 const pinecone       = require('../services/pineconeMemory');
 
 // ─── Date helpers (Jerusalem TZ) ─────────────────────────────────────────────
-
-function nowJerusalem() {
-    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-}
-
-function todayISODate() {
-    const d = nowJerusalem();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
+// nowJerusalem / todayISODate now live in ./utils (shared across agents).
 
 function formatDate(isoDate) {
     if (!isoDate) return null;
@@ -23,6 +16,17 @@ function formatDate(isoDate) {
         day: 'numeric',
         month: 'long',
     });
+}
+
+// Advance a YYYY-MM-DD date by one recurrence interval. Returns YYYY-MM-DD.
+// For recurring tasks with no stored due_date, advances from today.
+function nextDueDate(isoDate, recurrence) {
+    const base = isoDate ? new Date(`${isoDate}T00:00:00`) : nowJerusalem();
+    if (recurrence === 'daily')   base.setDate(base.getDate() + 1);
+    else if (recurrence === 'weekly')  base.setDate(base.getDate() + 7);
+    else if (recurrence === 'monthly') base.setMonth(base.getMonth() + 1);
+    else return null;
+    return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`;
 }
 
 // ─── Category keyword classifier (fast path, no LLM call) ────────────────────
@@ -74,6 +78,12 @@ Priority rules:
 - "חשוב", "בינוני", "עדיפות בינונית" → "medium"
 - "לא דחוף", "נמוך", "כשיש זמן", "בזמן פנוי" → "low"
 
+Recurrence rules — detect if the task repeats on a fixed interval:
+- "כל יום", "יומי" → "daily"
+- "כל שבוע", "שבועי", "כל יום ראשון/שני/..." → "weekly"
+- "כל חודש", "חודשי" → "monthly"
+- otherwise → null (one-time task)
+
 Category rules — classify the task into ONE of: work, personal, financial, project, general:
 - "work": meetings, emails, reports, clients, office, business tasks
 - "personal": health, family, friends, sport, errands, education
@@ -84,7 +94,7 @@ Category rules — classify the task into ONE of: work, personal, financial, pro
 For 'recategorize': put the task name (without the category word) in taskDetails, and the target category in category.
 
 Return ONLY a JSON object (no explanation):
-{"intent": "add|list|delete|complete|suggest|today|recategorize", "taskDetails": "task text or empty", "dueDate": "YYYY-MM-DD or null", "priority": "high|medium|low|null", "category": "work|personal|financial|project|general"}
+{"intent": "add|list|delete|complete|suggest|today|recategorize", "taskDetails": "task text or empty", "dueDate": "YYYY-MM-DD or null", "priority": "high|medium|low|null", "category": "work|personal|financial|project|general", "recurrence": "daily|weekly|monthly|null"}
 
 User message: `;
 
@@ -95,15 +105,8 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         const today = todayISODate();
         const aiText = await callGemma4(TASK_PROMPT(today) + userMessage, useLocal);
 
-        const lastOpen = aiText.lastIndexOf('{');
-        const lastClose = aiText.lastIndexOf('}');
-
-        if (lastOpen === -1 || lastClose === -1) throw new Error('No JSON in task agent response');
-
-        let parsed;
-        try {
-            parsed = JSON.parse(aiText.substring(lastOpen, lastClose + 1));
-        } catch {
+        const parsed = extractJSON(aiText);
+        if (!parsed) {
             return { answer: 'לא הצלחתי לעבד את הבקשה, נסה לנסח אחרת.' };
         }
         console.log('📋 TaskAgent:', parsed);
@@ -115,16 +118,23 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                 ? parsed.category
                 : classifyCategory(parsed.taskDetails);
 
+            // Recurrence: prefer LLM output; fall back to keyword detection.
+            const validRec = new Set(['daily', 'weekly', 'monthly']);
+            const recurrence = validRec.has(parsed.recurrence)
+                ? parsed.recurrence
+                : parseRecurrence(userMessage);
+
             const insertData = { content: parsed.taskDetails, category };
             if (parsed.dueDate) insertData.due_date = parsed.dueDate;
             if (parsed.priority && parsed.priority !== 'null') insertData.priority = parsed.priority;
+            if (recurrence) insertData.recurrence = recurrence;
 
-            // Graceful insert: if `category` column doesn't exist yet, retry without it
+            // Graceful insert: drop optional columns that may not exist yet and retry.
             const { error: insertErr } = await supabase.from('tasks').insert([insertData]);
             if (insertErr) {
-                if (/column "category"/.test(insertErr.message || '')) {
-                    const { category: _c, ...rowWithoutCategory } = insertData;
-                    await supabase.from('tasks').insert([rowWithoutCategory]);
+                if (/column "(category|recurrence)"/.test(insertErr.message || '')) {
+                    const { category: _c, recurrence: _r, ...rowMinimal } = insertData;
+                    await supabase.from('tasks').insert([rowMinimal]);
                 } else {
                     console.error('TaskAgent insert error:', insertErr.message);
                 }
@@ -140,9 +150,10 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
             if (parsed.priority === 'high') answer += '\n🔴 עדיפות: גבוהה';
             else if (parsed.priority === 'medium') answer += '\n🟡 עדיפות: בינונית';
             else if (parsed.priority === 'low') answer += '\n🟢 עדיפות: נמוכה';
+            if (recurrence) answer += `\n🔁 חוזר: ${RECURRENCE_LABELS[recurrence]}`;
 
             if (parsed.dueDate) {
-                answer += '\n\n💡 האם תרצה שאזכיר לך יום לפני? (כן / לא)';
+                answer += '\n\n💡 האם תרצה שאזכיר לך לפני? (כן / לא — אפשר גם "כן, שעתיים לפני")';
                 return { answer, pendingAction: { type: 'auto_reminder', taskContent: parsed.taskDetails, dueDate: parsed.dueDate } };
             }
 
@@ -229,7 +240,8 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                         grouped[cat].forEach((t, i) => {
                             const prio = t.priority === 'high' ? ' 🔴' : t.priority === 'medium' ? ' 🟡' : '';
                             const due = t.due_date ? ` | 📅 ${formatDate(t.due_date)}` : '';
-                            answer += `  ${i + 1}. ${t.content}${prio}${due}\n`;
+                            const rec = t.recurrence ? ' 🔁' : '';
+                            answer += `  ${i + 1}. ${t.content}${prio}${rec}${due}\n`;
                         });
                         answer += '\n';
                     });
@@ -237,7 +249,8 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                     pending.forEach((t, i) => {
                         const prio = t.priority === 'high' ? ' 🔴' : t.priority === 'medium' ? ' 🟡' : '';
                         const due = t.due_date ? ` | 📅 ${formatDate(t.due_date)}` : '';
-                        answer += `${i + 1}. ${t.content}${prio}${due}\n`;
+                        const rec = t.recurrence ? ' 🔁' : '';
+                        answer += `${i + 1}. ${t.content}${prio}${rec}${due}\n`;
                     });
                 }
             }
@@ -296,7 +309,7 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         if (parsed.intent === 'complete') {
             const { data: matches } = await supabase
                 .from('tasks')
-                .select('id, content')
+                .select('id, content, category, priority, recurrence, due_date')
                 .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`)
                 .eq('done', false);
             if (!matches || matches.length === 0) return { answer: 'לא מצאתי משימה כזו. נסה לציין את שם המשימה.' };
@@ -305,7 +318,22 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                 return { answer: `מצאתי ${matches.length} משימות תואמות. על איזו מהן?\n${list}` };
             }
 
-            await supabase.from('tasks').update({ done: true }).eq('id', matches[0].id);
+            const completed = matches[0];
+            await supabase.from('tasks').update({ done: true }).eq('id', completed.id);
+
+            // Recurring task: spawn the next occurrence with an advanced due date.
+            let recurNote = '';
+            if (completed.recurrence) {
+                const nextDue = nextDueDate(completed.due_date, completed.recurrence);
+                const nextRow = { content: completed.content, recurrence: completed.recurrence };
+                if (completed.category) nextRow.category = completed.category;
+                if (completed.priority) nextRow.priority = completed.priority;
+                if (nextDue) nextRow.due_date = nextDue;
+                const { error: recurErr } = await supabase.from('tasks').insert([nextRow]);
+                if (!recurErr) {
+                    recurNote = `\n\n🔁 משימה חוזרת (${RECURRENCE_LABELS[completed.recurrence]}) — יצרתי את המופע הבא${nextDue ? ` ל-${formatDate(nextDue)}` : ''}.`;
+                }
+            }
 
             const { data: remaining } = await supabase
                 .from('tasks')
@@ -318,7 +346,7 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                 nextSuggestion = `\n\n💡 *משימה הבאה:* ${remaining[0].content}`;
             }
 
-            return { answer: `כל הכבוד ${userName}! סיימת את: "${matches[0].content}" ✓${nextSuggestion}` };
+            return { answer: `כל הכבוד ${userName}! סיימת את: "${completed.content}" ✓${recurNote}${nextSuggestion}` };
         }
 
         if (parsed.intent === 'suggest') {

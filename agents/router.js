@@ -15,6 +15,8 @@ const KEYWORDS = {
     news:      /חדשות|כותרות|מה קורה|עדכונים|חדשות היום|ידיעות|עיתון|חדשות ספורט|חדשות כלכלה|חדשות פוליטיקה/i,
     shopping:  /רשימת קניות|קניות|סופרמרקט|הוסף.*לרשימה|מה יש ברשימה|רשימה.*קנייה|קנה.*חלב|קנה.*לחם|קנה.*ביצ/i,
     notes:     /תרשום לי|רשום לי|שמור פתק|שמור הערה|הצג הערות|מה כתבת|פתקים|הערות שלי|חפש הערה|מחק הערה/i,
+    habit:     /הרגל|הרגלים|מעקב.*הרגל|תעקוב אחרי|הרצף שלי|רצף ימים|התאמנתי היום|עשיתי מדיטציה|בנה הרגל|תוסיף הרגל/i,
+    insight:   /תובנות|דוח שימוש|סיכום שבועי|סיכום חודשי|דוח שבועי|דוח חודשי|דוח פרודוקטיביות|איך אני מתפקד|ניתוח שימוש|דוח התקדמות/i,
     music:     /מוזיקה|מוסיקה|פלייליסט|להשמיע|תנגן|תשמיע|ספוטיפיי|spotify/i,
     messaging: /שלח.*ווצאפ|שלח.*וואטסאפ|שלח.*מייל|ווצאפ ל|וואטסאפ ל|שלח מייל ל|שלח הודעה ל|שמור.*קשר|הוסף.*קשר|שמור.*טלפון|שמור.*מספר/i,
     // "כתוב לי" alone is too broad (catches "כתוב לי בדיחה" → chat).
@@ -112,14 +114,14 @@ function classifyIntentDetailed(userMessage) {
 const VALID_INTENTS = new Set([
     'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
     'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'chat',
+    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'habit', 'insight', 'chat',
 ]);
 
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
 Given a user message, classify it into exactly one of these intents:
 task, reminder, memory, weather, news, shopping, notes, music, stocks, translate,
 sports, messaging, draft, security, code_error, e2e, past_conv,
-calendar, prompt, settings, chat
+calendar, prompt, settings, habit, insight, chat
 
 Rules:
 - task: add/delete/list/complete personal tasks or to-dos
@@ -143,6 +145,8 @@ Rules:
 - past_conv: asking about previous conversations with Jarvis
 - prompt: create, refine, evaluate, save, or list AI prompts (prompt engineering)
 - settings: change Jarvis personality, voice speed, response length, or assistant name
+- habit: track recurring personal habits and daily streaks (start tracking a habit, log "I did it today", ask about a streak, list habits)
+- insight: personal productivity insights, usage analysis, weekly/monthly summary reports
 - chat: general conversation, question, or anything that does not fit above
 
 Respond ONLY with valid JSON: {"intent": "NAME"}

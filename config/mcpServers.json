@@ -1,15 +1,39 @@
 {
+  "filesystem": {
+    "enabled": true,
+    "comment": "File read/write sandboxed to MCP_FS_ROOT (defaults to project root via process.cwd()). Write tools policy-gated to pro.",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_FS_ROOT:-CWD}"],
+    "env": {}
+  },
   "fetch": {
-    "enabled": false,
-    "comment": "JS web-fetch server. Set enabled:true + MCP_ENABLED=true to activate.",
+    "enabled": true,
+    "comment": "Fetch any URL and return its content. No API key needed.",
     "transport": "stdio",
     "command": "npx",
     "args": ["-y", "mcp-server-fetch-typescript"],
     "env": {}
   },
+  "memory": {
+    "enabled": true,
+    "comment": "Persistent knowledge graph for semantic memory. No API key needed. Complements/replaces Pinecone.",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-memory"],
+    "env": {}
+  },
+  "sequential-thinking": {
+    "enabled": true,
+    "comment": "Structured multi-step reasoning before acting. No API key needed. Improves complex task quality.",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+    "env": {}
+  },
   "search": {
     "enabled": false,
-    "comment": "Brave Search web search. Requires BRAVE_API_KEY env var.",
+    "comment": "Brave Search web search. Requires BRAVE_API_KEY from brave.com/search/api (free tier available).",
     "transport": "stdio",
     "command": "npx",
     "args": ["-y", "@modelcontextprotocol/server-brave-search"],
@@ -17,17 +41,9 @@
       "BRAVE_API_KEY": "${BRAVE_API_KEY}"
     }
   },
-  "filesystem": {
-    "enabled": true,
-    "comment": "File read/write sandboxed to MCP_FS_ROOT (defaults to repo root). Write tools are policy-gated to pro role.",
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_FS_ROOT:-CWD}"],
-    "env": {}
-  },
   "github": {
     "enabled": false,
-    "comment": "GitHub operations. Requires GITHUB_TOKEN with repo/issues scope. Write tools are policy-gated.",
+    "comment": "GitHub read/write. Requires GITHUB_TOKEN with repo+issues scope. Write tools policy-gated.",
     "transport": "stdio",
     "command": "npx",
     "args": ["-y", "@modelcontextprotocol/server-github"],
@@ -35,9 +51,31 @@
       "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
     }
   },
+  "playwright": {
+    "enabled": false,
+    "comment": "Real browser automation — browse, click, screenshot. Requires browser binaries (large, ~300MB). Enable only on non-free Render plans: set PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.playwright",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp", "--headless"],
+    "env": {
+      "PLAYWRIGHT_BROWSERS_PATH": "${PLAYWRIGHT_BROWSERS_PATH}"
+    }
+  },
+  "gcal": {
+    "enabled": false,
+    "comment": "Google Calendar read/write. Requires OAuth2 setup: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN. Run 'npx @modelcontextprotocol/server-google-calendar auth' locally first.",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-google-calendar"],
+    "env": {
+      "GOOGLE_CLIENT_ID": "${GOOGLE_CLIENT_ID}",
+      "GOOGLE_CLIENT_SECRET": "${GOOGLE_CLIENT_SECRET}",
+      "GOOGLE_REFRESH_TOKEN": "${GOOGLE_REFRESH_TOKEN}"
+    }
+  },
   "supabase": {
     "enabled": false,
-    "comment": "Supabase DB access in read-only mode. Requires SUPABASE_ACCESS_TOKEN (project management token, different from SUPABASE_KEY).",
+    "comment": "Supabase DB access (read-only). Requires SUPABASE_ACCESS_TOKEN — project management token from supabase.com/dashboard/account/tokens (different from SUPABASE_KEY).",
     "transport": "stdio",
     "command": "npx",
     "args": ["-y", "@supabase/mcp-server-supabase", "--read-only"],

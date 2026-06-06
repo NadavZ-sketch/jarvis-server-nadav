@@ -1,50 +1,33 @@
 'use strict';
 
-// pineconeMemory has module-level singleton state (_ready, _index, _initPromise).
-// We reset all of it by calling jest.resetModules() + re-requiring everything
-// fresh inside each test via setup().  The key rule: set up mock behaviour on
-// the SAME fresh mock instances the module will use.
-
 beforeEach(() => {
     jest.resetModules();
-    jest.mock('axios');
     jest.mock('@pinecone-database/pinecone');
     delete process.env.PINECONE_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
 });
 
-// Returns fresh {mod, axios, Pinecone} all pointing at the same mock instances
 function freshRequires() {
-    const ax = require('axios');
     const { Pinecone } = require('@pinecone-database/pinecone');
     const mod = require('../../services/pineconeMemory');
-    return { mod, ax, Pinecone };
+    return { mod, Pinecone };
 }
 
-// Standard Pinecone index mock
 function makeIndexMock() {
     return {
-        upsert:        jest.fn().mockResolvedValue({}),
-        query:         jest.fn().mockResolvedValue({ matches: [] }),
-        deleteOne:     jest.fn().mockResolvedValue({}),
-        deleteMany:    jest.fn().mockResolvedValue({}),
-        listPaginated: jest.fn().mockResolvedValue({ vectors: [], pagination: null }),
+        upsertRecords:  jest.fn().mockResolvedValue({}),
+        searchRecords:  jest.fn().mockResolvedValue({ result: { hits: [] } }),
+        deleteOne:      jest.fn().mockResolvedValue({}),
+        deleteMany:     jest.fn().mockResolvedValue({}),
+        listPaginated:  jest.fn().mockResolvedValue({ vectors: [], pagination: null }),
     };
 }
 
-function setupPinecone(Pinecone, { indexExists = true } = {}) {
+function setupPinecone(Pinecone) {
     const idx = makeIndexMock();
     Pinecone.mockImplementation(() => ({
-        listIndexes:   jest.fn().mockResolvedValue({ indexes: indexExists ? [{ name: 'jarvis-memories' }] : [] }),
-        createIndex:   jest.fn().mockResolvedValue({}),
-        describeIndex: jest.fn().mockResolvedValue({ status: { ready: true } }),
-        index:         jest.fn().mockReturnValue(idx),
+        index: jest.fn().mockReturnValue(idx),
     }));
     return idx;
-}
-
-function setupEmbed(ax) {
-    ax.post.mockResolvedValue({ data: { embedding: { values: new Array(768).fill(0.1) } } });
 }
 
 // ── isReady / init ────────────────────────────────────────────────────────────
@@ -61,24 +44,11 @@ describe('isReady', () => {
         expect(mod.isReady()).toBe(false);
     });
 
-    test('becomes true after successful init with existing index', async () => {
+    test('becomes true after successful init', async () => {
         process.env.PINECONE_API_KEY = 'pk-test';
         const { mod, Pinecone } = freshRequires();
-        setupPinecone(Pinecone, { indexExists: true });
+        setupPinecone(Pinecone);
         await mod.ensureInit();
-        expect(mod.isReady()).toBe(true);
-    });
-
-    test('becomes true after auto-creating new index', async () => {
-        process.env.PINECONE_API_KEY = 'pk-test';
-        jest.useFakeTimers();
-        const { mod, Pinecone } = freshRequires();
-        setupPinecone(Pinecone, { indexExists: false });
-        const initPromise = mod.ensureInit();
-        // Advance past the 5 s setTimeout in the ready-poll loop
-        await jest.runAllTimersAsync();
-        await initPromise;
-        jest.useRealTimers();
         expect(mod.isReady()).toBe(true);
     });
 
@@ -109,42 +79,30 @@ describe('upsertMemory', () => {
         expect(await mod.upsertMemory('1', 'content')).toBe(false);
     });
 
-    test('embeds content and upserts vector, returns true', async () => {
+    test('upserts record with text, returns true', async () => {
         process.env.PINECONE_API_KEY = 'pk-test';
-        process.env.GOOGLE_API_KEY   = 'gk-test';
-        const { mod, ax, Pinecone } = freshRequires();
+        const { mod, Pinecone } = freshRequires();
         const idx = setupPinecone(Pinecone);
-        setupEmbed(ax);
         const result = await mod.upsertMemory('42', '[hobby] אוהב ריצה');
         expect(result).toBe(true);
-        expect(idx.upsert).toHaveBeenCalledWith([
-            expect.objectContaining({ id: '42', metadata: { content: '[hobby] אוהב ריצה' } }),
+        expect(idx.upsertRecords).toHaveBeenCalledWith([
+            expect.objectContaining({ id: '42', text: '[hobby] אוהב ריצה' }),
         ]);
     });
 
     test('converts numeric id to string', async () => {
         process.env.PINECONE_API_KEY = 'pk-test';
-        const { mod, ax, Pinecone } = freshRequires();
+        const { mod, Pinecone } = freshRequires();
         const idx = setupPinecone(Pinecone);
-        setupEmbed(ax);
         await mod.upsertMemory(99, 'content');
-        expect(idx.upsert).toHaveBeenCalledWith([expect.objectContaining({ id: '99' })]);
+        expect(idx.upsertRecords).toHaveBeenCalledWith([expect.objectContaining({ id: '99' })]);
     });
 
-    test('embed API failure → returns false', async () => {
+    test('upsertRecords failure → returns false', async () => {
         process.env.PINECONE_API_KEY = 'pk-test';
-        const { mod, ax, Pinecone } = freshRequires();
-        setupPinecone(Pinecone);
-        ax.post.mockRejectedValue(new Error('embed API down'));
-        expect(await mod.upsertMemory('1', 'content')).toBe(false);
-    });
-
-    test('Pinecone upsert failure → returns false', async () => {
-        process.env.PINECONE_API_KEY = 'pk-test';
-        const { mod, ax, Pinecone } = freshRequires();
+        const { mod, Pinecone } = freshRequires();
         const idx = setupPinecone(Pinecone);
-        setupEmbed(ax);
-        idx.upsert.mockRejectedValue(new Error('upsert failed'));
+        idx.upsertRecords.mockRejectedValue(new Error('upsert failed'));
         expect(await mod.upsertMemory('1', 'content')).toBe(false);
     });
 });
@@ -159,15 +117,16 @@ describe('searchMemories', () => {
 
     test('returns memories above score threshold (0.55)', async () => {
         process.env.PINECONE_API_KEY = 'pk-test';
-        const { mod, ax, Pinecone } = freshRequires();
+        const { mod, Pinecone } = freshRequires();
         const idx = setupPinecone(Pinecone);
-        setupEmbed(ax);
-        idx.query.mockResolvedValue({
-            matches: [
-                { score: 0.92, metadata: { content: '[health] אלרגי לבוטנים' } },
-                { score: 0.73, metadata: { content: '[hobby] אוהב ריצה' } },
-                { score: 0.40, metadata: { content: '[work] עובד בהייטק' } }, // below threshold
-            ],
+        idx.searchRecords.mockResolvedValue({
+            result: {
+                hits: [
+                    { _id: '1', _score: 0.92, fields: { text: '[health] אלרגי לבוטנים' } },
+                    { _id: '2', _score: 0.73, fields: { text: '[hobby] אוהב ריצה' } },
+                    { _id: '3', _score: 0.40, fields: { text: '[work] עובד בהייטק' } },
+                ],
+            },
         });
         const results = await mod.searchMemories('בריאות');
         expect(results).toEqual(['[health] אלרגי לבוטנים', '[hobby] אוהב ריצה']);
@@ -175,30 +134,30 @@ describe('searchMemories', () => {
 
     test('all results below threshold → empty array', async () => {
         process.env.PINECONE_API_KEY = 'pk-test';
-        const { mod, ax, Pinecone } = freshRequires();
+        const { mod, Pinecone } = freshRequires();
         const idx = setupPinecone(Pinecone);
-        setupEmbed(ax);
-        idx.query.mockResolvedValue({ matches: [{ score: 0.3, metadata: { content: 'irrelevant' } }] });
+        idx.searchRecords.mockResolvedValue({
+            result: { hits: [{ _id: '1', _score: 0.3, fields: { text: 'irrelevant' } }] },
+        });
         expect(await mod.searchMemories('query')).toEqual([]);
     });
 
-    test('Pinecone query error → returns null', async () => {
+    test('searchRecords error → returns null', async () => {
         process.env.PINECONE_API_KEY = 'pk-test';
-        const { mod, ax, Pinecone } = freshRequires();
+        const { mod, Pinecone } = freshRequires();
         const idx = setupPinecone(Pinecone);
-        setupEmbed(ax);
-        idx.query.mockRejectedValue(new Error('query failed'));
+        idx.searchRecords.mockRejectedValue(new Error('search failed'));
         expect(await mod.searchMemories('query')).toBeNull();
     });
 
-    test('passes topK parameter to Pinecone query', async () => {
+    test('passes topK parameter to searchRecords', async () => {
         process.env.PINECONE_API_KEY = 'pk-test';
-        const { mod, ax, Pinecone } = freshRequires();
+        const { mod, Pinecone } = freshRequires();
         const idx = setupPinecone(Pinecone);
-        setupEmbed(ax);
-        idx.query.mockResolvedValue({ matches: [] });
         await mod.searchMemories('query', 5);
-        expect(idx.query).toHaveBeenCalledWith(expect.objectContaining({ topK: 5 }));
+        expect(idx.searchRecords).toHaveBeenCalledWith(
+            expect.objectContaining({ query: expect.objectContaining({ topK: 5 }) })
+        );
     });
 });
 

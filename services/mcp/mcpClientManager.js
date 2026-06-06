@@ -29,7 +29,18 @@ let _catalog      = null; // cached OpenAI-schema tool list
 
 function _expandEnv(str) {
     if (typeof str !== 'string') return str;
-    return str.replace(/\$\{([^}]+)\}/g, (_, name) => process.env[name] || '');
+    return str.replace(/\$\{([^}]+)\}/g, (_, expr) => {
+        // Support ${VAR:-fallback} syntax; special token CWD resolves to process.cwd().
+        const sep = expr.indexOf(':-');
+        if (sep !== -1) {
+            const name     = expr.slice(0, sep);
+            const fallback = expr.slice(sep + 2);
+            const val      = process.env[name];
+            if (val) return val;
+            return fallback === 'CWD' ? process.cwd() : fallback;
+        }
+        return process.env[expr] || '';
+    });
 }
 
 function _expandConfig(server) {

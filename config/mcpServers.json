@@ -22,7 +22,7 @@
     "comment": "File read/write sandboxed to MCP_FS_ROOT (defaults to repo root). Write tools are policy-gated to pro role.",
     "transport": "stdio",
     "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_FS_ROOT}"],
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MCP_FS_ROOT:-CWD}"],
     "env": {}
   },
   "github": {

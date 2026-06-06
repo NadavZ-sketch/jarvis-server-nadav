@@ -10,7 +10,7 @@ const INDEX_NAME        = 'jarvis-memories';
 const EMBED_DIM        = 768;
 const SCORE_THRESHOLD  = 0.55; // cosine similarity — above this = relevant
 
-const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GOOGLE_KEY}`;
+const EMBED_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GOOGLE_KEY}`;
 
 let _index  = null;
 let _ready  = false;
@@ -62,7 +62,7 @@ function ensureInit() {
 
 async function embed(text) {
     const res = await axios.post(EMBED_URL, {
-        model:   'models/text-embedding-004',
+        model:   'models/gemini-embedding-001',
         content: { parts: [{ text: text.slice(0, 2000) }] },
     }, { timeout: 8000 });
     return res.data.embedding.values; // float[]  length=768

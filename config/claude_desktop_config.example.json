@@ -1,0 +1,17 @@
+{
+  "_comment": "Add this block to your Claude Desktop config (~/.config/claude/claude_desktop_config.json on Linux, ~/Library/Application Support/Claude/claude_desktop_config.json on Mac).",
+  "mcpServers": {
+    "jarvis": {
+      "command": "node",
+      "args": ["/absolute/path/to/jarvis-server-nadav/mcp-server.js"],
+      "env": {
+        "SUPABASE_URL": "your-supabase-url",
+        "SUPABASE_KEY": "your-supabase-anon-key",
+        "GROQ_API_KEY": "your-groq-api-key",
+        "MCP_USER_NAME": "YourName",
+        "MCP_ACTOR_ROLE": "admin",
+        "MCP_ACTOR_PLAN": "pro"
+      }
+    }
+  }
+}

@@ -266,6 +266,113 @@ async function callGemma4Stream(messages, useLocal = true, onChunk, signal = nul
     throw lastErr || new Error('All streaming providers failed');
 }
 
+// ─── Tool-calling loop (OpenAI-compatible providers only) ────────────────────
+//
+// callWithTools drives a full tool-use loop: if the model returns tool_calls,
+// they are executed via `callToolFn` and appended as tool results before the
+// next completion round. When the model returns plain text the loop exits.
+//
+// callGemma4 / callGemma4Stream are NOT touched — this is purely additive.
+
+async function callWithTools(messages, {
+    tools = [],
+    callTool: callToolFn,
+    useLocal = false,
+    maxTokens = 800,
+    maxIterations = 5,
+    opts = {},
+} = {}) {
+    const initialMsgs = typeof messages === 'string'
+        ? [{ role: 'user', content: messages }]
+        : messages;
+
+    const o = _resolveOpts(opts);
+    const temperature = clampTemp(o.temperature);
+
+    // Gemini uses a different payload format and does not support tool_calls in
+    // the OpenAI sense — filter it out of the chain for this function.
+    const chain = resolveChain({ useLocal, cloudProvider: o.cloudProvider })
+        .filter(id => PROVIDERS[id]?.openaiCompatible);
+
+    if (chain.length === 0) {
+        throw new Error('No OpenAI-compatible provider available for tool calling');
+    }
+
+    for (const id of chain) {
+        const provider = PROVIDERS[id];
+        if (!provider) continue;
+        if (provider.enabled && !provider.enabled(o)) continue;
+
+        try {
+            const url = provider.url(o).replace(/\/$/, '');
+            const endpoint = provider.id === 'ollama' ? `${url}/v1/chat/completions` : url;
+            const currentMsgs = [...initialMsgs];
+
+            for (let i = 0; i < maxIterations; i++) {
+                const body = {
+                    model: provider.model(o), messages: currentMsgs,
+                    max_tokens: maxTokens, temperature, top_p: LLM_TOP_P,
+                };
+                if (tools.length > 0) {
+                    body.tools = tools;
+                    body.tool_choice = 'auto';
+                }
+
+                const response = await axios.post(endpoint, body, {
+                    headers: _providerHeaders(provider), timeout: provider.timeout,
+                });
+
+                const message    = response.data.choices[0].message;
+                const toolCalls  = message.tool_calls;
+
+                if (toolCalls && toolCalls.length > 0) {
+                    currentMsgs.push({
+                        role: 'assistant', content: message.content || null, tool_calls: toolCalls,
+                    });
+                    for (const tc of toolCalls) {
+                        let toolResult;
+                        try {
+                            const args = typeof tc.function.arguments === 'string'
+                                ? JSON.parse(tc.function.arguments)
+                                : (tc.function.arguments || {});
+                            toolResult = callToolFn
+                                ? await callToolFn(tc.function.name, args)
+                                : `Tool ${tc.function.name} not available`;
+                        } catch (err) {
+                            toolResult = `Error in tool ${tc.function.name}: ${err.message}`;
+                        }
+                        currentMsgs.push({
+                            role: 'tool', tool_call_id: tc.id,
+                            content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+                        });
+                    }
+                    continue; // next iteration with tool results appended
+                }
+
+                // No tool_calls → final text answer
+                const content = (message.content || '').trim();
+                if (provider.id === 'groq' &&
+                    /^(API Error:|Stream idle timeout|internal server error)/i.test(content)) {
+                    throw new Error(content);
+                }
+                _setProvider(id);
+                return content;
+            }
+
+            // maxIterations exhausted — return the last assistant message if any
+            const lastAssistant = [...currentMsgs].reverse().find(m => m.role === 'assistant');
+            _setProvider(id);
+            return (lastAssistant?.content || '').trim();
+
+        } catch (err) {
+            const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+            console.warn(`⚠️ callWithTools "${id}" failed${chain.length > 1 ? ', trying next' : ''}:`, detail);
+        }
+    }
+
+    throw new Error('All OpenAI-compatible providers failed for tool calling');
+}
+
 // ─── Gemini with Google Search grounding (real-time data) ─────────────────────
 
 async function callGeminiWithSearch(prompt) {
@@ -303,4 +410,4 @@ async function callGeminiVision(prompt, imageBase64) {
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
-module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision, detectMimeType, providerContext, getCurrentProvider, LocalModelError };
+module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision, callWithTools, detectMimeType, providerContext, getCurrentProvider, LocalModelError };

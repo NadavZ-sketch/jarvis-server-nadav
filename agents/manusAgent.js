@@ -1,5 +1,6 @@
 require('dotenv').config();
 const axios = require('axios');
+const { callWithTools } = require('./models');
 
 // ─── Manus Agent — heavy/complex autonomous tasks ─────────────────────────────
 //
@@ -120,15 +121,56 @@ async function runManusTask(prompt, opts = {}) {
     return { answer, taskUrl, taskId };
 }
 
+// ─── MCP-powered path ─────────────────────────────────────────────────────────
+// When MCP_ENABLED=true, Manus runs as a real tool-calling agent using the
+// connected MCP servers instead of the external api.manus.ai passthrough.
+// Falls back to the Manus API path if MCP is not configured or fails.
+
+async function _runManusViaMcp(userMessage, settings = {}) {
+    const mcpManager = require('../services/mcp/mcpClientManager');
+    await mcpManager.init();
+
+    const tools = mcpManager.getToolCatalog();
+    if (tools.length === 0) {
+        throw new Error('MCP_ENABLED is true but no MCP tools are available');
+    }
+
+    const memories = settings.userMemories ? `\n\nהקשר על המשתמש:\n${settings.userMemories}` : '';
+    const systemPrompt = `אתה ג'רוויס, עוזר אישי חכם שמדבר עברית. המשתמש ביקש ממך לבצע משימה אוטונומית מורכבת. השתמש בכלים הזמינים כדי לבצע את המשימה שלב אחר שלב. ענה בעברית.`;
+
+    const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userMessage + memories },
+    ];
+
+    const answer = await callWithTools(messages, {
+        tools,
+        callTool: (name, args) => mcpManager.callTool(name, args),
+        useLocal: settings.useLocal || false,
+        maxTokens: 2000,
+        maxIterations: 8,
+    });
+
+    return { answer: answer || 'המשימה הושלמה.' };
+}
+
 // ─── User-facing agent wrapper ────────────────────────────────────────────────
 
 async function runManusAgent(userMessage, settings = {}) {
+    // MCP path — preferred when enabled
+    if (process.env.MCP_ENABLED === 'true') {
+        try {
+            return await _runManusViaMcp(userMessage, settings);
+        } catch (err) {
+            console.warn('[Manus] MCP path failed, falling back to Manus API:', err.message);
+        }
+    }
+
+    // Legacy Manus API path
     if (!MANUS_API_KEY) {
         return { answer: '⚠️ MANUS_API_KEY לא מוגדר. הוסף אותו בהגדרות הסביבה של השרת.' };
     }
 
-    // Enrich the prompt with user context when available
-    const userName = settings.userName || '';
     const memories = settings.userMemories ? `\n\nהקשר על המשתמש:\n${settings.userMemories}` : '';
     const prompt = userMessage + memories;
 

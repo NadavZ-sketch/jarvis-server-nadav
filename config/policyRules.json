@@ -23,7 +23,17 @@
         "shopping.create",
         "shopping.update",
         "shopping.delete",
-        "messaging.send"
+        "messaging.send",
+        "tasks.manage",
+        "reminders.manage",
+        "memory.manage",
+        "notes.manage",
+        "shopping.manage",
+        "files.read",
+        "web.fetch",
+        "web.search",
+        "github.read",
+        "db.read"
       ]
     },
     "pro": {

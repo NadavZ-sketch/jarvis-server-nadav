@@ -85,6 +85,13 @@ const AGENTS = {
     runSecurityAgent, runCodeErrorAgent, runE2EAgent, runManusAgent,
 };
 
+// MCP client manager — non-blocking init, guarded behind MCP_ENABLED flag.
+// Jarvis boots normally even if MCP servers are unreachable.
+if (process.env.MCP_ENABLED === 'true') {
+    const mcpClientManager = require('./services/mcp/mcpClientManager');
+    mcpClientManager.init().catch(err => console.warn('[MCP] Boot init error:', err.message));
+}
+
 const pinecone                = require('./services/pineconeMemory');
 const obsidianSync            = require('./services/obsidianSync');
 const { createTasksRouter } = require('./routes/tasks');

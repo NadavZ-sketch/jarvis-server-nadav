@@ -13,11 +13,27 @@
  */
 
 const STALE_HIGH_DAYS = 3;
-const BACKLOG_THRESHOLD = 5;
 const NUDGE_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6h per chat
 
 // Per-chat cooldown for inline nudges (in-memory; resets on restart).
 const _lastNudgeAt = new Map();
+
+// Keywords indicating the user is winding down, resting, or in leisure mode —
+// surfacing task nudges in these contexts feels jarring and unhelpful.
+const NON_WORK_PATTERNS = [
+    /שינ[הות]|לישון|להירדם|ללכת לישון/,
+    /לנוח|מנוחה|נח|נחה/,
+    /ערב טוב|לילה טוב|בלילה|לפני שינה/,
+    /להתארגן.*שינ|להתכונן.*שינ/,
+    /רגיע[הות]|להירגע|זמן פנוי/,
+    /סרט|מוזיקה|נגן|לצפות|לשמוע/,
+    /good night|goodnight|going to sleep/i,
+];
+
+function isNonWorkContext(userMessage) {
+    if (!userMessage) return false;
+    return NON_WORK_PATTERNS.some(re => re.test(userMessage));
+}
 
 function nowJerusalem() {
     return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
@@ -38,7 +54,10 @@ function markNudged(chatId) {
     if (chatId) _lastNudgeAt.set(chatId, Date.now());
 }
 
-async function computeProactiveSuggestion(supabase) {
+async function computeProactiveSuggestion(supabase, userMessage) {
+    // Don't interrupt rest/leisure conversations with task reminders.
+    if (isNonWorkContext(userMessage)) return null;
+
     try {
         const { data } = await supabase
             .from('tasks')
@@ -72,14 +91,6 @@ async function computeProactiveSuggestion(supabase) {
             return {
                 type: 'stale_high',
                 message: `המשימה הדחופה "${staleHigh[0].content}" ממתינה כבר כמה ימים. אולי נתקדם איתה?`,
-            };
-        }
-
-        // 3. Backlog buildup — lowest signal (inline only, never pushed).
-        if (open.length >= BACKLOG_THRESHOLD) {
-            return {
-                type: 'backlog',
-                message: `יש לך ${open.length} משימות פתוחות. רוצה שנמיין אותן לפי עדיפות או נפרק אחת לחלקים קטנים?`,
             };
         }
 

@@ -39,17 +39,39 @@ describe('computeProactiveSuggestion', () => {
         expect(r.type).toBe('stale_high');
     });
 
-    test('backlog over threshold yields backlog', async () => {
+    test('backlog alone (no overdue/stale-high) returns null — backlog nudge removed', async () => {
         const tasks = Array.from({ length: 6 }, (_, i) => ({
             content: `t${i}`, priority: 'low', due_date: null, created_at: isoDaysAgo(0),
         }));
         const r = await computeProactiveSuggestion(mockSupabase(tasks));
-        expect(r.type).toBe('backlog');
+        expect(r).toBeNull();
     });
 
     test('returns null on query error', async () => {
         const bad = { from: () => ({ select: () => { throw new Error('db'); } }) };
         expect(await computeProactiveSuggestion(bad)).toBeNull();
+    });
+
+    test('returns null when user message is about going to sleep', async () => {
+        const supabase = mockSupabase([
+            { content: 'משימה דחופה', priority: 'high', due_date: null, created_at: isoDaysAgo(5) },
+        ]);
+        expect(await computeProactiveSuggestion(supabase, 'להתארגן לקראת שינה')).toBeNull();
+    });
+
+    test('returns null when user message is about resting', async () => {
+        const supabase = mockSupabase([
+            { content: 'משימה', priority: 'medium', due_date: dateOffset(-1), created_at: isoDaysAgo(2) },
+        ]);
+        expect(await computeProactiveSuggestion(supabase, 'אני רוצה לנוח קצת הערב')).toBeNull();
+    });
+
+    test('still suggests overdue when message is work-related', async () => {
+        const supabase = mockSupabase([
+            { content: 'להגיש דוח', priority: 'medium', due_date: dateOffset(-1), created_at: isoDaysAgo(3) },
+        ]);
+        const r = await computeProactiveSuggestion(supabase, 'מה יש לי לעשות היום?');
+        expect(r.type).toBe('overdue');
     });
 });
 

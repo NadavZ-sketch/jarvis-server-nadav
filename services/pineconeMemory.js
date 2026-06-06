@@ -3,9 +3,10 @@ require('dotenv').config();
 const axios    = require('axios');
 const { Pinecone } = require('@pinecone-database/pinecone');
 
-const PINECONE_API_KEY = process.env.PINECONE_API_KEY;
-const GOOGLE_KEY       = process.env.GOOGLE_API_KEY;
-const INDEX_NAME       = 'jarvis-memories';
+const PINECONE_API_KEY  = process.env.PINECONE_API_KEY;
+const PINECONE_HOST     = process.env.PINECONE_INDEX_HOST;
+const GOOGLE_KEY        = process.env.GOOGLE_API_KEY;
+const INDEX_NAME        = 'jarvis-memories';
 const EMBED_DIM        = 768;
 const SCORE_THRESHOLD  = 0.55; // cosine similarity — above this = relevant
 
@@ -44,7 +45,7 @@ async function _init() {
             }
         }
 
-        _index = pc.index(INDEX_NAME);
+        _index = PINECONE_HOST ? pc.index(INDEX_NAME, PINECONE_HOST) : pc.index(INDEX_NAME);
         _ready = true;
         console.info('[Pinecone] ready');
     } catch (err) {

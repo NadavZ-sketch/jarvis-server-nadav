@@ -14,7 +14,7 @@ const PROVIDERS = {
     ollama: {
         id: 'ollama',
         openaiCompatible: true,
-        timeout: 15000,
+        timeout: 60000,
         // Honor the mobile wizard's settings first, then the OLLAMA_URL env var.
         url:   (s = {}) => s.localServerUrl || process.env.OLLAMA_URL || null,
         model: (s = {}) => s.localModelName || process.env.OLLAMA_MODEL || 'gemma4:e4b',

@@ -42,7 +42,8 @@ async function upsertMemory(id, content) {
         await _index.upsertRecords([{ id: String(id), text: content }]);
         return true;
     } catch (err) {
-        console.error('🔵 Pinecone upsert error:', err.message);
+        const src = err.config?.url?.includes('generativelanguage') ? '[Google Embed]' : '[Pinecone]';
+        console.error(`🔵 Pinecone upsert error ${src}:`, err.message);
         return false;
     }
 }
@@ -59,7 +60,8 @@ async function searchMemories(query, topK = 12) {
             .filter(h => h._score >= SCORE_THRESHOLD)
             .map(h => h.fields?.text || '');
     } catch (err) {
-        console.error('🔵 Pinecone search error:', err.message);
+        const src = err.config?.url?.includes('generativelanguage') ? '[Google Embed]' : '[Pinecone]';
+        console.error(`🔵 Pinecone search error ${src}:`, err.message);
         return null;
     }
 }

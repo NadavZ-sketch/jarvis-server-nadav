@@ -18,7 +18,7 @@ const { getSdk }   = require('./sdkLoader');
 const { getPolicy } = require('./toolPolicy');
 
 const CONFIG_PATH        = path.join(__dirname, '../../config/mcpServers.json');
-const CONNECT_TIMEOUT_MS = 15000;
+const CONNECT_TIMEOUT_MS = 35000;
 
 let _initialized  = false;
 let _initializing = null; // in-flight init promise (prevents concurrent calls)
@@ -116,14 +116,23 @@ async function _doInit() {
 
     const { Client, StdioClientTransport } = sdk;
 
-    for (const [name, serverConfig] of Object.entries(config)) {
-        if (!serverConfig.enabled) continue;
-        try {
-            const result = await _connectServer(name, serverConfig, { Client, StdioClientTransport });
+    const enabled = Object.entries(config).filter(([, cfg]) => cfg.enabled);
+    const results = await Promise.allSettled(
+        enabled.map(([name, serverConfig]) =>
+            _connectServer(name, serverConfig, { Client, StdioClientTransport })
+                .then(result => ({ name, result }))
+                .catch(err => Promise.reject({ name, message: err.message }))
+        )
+    );
+
+    for (const outcome of results) {
+        if (outcome.status === 'fulfilled') {
+            const { name, result } = outcome.value;
             _clients[name] = result;
             console.info(`[MCP] Connected to "${name}" — ${result.tools.length} tools`);
-        } catch (err) {
-            console.warn(`[MCP] Failed to connect to "${name}": ${err.message} — skipping`);
+        } else {
+            const { name, message } = outcome.reason || {};
+            console.warn(`[MCP] Failed to connect to "${name}": ${message} — skipping`);
         }
     }
 

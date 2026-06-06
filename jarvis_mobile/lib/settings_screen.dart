@@ -1457,8 +1457,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: _s.openrouterModel,
                     items: const [
                       DropdownMenuItem(
-                        value: 'deepseek/deepseek-v4-flash:free',
-                        child: Text('DeepSeek V4 Flash (free)'),
+                        value: 'meta-llama/llama-3.3-70b-instruct:free',
+                        child: Text('Llama 3.3 70B (free)'),
                       ),
                       DropdownMenuItem(
                         value: 'google/gemma-4-31b-it:free',

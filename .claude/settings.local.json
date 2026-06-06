@@ -2,11 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(git restore:*)",
-      "Bash(node -e \"require\\('./server.js'\\)\")",
+      "Bash(node -e \"require('./server.js')\")",
       "Bash(kill %1)",
       "Bash(flutter --version)",
       "Bash(flutter devices:*)",
-      "Bash(npx jest *)"
+      "Bash(npx jest *)",
+      "Bash(npm install *)",
+      "Bash(ls services/)",
+      "Bash(mkdir -p services)"
     ]
   }
 }

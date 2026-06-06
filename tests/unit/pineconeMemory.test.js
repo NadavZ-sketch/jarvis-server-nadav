@@ -85,9 +85,9 @@ describe('upsertMemory', () => {
         const idx = setupPinecone(Pinecone);
         const result = await mod.upsertMemory('42', '[hobby] אוהב ריצה');
         expect(result).toBe(true);
-        expect(idx.upsertRecords).toHaveBeenCalledWith([
-            expect.objectContaining({ id: '42', text: '[hobby] אוהב ריצה' }),
-        ]);
+        expect(idx.upsertRecords).toHaveBeenCalledWith({
+            records: [expect.objectContaining({ id: '42', text: '[hobby] אוהב ריצה' })],
+        });
     });
 
     test('converts numeric id to string', async () => {
@@ -95,7 +95,7 @@ describe('upsertMemory', () => {
         const { mod, Pinecone } = freshRequires();
         const idx = setupPinecone(Pinecone);
         await mod.upsertMemory(99, 'content');
-        expect(idx.upsertRecords).toHaveBeenCalledWith([expect.objectContaining({ id: '99' })]);
+        expect(idx.upsertRecords).toHaveBeenCalledWith({ records: [expect.objectContaining({ id: '99' })] });
     });
 
     test('upsertRecords failure → returns false', async () => {

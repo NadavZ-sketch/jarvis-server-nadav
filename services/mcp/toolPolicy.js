@@ -48,6 +48,30 @@ const TOOL_POLICIES = {
     'github__merge_pull_request':          { actionType: 'github.write', sensitive: true,  irreversible: true  },
     'github__update_issue':                { actionType: 'github.write', sensitive: true,  irreversible: false },
 
+    // ─── PostgreSQL ───────────────────────────────────────────────────────────
+    'postgres__query':                     { actionType: 'db.read',      sensitive: false, irreversible: false },
+
+    // ─── Notion ───────────────────────────────────────────────────────────────
+    'notion__API-get-self':                           { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-get-database':                       { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-post-database-query':                { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-get-page':                           { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-get-block-children':                 { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-search':                             { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-post-page':                          { actionType: 'notion.write', sensitive: true,  irreversible: false },
+    'notion__API-patch-page':                         { actionType: 'notion.write', sensitive: true,  irreversible: false },
+    'notion__API-patch-block-children':               { actionType: 'notion.write', sensitive: true,  irreversible: false },
+    'notion__API-delete-block':                       { actionType: 'notion.write', sensitive: true,  irreversible: true  },
+
+    // ─── Google Calendar ─────────────────────────────────────────────────────
+    'gcal__list-calendars':                { actionType: 'calendar.read',  sensitive: false, irreversible: false },
+    'gcal__list-events':                   { actionType: 'calendar.read',  sensitive: false, irreversible: false },
+    'gcal__get-event':                     { actionType: 'calendar.read',  sensitive: false, irreversible: false },
+    'gcal__search-events':                 { actionType: 'calendar.read',  sensitive: false, irreversible: false },
+    'gcal__create-event':                  { actionType: 'calendar.write', sensitive: true,  irreversible: false },
+    'gcal__update-event':                  { actionType: 'calendar.write', sensitive: true,  irreversible: false },
+    'gcal__delete-event':                  { actionType: 'calendar.write', sensitive: true,  irreversible: true  },
+
     // ─── Supabase / Database ──────────────────────────────────────────────────
     'supabase__list_tables':               { actionType: 'db.read',      sensitive: false, irreversible: false },
     'supabase__list_projects':             { actionType: 'db.read',      sensitive: false, irreversible: false },

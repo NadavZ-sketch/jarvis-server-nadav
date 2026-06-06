@@ -33,12 +33,42 @@
   },
   "search": {
     "enabled": false,
-    "comment": "Brave Search web search. Requires BRAVE_API_KEY from brave.com/search/api (free tier available).",
+    "comment": "Brave Search web search. Requires BRAVE_API_KEY — set in Render env vars, then flip enabled:true.",
     "transport": "stdio",
     "command": "npx",
     "args": ["-y", "@modelcontextprotocol/server-brave-search"],
     "env": {
       "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+    }
+  },
+  "postgres": {
+    "enabled": false,
+    "comment": "PostgreSQL direct query. Requires DATABASE_URL — get from Supabase dashboard → Settings → Database → Connection string (Transaction mode). Then flip enabled:true.",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"],
+    "env": {}
+  },
+  "notion": {
+    "enabled": false,
+    "comment": "Notion read/write. Requires NOTION_API_TOKEN — create an integration at notion.so/my-integrations, share pages with it, then flip enabled:true.",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@notionhq/notion-mcp-server"],
+    "env": {
+      "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer ${NOTION_API_TOKEN}\", \"Notion-Version\": \"2022-06-28\"}"
+    }
+  },
+  "gcal": {
+    "enabled": false,
+    "comment": "Google Calendar read/write. Requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN. Get OAuth2 credentials from console.cloud.google.com → Calendar API → OAuth2 client. Then flip enabled:true.",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@cocal/google-calendar-mcp"],
+    "env": {
+      "GOOGLE_CLIENT_ID": "${GOOGLE_CLIENT_ID}",
+      "GOOGLE_CLIENT_SECRET": "${GOOGLE_CLIENT_SECRET}",
+      "GOOGLE_REFRESH_TOKEN": "${GOOGLE_REFRESH_TOKEN}"
     }
   },
   "github": {
@@ -59,18 +89,6 @@
     "args": ["-y", "@playwright/mcp", "--headless"],
     "env": {
       "PLAYWRIGHT_BROWSERS_PATH": "${PLAYWRIGHT_BROWSERS_PATH}"
-    }
-  },
-  "gcal": {
-    "enabled": false,
-    "comment": "Google Calendar read/write. Requires OAuth2 setup: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN. Run 'npx @modelcontextprotocol/server-google-calendar auth' locally first.",
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-google-calendar"],
-    "env": {
-      "GOOGLE_CLIENT_ID": "${GOOGLE_CLIENT_ID}",
-      "GOOGLE_CLIENT_SECRET": "${GOOGLE_CLIENT_SECRET}",
-      "GOOGLE_REFRESH_TOKEN": "${GOOGLE_REFRESH_TOKEN}"
     }
   },
   "supabase": {

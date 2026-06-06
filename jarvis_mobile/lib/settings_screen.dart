@@ -225,7 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.assistantName  = _assistantNameCtrl.text.trim().isEmpty ? 'Jarvis'                    : _assistantNameCtrl.text.trim();
     _s.userName       = _userNameCtrl.text.trim().isEmpty      ? 'נדב'                       : _userNameCtrl.text.trim();
     _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
-    _s.localModelName = _localModelCtrl.text.trim().isEmpty    ? 'llama3'                     : _localModelCtrl.text.trim();
+    _s.localModelName = _localModelCtrl.text.trim().isEmpty    ? 'gemma4:e4b'                  : _localModelCtrl.text.trim();
     _s.todayBriefingFocus = _briefingFocusCtrl.text.trim();
     _s.city = _cityCtrl.text.trim().isEmpty ? 'תל אביב' : _cityCtrl.text.trim();
     widget.onSave(_s);
@@ -1426,7 +1426,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   label: 'שם מודל',
                   icon: Icons.dns_outlined,
                   ctrl: _localModelCtrl,
-                  hint: 'llama3',
+                  hint: 'gemma4:e4b',
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),

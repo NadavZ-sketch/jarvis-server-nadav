@@ -1969,7 +1969,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [JC.bg, JC.bg.withValues(alpha: 0)],
+              colors: [
+                JC.bg.withValues(alpha: 0.96),
+                JC.bg.withValues(alpha: 0),
+              ],
             ),
           ),
         ),
@@ -2012,10 +2015,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   'ג׳רביס',
                   key: const ValueKey('title'),
                   style: TextStyle(
-                    color: JC.textSecondary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.3,
+                    color: JC.blue400,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
                     fontFamily: 'Heebo',
                   ),
                 ),
@@ -2228,8 +2231,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                 bottomLeft:  Radius.circular(4),
                               ),
                               border: Border.all(
-                                  color: JC.border.withValues(alpha: 0.6),
-                                  width: 0.8),
+                                  color: JC.blue500.withValues(alpha: 0.25),
+                                  width: 0.9),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: JC.blue500.withValues(alpha: 0.12),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
                             ),
                             child: const _TypingDots(),
                           ),
@@ -2321,10 +2331,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
-                          color: JC.blue400.withValues(alpha: 0.2),
+                          color: JC.blue400.withValues(alpha: 0.18),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                               color: JC.blue400.withValues(alpha: 0.5), width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: JC.blue500.withValues(alpha: 0.22),
+                              blurRadius: 14,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -2349,25 +2366,31 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 ),
 
               // ── Input bar ─────────────────────────────────────────────────────
-              Container(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 margin: const EdgeInsets.fromLTRB(12, 4, 12, 20),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 6, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                 decoration: BoxDecoration(
                   color: JC.surfaceAlt,
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(
                     color: isListening
-                        ? JC.blue400.withValues(alpha: 0.6)
-                        : JC.border.withValues(alpha: 0.7),
-                    width: isListening ? 1.2 : 0.8,
+                        ? JC.blue400.withValues(alpha: 0.7)
+                        : JC.border.withValues(alpha: 0.55),
+                    width: isListening ? 1.4 : 0.8,
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: isListening
-                          ? JC.blue500.withValues(alpha: 0.2)
-                          : Colors.black.withValues(alpha: 0.3),
-                      blurRadius: isListening ? 16 : 8,
+                          ? JC.blue500.withValues(alpha: 0.28)
+                          : JC.blue500.withValues(alpha: 0.06),
+                      blurRadius: isListening ? 20 : 10,
+                      spreadRadius: isListening ? 1 : 0,
+                      offset: const Offset(0, 3),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
                   ],

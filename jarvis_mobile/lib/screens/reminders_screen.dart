@@ -420,10 +420,24 @@ class _RemindersScreenState extends State<RemindersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: JC.bg,
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showReminderSheet(),
-        backgroundColor: JC.blue500,
-        child: const Icon(Icons.add_rounded, color: Colors.white),
+      floatingActionButton: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: JC.blue500.withOpacity(0.35),
+              blurRadius: 20,
+              spreadRadius: 2,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: FloatingActionButton(
+          onPressed: () => _showReminderSheet(),
+          backgroundColor: JC.blue500,
+          elevation: 0,
+          child: const Icon(Icons.add_rounded, color: Colors.white),
+        ),
       ),
       body: _loading
           ? const LoadingSkeleton(itemCount: 6)

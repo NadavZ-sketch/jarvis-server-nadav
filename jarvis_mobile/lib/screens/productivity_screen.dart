@@ -55,13 +55,16 @@ class _ProductivityScreenState extends State<ProductivityScreen>
     return Scaffold(
       backgroundColor: JC.bg,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: JC.surface.withOpacity(0.92),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shadowColor: Colors.transparent,
         title: Text(
           'פרודקטיביות',
           style: TextStyle(
             color: JC.textPrimary,
             fontSize: 18,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             fontFamily: 'Heebo',
           ),
           textDirection: TextDirection.rtl,
@@ -74,23 +77,54 @@ class _ProductivityScreenState extends State<ProductivityScreen>
                 onPressed: widget.onOpenDrawer,
               )
             : null,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: JC.blue400,
-          unselectedLabelColor: JC.textMuted,
-          indicatorColor: JC.blue400,
-          indicatorSize: TabBarIndicatorSize.label,
-          dividerColor: JC.border,
-          labelStyle: const TextStyle(
-              fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 14),
-          unselectedLabelStyle:
-              const TextStyle(fontFamily: 'Heebo', fontSize: 14),
-          tabs: const [
-            Tab(text: 'היום ☀️'),
-            Tab(text: 'משימות ✅'),
-            Tab(text: 'תזכורות 🔔'),
-            Tab(text: 'לוח שנה 📅'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: JC.border.withOpacity(0.5),
+                  width: 0.6,
+                ),
+              ),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              labelColor: JC.blue400,
+              unselectedLabelColor: JC.textMuted,
+              indicator: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: JC.blue500.withOpacity(0.15),
+                border: Border.all(
+                  color: JC.blue400.withOpacity(0.45),
+                  width: 0.8,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: JC.blue500.withOpacity(0.2),
+                    blurRadius: 10,
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              indicatorSize: TabBarIndicatorSize.tab,
+              indicatorPadding: const EdgeInsets.symmetric(
+                  horizontal: 6, vertical: 5),
+              dividerColor: Colors.transparent,
+              labelStyle: const TextStyle(
+                  fontFamily: 'Heebo',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5),
+              unselectedLabelStyle: const TextStyle(
+                  fontFamily: 'Heebo', fontSize: 13.5),
+              tabs: const [
+                Tab(text: 'היום ☀️'),
+                Tab(text: 'משימות ✅'),
+                Tab(text: 'תזכורות 🔔'),
+                Tab(text: 'לוח שנה 📅'),
+              ],
+            ),
+          ),
         ),
       ),
       body: TabBarView(

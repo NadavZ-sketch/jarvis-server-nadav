@@ -24,9 +24,9 @@ const TOOL_POLICIES = {
     'fetch__fetch':                        { actionType: 'web.fetch',    sensitive: false, irreversible: false },
     'fetch__get':                          { actionType: 'web.fetch',    sensitive: false, irreversible: false },
 
-    // ─── Brave Search ─────────────────────────────────────────────────────────
-    'search__brave_web_search':            { actionType: 'web.search',   sensitive: false, irreversible: false },
-    'search__brave_local_search':          { actionType: 'web.search',   sensitive: false, irreversible: false },
+    // ─── Tavily Search ────────────────────────────────────────────────────────
+    'search__tavily-search':               { actionType: 'web.search',   sensitive: false, irreversible: false },
+    'search__tavily-extract':              { actionType: 'web.fetch',    sensitive: false, irreversible: false },
 
     // ─── GitHub ───────────────────────────────────────────────────────────────
     'github__get_file_contents':           { actionType: 'github.read',  sensitive: false, irreversible: false },
@@ -47,6 +47,30 @@ const TOOL_POLICIES = {
     'github__add_issue_comment':           { actionType: 'github.write', sensitive: true,  irreversible: false },
     'github__merge_pull_request':          { actionType: 'github.write', sensitive: true,  irreversible: true  },
     'github__update_issue':                { actionType: 'github.write', sensitive: true,  irreversible: false },
+
+    // ─── PostgreSQL ───────────────────────────────────────────────────────────
+    'postgres__query':                     { actionType: 'db.read',      sensitive: false, irreversible: false },
+
+    // ─── Notion ───────────────────────────────────────────────────────────────
+    'notion__API-get-self':                           { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-get-database':                       { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-post-database-query':                { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-get-page':                           { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-get-block-children':                 { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-search':                             { actionType: 'notion.read',  sensitive: false, irreversible: false },
+    'notion__API-post-page':                          { actionType: 'notion.write', sensitive: true,  irreversible: false },
+    'notion__API-patch-page':                         { actionType: 'notion.write', sensitive: true,  irreversible: false },
+    'notion__API-patch-block-children':               { actionType: 'notion.write', sensitive: true,  irreversible: false },
+    'notion__API-delete-block':                       { actionType: 'notion.write', sensitive: true,  irreversible: true  },
+
+    // ─── Google Calendar ─────────────────────────────────────────────────────
+    'gcal__list-calendars':                { actionType: 'calendar.read',  sensitive: false, irreversible: false },
+    'gcal__list-events':                   { actionType: 'calendar.read',  sensitive: false, irreversible: false },
+    'gcal__get-event':                     { actionType: 'calendar.read',  sensitive: false, irreversible: false },
+    'gcal__search-events':                 { actionType: 'calendar.read',  sensitive: false, irreversible: false },
+    'gcal__create-event':                  { actionType: 'calendar.write', sensitive: true,  irreversible: false },
+    'gcal__update-event':                  { actionType: 'calendar.write', sensitive: true,  irreversible: false },
+    'gcal__delete-event':                  { actionType: 'calendar.write', sensitive: true,  irreversible: true  },
 
     // ─── Supabase / Database ──────────────────────────────────────────────────
     'supabase__list_tables':               { actionType: 'db.read',      sensitive: false, irreversible: false },

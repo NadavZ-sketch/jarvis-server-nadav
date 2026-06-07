@@ -249,42 +249,50 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _buildBottomNav() {
+    final accent = JC.blue400;
+    final accentGlow = JC.blue500.withValues(alpha: 0.22);
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Container(
         decoration: BoxDecoration(
           color: JC.surface,
-          border: Border(top: BorderSide(color: JC.border, width: 0.6)),
+          border: Border(top: BorderSide(color: JC.border.withValues(alpha: 0.6), width: 0.6)),
+          boxShadow: [
+            BoxShadow(
+              color: JC.blue500.withValues(alpha: 0.08),
+              blurRadius: 20,
+              offset: const Offset(0, -4),
+            ),
+          ],
         ),
         child: SafeArea(
           top: false,
           child: NavigationBarTheme(
             data: NavigationBarThemeData(
-              backgroundColor: JC.surface,
-              indicatorColor: JC.blue500.withValues(alpha: 0.18),
+              backgroundColor: Colors.transparent,
+              indicatorColor: accentGlow,
               labelTextStyle: WidgetStateProperty.resolveWith((states) {
                 final selected = states.contains(WidgetState.selected);
                 return TextStyle(
                   fontFamily: 'Heebo',
                   fontSize: 11,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  color: selected ? JC.blue400 : JC.textMuted,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                  color: selected ? accent : JC.textMuted,
                 );
               }),
               iconTheme: WidgetStateProperty.resolveWith((states) {
                 final selected = states.contains(WidgetState.selected);
                 return IconThemeData(
-                  color: selected ? JC.blue400 : JC.textMuted,
-                  size: 24,
+                  color: selected ? accent : JC.textMuted,
+                  size: selected ? 25 : 23,
                 );
               }),
             ),
             child: NavigationBar(
               height: 64,
               elevation: 0,
-              backgroundColor: JC.surface,
-              labelBehavior:
-                  NavigationDestinationLabelBehavior.alwaysShow,
+              backgroundColor: Colors.transparent,
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
               selectedIndex: _selectedIndex,
               onDestinationSelected: _onTabTapped,
               destinations: const [

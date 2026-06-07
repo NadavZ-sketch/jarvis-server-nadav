@@ -48,20 +48,33 @@ class _HeroCardState extends State<HeroCard> {
 
     final todayRemCount = c.remindersForOffset(0).length;
 
+    final accent = JC.blue500;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFF1A2E4A), JC.surface],
+          colors: [
+            accent.withValues(alpha: 0.22),
+            JC.surface.withValues(alpha: 0.95),
+          ],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: accent.withValues(alpha: 0.28),
+          width: 0.8,
+        ),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.25),
+              color: accent.withValues(alpha: 0.18),
+              blurRadius: 20,
+              spreadRadius: 0,
+              offset: const Offset(0, 4)),
+          BoxShadow(
+              color: Colors.black.withOpacity(0.3),
               blurRadius: 8,
-              offset: const Offset(0, 2))
+              offset: const Offset(0, 2)),
         ],
       ),
       child: Column(
@@ -99,8 +112,12 @@ class _HeroCardState extends State<HeroCard> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.18),
+              color: Colors.black.withOpacity(0.22),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: JC.blue500.withValues(alpha: 0.15),
+                width: 0.6,
+              ),
             ),
             child: Row(children: [
               Icon(Icons.schedule_rounded, color: JC.blue400, size: 16),

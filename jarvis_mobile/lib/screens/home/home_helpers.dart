@@ -165,7 +165,11 @@ class SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: JC.surface,
         borderRadius: BorderRadius.circular(JD.rLg),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 8, offset: const Offset(0, 2))],
+        border: Border.all(color: JC.border.withOpacity(0.6), width: 0.7),
+        boxShadow: [
+          BoxShadow(color: JC.blue500.withOpacity(0.06), blurRadius: 18, spreadRadius: 0, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -384,17 +388,26 @@ class QuickActionChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.35), width: 0.8),
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.30), width: 0.9),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.14),
+              blurRadius: 12,
+              spreadRadius: 0,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 20),
+            Icon(icon, color: color, size: 22),
             const SizedBox(height: 5),
             Text(label,
                 style: TextStyle(

@@ -3,16 +3,17 @@ import 'package:flutter/services.dart';
 
 /// Selectable visual themes. `navyDark` is the historical default and must
 /// preserve the exact look the app shipped with.
-enum AppTheme { navyDark, glassDark, neoDark, material3, cyberpunk }
+enum AppTheme { navyDark, glassDark, neoDark, material3, cyberpunk, violetDark }
 
 extension AppThemeMeta on AppTheme {
   String get hebrewLabel {
     switch (this) {
-      case AppTheme.navyDark:   return 'כחול כהה';
-      case AppTheme.glassDark:  return 'זכוכית';
-      case AppTheme.neoDark:    return 'נאומורפי';
-      case AppTheme.material3:  return 'חומר 3';
-      case AppTheme.cyberpunk:  return 'סייברפאנק';
+      case AppTheme.navyDark:    return 'כחול כהה';
+      case AppTheme.glassDark:   return 'זכוכית';
+      case AppTheme.neoDark:     return 'נאומורפי';
+      case AppTheme.material3:   return 'חומר 3';
+      case AppTheme.cyberpunk:   return 'סייברפאנק';
+      case AppTheme.violetDark:  return '✨ סגול';
     }
   }
 }
@@ -230,6 +231,32 @@ class JarvisColorScheme {
     isCyber: true,
   );
 
+  // ── violetDark — Premium Dark AI: deep violet accent, glassmorphism ────
+  static const violetDark = JarvisColorScheme(
+    bg:            Color(0xFF070B12),
+    surface:       Color(0xFF0C1018),
+    surfaceAlt:    Color(0xFF0F1724),
+    border:        Color(0xFF1C2236),
+    blue500:       Color(0xFF7C3AED),
+    blue400:       Color(0xFFA78BFA),
+    blue300:       Color(0xFFC4B5FD),
+    textPrimary:   Color(0xFFE8EAF0),
+    textSecondary: Color(0xFF8892A4),
+    textMuted:     Color(0xFF4A5568),
+    userBubble:    Color(0xFF1E1245),
+    jarvisBubble:  Color(0xFF0A0D1A),
+    cancelRed:     Color(0xFFEF4444),
+    indigo500:     Color(0xFF7C3AED),
+    indigo300:     Color(0xFFA78BFA),
+    amber400:      Color(0xFFF59E0B),
+    green500:      Color(0xFF22C55E),
+    accentPrimary: Color(0xFF7C3AED),
+    glassOverlay:  Color(0x0D7C3AED),
+    neoShadowLight: Color(0xFF1A1245),
+    neoShadowDark:  Color(0xFF020308),
+    usesGlass: true,
+  );
+
   // ── light — the canonical light foundation ──────────────────────────────
   // Phase-1 fallback: one well-crafted light palette shared by ALL themes when
   // the user picks light mode. Per-theme light *personalities* (glass/neo/cyber
@@ -278,6 +305,7 @@ class JarvisThemeData {
       case AppTheme.neoDark:    return JarvisColorScheme.neoDark;
       case AppTheme.material3:  return JarvisColorScheme.material3;
       case AppTheme.cyberpunk:  return JarvisColorScheme.cyberpunk;
+      case AppTheme.violetDark: return JarvisColorScheme.violetDark;
     }
   }
 

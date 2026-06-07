@@ -121,7 +121,7 @@ describe('runTaskAgent', () => {
         callGemma4.mockResolvedValue('Sorry, I cannot help with that.');
         const supabase = makeSupabase();
         const result = await runTaskAgent('בלה בלה', supabase);
-        expect(result.answer).toContain('הייתה בעיה בעיבוד המשימה');
+        expect(result.answer).toContain('לא הצלחתי לעבד את הבקשה');
     });
 
     test('callGemma4 throws → error message', async () => {
@@ -129,5 +129,50 @@ describe('runTaskAgent', () => {
         const supabase = makeSupabase();
         const result = await runTaskAgent('הוסף משימה', supabase);
         expect(result.answer).toContain('הייתה בעיה בעיבוד המשימה');
+    });
+});
+
+describe('runTaskAgent — recurring tasks', () => {
+    test('add with recurrence stores recurrence and notes it', async () => {
+        callGemma4.mockResolvedValue('{"intent":"add","taskDetails":"שתיית מים","category":"personal","recurrence":"daily"}');
+        const supabase = makeSupabase();
+        const result = await runTaskAgent('הוסף משימה לשתות מים כל יום', supabase);
+        expect(supabase._chain.insert).toHaveBeenCalledWith(
+            expect.arrayContaining([expect.objectContaining({ content: 'שתיית מים', recurrence: 'daily' })])
+        );
+        expect(result.answer).toContain('🔁');
+    });
+
+    test('recurrence falls back to keyword detection when LLM omits it', async () => {
+        callGemma4.mockResolvedValue('{"intent":"add","taskDetails":"דוח שבועי","category":"work","recurrence":null}');
+        const supabase = makeSupabase();
+        await runTaskAgent('הוסף משימה דוח כל שבוע', supabase);
+        expect(supabase._chain.insert).toHaveBeenCalledWith(
+            expect.arrayContaining([expect.objectContaining({ recurrence: 'weekly' })])
+        );
+    });
+
+    test('completing a recurring task spawns the next occurrence', async () => {
+        callGemma4.mockResolvedValue('{"intent":"complete","taskDetails":"שתיית מים"}');
+        const supabase = makeSupabase([
+            { id: 'r1', content: 'שתיית מים', category: 'personal', priority: 'medium', recurrence: 'daily', due_date: '2026-06-06' },
+        ]);
+        const result = await runTaskAgent('סיימתי לשתות מים', supabase);
+        // First update marks done; then a fresh insert creates the next occurrence.
+        expect(supabase._chain.update).toHaveBeenCalledWith({ done: true });
+        expect(supabase._chain.insert).toHaveBeenCalledWith(
+            expect.arrayContaining([expect.objectContaining({ content: 'שתיית מים', recurrence: 'daily', due_date: '2026-06-07' })])
+        );
+        expect(result.answer).toContain('🔁');
+    });
+
+    test('completing a non-recurring task does not insert anything', async () => {
+        callGemma4.mockResolvedValue('{"intent":"complete","taskDetails":"buy milk"}');
+        const supabase = makeSupabase([
+            { id: 't1', content: 'buy milk', category: 'general', priority: 'low', recurrence: null, due_date: null },
+        ]);
+        const result = await runTaskAgent('סיימתי לקנות חלב', supabase);
+        expect(supabase._chain.insert).not.toHaveBeenCalled();
+        expect(result.answer).toContain('כל הכבוד');
     });
 });

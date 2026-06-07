@@ -1,4 +1,4 @@
-const { sanitizeLike } = require('./utils');
+const { sanitizeLike, nowJerusalem, toISO } = require('./utils');
 require('dotenv').config();
 const obsidianSync = require('../services/obsidianSync');
 
@@ -6,14 +6,7 @@ const HE_DAYS = { 'ראשון': 0, 'שני': 1, 'שלישי': 2, 'רביעי': 3
 
 const RECURRENCE_LABELS = { daily: 'יומי', weekly: 'שבועי', monthly: 'חודשי' };
 
-function nowJerusalem() {
-    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-}
-
-function toISO(date) {
-    const pad = n => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00+03:00`;
-}
+// nowJerusalem / toISO now live in ./utils (shared across agents).
 
 // ─── Recurrence detection ─────────────────────────────────────────────────────
 
@@ -250,4 +243,4 @@ async function runReminderAgent(userMessage, supabase) {
     }
 }
 
-module.exports = { runReminderAgent, parseTime, parseRecurrence, extractReminderText, toISO, nowJerusalem };
+module.exports = { runReminderAgent, parseTime, parseRecurrence, extractReminderText, toISO, nowJerusalem, RECURRENCE_LABELS };

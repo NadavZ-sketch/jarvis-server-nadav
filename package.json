@@ -67,6 +67,7 @@
     "@modelcontextprotocol/server-postgres": "^0.6.2",
     "@notionhq/notion-mcp-server": "^2.2.1",
     "mcp-server-fetch-typescript": "^0.1.1",
+    "tavily-mcp": "^0.2.20",
     "@pinecone-database/pinecone": "^7.1.0",
     "@supabase/supabase-js": "^2.102.1",
     "axios": "^1.14.0",

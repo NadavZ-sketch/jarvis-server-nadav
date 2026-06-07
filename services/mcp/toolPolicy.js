@@ -24,9 +24,9 @@ const TOOL_POLICIES = {
     'fetch__fetch':                        { actionType: 'web.fetch',    sensitive: false, irreversible: false },
     'fetch__get':                          { actionType: 'web.fetch',    sensitive: false, irreversible: false },
 
-    // ─── Brave Search ─────────────────────────────────────────────────────────
-    'search__brave_web_search':            { actionType: 'web.search',   sensitive: false, irreversible: false },
-    'search__brave_local_search':          { actionType: 'web.search',   sensitive: false, irreversible: false },
+    // ─── Tavily Search ────────────────────────────────────────────────────────
+    'search__tavily-search':               { actionType: 'web.search',   sensitive: false, irreversible: false },
+    'search__tavily-extract':              { actionType: 'web.fetch',    sensitive: false, irreversible: false },
 
     // ─── GitHub ───────────────────────────────────────────────────────────────
     'github__get_file_contents':           { actionType: 'github.read',  sensitive: false, irreversible: false },

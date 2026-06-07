@@ -155,17 +155,31 @@ class _SmartProductivityPreviewScreenState
   Widget _circleButton(IconData icon, VoidCallback onTap, {bool active = false}) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: active ? JC.blue500.withOpacity(0.2) : const Color(0xFF0B1422),
+          color: active
+              ? JC.blue500.withOpacity(0.22)
+              : JC.surface.withOpacity(0.85),
           shape: BoxShape.circle,
+          border: Border.all(
+            color: active
+                ? JC.blue400.withOpacity(0.5)
+                : JC.border.withOpacity(0.5),
+            width: 0.8,
+          ),
           boxShadow: [
+            if (active)
+              BoxShadow(
+                  color: JC.blue500.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 2)),
             BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withOpacity(0.25),
                 blurRadius: 8,
-                offset: const Offset(0, 2))
+                offset: const Offset(0, 2)),
           ],
         ),
         child: Icon(icon,

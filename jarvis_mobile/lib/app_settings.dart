@@ -12,7 +12,7 @@ class AppSettings {
   bool useLocalModel;   // true = Ollama, false = Groq/DeepSeek/Gemini
   bool useLocalServer;  // true = local server, false = Render cloud
   String localServerUrl;
-  bool obsidianAutoSync;
+bool obsidianAutoSync;
   bool telemetryConsent;
   bool bargeInEnabled;
 
@@ -97,8 +97,8 @@ class AppSettings {
     this.ttsLanguage = 'he-IL',
     this.ttsVoiceName = '',
     this.cloudProvider = 'groq',
-    this.openrouterModel = 'deepseek/deepseek-v4-flash:free',
-    this.localModelName = 'llama3',
+    this.openrouterModel = 'meta-llama/llama-3.3-70b-instruct:free',
+    this.localModelName = 'gemma4:e4b',
     this.temperature = 0.7,
     this.responseLength = 'medium',
     this.saverMode = false,
@@ -191,8 +191,8 @@ class AppSettings {
       ttsLanguage:      prefs.getString('ttsLanguage')      ?? 'he-IL',
       ttsVoiceName:     prefs.getString('ttsVoiceName')     ?? '',
       cloudProvider:    prefs.getString('cloudProvider')    ?? 'groq',
-      openrouterModel:  prefs.getString('openrouterModel')  ?? 'deepseek/deepseek-v4-flash:free',
-      localModelName:   prefs.getString('localModelName')   ?? 'llama3',
+      openrouterModel:  prefs.getString('openrouterModel')  ?? 'meta-llama/llama-3.3-70b-instruct:free',
+      localModelName:   prefs.getString('localModelName')   ?? 'gemma4:e4b',
       temperature:      prefs.getDouble('temperature')      ?? 0.7,
       responseLength:   prefs.getString('responseLength')   ?? 'medium',
       saverMode:        prefs.getBool('saverMode')          ?? false,

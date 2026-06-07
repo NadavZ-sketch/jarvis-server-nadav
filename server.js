@@ -51,7 +51,7 @@ const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
 const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore, persistFindings } = require('./agents/e2eAgent');
 const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, buildSurveySummary, aggregateSurveys, insightsFromAggregation } = require('./agents/surveyAgent');
 const { runManusAgent, isManusConfigured } = require('./agents/manusAgent');
-const { analyzePatterns, optimizeDayPlan } = require('./agents/insightAgent');
+const { analyzePatterns, optimizeDayPlan, runInsightAgent } = require('./agents/insightAgent');
 const priorityEngine          = require('./services/priorityEngine');
 const { runWeatherAgent }     = require('./agents/weatherAgent');
 const { runNewsAgent }        = require('./agents/newsAgent');
@@ -73,6 +73,7 @@ const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/cal
 const { runPromptAgent }      = require('./agents/promptAgent');
 const { runSettingsAgent }    = require('./agents/settingsAgent');
 const { runProjectAgent, buildProjectsBriefing } = require('./agents/projectAgent');
+const { runHabitAgent }       = require('./agents/habitAgent');
 const dispatcher              = require('./agents/dispatcher');
 
 // Single AGENTS map passed into the dispatcher so intent→agent wiring lives in
@@ -81,7 +82,7 @@ const AGENTS = {
     runTaskAgent, runReminderAgent, runMemoryAgent, runWeatherAgent, runNewsAgent,
     runShoppingAgent, runNotesAgent, runStocksAgent, runTranslationAgent, runMusicAgent,
     runSportsAgent, runMessagingAgent, runDraftAgent,
-    runCalendarAgent, runPromptAgent, runSettingsAgent, runProjectAgent,
+    runCalendarAgent, runPromptAgent, runSettingsAgent, runProjectAgent, runHabitAgent, runInsightAgent,
     runSecurityAgent, runCodeErrorAgent, runE2EAgent, runManusAgent,
 };
 
@@ -124,26 +125,47 @@ async function clearTaskReminderPending() {
 const TASK_REM_YES = /^(כן|אשר|בסדר|אוקי|יאללה|כן בבקשה|תזכיר|כן תזכיר)/i;
 const TASK_REM_NO  = /^(לא|לא צריך|לא עכשיו|דלג)/i;
 
+// Parse an optional lead time from the confirmation reply, e.g. "כן, שעתיים לפני",
+// "כן יומיים לפני", "כן 3 ימים לפני", "כן שבוע לפני". Returns the number of hours
+// before the due date to fire. Defaults to a full day (24h) when unspecified.
+function parseReminderLead(userMessage) {
+    const m = userMessage;
+    // hours
+    if (/שעתיים\s+לפני/.test(m)) return { hours: 2, label: 'שעתיים' };
+    const hourMatch = m.match(/(\d+)\s*שעות?\s+לפני/);
+    if (hourMatch) return { hours: parseInt(hourMatch[1], 10), label: `${hourMatch[1]} שעות` };
+    if (/שעה\s+לפני/.test(m)) return { hours: 1, label: 'שעה' };
+    // days
+    if (/יומיים\s+לפני/.test(m)) return { hours: 48, label: 'יומיים' };
+    const dayMatch = m.match(/(\d+)\s*ימים\s+לפני/);
+    if (dayMatch) return { hours: parseInt(dayMatch[1], 10) * 24, label: `${dayMatch[1]} ימים` };
+    if (/שבוע\s+לפני/.test(m)) return { hours: 24 * 7, label: 'שבוע' };
+    return { hours: 24, label: 'יום' }; // default: one day before
+}
+
 async function handleTaskReminderConfirmation(userMessage) {
     const pending = await loadTaskReminderPending();
     if (!pending) return null;
 
     if (TASK_REM_YES.test(userMessage.trim())) {
         const { taskContent, dueDate } = pending;
+        const lead = parseReminderLead(userMessage);
+
+        // Anchor the due date at 09:00, then subtract the requested lead time.
         const reminderDate = new Date(dueDate);
-        reminderDate.setDate(reminderDate.getDate() - 1);
-        reminderDate.setHours(9, 0, 0, 0); // 09:00 one day before
+        reminderDate.setHours(9, 0, 0, 0);
+        reminderDate.setHours(reminderDate.getHours() - lead.hours);
 
         const pad = n => String(n).padStart(2, '0');
-        const isoReminder = `${reminderDate.getFullYear()}-${pad(reminderDate.getMonth()+1)}-${pad(reminderDate.getDate())}T09:00:00+03:00`;
+        const isoReminder = `${reminderDate.getFullYear()}-${pad(reminderDate.getMonth()+1)}-${pad(reminderDate.getDate())}T${pad(reminderDate.getHours())}:${pad(reminderDate.getMinutes())}:00+03:00`;
 
         try {
             await supabase.from('reminders').insert([{ text: `לסיים משימה: ${taskContent}`, scheduled_time: isoReminder }]);
         } catch { /* ignore */ }
 
         await clearTaskReminderPending();
-        const dateStr = reminderDate.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' });
-        return { answer: `✅ הגדרתי תזכורת ל${dateStr} בשעה 09:00 לסיים את: "${taskContent}"` };
+        const dateStr = reminderDate.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+        return { answer: `✅ הגדרתי תזכורת ל${dateStr} (${lead.label} לפני) לסיים את: "${taskContent}"` };
     }
 
     if (TASK_REM_NO.test(userMessage.trim())) {
@@ -1011,7 +1033,7 @@ async function askJarvisHandler(req, res) {
             let nudgeTimer;
             try {
                 const sug = await Promise.race([
-                    proactiveEngine.computeProactiveSuggestion(supabase),
+                    proactiveEngine.computeProactiveSuggestion(supabase, userMessage),
                     new Promise(resolve => { nudgeTimer = setTimeout(() => resolve(null), 400); }),
                 ]);
                 if (sug) {
@@ -3549,7 +3571,7 @@ async function streamJarvisHandler(req, res) {
             let nudgeTimer;
             try {
                 const sug = await Promise.race([
-                    proactiveEngine.computeProactiveSuggestion(supabase),
+                    proactiveEngine.computeProactiveSuggestion(supabase, userMessage),
                     new Promise(resolve => { nudgeTimer = setTimeout(() => resolve(null), 400); }),
                 ]);
                 if (sug) {

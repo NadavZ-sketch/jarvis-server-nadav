@@ -52,7 +52,8 @@ Every user message enters through `POST /ask-jarvis` (and `POST /stream-jarvis` 
 1. **Intent Classification** (`agents/router.js::classifyIntent`)
    - Fast path: Hebrew keyword regex matching against 20 intent types
    - Fallback path: LLM classification (Groq `llama-3.3-70b-versatile`) for >12 char messages that don't match keywords
-   - Returns intent string: `task`, `reminder`, `memory`, `chat`, `weather`, `news`, `shopping`, `notes`, `stocks`, `translate`, `music`, `sports`, `messaging`, `draft`, `insight`, `security`, `code_error`, `e2e`, `factory`, `past_conv`
+   - Returns intent string: `task`, `reminder`, `memory`, `chat`, `weather`, `news`, `shopping`, `notes`, `stocks`, `translate`, `music`, `sports`, `messaging`, `draft`, `insight`, `habit`, `security`, `code_error`, `e2e`, `manus`, `past_conv`, `calendar`, `prompt`, `settings`, `project`
+   - Intent routing uses `classifyIntentDetailed()` which detects keyword collisions (e.g. `תזכיר` → reminder vs memory) and escalates ambiguous cases to the LLM, trusting it only when it picks one of the matched candidates.
 
 2. **Follow-up Detection** (`chatAgent.detectFollowUp`)
    - Short messages that look like continuations override intent to `chat` regardless of routing
@@ -103,6 +104,12 @@ Each agent exports a single `run*Agent(userMessage, supabase, useLocal, settings
 | `reminderAgent.js` | `runReminderAgent` | Set/recall/snooze/delete reminders with recurring support |
 | `shoppingAgent.js` | `runShoppingAgent` | Shopping list CRUD |
 | `notesAgent.js` | `runNotesAgent` | Quick notes/memo storage and search |
+| `habitAgent.js` | `runHabitAgent`, `computeStreak` | Track recurring habits + daily streaks (add/log/status/list/delete) |
+| `projectAgent.js` | `runProjectAgent`, `buildProjectsBriefing` | Projects, milestones, sprints, conflict detection |
+| `calendarAgent.js` | `runCalendarAgent` | Google Calendar events (OAuth) — list/create |
+| `promptAgent.js` | `runPromptAgent` | Prompt engineering: create/refine/save prompts |
+
+Recurring tasks: `taskAgent` reuses `parseRecurrence` from `reminderAgent`; on completing a recurring task it spawns the next occurrence with an advanced `due_date`. `insightAgent.runInsightAgent` handles both freeform insights and weekly/monthly period reports (`generatePeriodReport`).
 
 #### Domain-Specific Agents
 
@@ -132,7 +139,7 @@ Each agent exports a single `run*Agent(userMessage, supabase, useLocal, settings
 
 | File | Purpose |
 |------|---------|
-| `utils.js` | Shared agent utilities |
+| `utils.js` | Shared agent utilities: `sanitizeLike`, `nowJerusalem`, `todayISODate`, `toISO`, `extractJSON` (reuse these instead of re-implementing date/JSON helpers per agent) |
 | `models.js` | LLM provider abstraction layer |
 
 ### Services Layer (`services/`)
@@ -162,7 +169,7 @@ Each agent exports a single `run*Agent(userMessage, supabase, useLocal, settings
 
 | Store | Used for |
 |-------|----------|
-| **Supabase** | `chat_history`, `tasks`, `reminders`, `notes`, `memories`, `contacts`, `shopping_items`, `e2e_reports`, `user_surveys` |
+| **Supabase** | `chat_history`, `tasks`, `reminders`, `notes`, `memories`, `contacts`, `shopping_items`, `habits`, `habit_logs`, `projects`, `project_milestones`, `e2e_reports`, `user_surveys` |
 | **Pinecone** | Semantic vector search over memories (optional; falls back to keyword matching if unavailable) |
 | **In-process TTL cache** | Memories (5 min), chat history per `chatId` (30 s) |
 | **Local filesystem** | `backlog.json`, `features.json`, `notes.json`, `agents/custom/registry.json` |
@@ -394,8 +401,8 @@ jarvis-server-nadav/
 
 ## Known API Gotchas
 
-- **No `GET /memories` endpoint** — a rate-limiter is registered at `/memories` but there is no route handler. Memory reads happen inside agents via Supabase directly; saving via UI should go through `POST /ask-jarvis` with a save-memory intent.
-- **Tasks field name is `content`**, not `title`. The `tasks` table has `content`, `priority`, `done`, `created_at`. No `due_date` column in the controller.
+- **`/memories` CRUD exists** — `GET/POST/PUT/DELETE /memories` are implemented in `server.js` (Pinecone search with keyword fallback). (Earlier docs claimed only a rate-limiter existed; that is outdated.)
+- **Tasks field name is `content`**, not `title`. The `tasks` table has `content`, `priority`, `done`, `created_at`, `due_date`, `category`, and `recurrence` (`daily|weekly|monthly|NULL`).
 - **Reminders field names**: `text` (not `title`), `scheduled_time` (ISO string, not `remind_at`), `fired` (boolean). `GET /reminders` only returns unfired reminders.
 - **Response wrappers**: `/tasks` → `{ tasks: [] }`, `/reminders` → `{ reminders: [] }`, `/chat-history` → `{ history: [] }`. Don't assume a bare array.
 - **Policy middleware on reminders**: all four CRUD routes require policy. The `free/member` allowlist in `config/policyRules.json` covers all `reminders.*` actions, so unauthenticated requests pass as `free/member`.

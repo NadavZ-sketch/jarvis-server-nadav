@@ -26,7 +26,7 @@
 |---|-----|------|---------|
 | 1 | **groq** (ראשי) | `llama-3.3-70b-versatile` | 7s |
 | 2 | deepseek | `deepseek-chat` | 9s |
-| 3 | openrouter (אם יש מפתח) | `deepseek/deepseek-v4-flash:free` | 10s |
+| 3 | openrouter (אם יש מפתח) | `meta-llama/llama-3.3-70b-instruct:free` | 10s |
 | 4 | gemini (terminal) | `gemini-2.5-flash-lite` | 15s |
 
 כל אנדפוינטי מרכז הבקרה קוראים עם `useLocal=false` ולכן הספק האפקטיבי בפועל הוא בדרך כלל **Groq / llama-3.3-70b-versatile** (אלא אם נופל ל-fallback). `top_p` מקובע ל-`0.9` (`models.js:40`), `temperature` ברירת מחדל `0.5` (`providerConfig.js:85`).

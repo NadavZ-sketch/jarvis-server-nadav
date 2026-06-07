@@ -1,6 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 const { callGemma4 } = require('./models');
+const { nowJerusalem } = require('./utils');
 
 const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
@@ -44,10 +45,7 @@ async function getAccessToken(supabase) {
 }
 
 // ─── Calendar API helpers ─────────────────────────────────────────────────────
-
-function nowJerusalem() {
-    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
-}
+// nowJerusalem now lives in ./utils (shared across agents).
 
 function formatEventHebrew(event) {
     const start = event.start?.dateTime || event.start?.date;

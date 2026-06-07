@@ -744,7 +744,7 @@ h1 span{color:var(--accent)}
             <div class="settings-field"><label>ספק ענן</label><select id="cfg-cloudProvider"><option value="groq">Groq</option><option value="deepseek">DeepSeek</option><option value="openrouter">OpenRouter</option><option value="gemini">Gemini</option></select></div>
             <div class="settings-field"><label>אורך תשובה</label><select id="cfg-responseLength"><option value="short">קצר</option><option value="medium">בינוני</option><option value="long">ארוך</option></select></div>
           </div>
-          <div class="settings-field"><label>מודל OpenRouter</label><input type="text" id="cfg-openrouterModel" placeholder="deepseek/deepseek-v4-flash:free" style="direction:ltr;text-align:left"/></div>
+          <div class="settings-field"><label>מודל OpenRouter</label><input type="text" id="cfg-openrouterModel" placeholder="meta-llama/llama-3.3-70b-instruct:free" style="direction:ltr;text-align:left"/></div>
           <div class="settings-field"><label>טמפרטורה (<span id="cfg-temperature-val">0.7</span>)</label><input type="range" id="cfg-temperature" min="0" max="1" step="0.1" oninput="document.getElementById('cfg-temperature-val').textContent=this.value"/></div>
           <div class="toggle-row"><span>שימוש במודל מקומי (Ollama)</span><label class="sw"><input type="checkbox" id="cfg-useLocal"/><span class="sw-slider"></span></label></div>
           <div class="toggle-row"><span>מצב חיסכון (מקטין צריכת טוקנים)</span><label class="sw"><input type="checkbox" id="cfg-saverMode"/><span class="sw-slider"></span></label></div>

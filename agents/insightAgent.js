@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { callGemma4 } = require('./models');
 const { runManusTask, isManusConfigured } = require('./manusAgent');
+const { computeStreak } = require('./habitAgent');
 
 const BUCKET_LABELS = { morning: 'בוקר (06-12)', afternoon: 'צהריים (12-17)', evening: 'ערב (17-22)', night: 'לילה (22-06)' };
 
@@ -132,12 +133,133 @@ function profileSuggestions(profile) {
 `;
 }
 
+// ─── Period reports (weekly / monthly) ───────────────────────────────────────
+
+const PERIOD_DAYS = { week: 7, month: 30 };
+const PERIOD_LABEL = { week: 'השבועי', month: 'החודשי' };
+
+// Detect an explicit request for a periodic productivity report.
+function detectReportPeriod(msg) {
+    if (/חודש|30 ימים|monthly/i.test(msg)) return 'month';
+    if (/שבוע|7 ימים|weekly/i.test(msg))  return 'week';
+    return null;
+}
+
+function withinDays(iso, days) {
+    if (!iso) return false;
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return false;
+    return (Date.now() - t) <= days * 86400000 && t <= Date.now();
+}
+
+// Deterministic stats for the period (no LLM). `data.habits` is [{name, logDates}].
+function buildPeriodStats(data, period) {
+    const days = PERIOD_DAYS[period] || 7;
+    const periodChats = data.chats.filter(c => withinDays(c.created_at, days));
+    const patterns = analyzePatterns({
+        chats: periodChats, tasks: data.tasks, memories: [], reminders: data.reminders, contacts: [],
+    });
+
+    const tasksCreated   = data.tasks.filter(t => withinDays(t.created_at, days)).length;
+    const tasksDone      = data.tasks.filter(t => t.done).length;
+    const tasksOpen      = data.tasks.filter(t => !t.done).length;
+    const completionRate = (tasksDone + tasksOpen) > 0
+        ? Math.round((tasksDone / (tasksDone + tasksOpen)) * 100)
+        : 0;
+    const remindersFired = data.reminders.filter(r => r.fired && withinDays(r.scheduled_time, days)).length;
+
+    const habits = (data.habits || []).map(h => ({ name: h.name, streak: computeStreak(h.logDates || []) }));
+
+    return {
+        period,
+        messagesInPeriod: patterns.totalMessages,
+        peakBucket: patterns.peakBucket,
+        topFeatures: patterns.topFeatures,
+        tasksCreated, tasksDone, tasksOpen, completionRate,
+        remindersFired,
+        habits,
+    };
+}
+
+function buildPeriodReportPrompt(stats, userName) {
+    const habitsStr = stats.habits.length
+        ? stats.habits.map(h => `${h.name}: רצף ${h.streak} ימים`).join(' | ')
+        : 'אין הרגלים במעקב';
+    return `אתה יועץ פרודוקטיביות אישי. כתוב ל${userName} סיכום ${PERIOD_LABEL[stats.period]} קצר, חם ומעודד בעברית בלבד.
+
+═══ נתוני התקופה ═══
+הודעות שנשלחו: ${stats.messagesInPeriod}
+זמן הפעילות השיא: ${BUCKET_LABELS[stats.peakBucket] || '—'}
+נושאים עיקריים: ${stats.topFeatures.join(', ') || 'שיחה כללית'}
+משימות חדשות שנוצרו: ${stats.tasksCreated}
+משימות שהושלמו (סה"כ): ${stats.tasksDone} | פתוחות כעת: ${stats.tasksOpen}
+אחוז השלמת משימות: ${stats.completionRate}%
+תזכורות שהופעלו: ${stats.remindersFired}
+הרגלים: ${habitsStr}
+
+כתוב 3-4 משפטים: מה הלך טוב, מה כדאי לשפר בתקופה הבאה, וטיפ אחד מעשי. בלי כותרות, פסקה זורמת אחת.`;
+}
+
+// Fetch + assemble a weekly/monthly report. Tolerates missing habit tables.
+async function generatePeriodReport(supabase, period, settings) {
+    const userName = settings.userName || 'נדב';
+
+    const [chatsRes, tasksRes, remindersRes, habitsRes] = await Promise.all([
+        supabase.from('chat_history').select('role,text,created_at').eq('role', 'user').order('created_at', { ascending: false }).limit(500),
+        supabase.from('tasks').select('content,created_at,done,due_date'),
+        supabase.from('reminders').select('text,scheduled_time,fired').limit(200),
+        supabase.from('habits').select('id,name').eq('active', true).then(
+            async res => {
+                if (res.error || !res.data) return { data: [] };
+                const withLogs = await Promise.all(res.data.map(async h => {
+                    const { data: logs } = await supabase.from('habit_logs').select('date').eq('habit_id', h.id).eq('done', true);
+                    return { name: h.name, logDates: (logs || []).map(l => l.date) };
+                }));
+                return { data: withLogs };
+            }
+        ).catch(() => ({ data: [] })),
+    ]);
+
+    const data = {
+        chats:     chatsRes.data     || [],
+        tasks:     tasksRes.data     || [],
+        reminders: remindersRes.data || [],
+        habits:    habitsRes.data    || [],
+    };
+
+    const stats = buildPeriodStats(data, period);
+    let narrative = '';
+    try {
+        narrative = (await callGemma4(buildPeriodReportPrompt(stats, userName), false, 350) || '').trim();
+    } catch (err) {
+        console.error('generatePeriodReport LLM error:', err.message);
+    }
+
+    const header = `📊 *הסיכום ${PERIOD_LABEL[period]} שלך:*`;
+    const facts = [
+        `📨 ${stats.messagesInPeriod} הודעות`,
+        `✅ ${stats.tasksDone} משימות הושלמו (${stats.completionRate}% השלמה)`,
+        stats.tasksCreated ? `🆕 ${stats.tasksCreated} משימות חדשות` : null,
+        stats.remindersFired ? `⏰ ${stats.remindersFired} תזכורות הופעלו` : null,
+        stats.habits.length ? `🔁 ${stats.habits.map(h => `${h.name} (${h.streak}🔥)`).join(', ')}` : null,
+    ].filter(Boolean).join('\n');
+
+    return { answer: `${header}\n${facts}${narrative ? `\n\n${narrative}` : ''}` };
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
     const userName = settings.userName || 'נדב';
 
     try {
+        // Periodic report path (weekly / monthly) — separate from the freeform insight.
+        const period = detectReportPeriod(userMessage);
+        if (period) {
+            console.log(`🔍 InsightAgent: generating ${period} report...`);
+            return await generatePeriodReport(supabase, period, settings);
+        }
+
         console.log('🔍 InsightAgent: fetching usage data...');
 
         // 1. Fetch all tables in parallel
@@ -269,4 +391,7 @@ async function optimizeDayPlan(scoredItems, patterns, load, settings = {}) {
     }
 }
 
-module.exports = { runInsightAgent, analyzePatterns, optimizeDayPlan, peakWindowFromPatterns };
+module.exports = {
+    runInsightAgent, analyzePatterns, optimizeDayPlan, peakWindowFromPatterns,
+    generatePeriodReport, buildPeriodStats, detectReportPeriod,
+};

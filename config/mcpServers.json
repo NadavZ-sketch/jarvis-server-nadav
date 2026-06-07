@@ -42,7 +42,7 @@
     }
   },
   "postgres": {
-    "enabled": false,
+    "enabled": true,
     "comment": "PostgreSQL direct query. Requires DATABASE_URL — get from Supabase dashboard → Settings → Database → Connection string (Transaction mode). Then flip enabled:true.",
     "transport": "stdio",
     "command": "npx",

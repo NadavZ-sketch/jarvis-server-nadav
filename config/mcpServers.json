@@ -32,7 +32,7 @@
     "env": {}
   },
   "search": {
-    "enabled": false,
+    "enabled": true,
     "comment": "Tavily AI web search — 1,000 free searches/month. Requires TAVILY_API_KEY from app.tavily.com (free). Then flip enabled:true.",
     "transport": "stdio",
     "command": "npx",
@@ -50,7 +50,7 @@
     "env": {}
   },
   "notion": {
-    "enabled": false,
+    "enabled": true,
     "comment": "Notion read/write. Requires NOTION_API_TOKEN — create an integration at notion.so/my-integrations, share pages with it, then flip enabled:true.",
     "transport": "stdio",
     "command": "npx",

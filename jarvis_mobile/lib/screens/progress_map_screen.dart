@@ -1070,9 +1070,18 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Future<void> _deleteItem(dynamic id) async {
     try {
-      await http.delete(Uri.parse('$_base/dashboard/backlog/$id'))
+      final res = await http.delete(Uri.parse('$_base/dashboard/backlog/$id'))
           .timeout(const Duration(seconds: 8));
-    } catch (_) {}
+      if (mounted && res.statusCode != 200 && res.statusCode != 204) {
+        _showSnack('שגיאה במחיקה — טוען מחדש');
+        await _loadBacklog();
+      }
+    } catch (_) {
+      if (mounted) {
+        _showSnack('שגיאת רשת — טוען מחדש');
+        await _loadBacklog();
+      }
+    }
   }
 
   Future<void> _generatePrompt() async {
@@ -1148,25 +1157,46 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     return Scaffold(
         backgroundColor: JC.bg,
         appBar: AppBar(
-          backgroundColor: Colors.transparent,
+          backgroundColor: JC.surface.withOpacity(0.92),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          shadowColor: Colors.transparent,
           centerTitle: true,
           title: Text('מרכז שליטה',
-              style: TextStyle(color: JC.textPrimary, fontSize: 18,
-                  fontWeight: FontWeight.w600, fontFamily: 'Heebo')),
+              style: TextStyle(color: JC.blue400, fontSize: 18,
+                  fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
           actions: [
             IconButton(
-              icon: Icon(Icons.refresh_rounded, color: JC.textMuted, size: 20),
+              icon: Icon(Icons.refresh_rounded, color: JC.textSecondary, size: 20),
               onPressed: _loadAll,
             ),
           ],
-          bottom: TabBar(
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(46),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: JC.border.withOpacity(0.5), width: 0.6),
+                ),
+              ),
+              child: TabBar(
             controller: _tabController,
             isScrollable: true,
-            indicatorColor: JC.blue400,
             labelColor: JC.blue400,
             unselectedLabelColor: JC.textMuted,
-            labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13),
-            unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
+            indicator: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              color: JC.blue500.withOpacity(0.15),
+              border: Border.all(color: JC.blue400.withOpacity(0.45), width: 0.8),
+              boxShadow: [
+                BoxShadow(color: JC.blue500.withOpacity(0.2), blurRadius: 10, spreadRadius: 0),
+              ],
+            ),
+            indicatorSize: TabBarIndicatorSize.tab,
+            indicatorPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+            dividerColor: Colors.transparent,
+            labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 12.5),
+            unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 12.5),
             tabs: [
               _tabWithBadge('סקירה ובריאות', ControlCenterTab.overview),
               _tabWithBadge('סוכנים', ControlCenterTab.agents),
@@ -1174,6 +1204,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               _tabWithBadge('בדיקות וסקרים', ControlCenterTab.testsSurveys),
               _tabWithBadge('הגדרות', ControlCenterTab.settings),
             ],
+          ),
+        ),
           ),
         ),
         body: Column(
@@ -1403,6 +1435,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   Widget _buildTestsSurveysTab() {
     final hasUserName = widget.settings.userName.trim().isNotEmpty;
     return _tabListView([
+      _sectionTitle('⚡ פעולות מהירות'),
+      const SizedBox(height: 8),
       _buildOverviewQuickActions(),
       const SizedBox(height: 18),
       _sectionTitle('🧪 דוחות בדיקות E2E'),
@@ -1637,7 +1671,11 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       decoration: BoxDecoration(
         color: JC.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: JC.border, width: 0.8),
+        border: Border.all(color: statusColor.withOpacity(0.35), width: 0.9),
+        boxShadow: [
+          BoxShadow(color: statusColor.withOpacity(0.08), blurRadius: 14, offset: const Offset(0, 3)),
+          BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, offset: const Offset(0, 2)),
+        ],
       ),
       child: Row(
         children: [
@@ -1697,6 +1735,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               color: JC.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: JC.border, width: 0.8),
+              boxShadow: [
+                BoxShadow(color: JC.blue500.withOpacity(0.07), blurRadius: 14, offset: const Offset(0, 3)),
+                BoxShadow(color: Colors.black.withOpacity(0.18), blurRadius: 6, offset: const Offset(0, 2)),
+              ],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -2356,12 +2398,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                       ],
 
                       // Badges + activate button
-                      if (!isDone)
+                      if (!isDone && p['requiresPrivacy'] == true)
                         Align(
                           alignment: Alignment.centerRight,
                           child: const Text('נדרש אישור פרטיות', style: TextStyle(color: Color(0xFFF59E0B), fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
                         ),
-                      if (!isDone) const SizedBox(height: 6),
+                      if (!isDone && p['requiresPrivacy'] == true) const SizedBox(height: 6),
                       Row(
                         children: [
                           if (!isDone)

@@ -44,6 +44,63 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
   String? snack;
   Timer? _snackTimer;
 
+  // ── Filter state — survives tab switches ──────────────────────────────────
+  String filterPriority = 'all';
+  String filterCategory = 'all';
+  String filterSort     = 'priority';
+  String searchQuery    = '';
+  bool   showDone       = false;
+
+  void setFilterPriority(String v) { filterPriority = v; notifyListeners(); }
+  void setFilterCategory(String v) { filterCategory = v; notifyListeners(); }
+  void setFilterSort(String v)     { filterSort     = v; notifyListeners(); }
+  void setSearchQuery(String v)    { searchQuery    = v; notifyListeners(); }
+  void toggleShowDone()            { showDone = !showDone; notifyListeners(); }
+
+  static int _po(String? p) =>
+      switch (p) { 'high' => 0, 'medium' => 1, 'low' => 2, _ => 1 };
+
+  List<Map<String, dynamic>> get filteredTasks {
+    var src = List<Map<String, dynamic>>.from(tasks);
+    if (filterPriority != 'all') {
+      src = src.where((t) => t['priority'] == filterPriority).toList();
+    }
+    if (filterCategory != 'all') {
+      src = src.where((t) {
+        final c = t['category']?.toString();
+        if (filterCategory == 'general') {
+          return c == null || c.isEmpty || c == 'general';
+        }
+        return c == filterCategory;
+      }).toList();
+    }
+    final active = src.where((t) => t['done'] != true).toList();
+    final done   = src.where((t) => t['done'] == true).toList();
+    active.sort((a, b) {
+      if (filterSort == 'priority') {
+        final pc = _po(a['priority']?.toString())
+            .compareTo(_po(b['priority']?.toString()));
+        if (pc != 0) return pc;
+      }
+      if (filterSort == 'due_date' || filterSort == 'priority') {
+        final ad = a['due_date'] as String?;
+        final bd = b['due_date'] as String?;
+        if (ad != null && bd != null) return ad.compareTo(bd);
+        if (ad != null) return -1;
+        if (bd != null) return 1;
+      }
+      return (b['created_at'] as String? ?? '')
+          .compareTo(a['created_at'] as String? ?? '');
+    });
+    final all = showDone ? [...active, ...done] : active;
+    if (searchQuery.isEmpty) return all;
+    final q = searchQuery.toLowerCase();
+    return all
+        .where((t) =>
+            (t['content']?.toString() ?? '').toLowerCase().contains(q))
+        .toList();
+  }
+
   /// Public alias for [notifyListeners] so child widgets can trigger a rebuild
   /// when they mutate a task map in place (e.g. inline edits, edit sheet).
   void notify() => notifyListeners();

@@ -17,18 +17,17 @@ class TasksListView extends StatefulWidget {
 }
 
 class _TasksListViewState extends State<TasksListView> {
-  final TextEditingController _searchCtrl = TextEditingController();
-  String _query = '';
-  String _filter = 'all'; // all|high|medium|low
-  String _catFilter = 'all'; // all|work|personal|financial|project|general
-  String _sort = 'priority'; // priority|due_date|created
-  bool _showDone = false;
+  late final TextEditingController _searchCtrl;
 
   @override
   void initState() {
     super.initState();
+    // Seed the search field from the controller so state persists across tab
+    // switches. The listener pushes changes back to the controller.
+    _searchCtrl =
+        TextEditingController(text: widget.controller.searchQuery);
     _searchCtrl.addListener(
-        () => setState(() => _query = _searchCtrl.text.toLowerCase()));
+        () => widget.controller.setSearchQuery(_searchCtrl.text));
   }
 
   @override
@@ -37,53 +36,12 @@ class _TasksListViewState extends State<TasksListView> {
     super.dispose();
   }
 
-  int _po(String? p) =>
-      switch (p) { 'high' => 0, 'medium' => 1, 'low' => 2, _ => 1 };
-
-  List<Map<String, dynamic>> get _items {
-    var src = List<Map<String, dynamic>>.from(widget.controller.tasks);
-    if (_filter != 'all') {
-      src = src.where((t) => t['priority'] == _filter).toList();
-    }
-    if (_catFilter != 'all') {
-      src = src.where((t) {
-        final c = t['category']?.toString();
-        // 'general' also matches tasks with no category set.
-        if (_catFilter == 'general') return c == null || c.isEmpty || c == 'general';
-        return c == _catFilter;
-      }).toList();
-    }
-    final active = src.where((t) => t['done'] != true).toList();
-    final done = src.where((t) => t['done'] == true).toList();
-    active.sort((a, b) {
-      if (_sort == 'priority') {
-        final pc = _po(a['priority']?.toString())
-            .compareTo(_po(b['priority']?.toString()));
-        if (pc != 0) return pc;
-      }
-      if (_sort == 'due_date' || _sort == 'priority') {
-        final ad = a['due_date'] as String?;
-        final bd = b['due_date'] as String?;
-        if (ad != null && bd != null) return ad.compareTo(bd);
-        if (ad != null) return -1;
-        if (bd != null) return 1;
-      }
-      return (b['created_at'] as String? ?? '')
-          .compareTo(a['created_at'] as String? ?? '');
-    });
-    final all = _showDone ? [...active, ...done] : active;
-    if (_query.isEmpty) return all;
-    return all
-        .where((t) =>
-            (t['content']?.toString() ?? '').toLowerCase().contains(_query))
-        .toList();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final tasks = widget.controller.tasks;
+    final c = widget.controller;
+    final tasks = c.tasks;
     final doneCount = tasks.where((t) => t['done'] == true).length;
-    final filtered = _items;
+    final filtered = c.filteredTasks;
 
     return Column(
       children: [
@@ -95,12 +53,12 @@ class _TasksListViewState extends State<TasksListView> {
           ),
         if (tasks.isNotEmpty)
           _FilterBar(
-            filter: _filter,
-            sort: _sort,
-            catFilter: _catFilter,
-            onFilter: (v) => setState(() => _filter = v),
-            onSort: (v) => setState(() => _sort = v),
-            onCatFilter: (v) => setState(() => _catFilter = v),
+            filter: c.filterPriority,
+            sort: c.filterSort,
+            catFilter: c.filterCategory,
+            onFilter: c.setFilterPriority,
+            onSort: c.setFilterSort,
+            onCatFilter: c.setFilterCategory,
           ),
         if (doneCount > 0)
           Padding(
@@ -108,9 +66,9 @@ class _TasksListViewState extends State<TasksListView> {
             child: Align(
               alignment: AlignmentDirectional.centerEnd,
               child: TextButton(
-                onPressed: () => setState(() => _showDone = !_showDone),
+                onPressed: c.toggleShowDone,
                 child: Text(
-                  _showDone ? 'הסתר בוצעו' : 'הצג בוצעו ($doneCount)',
+                  c.showDone ? 'הסתר בוצעו' : 'הצג בוצעו ($doneCount)',
                   style: TextStyle(
                       color: JC.blue400, fontFamily: 'Heebo', fontSize: 13),
                 ),
@@ -121,10 +79,12 @@ class _TasksListViewState extends State<TasksListView> {
           child: filtered.isEmpty
               ? EmptyState(
                   icon: Icons.check_circle_outline_rounded,
-                  title: _query.isEmpty
+                  title: c.searchQuery.isEmpty && c.filterPriority == 'all' && c.filterCategory == 'all'
                       ? 'אין משימות פתוחות'
                       : 'לא נמצאו תוצאות',
-                  subtitle: _query.isEmpty ? 'לחץ + להוספת משימה' : '',
+                  subtitle: c.searchQuery.isEmpty && c.filterPriority == 'all' && c.filterCategory == 'all'
+                      ? 'לחץ + להוספת משימה'
+                      : '',
                 )
               : ListView.builder(
                   padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 16, 96),
@@ -138,21 +98,17 @@ class _TasksListViewState extends State<TasksListView> {
                         direction: DismissDirection.endToStart,
                         background: _dismissBg(),
                         onDismissed: (_) {
-                          final idx = widget.controller.removeLocal(task);
+                          final idx = c.removeLocal(task);
                           showDeleteSnackbar(
                             context,
                             message: 'המשימה הוסרה',
-                            onUndo: () =>
-                                widget.controller.restoreTask(task, idx),
+                            onUndo: () => c.restoreTask(task, idx),
                             onClosed: (wasUndone) {
-                              if (!wasUndone) {
-                                widget.controller.commitDelete(task);
-                              }
+                              if (!wasUndone) c.commitDelete(task);
                             },
                           );
                         },
-                        child: SmartTaskCard(
-                            controller: widget.controller, task: task),
+                        child: SmartTaskCard(controller: c, task: task),
                       ),
                     );
                   },
@@ -188,7 +144,6 @@ class _FilterBar extends StatelessWidget {
         padding: const EdgeInsetsDirectional.fromSTEB(16, 4, 16, 4),
         child: Row(
           children: [
-            // Priority filter chips
             _chip('הכל', filter == 'all', JC.blue400, () => onFilter('all')),
             const SizedBox(width: 6),
             _chip('🔴 גבוה', filter == 'high', JC.cancelRed,
@@ -199,16 +154,13 @@ class _FilterBar extends StatelessWidget {
             const SizedBox(width: 6),
             _chip('🟢 נמוך', filter == 'low', JC.green500,
                 () => onFilter('low')),
-            // Separator
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               child: Container(
-                width: 1,
-                height: 16,
+                width: 1, height: 16,
                 color: JC.border.withValues(alpha: 0.5),
               ),
             ),
-            // Category filter chips
             _chip('הכל', catFilter == 'all', JC.indigo300,
                 () => onCatFilter('all')),
             for (final c in kTaskCategories) ...[
@@ -217,7 +169,6 @@ class _FilterBar extends StatelessWidget {
                   () => onCatFilter(c.id)),
             ],
             const SizedBox(width: 8),
-            // Sort button
             PopupMenuButton<String>(
               onSelected: onSort,
               color: JC.surfaceAlt,
@@ -234,13 +185,14 @@ class _FilterBar extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.sort_rounded, size: 14, color: JC.textSecondary),
+                    Icon(Icons.sort_rounded, size: 14,
+                        color: JC.textSecondary),
                     const SizedBox(width: 4),
                     Text(
                       switch (sort) {
                         'due_date' => 'תאריך',
-                        'created' => 'יצירה',
-                        _ => 'עדיפות'
+                        'created'  => 'יצירה',
+                        _          => 'עדיפות'
                       },
                       style: TextStyle(
                           color: JC.textSecondary,
@@ -272,7 +224,8 @@ class _FilterBar extends StatelessWidget {
           color: active ? color.withValues(alpha: 0.15) : JC.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: active ? color : JC.border, width: active ? 1.2 : 0.8),
+              color: active ? color : JC.border,
+              width: active ? 1.2 : 0.8),
         ),
         child: Text(label,
             style: TextStyle(

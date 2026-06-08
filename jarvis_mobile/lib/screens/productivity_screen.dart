@@ -130,7 +130,11 @@ class _ProductivityScreenState extends State<ProductivityScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          TodayTab(settings: widget.settings),
+          TodayTab(
+            settings: widget.settings,
+            onGoToTasks: () => _tabController.animateTo(1),
+            onGoToReminders: () => _tabController.animateTo(2),
+          ),
           TasksScreen(
             settings: widget.settings,
             onCountUpdate: widget.onTasksCountUpdate,

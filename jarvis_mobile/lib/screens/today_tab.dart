@@ -11,7 +11,14 @@ import '../widgets/markdown_lite.dart';
 
 class TodayTab extends StatefulWidget {
   final AppSettings settings;
-  const TodayTab({super.key, required this.settings});
+  final VoidCallback? onGoToTasks;
+  final VoidCallback? onGoToReminders;
+  const TodayTab({
+    super.key,
+    required this.settings,
+    this.onGoToTasks,
+    this.onGoToReminders,
+  });
 
   @override
   State<TodayTab> createState() => _TodayTabState();
@@ -210,7 +217,11 @@ class _TodayTabState extends State<TodayTab> {
         children: [
           _JarvisMessageCard(data: _todayMsg, loading: _stats == null),
           const SizedBox(height: 10),
-          _StatsHeader(stats: _stats),
+          _StatsHeader(
+            stats: _stats,
+            onGoToTasks: widget.onGoToTasks,
+            onGoToReminders: widget.onGoToReminders,
+          ),
           const SizedBox(height: 16),
           if (widget.settings.todayBriefingEnabled) ...[
             _WeeklyBriefingCard(
@@ -339,39 +350,61 @@ class _JarvisMessageCard extends StatelessWidget {
 
 class _StatsHeader extends StatelessWidget {
   final Map<String, dynamic>? stats;
-  const _StatsHeader({required this.stats});
+  final VoidCallback? onGoToTasks;
+  final VoidCallback? onGoToReminders;
+  const _StatsHeader(
+      {required this.stats, this.onGoToTasks, this.onGoToReminders});
 
   @override
   Widget build(BuildContext context) {
     if (stats == null) {
       return Row(
-        children: List.generate(3, (_) => Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            height: 64,
-            decoration: BoxDecoration(
-              color: JC.surfaceAlt,
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        )),
+        children: List.generate(
+            3,
+            (_) => Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    height: 64,
+                    decoration: BoxDecoration(
+                        color: JC.surfaceAlt,
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                )),
       );
     }
 
     final tasks     = stats!['tasks']     as Map<String, dynamic>? ?? {};
     final reminders = stats!['reminders'] as Map<String, dynamic>? ?? {};
-    final total     = (tasks['total']   as num?)?.toInt() ?? 0;
-    final done      = (tasks['done']    as num?)?.toInt() ?? 0;
-    final pending   = (tasks['pending'] as num?)?.toInt() ?? 0;
-    final active    = (reminders['active'] as num?)?.toInt() ?? 0;
-    final pct       = total > 0 ? (done / total * 100).round() : 0;
+    final total   = (tasks['total']   as num?)?.toInt() ?? 0;
+    final done    = (tasks['done']    as num?)?.toInt() ?? 0;
+    final pending = (tasks['pending'] as num?)?.toInt() ?? 0;
+    final active  = (reminders['active'] as num?)?.toInt() ?? 0;
+    final pct     = total > 0 ? (done / total * 100).round() : 0;
 
     return Row(
       textDirection: TextDirection.rtl,
       children: [
-        _StatCard(value: '$pct%',    label: 'הושלם',          color: JC.blue400),
-        _StatCard(value: '$pending', label: 'ממתינות',         color: JC.amber400),
-        _StatCard(value: '$active',  label: 'תזכורות פעילות', color: JC.textSecondary),
+        _StatCard(
+          value: '$pct%',
+          label: 'הושלם',
+          color: JC.blue400,
+          onTap: onGoToTasks,
+          icon: Icons.check_circle_outline_rounded,
+        ),
+        _StatCard(
+          value: '$pending',
+          label: 'ממתינות',
+          color: JC.amber400,
+          onTap: onGoToTasks,
+          icon: Icons.list_alt_rounded,
+        ),
+        _StatCard(
+          value: '$active',
+          label: 'תזכורות',
+          color: JC.textSecondary,
+          onTap: onGoToReminders,
+          icon: Icons.notifications_outlined,
+        ),
       ],
     );
   }
@@ -381,30 +414,68 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String label;
   final Color color;
-  const _StatCard({required this.value, required this.label, required this.color});
+  final VoidCallback? onTap;
+  final IconData? icon;
+  const _StatCard(
+      {required this.value,
+      required this.label,
+      required this.color,
+      this.onTap,
+      this.icon});
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: JC.surfaceAlt,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: JC.border, width: 0.8),
-        ),
-        child: Column(
-          children: [
-            Text(value,
-                style: TextStyle(color: color, fontSize: 20,
-                    fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
-            const SizedBox(height: 2),
-            Text(label,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: JC.textMuted,
-                    fontSize: 10, fontFamily: 'Heebo')),
-          ],
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: JC.surfaceAlt,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: onTap != null
+                    ? color.withValues(alpha: 0.25)
+                    : JC.border,
+                width: 0.8),
+            boxShadow: onTap != null
+                ? [
+                    BoxShadow(
+                        color: color.withOpacity(0.07),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2))
+                  ]
+                : null,
+          ),
+          child: Column(
+            children: [
+              Text(value,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo')),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 10, color: JC.textMuted),
+                    const SizedBox(width: 3),
+                  ],
+                  Text(label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: JC.textMuted,
+                          fontSize: 10,
+                          fontFamily: 'Heebo')),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

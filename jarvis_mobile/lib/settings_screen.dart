@@ -48,6 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _obsidianSyncStatus;
   String? _personalityPreview;
   bool _personalityPreviewLoading = false;
+  bool _roleSaving = false;
 
   // TTS preview
   final FlutterTts _tts = FlutterTts();
@@ -253,6 +254,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _personalityPreview = '❌ ${ApiService.friendlyError(e is Exception ? e : Exception(e.toString()))}');
     } finally {
       if (mounted) setState(() => _personalityPreviewLoading = false);
+    }
+  }
+
+  // Persist the control-center access role directly to the server. role is not
+  // part of toPreferences() (it's server/web-driven), so we POST it explicitly.
+  Future<void> _setRole(String role) async {
+    if (_roleSaving || role == _s.role) return;
+    setState(() { _roleSaving = true; _s.role = role; });
+    try {
+      final res = await http
+          .post(
+            Uri.parse('${_s.serverUrl}/user-profile'),
+            headers: {'Content-Type': 'application/json'},
+            body: '{"role":"$role"}',
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) throw Exception('status ${res.statusCode}');
+      await _s.save();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(role == 'admin' ? 'הופעל מצב אדמין 🛡' : 'הוחזר למצב משתמש 👤',
+            style: const TextStyle(fontFamily: 'Heebo')),
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('שגיאה בשמירת רמת גישה', style: TextStyle(fontFamily: 'Heebo')),
+        duration: Duration(seconds: 2),
+      ));
+    } finally {
+      if (mounted) setState(() => _roleSaving = false);
     }
   }
 
@@ -1156,6 +1189,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                   ],
                 ),
+              ),
+              _divider(),
+              // רמת גישה למרכז השליטה (user/admin). נשמר ישירות לשרת כי toPreferences()
+              // לא דוחף role — הוא נשלט מהשרת/ווב. שינוי כאן מסנכרן את מרכז השליטה.
+              _rowDropdown<String>(
+                label: 'רמת גישה (מרכז שליטה)',
+                icon: Icons.shield_outlined,
+                value: _s.role == 'admin' ? 'admin' : 'user',
+                items: const [
+                  DropdownMenuItem(value: 'user',  child: Text('משתמש — תצוגה אישית')),
+                  DropdownMenuItem(value: 'admin', child: Text('אדמין — כל הכרטיסיות')),
+                ],
+                onChanged: (val) { if (!_roleSaving && val != null) _setRole(val); },
               ),
             ]),
 

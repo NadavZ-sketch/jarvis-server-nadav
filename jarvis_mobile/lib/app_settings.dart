@@ -7,6 +7,7 @@ class AppSettings {
   String assistantName;
   String gender;       // 'male' | 'female'
   String personality;  // 'friendly' | 'formal' | 'concise' | 'humorous'
+  String role;         // 'user' | 'admin' — control-center access level (server-driven)
   bool voiceEnabled;
   String userName;
   bool useLocalModel;   // true = Ollama, false = Groq/DeepSeek/Gemini
@@ -71,6 +72,7 @@ bool obsidianAutoSync;
     this.assistantName = 'Jarvis',
     this.gender = 'male',
     this.personality = 'friendly',
+    this.role = 'user',
     this.voiceEnabled = true,
     this.userName = 'נדב',
     this.useLocalModel = false,
@@ -165,6 +167,7 @@ bool obsidianAutoSync;
       assistantName:    prefs.getString('assistantName')    ?? _ident('assistant_name') ?? 'Jarvis',
       gender:           prefs.getString('gender')           ?? _ident('gender')         ?? 'male',
       personality:      prefs.getString('personality')      ?? _ident('personality')    ?? 'friendly',
+      role:             prefs.getString('role')             ?? 'user',
       voiceEnabled:     prefs.getBool('voiceEnabled')       ?? true,
       userName:         prefs.getString('userName')         ?? _ident('user_name')      ?? 'נדב',
       useLocalModel:    prefs.getBool('useLocalModel')      ?? false,
@@ -219,6 +222,7 @@ bool obsidianAutoSync;
     await prefs.setString('assistantName',  assistantName);
     await prefs.setString('gender',         gender);
     await prefs.setString('personality',    personality);
+    await prefs.setString('role',           role);
     await prefs.setBool('voiceEnabled',     voiceEnabled);
     await prefs.setString('userName',       userName);
     await prefs.setBool('useLocalModel',    useLocalModel);
@@ -328,6 +332,9 @@ bool obsidianAutoSync;
   // guarded + falls back to the current value, mirroring load()'s defaults.
   void applyPreferences(Map<String, dynamic> p) {
     T pick<T>(String key, T current) => p[key] is T ? p[key] as T : current;
+    // Control-center access level — server is the source of truth (set on the
+    // web admin). Read it in but never push it back via toPreferences().
+    role            = pick('role', role);
     // AI / model
     cloudProvider   = pick('cloudProvider', cloudProvider);
     useLocalModel   = pick('useLocalModel', useLocalModel);

@@ -373,13 +373,21 @@ ${notes || 'אין'}
         const agent = matchAgent(text, registry);
         if (agent && !isProtectedAgent(agent.id)) {
           const nextStatus = wantsOff ? 'disabled' : 'active';
-          await setAgentStatus(agent.id, nextStatus).catch(() => {});
-          return res.json({
-            intent: 'toggle_agent',
-            action: 'toggle_agent',
-            params: { agentId: agent.id, status: nextStatus },
-            answer: `${nextStatus === 'disabled' ? 'כיביתי' : 'הפעלתי'} את ${agent.nameHe || agent.id}.`,
-          });
+          try {
+            await setAgentStatus(agent.id, nextStatus);
+            return res.json({
+              intent: 'toggle_agent',
+              action: 'toggle_agent',
+              params: { agentId: agent.id, status: nextStatus },
+              answer: `${nextStatus === 'disabled' ? 'כיביתי' : 'הפעלתי'} את ${agent.nameHe || agent.id}.`,
+            });
+          } catch (err) {
+            return res.status(500).json({
+              error: `failed to ${nextStatus === 'disabled' ? 'disable' : 'enable'} agent: ${err.message}`,
+              action: 'answer',
+              answer: `לא הצלחתי ${nextStatus === 'disabled' ? 'לכבות' : 'להפעיל'} את ${agent.nameHe || agent.id} — שגיאת קובץ.`,
+            });
+          }
         }
         if (agent && isProtectedAgent(agent.id)) {
           return res.json({ intent: 'toggle_agent', action: 'answer', params: {}, answer: `לא ניתן לכבות את ${agent.nameHe || agent.id} — סוכן מוגן.` });

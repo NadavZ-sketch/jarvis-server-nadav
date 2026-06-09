@@ -1216,7 +1216,9 @@ app.post('/user-profile', async (req, res) => {
             const existingPrefs = (existing && typeof existing.preferences === 'object' && existing.preferences) || {};
             const incoming = {};
             // Keep only primitive scalars (string/number/boolean); cap key count.
+            // Skip 'role' — it's validated separately below to prevent bypass via preferences blob.
             for (const [k, v] of Object.entries(rawBody.preferences)) {
+                if (k === 'role') continue; // role must be validated at top level
                 if (Object.keys(incoming).length >= 40) break;
                 if (v === null) continue;
                 const t = typeof v;
@@ -1229,11 +1231,13 @@ app.post('/user-profile', async (req, res) => {
         // Control-center access role (admin|user). Stored inside the preferences
         // JSONB blob (no schema migration needed) so it survives reinstalls and
         // syncs across devices. Drives which dashboard tabs are visible.
-        if ('role' in rawBody && ['user', 'admin'].includes(rawBody.role)) {
+        // Validated here regardless of whether sent at top level or inside preferences.
+        const roleValue = rawBody.role || (rawBody.preferences && rawBody.preferences.role);
+        if (roleValue && ['user', 'admin'].includes(roleValue)) {
             const basePrefs = payload.preferences
                 || (existing && typeof existing.preferences === 'object' && existing.preferences)
                 || {};
-            payload.preferences = { ...basePrefs, role: rawBody.role };
+            payload.preferences = { ...basePrefs, role: roleValue };
         }
 
         payload.auto_learned = { ...existingAuto, user_overridden: Array.from(userOverridden) };

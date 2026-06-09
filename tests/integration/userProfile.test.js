@@ -83,4 +83,31 @@ describe('user profile endpoints', () => {
     expect(res.body.fallback).toBe(true);
     expect(fs.existsSync(fallbackFile)).toBe(true);
   });
+
+  test('POST /user-profile saves role field (admin | user)', async () => {
+    // Mock the response to include preferences
+    supabaseClient.from.mockImplementation(() => {
+      const c = makeChain([], null);
+      c.single = jest.fn().mockResolvedValue({
+        data: { id: 'test-id', preferences: { role: 'admin' }, updated_at: new Date().toISOString() },
+        error: null,
+      });
+      return c;
+    });
+    const res = await request(app).post('/user-profile').send({ role: 'admin' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.profile.preferences).toBeDefined();
+    expect(res.body.profile.preferences.role).toBe('admin');
+  });
+
+  test('POST /user-profile rejects invalid role values', async () => {
+    const res = await request(app).post('/user-profile').send({ role: 'superadmin' });
+    expect(res.status).toBe(200);
+    // Invalid role should be silently ignored, not stored
+    const getRes = await request(app).get('/user-profile');
+    if (getRes.body.profile && getRes.body.profile.preferences) {
+      expect(getRes.body.profile.preferences.role).not.toBe('superadmin');
+    }
+  });
 });

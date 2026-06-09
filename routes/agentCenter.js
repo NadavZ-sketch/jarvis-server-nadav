@@ -40,6 +40,44 @@ const RISK_SIGNAL_LABELS = {
   high_risk_agent: 'סוכן בסיכון גבוה',
 };
 
+// Generic words that appear in (almost) every agent name and must not, on their
+// own, resolve a match — otherwise "כבה את הסוכן" would hit a random agent.
+const AGENT_STOPWORDS = new Set(['סוכן', 'agent', 'the', 'את']);
+
+// Map a free-text fragment to an agent in the registry, by id or Hebrew/English
+// name. Returns the matched agent or null. Used by the NL command router so we
+// can resolve "כבה את סוכן החדשות" → newsAgent without an LLM round-trip.
+// Matching is word-level and tolerant of the Hebrew definite article (the noun
+// "חדשות" still matches inside "החדשות"), and scores by the longest distinctive
+// word so the specific noun beats the generic "סוכן".
+function matchAgent(text, registry) {
+  const t = text.toLowerCase();
+  let best = null;
+  for (const a of registry) {
+    const candidates = [a.id, a.name, a.nameHe].filter(Boolean).map(s => String(s).toLowerCase());
+    let score = 0;
+    for (const c of candidates) {
+      // Whole-id substring (e.g. "newsagent") is the strongest signal.
+      if (c.length >= 4 && !c.includes(' ') && t.includes(c)) score = Math.max(score, c.length + 4);
+      for (const w of c.split(/\s+/)) {
+        if (w.length >= 4 && !AGENT_STOPWORDS.has(w) && t.includes(w)) score = Math.max(score, w.length);
+      }
+    }
+    if (score > 0 && (!best || score > best.score)) best = { agent: a, score };
+  }
+  return best ? best.agent : null;
+}
+
+// Control-center tab ids the NL router can navigate to, with Hebrew triggers.
+const NAV_TABS = [
+  { id: 'overview', kws: ['סקירה', 'בית', 'דשבורד', 'overview', 'בריאות'] },
+  { id: 'agents', kws: ['סוכנים', 'סוכן', 'agents'] },
+  { id: 'analytics', kws: ['אנליטיקה', 'נתונים', 'סטטיסטיקה', 'analytics', 'גרפים'] },
+  { id: 'dev', kws: ['פיתוח', 'roadmap', 'backlog', 'הצעות', 'פיצרים'] },
+  { id: 'qa', kws: ['בדיקות', 'סקרים', 'qa', 'e2e'] },
+  { id: 'settings', kws: ['הגדרות', 'settings', 'הגדרה'] },
+];
+
 // P2: Agent health score 0-100. Higher is healthier.
 function _computeHealthScore(agent) {
   let score = 100;
@@ -309,6 +347,74 @@ ${notes || 'אין'}
       }
 
       res.json({ prompt: fullPrompt, reviewText });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Natural-language control bar ──────────────────────────────────────────
+  // POST { text } → { intent, action, params, answer }. Deterministic-first
+  // (regex) routing keeps common commands token-free; only genuinely ambiguous
+  // questions fall through to the LLM. The frontend executes `action`:
+  //   toggle_agent | navigate | run_scan | run_e2e | answer
+  router.post('/command', async (req, res) => {
+    try {
+      const text = String((req.body && req.body.text) || '').trim();
+      if (!text) return res.status(400).json({ error: 'text required' });
+      const t = text.toLowerCase();
+      const registry = await getAgentRegistry().catch(() => []);
+
+      // 1) Toggle an agent on/off — needs both an on/off verb and an agent match.
+      // NOTE: no \b anchors — JS word boundaries are ASCII-only and never match
+      // adjacent to Hebrew letters, which would silently disable every command.
+      const wantsOff = /(כבה|השבת|בטל|הפסק|turn off|disable|stop)/.test(t);
+      const wantsOn = /(הדלק|הפעל|אפשר|הרץ את הסוכן|turn on|enable|activate)/.test(t);
+      if (wantsOff || wantsOn) {
+        const agent = matchAgent(text, registry);
+        if (agent && !isProtectedAgent(agent.id)) {
+          const nextStatus = wantsOff ? 'disabled' : 'active';
+          await setAgentStatus(agent.id, nextStatus).catch(() => {});
+          return res.json({
+            intent: 'toggle_agent',
+            action: 'toggle_agent',
+            params: { agentId: agent.id, status: nextStatus },
+            answer: `${nextStatus === 'disabled' ? 'כיביתי' : 'הפעלתי'} את ${agent.nameHe || agent.id}.`,
+          });
+        }
+        if (agent && isProtectedAgent(agent.id)) {
+          return res.json({ intent: 'toggle_agent', action: 'answer', params: {}, answer: `לא ניתן לכבות את ${agent.nameHe || agent.id} — סוכן מוגן.` });
+        }
+      }
+
+      // 2) Run a scan / E2E suite.
+      if (/(סרוק|סריקה|בדוק קוד|scan)/.test(t)) {
+        return res.json({ intent: 'run_scan', action: 'run_scan', params: {}, answer: 'מריץ סריקת קוד...' });
+      }
+      if (/(בדיקות e2e|הרץ בדיקות|run e2e|e2e)/.test(t)) {
+        return res.json({ intent: 'run_e2e', action: 'run_e2e', params: {}, answer: 'מריץ בדיקות E2E...' });
+      }
+
+      // 3) Navigate to a tab — only when the user explicitly asks to go/show.
+      if (/(עבור|פתח|הצג|הראה|לך ל|תראה|go to|open|show)/.test(t)) {
+        for (const tab of NAV_TABS) {
+          if (tab.kws.some(k => t.includes(k))) {
+            return res.json({ intent: 'navigate', action: 'navigate', params: { tab: tab.id }, answer: `עובר ל${tab.kws[0]}.` });
+          }
+        }
+      }
+
+      // 4) Fall through to the LLM only for free-form questions about metrics.
+      const snap = agentMetrics
+        ? await agentMetrics.snapshot().catch(() => ({ latency: [], intent: { fast: 0, llm: 0 } }))
+        : { latency: [], intent: { fast: 0, llm: 0 } };
+      const metricsText = snap.latency.length
+        ? snap.latency.map(r => `${r.agent}: ${r.avgMs}ms avg, ${r.count} calls`).join('\n')
+        : 'אין נתוני מדדים זמינים';
+      const answer = await callGemma4([
+        { role: 'system', content: 'אתה עוזר שליטה ללוח הניהול של ג׳ארביס. ענה בעברית בקצרה על בסיס הנתונים בלבד. אם השאלה אינה על המדדים, אמור שאינך יכול לבצע את הפעולה הזו מהשורה.' },
+        { role: 'user', content: `מדדי סוכנים (24ש'):\n${metricsText}\nסיווג intent: fast=${snap.intent.fast}, llm=${snap.intent.llm}\n\nבקשה: "${text}"` },
+      ], false, 300).catch(() => 'לא הצלחתי לעבד את הבקשה.');
+      return res.json({ intent: 'answer', action: 'answer', params: {}, answer });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

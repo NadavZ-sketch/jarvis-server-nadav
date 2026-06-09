@@ -234,7 +234,9 @@ Example gated endpoints:
 | `GET` | `/dashboard/smart-telemetry` | Fetch telemetry events | Optional `?user_id=` filter |
 | `DELETE` | `/dashboard/smart-telemetry/history` | Delete all telemetry events for a user | Body/query: `{userId}` |
 | `POST` | `/dashboard/smart-telemetry/reset` | Reset telemetry (from settings screen) | Body: `{"scope":"user"}`; deletes all events |
-| `GET` | `/agent-center` | Dashboard HTML | 7-tab control center: overview, agents, memory, tasks, reminders, settings, performance |
+| `GET` | `/agent-center` | Dashboard HTML | Redirects to `/progress-map`. Control center served from `progress-map.html` (6 tabs: overview, agents, analytics, dev, qa, settings). Role-gated via `preferences.role` — regular users see overview+settings, admins see all. Includes NL command bar (`POST /progress-map/command`), smart alerts (`/control-center/events`), proactive insights, and learned tab ordering (`/control-center/layout`). |
+| `POST` | `/progress-map/command` | NL control bar | Hebrew text → action. Deterministic-first (toggle agent / navigate / scan / e2e), LLM fallback for free-form metrics questions. |
+| `GET` | `/control-center/layout` | Learned tab order | `dashboardLearner` derives most-used-first ordering from `dashboard_tab_view` telemetry. |
 | `ws` | `/ws-jarvis` | WebSocket stream | Real-time bidirectional agent chat |
 
 ## Development Workflows

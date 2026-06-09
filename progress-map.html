@@ -507,6 +507,69 @@ h1 span{-webkit-text-fill-color:var(--accent2)}
 .an-drill-close{background:transparent;border:0;color:var(--muted);font-size:1rem;cursor:pointer}
 .an-drill-body{font-size:.82rem;color:var(--muted);line-height:1.7}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ── Command Center (home hero) ── */
+.cc-hero{background:linear-gradient(135deg,rgba(124,58,237,.16),rgba(124,58,237,.04));
+  border:1px solid rgba(124,58,237,.28);border-radius:var(--radius);padding:16px 18px;margin-bottom:18px}
+.cc-hero-top{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.cc-greeting{font-size:1.05rem;font-weight:700;line-height:1.4}
+.cc-greeting .muted{font-weight:400}
+.cc-role-pill{font-size:.68rem;font-weight:700;border-radius:6px;padding:3px 9px;
+  background:rgba(167,139,250,.14);color:var(--accent2);border:1px solid rgba(167,139,250,.28)}
+.cc-cmd{display:flex;gap:8px;align-items:stretch}
+.cc-cmd input{flex:1;background:var(--card);border:1px solid var(--glass-border);border-radius:10px;
+  padding:11px 14px;color:var(--text);font-size:.92rem;font-family:inherit;outline:none;direction:rtl;line-height:1.6}
+.cc-cmd input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,58,237,.14)}
+.cc-cmd button{background:linear-gradient(135deg,var(--accent),#5b21b6);border:none;border-radius:10px;
+  padding:0 18px;color:#fff;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;gap:7px;transition:opacity .15s,transform .15s;white-space:nowrap}
+.cc-cmd button:hover:not(:disabled){opacity:.9;transform:translateY(-1px)}
+.cc-cmd button:disabled{opacity:.5;cursor:not-allowed}
+.cc-cmd-spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none}
+.cc-cmd-hint{font-size:.72rem;color:var(--muted);margin-top:8px;line-height:1.7}
+.cc-cmd-hint b{color:var(--accent2);font-weight:600;cursor:pointer}
+.cc-cmd-hint b:hover{text-decoration:underline}
+.cc-answer{margin-top:10px;background:var(--card);border:1px solid var(--glass-border);border-radius:10px;
+  padding:11px 14px;font-size:.86rem;line-height:1.7;color:var(--text);display:none}
+.cc-answer.show{display:block;animation:fadeIn .2s}
+
+/* alerts feed */
+.cc-alerts{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.cc-alert{display:flex;align-items:flex-start;gap:11px;background:var(--glass);
+  border:1px solid var(--glass-border);border-radius:var(--radius-sm);padding:11px 13px;
+  border-inline-start:3px solid var(--muted);transition:box-shadow .2s,transform .2s}
+.cc-alert:hover{transform:translateY(-1px);box-shadow:0 4px 18px var(--glow2)}
+.cc-alert.sev-urgent{border-inline-start-color:var(--red)}
+.cc-alert.sev-warning{border-inline-start-color:var(--amber)}
+.cc-alert.sev-info{border-inline-start-color:var(--blue)}
+.cc-alert-ic{font-size:1.2rem;flex-shrink:0;line-height:1.4}
+.cc-alert-body{flex:1;min-width:0}
+.cc-alert-title{font-size:.88rem;font-weight:700;margin-bottom:2px}
+.cc-alert-msg{font-size:.79rem;color:var(--muted);line-height:1.6}
+.cc-alert-act{flex-shrink:0;background:var(--surface);border:1px solid var(--accent);color:var(--accent);
+  border-radius:7px;padding:6px 12px;font-size:.76rem;font-weight:700;cursor:pointer;font-family:inherit;
+  transition:background .15s,color .15s;white-space:nowrap}
+.cc-alert-act:hover{background:var(--accent);color:#fff}
+.cc-alerts-empty{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:.84rem;
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);padding:13px 15px}
+
+/* proactive insights strip */
+.cc-tips{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:9px}
+.cc-tip{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);
+  padding:12px 14px;display:flex;gap:10px;align-items:flex-start;transition:box-shadow .2s}
+.cc-tip:hover{box-shadow:0 0 14px var(--glow2)}
+.cc-tip-ic{font-size:1.15rem;flex-shrink:0;line-height:1.4}
+.cc-tip-title{font-size:.82rem;font-weight:700;margin-bottom:2px}
+.cc-tip-detail{font-size:.77rem;color:var(--muted);line-height:1.6}
+.cc-source{font-size:.68rem;color:var(--muted);margin-top:7px}
+
+/* badge dot on tab buttons + role gating */
+.page-tab-btn{position:relative}
+.tab-badge{position:absolute;top:4px;inset-inline-start:6px;min-width:15px;height:15px;border-radius:8px;
+  background:var(--red);color:#fff;font-size:.6rem;font-weight:700;display:none;align-items:center;
+  justify-content:center;padding:0 4px;line-height:1}
+.tab-badge.show{display:flex}
+.hidden-tab{display:none!important}
 </style>
 </head>
 <body>
@@ -515,18 +578,45 @@ h1 span{-webkit-text-fill-color:var(--accent2)}
 
 <h1>🤖 <span>Jarvis</span> — לוח ניהול</h1>
 
-<div class="page-tabs">
-  <button class="page-tab-btn active" onclick="switchPageTab('overview',this)">📊 סקירה ובריאות</button>
-  <button class="page-tab-btn" onclick="switchPageTab('agents',this)">🤖 סוכנים</button>
-  <button class="page-tab-btn" onclick="switchPageTab('analytics',this)">📈 אנליטיקה</button>
-  <button class="page-tab-btn" onclick="switchPageTab('dev',this)">🛠️ פיתוח</button>
-  <button class="page-tab-btn" onclick="switchPageTab('qa',this)">🧪 בדיקות וסקרים</button>
-  <button class="page-tab-btn" onclick="switchPageTab('settings',this)">⚙️ הגדרות</button>
+<div class="page-tabs" id="pageTabs">
+  <button class="page-tab-btn active" data-tab="overview" onclick="switchPageTab('overview',this)">📊 סקירה<span class="tab-badge" data-badge="overview"></span></button>
+  <button class="page-tab-btn" data-tab="agents" data-admin="1" onclick="switchPageTab('agents',this)">🤖 סוכנים<span class="tab-badge" data-badge="agents"></span></button>
+  <button class="page-tab-btn" data-tab="analytics" data-admin="1" onclick="switchPageTab('analytics',this)">📈 אנליטיקה<span class="tab-badge" data-badge="insights"></span></button>
+  <button class="page-tab-btn" data-tab="dev" data-admin="1" onclick="switchPageTab('dev',this)">🛠️ פיתוח<span class="tab-badge" data-badge="development"></span></button>
+  <button class="page-tab-btn" data-tab="qa" data-admin="1" onclick="switchPageTab('qa',this)">🧪 בדיקות<span class="tab-badge" data-badge="surveys"></span></button>
+  <button class="page-tab-btn" data-tab="settings" onclick="switchPageTab('settings',this)">⚙️ הגדרות</button>
 </div>
 
 <!-- ════════ TAB 1: סקירה ובריאות ════════ -->
 <div id="page-tab-overview" class="page-tab-panel active">
 <p class="subtitle" id="subtitle">טוען...</p>
+
+<!-- COMMAND CENTER HERO -->
+<div class="cc-hero">
+  <div class="cc-hero-top">
+    <div class="cc-greeting" id="ccGreeting">שלום <span class="muted">— מה נעשה היום?</span></div>
+    <span class="cc-role-pill" id="ccRolePill" style="display:none"></span>
+  </div>
+  <div class="cc-cmd">
+    <input id="ccCmdInput" type="text" placeholder="כתוב פקודה או שאלה…  למשל: כבה את סוכן החדשות" onkeydown="if(event.key==='Enter')ccRunCommand()"/>
+    <button id="ccCmdBtn" onclick="ccRunCommand()"><div class="cc-cmd-spin" id="ccCmdSpin"></div><span id="ccCmdBtnText">⌘ הפעל</span></button>
+  </div>
+  <div class="cc-cmd-hint" id="ccCmdHint">נסה:
+    <b onclick="ccQuick('הצג אנליטיקה')">הצג אנליטיקה</b> ·
+    <b onclick="ccQuick('סרוק שגיאות קוד')">סרוק קוד</b> ·
+    <b onclick="ccQuick('איזה סוכן הכי איטי?')">איזה סוכן הכי איטי?</b>
+  </div>
+  <div class="cc-answer" id="ccAnswer"></div>
+</div>
+
+<!-- SMART ALERTS -->
+<div class="section-title">🔔 התראות חכמות</div>
+<div class="cc-alerts" id="ccAlerts"><div class="cc-alerts-empty"><span>✓</span>טוען התראות…</div></div>
+
+<!-- PROACTIVE INSIGHTS -->
+<div class="section-title">💡 תובנות פרואקטיביות</div>
+<div class="cc-tips" id="ccTips"><div class="cc-alerts-empty"><span>✨</span>טוען תובנות…</div></div>
+<div class="cc-source" id="ccTipsSource"></div>
 
 <!-- SERVER STATUS -->
 <div class="status-bar">
@@ -746,6 +836,10 @@ h1 span{-webkit-text-fill-color:var(--accent2)}
             <div class="settings-field"><label>שם המשתמש</label><input type="text" id="cfg-userName" placeholder="הכנס שם"/></div>
             <div class="settings-field"><label>מגדר</label><select id="cfg-gender"><option value="male">זכר</option><option value="female">נקבה</option></select></div>
           </div>
+          <div class="settings-field" id="cfg-role-field" style="display:none">
+            <label>רמת גישה (Control Center)</label>
+            <select id="cfg-role"><option value="user">משתמש — תצוגה אישית</option><option value="admin">אדמין — כל הכרטיסיות</option></select>
+          </div>
         </div>
       </div>
       <!-- Assistant -->
@@ -897,6 +991,7 @@ function switchPageTab(name, btn) {
   if (name === 'analytics' && !anInitDone) { anInitDone = true; loadAnalytics(); }
   if (name === 'qa' && !qaInitDone) { qaInitDone = true; loadE2E(); loadSurveySummary(); }
   if (name === 'settings' && !settingsInitDone) { settingsInitDone = true; loadSettings(); }
+  ccTrackTab(name); // feed the dashboard learner (most-used-first ordering)
 }
 let qaInitDone = false, settingsInitDone = false, anInitDone = false;
 
@@ -1814,6 +1909,10 @@ async function loadSettings(){
   _setVal('cfg-gender', profile.gender || 'male');
   _setVal('cfg-assistantName', profile.assistant_name || 'Jarvis');
   _setVal('cfg-personality', profile.personality || 'friendly');
+  _setVal('cfg-role', pf.role || 'user');
+  // The role selector is itself admin-only — a regular user can't promote themself.
+  const roleField = document.getElementById('cfg-role-field');
+  if (roleField) roleField.style.display = (pf.role === 'admin') ? 'block' : 'none';
   // ── AI / model ──
   _setVal('cfg-cloudProvider', pf.cloudProvider || 'groq');
   _setVal('cfg-responseLength', pf.responseLength || 'medium');
@@ -1852,6 +1951,7 @@ async function saveSettings(){
   const body={
     user_name:_getVal('cfg-userName'), gender:_getVal('cfg-gender'),
     assistant_name:_getVal('cfg-assistantName'), personality:_getVal('cfg-personality'),
+    role:_getVal('cfg-role')||'user',
     preferences:{
       cloudProvider:_getVal('cfg-cloudProvider'),
       responseLength:_getVal('cfg-responseLength'),
@@ -1899,13 +1999,203 @@ async function loadProviders(){
   } catch { el.innerHTML='<div class="err-state"><span>⚠️</span>שגיאת בדיקת ספקים<button class="retry-btn" onclick="loadProviders()">נסה שוב</button></div>'; }
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// ── Smart Layer: role gating · NL command · alerts · proactive insights ──────
+// ════════════════════════════════════════════════════════════════════════════
+let _ccRole = 'user', _ccProfile = null, _ccUserName = '', _ccAlertsSince = null;
+const CC_TAB_BY_HINT = { overview:'overview', insights:'analytics', development:'dev', agents:'agents', surveys:'qa', settings:'settings' };
+
+// Boot the smart layer: resolve role, gate tabs, then load alerts + tips.
+async function ccInitSmartLayer() {
+  try {
+    const r = await fetch('/user-profile').then(x => x.json());
+    _ccProfile = (r && r.profile) || {};
+    const pf = (_ccProfile.preferences && typeof _ccProfile.preferences === 'object') ? _ccProfile.preferences : {};
+    _ccRole = pf.role === 'admin' ? 'admin' : 'user';
+    _ccUserName = _ccProfile.user_name || '';
+  } catch { _ccProfile = {}; _ccRole = 'user'; }
+  applyRoleGating(_ccRole);
+  renderGreeting();
+  loadSmartAlerts();
+  loadProactiveTips();
+  if (_ccRole === 'admin') applyLearnedLayout();
+}
+
+// Regular users only see the personal tabs (overview + settings); admin sees all.
+function applyRoleGating(role) {
+  const pill = document.getElementById('ccRolePill');
+  if (pill) { pill.style.display = ''; pill.textContent = role === 'admin' ? '🛡 אדמין' : '👤 אישי'; }
+  document.querySelectorAll('.page-tab-btn[data-admin="1"]').forEach(btn => {
+    btn.classList.toggle('hidden-tab', role !== 'admin');
+  });
+  // If the active tab got hidden, fall back to overview.
+  if (role !== 'admin') {
+    const active = document.querySelector('.page-tab-btn.active');
+    if (active && active.dataset.admin === '1') {
+      const ov = document.querySelector('.page-tab-btn[data-tab="overview"]');
+      if (ov) switchPageTab('overview', ov);
+    }
+  }
+}
+
+function renderGreeting() {
+  const el = document.getElementById('ccGreeting');
+  if (!el) return;
+  const h = new Date().getHours();
+  const part = h < 12 ? 'בוקר טוב' : h < 18 ? 'צהריים טובים' : 'ערב טוב';
+  const name = _ccUserName ? ' ' + _ccUserName : '';
+  el.innerHTML = `${part}${escapeHtml(name)} <span class="muted">— מה נעשה היום?</span>`;
+}
+
+// ── Learning telemetry: record tab views (fire-and-forget, debounced) ─────────
+let _ccTabTimer = null, _ccLastTab = null;
+function ccTrackTab(name) {
+  if (name === _ccLastTab) return;
+  _ccLastTab = name;
+  clearTimeout(_ccTabTimer);
+  _ccTabTimer = setTimeout(() => {
+    fetch('/dashboard/smart-telemetry', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ event_name:'dashboard_tab_view', payload:{ tab:name }, user_id:_ccUserName || 'default' }),
+    }).catch(()=>{});
+  }, 600);
+}
+
+// Reorder admin tabs "most-used first" based on learned layout.
+async function applyLearnedLayout() {
+  try {
+    const layout = await fetch('/control-center/layout?user_id=' + encodeURIComponent(_ccUserName || 'default')).then(r=>r.json());
+    if (!layout || !layout.learned || !Array.isArray(layout.order)) return;
+    const tabs = document.getElementById('pageTabs');
+    if (!tabs) return;
+    layout.order.forEach(tabId => {
+      const btn = tabs.querySelector(`.page-tab-btn[data-tab="${tabId}"]`);
+      if (btn) tabs.appendChild(btn); // appending in learned order = reorder
+    });
+  } catch {}
+}
+
+// ── Natural-language command bar ──────────────────────────────────────────────
+function ccQuick(text){ const i=document.getElementById('ccCmdInput'); if(i){ i.value=text; ccRunCommand(); } }
+async function ccRunCommand() {
+  const input = document.getElementById('ccCmdInput');
+  const btn = document.getElementById('ccCmdBtn');
+  const spin = document.getElementById('ccCmdSpin');
+  const txt = document.getElementById('ccCmdBtnText');
+  const ans = document.getElementById('ccAnswer');
+  const text = (input.value || '').trim();
+  if (!text) return;
+  btn.disabled = true; spin.style.display='block'; txt.textContent='מעבד…';
+  try {
+    const d = await fetch('/progress-map/command', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text }),
+    }).then(r=>r.json());
+    if (d.answer) { ans.textContent = d.answer; ans.classList.add('show'); }
+    executeCommandAction(d);
+    if (d.action !== 'answer') input.value = '';
+  } catch {
+    ans.textContent = 'שגיאה בעיבוד הפקודה.'; ans.classList.add('show');
+  } finally {
+    btn.disabled=false; spin.style.display='none'; txt.textContent='⌘ הפעל';
+  }
+}
+
+function executeCommandAction(d) {
+  if (!d || !d.action) return;
+  const p = d.params || {};
+  if (d.action === 'navigate' && p.tab) {
+    const btn = document.querySelector(`.page-tab-btn[data-tab="${p.tab}"]`);
+    if (btn && !btn.classList.contains('hidden-tab')) switchPageTab(p.tab, btn);
+    else showToast('הכרטיסייה אינה זמינה ברמת הגישה שלך','warning');
+  } else if (d.action === 'run_scan') {
+    const qb = document.querySelector(`.page-tab-btn[data-tab="qa"]`);
+    if (qb && !qb.classList.contains('hidden-tab')) { switchPageTab('qa', qb); if (typeof scanErrors==='function') scanErrors(); }
+  } else if (d.action === 'run_e2e') {
+    const qb = document.querySelector(`.page-tab-btn[data-tab="qa"]`);
+    if (qb && !qb.classList.contains('hidden-tab')) { switchPageTab('qa', qb); if (typeof triggerE2E==='function') triggerE2E(); }
+  } else if (d.action === 'toggle_agent') {
+    showToast(d.answer || 'בוצע','success');
+    if (typeof acLoadAgents==='function' && acInitDone) acLoadAgents();
+  }
+}
+
+// ── Smart alerts feed + tab badges (reuses /control-center/events) ────────────
+async function loadSmartAlerts() {
+  const el = document.getElementById('ccAlerts');
+  if (!el) return;
+  try {
+    const q = '/control-center/events' + (_ccUserName ? ('?userName=' + encodeURIComponent(_ccUserName)) : '');
+    const d = await fetch(q, { signal: AbortSignal.timeout(8000) }).then(r=>r.json());
+    renderTabBadges(d.badges || {});
+    let alerts = (d.alerts || []);
+    if (_ccRole !== 'admin') alerts = alerts.filter(a => CC_TAB_BY_HINT[a.tabHint] === 'overview' || !a.tabHint);
+    if (!alerts.length) { el.innerHTML = '<div class="cc-alerts-empty"><span>✓</span>הכל תקין — אין התראות פתוחות</div>'; return; }
+    el.innerHTML = alerts.slice(0, 6).map((a,i) => {
+      const sev = a.severity === 'urgent' ? 'sev-urgent' : a.severity === 'warning' ? 'sev-warning' : 'sev-info';
+      const ic = a.severity === 'urgent' ? '🚨' : a.severity === 'warning' ? '⚠️' : 'ℹ️';
+      const targetTab = CC_TAB_BY_HINT[a.tabHint] || 'overview';
+      const showAct = _ccRole === 'admin' || targetTab === 'overview';
+      const actBtn = showAct ? `<button class="cc-alert-act" onclick="ccAlertAction(${i})">${escapeHtml(a.actionHint || 'פתח')}</button>` : '';
+      return `<div class="cc-alert ${sev}"><div class="cc-alert-ic">${ic}</div>
+        <div class="cc-alert-body"><div class="cc-alert-title">${escapeHtml(a.title||'התראה')}</div>
+        <div class="cc-alert-msg">${escapeHtml(a.message||'')}</div></div>${actBtn}</div>`;
+    }).join('');
+    _ccAlerts = alerts.slice(0, 6);
+  } catch {
+    el.innerHTML = '<div class="cc-alerts-empty"><span>⚠️</span>שגיאת טעינת התראות</div>';
+  }
+}
+let _ccAlerts = [];
+function ccAlertAction(i) {
+  const a = _ccAlerts[i]; if (!a) return;
+  const tab = CC_TAB_BY_HINT[a.tabHint] || 'overview';
+  if (tab === 'qa' && /סריק|scan/i.test(a.actionHint||'')) { executeCommandAction({ action:'run_scan', params:{} }); return; }
+  if (tab === 'qa' && /e2e|בדיק/i.test(a.actionHint||'')) { executeCommandAction({ action:'run_e2e', params:{} }); return; }
+  executeCommandAction({ action:'navigate', params:{ tab } });
+}
+
+function renderTabBadges(badges) {
+  document.querySelectorAll('.tab-badge').forEach(b => {
+    const key = b.dataset.badge;
+    const n = badges[key] || 0;
+    if (n > 0) { b.textContent = n > 9 ? '9+' : n; b.classList.add('show'); }
+    else b.classList.remove('show');
+  });
+}
+
+// ── Proactive insights strip (token-frugal: server caches for 30 min) ─────────
+async function loadProactiveTips() {
+  const el = document.getElementById('ccTips');
+  const src = document.getElementById('ccTipsSource');
+  if (!el) return;
+  try {
+    const d = await fetch('/dashboard/analytics/insights', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ range:'7d' }),
+      signal: AbortSignal.timeout(15000),
+    }).then(r=>r.json());
+    const tips = (d.insights || []).slice(0, 4);
+    if (!tips.length) { el.innerHTML = '<div class="cc-alerts-empty"><span>✨</span>אין מספיק נתונים לתובנות עדיין</div>'; return; }
+    el.innerHTML = tips.map(t => `<div class="cc-tip"><div class="cc-tip-ic">${escapeHtml(t.icon||'💡')}</div>
+      <div><div class="cc-tip-title">${escapeHtml(t.title||'')}</div>
+      <div class="cc-tip-detail">${escapeHtml(t.detail||'')}</div></div></div>`).join('');
+    if (src) {
+      const tag = d.cached ? 'מהמטמון' : (d.source === 'ai' ? 'נותח ע״י AI' : 'חישוב ישיר');
+      src.textContent = '· ' + tag;
+    }
+  } catch {
+    el.innerHTML = '<div class="cc-alerts-empty"><span>⚠️</span>שגיאת טעינת תובנות</div>';
+  }
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────────
 checkHealth();
 loadStats();
 loadFeatures();
 loadBacklog();
 loadMetricsCharts();
+ccInitSmartLayer();
 setInterval(() => { checkHealth(); loadStats(); loadMetricsCharts(); }, 30000);
+setInterval(loadSmartAlerts, 90000); // alerts refresh slower than metrics
 
 // ── Agent Center ───────────────────────────────────────────────────────────────
 let acAgents = [], acCurrent = null, acInitDone = false, acMetrics = {};

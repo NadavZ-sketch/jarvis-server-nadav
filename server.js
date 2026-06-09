@@ -67,6 +67,7 @@ const proactiveEngine = require('./services/proactiveEngine');
 const profileLearner  = require('./services/profileLearner');
 const styleLearner    = require('./services/styleLearner');
 const feedbackStore   = require('./services/feedbackStore');
+const dashboardLearner = require('./services/dashboardLearner');
 const { selectByTokenBudget } = require('./services/contextWindow');
 const documentParser = require('./services/documentParser');
 const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
@@ -1225,6 +1226,16 @@ app.post('/user-profile', async (req, res) => {
             payload.preferences = { ...existingPrefs, ...incoming };
         }
 
+        // Control-center access role (admin|user). Stored inside the preferences
+        // JSONB blob (no schema migration needed) so it survives reinstalls and
+        // syncs across devices. Drives which dashboard tabs are visible.
+        if ('role' in rawBody && ['user', 'admin'].includes(rawBody.role)) {
+            const basePrefs = payload.preferences
+                || (existing && typeof existing.preferences === 'object' && existing.preferences)
+                || {};
+            payload.preferences = { ...basePrefs, role: rawBody.role };
+        }
+
         payload.auto_learned = { ...existingAuto, user_overridden: Array.from(userOverridden) };
 
         let result;
@@ -1500,6 +1511,21 @@ app.get('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
     res.json({ counts: r.counts, total: r.total });
 });
 
+// Personalized control-center layout learned from tab-view telemetry. Returns a
+// "most-used first" tab order + the tab to spotlight. Deterministic, never fails.
+app.get('/control-center/layout', _rl(60), async (req, res) => {
+    try {
+        const layout = await dashboardLearner.getDashboardLayout(supabase, {
+            userId: req.query.user_id || 'default',
+            sinceDays: Math.min(Number(req.query.days) || 30, 90),
+        });
+        res.json(layout);
+    } catch (err) {
+        console.error('GET /control-center/layout error:', err.message);
+        res.json({ order: dashboardLearner.DEFAULT_ORDER, spotlight: null, counts: {}, learned: false });
+    }
+});
+
 // ─── Analytics — time-series for the dashboard's Analytics tab ────────────────
 // Buckets recent activity (system + personal) into daily series. Every query is
 // scoped to the requested window and degrades to empty data if a table is
@@ -1622,10 +1648,27 @@ app.get('/dashboard/analytics', _rl(30), async (req, res) => {
     }
 });
 
+// In-memory cache for AI insights, keyed by range. The dashboard auto-refreshes
+// every 30s; without this each refresh would burn an LLM call. A 30-minute TTL
+// keeps insights fresh enough while making the feature token-frugal. Bypass with
+// { force:true } in the request body (used by the explicit "regenerate" button).
+const _insightCache = new Map(); // range → { at, payload }
+const INSIGHT_TTL_MS = 30 * 60 * 1000;
+
 // AI-driven insights over the same window — compact summary → LLM → Hebrew tips.
 app.post('/dashboard/analytics/insights', _rl(10), async (req, res) => {
     try {
-        const days = ANALYTICS_RANGES[String(req.body && req.body.range)] || 7;
+        const rangeKey = String((req.body && req.body.range) || '7d');
+        const force = !!(req.body && req.body.force);
+        const days = ANALYTICS_RANGES[rangeKey] || 7;
+
+        if (!force) {
+            const hit = _insightCache.get(rangeKey);
+            if (hit && (Date.now() - hit.at) < INSIGHT_TTL_MS) {
+                return res.json({ ...hit.payload, cached: true });
+            }
+        }
+
         const a = await computeAnalytics(days);
         const peakHour = a.personal.activeHours.indexOf(Math.max(...a.personal.activeHours));
         const compact = {
@@ -1659,7 +1702,11 @@ app.post('/dashboard/analytics/insights', _rl(10), async (req, res) => {
         if (!Array.isArray(insights) || !insights.length) {
             insights = _deterministicInsights(a, peakHour);
         }
-        res.json({ insights, generatedAt: new Date().toISOString(), source: insights._llm === false ? 'computed' : 'ai' });
+        const payload = { insights, generatedAt: new Date().toISOString(), source: insights._llm === false ? 'computed' : 'ai' };
+        // Only cache real AI output — a deterministic fallback means the LLM was
+        // down, so we retry next time rather than pinning the fallback for 30 min.
+        if (payload.source === 'ai') _insightCache.set(rangeKey, { at: Date.now(), payload });
+        res.json(payload);
     } catch (err) {
         console.error('❌ /dashboard/analytics/insights:', err.message);
         res.status(500).json({ error: 'Internal server error', insights: [] });

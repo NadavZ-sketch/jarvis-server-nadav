@@ -98,7 +98,7 @@ String _priorityLabel(String p) =>
 
 class _ProgressMapScreenState extends State<ProgressMapScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  late final TabController _tabController;
+  late TabController _tabController;
 
   static const _kCatMap = {
     'feature': "פיצ'ר", 'improvement': 'שיפור', 'bug': 'באג', 'ux': 'UX',
@@ -168,6 +168,16 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   List<Map<String, dynamic>> _agents = [];
   bool _loadingAgents = true;
 
+  // NL command bar (POST /progress-map/command)
+  final _cmdCtrl = TextEditingController();
+  bool _runningCmd = false;
+  String? _cmdAnswer;
+
+  // Proactive insights (POST /dashboard/analytics/insights — server-cached)
+  List<Map<String, dynamic>> _insights = const [];
+  bool _loadingInsights = true;
+  String _insightsSource = '';
+
   // Surveys
   List<Map<String, dynamic>> _surveyHistory = [];
   List<String> _surveyInsights = [];
@@ -199,20 +209,63 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+  // Regular users see only the personal tabs (overview + settings); admins see
+  // all five. Mirrors the role gating in the web control center (progress-map.html).
+  bool get _isAdmin => widget.settings.role == 'admin';
+  List<ControlCenterTab> get _visibleTabs => _isAdmin
+      ? ControlCenterTab.values.toList()
+      : const [ControlCenterTab.overview, ControlCenterTab.settings];
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final initIdx = _visibleTabs.indexOf(widget.initialTab);
     _tabController = TabController(
-      length: ControlCenterTab.values.length,
+      length: _visibleTabs.length,
       vsync: this,
-      initialIndex: widget.initialTab.index,
+      initialIndex: initIdx >= 0 ? initIdx : 0,
     );
     _loadAll().whenComplete(() {
       // Kick off the live poller after the initial load so the first
       // events fetch carries a real `since` cursor.
       _schedulePoll(initial: true);
     });
+  }
+
+  // Navigate to a logical tab by mapping it to its position in the currently
+  // visible set (the TabController index != enum index once tabs are gated).
+  void _goToTab(ControlCenterTab tab) {
+    final i = _visibleTabs.indexOf(tab);
+    if (i >= 0) _tabController.animateTo(i);
+  }
+
+  // Role is server-driven: pull it from the profile and, if it changed, rebuild
+  // the TabController so the visible-tab count matches. One-time on most launches.
+  Future<void> _loadRole() async {
+    try {
+      final res = await http.get(Uri.parse('$_base/user-profile')).timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200 || !mounted) return;
+      final profile = (jsonDecode(res.body) as Map<String, dynamic>)['profile'];
+      if (profile is! Map) return;
+      final prefs = profile['preferences'];
+      final role = (prefs is Map && prefs['role'] is String) ? prefs['role'] as String : 'user';
+      if (role == widget.settings.role) return;
+      // Capture the current tab from the OLD visible set before flipping role.
+      final oldVisible = _visibleTabs;
+      final oldTab = oldVisible[_tabController.index.clamp(0, oldVisible.length - 1).toInt()];
+      widget.settings.role = role;
+      await widget.settings.save();
+      if (!mounted) return;
+      _tabController.dispose();
+      final newIdx = _visibleTabs.indexOf(oldTab); // _visibleTabs now reflects new role
+      _tabController = TabController(
+        length: _visibleTabs.length,
+        vsync: this,
+        initialIndex: newIdx >= 0 ? newIdx : 0,
+      );
+      setState(() {});
+    } catch (_) {}
   }
 
   @override
@@ -224,6 +277,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     _copyTimer?.cancel();
     _addCtrl.dispose();
     _promptCtrl.dispose();
+    _cmdCtrl.dispose();
     super.dispose();
   }
 
@@ -371,7 +425,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         _dismissAlert(alert.id);
         break;
       case 'open_e2e_report':
-        _tabController.animateTo(ControlCenterTab.testsSurveys.index);
+        _goToTab(ControlCenterTab.testsSurveys);
         _dismissAlert(alert.id);
         break;
       case 'promote_proposal':
@@ -382,17 +436,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             orElse: () => const <String, dynamic>{},
           );
           if (p.isNotEmpty) {
-            _tabController.animateTo(ControlCenterTab.development.index);
+            _goToTab(ControlCenterTab.development);
             await _promoteProposalQuick(p);
             _dismissAlert(alert.id);
             break;
           }
         }
-        _tabController.animateTo(ControlCenterTab.development.index);
+        _goToTab(ControlCenterTab.development);
         _dismissAlert(alert.id);
         break;
       case 'start_survey':
-        _tabController.animateTo(ControlCenterTab.testsSurveys.index);
+        _goToTab(ControlCenterTab.testsSurveys);
         _dismissAlert(alert.id);
         break;
       case 'open_chat':
@@ -405,7 +459,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             (t) => t.name == alert.tabHint,
             orElse: () => ControlCenterTab.overview,
           );
-          _tabController.animateTo(tab.index);
+          _goToTab(tab);
         }
         _dismissAlert(alert.id);
     }
@@ -532,6 +586,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       _loadAgents(),
       _loadSurveys(),
       _loadProviderTelemetry(),
+      _loadRole(),
+      _loadInsights(),
     ]);
     _isRefreshing = false;
     if (mounted && _serverOk != true) _scheduleRetry();
@@ -1197,13 +1253,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             dividerColor: Colors.transparent,
             labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 12.5),
             unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 12.5),
-            tabs: [
-              _tabWithBadge('סקירה ובריאות', ControlCenterTab.overview),
-              _tabWithBadge('סוכנים', ControlCenterTab.agents),
-              _tabWithBadge('פיתוח', ControlCenterTab.development),
-              _tabWithBadge('בדיקות וסקרים', ControlCenterTab.testsSurveys),
-              _tabWithBadge('הגדרות', ControlCenterTab.settings),
-            ],
+            tabs: _visibleTabs.map((t) => _tabWithBadge(_tabLabel(t), t)).toList(),
           ),
         ),
           ),
@@ -1214,19 +1264,29 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             Expanded(
               child: TabBarView(
                 controller: _tabController,
-                children: [
-                  _buildOverviewTab(),
-                  _buildAgentsTab(),
-                  _buildDevelopmentTab(),
-                  _buildTestsSurveysTab(),
-                  _buildSettingsTab(),
-                ],
+                children: _visibleTabs.map(_buildTabBody).toList(),
               ),
             ),
           ],
         ),
     );
   }
+
+  String _tabLabel(ControlCenterTab t) => switch (t) {
+        ControlCenterTab.overview => 'סקירה ובריאות',
+        ControlCenterTab.agents => 'סוכנים',
+        ControlCenterTab.development => 'פיתוח',
+        ControlCenterTab.testsSurveys => 'בדיקות וסקרים',
+        ControlCenterTab.settings => 'הגדרות',
+      };
+
+  Widget _buildTabBody(ControlCenterTab t) => switch (t) {
+        ControlCenterTab.overview => _buildOverviewTab(),
+        ControlCenterTab.agents => _buildAgentsTab(),
+        ControlCenterTab.development => _buildDevelopmentTab(),
+        ControlCenterTab.testsSurveys => _buildTestsSurveysTab(),
+        ControlCenterTab.settings => _buildSettingsTab(),
+      };
 
   Widget _tabWithBadge(String label, ControlCenterTab tab) {
     final count = _tabBadges[tab] ?? 0;
@@ -1348,11 +1408,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   }
 
   Widget _buildOverviewTab() => _tabListView([
+        _buildCommandBar(),
+        const SizedBox(height: 14),
         _buildStatusBar(),
         const SizedBox(height: 10),
         _buildOverviewQuickActions(),
         const SizedBox(height: 14),
         _buildMetrics(),
+        const SizedBox(height: 14),
+        _sectionTitle('💡 תובנות פרואקטיביות'),
+        const SizedBox(height: 8),
+        _buildInsightsCard(),
         const SizedBox(height: 14),
         _sectionTitle('📊 שימוש מודלים (מהשרת)'),
         const SizedBox(height: 8),
@@ -1401,6 +1467,209 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  // ── NL command bar (POST /progress-map/command) ───────────────────────────
+  Widget _buildCommandBar() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [JC.blue500.withValues(alpha: 0.16), JC.blue500.withValues(alpha: 0.04)],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: JC.blue400.withValues(alpha: 0.30), width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Icon(Icons.bolt_rounded, size: 18, color: JC.blue400),
+            const SizedBox(width: 6),
+            Text('שורת פקודה', style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13)),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _cmdCtrl,
+                textDirection: TextDirection.rtl,
+                onSubmitted: (_) => _runCommand(),
+                style: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'למשל: כבה את סוכן החדשות',
+                  hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12.5),
+                  filled: true,
+                  fillColor: JC.surface,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JC.border, width: 0.8)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JC.border, width: 0.8)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JC.blue400, width: 1.2)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 44,
+              child: ElevatedButton(
+                onPressed: _runningCmd ? null : _runCommand,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: JC.blue500,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                child: _runningCmd
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('הפעל', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+            ),
+          ]),
+          if (_cmdAnswer != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: JC.border, width: 0.8)),
+              child: Text(_cmdAnswer!, textAlign: TextAlign.right, style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5, height: 1.5)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runCommand() async {
+    final text = _cmdCtrl.text.trim();
+    if (text.isEmpty || _runningCmd) return;
+    setState(() { _runningCmd = true; _cmdAnswer = null; });
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/progress-map/command'),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({'text': text}),
+      ).timeout(const Duration(seconds: 20));
+      final d = jsonDecode(res.body) as Map<String, dynamic>;
+      final action = d['action']?.toString() ?? 'answer';
+      final answer = d['answer']?.toString() ?? '';
+      final params = Map<String, dynamic>.from(d['params'] ?? const {});
+      if (!mounted) return;
+      setState(() => _cmdAnswer = answer.isEmpty ? null : answer);
+      _execCommandAction(action, params);
+      if (action != 'answer') _cmdCtrl.clear();
+    } catch (_) {
+      if (mounted) setState(() => _cmdAnswer = 'שגיאה בעיבוד הפקודה.');
+    } finally {
+      if (mounted) setState(() => _runningCmd = false);
+    }
+  }
+
+  void _execCommandAction(String action, Map<String, dynamic> params) {
+    switch (action) {
+      case 'navigate':
+        final tab = _serverTabToCc(params['tab']?.toString());
+        if (tab != null) _goToTab(tab);
+        break;
+      case 'run_scan':
+        _goToTab(ControlCenterTab.overview);
+        _scanErrorsNow();
+        break;
+      case 'run_e2e':
+        _triggerE2eRun();
+        break;
+      case 'toggle_agent':
+        _loadAgents();
+        break;
+    }
+  }
+
+  // Map the server's tab ids (overview/agents/analytics/dev/qa/settings) onto the
+  // mobile control-center tabs. The web has a dedicated analytics tab; on mobile
+  // those charts live under overview.
+  ControlCenterTab? _serverTabToCc(String? id) {
+    switch (id) {
+      case 'overview':
+      case 'analytics':
+        return ControlCenterTab.overview;
+      case 'agents':
+        return ControlCenterTab.agents;
+      case 'dev':
+        return ControlCenterTab.development;
+      case 'qa':
+        return ControlCenterTab.testsSurveys;
+      case 'settings':
+        return ControlCenterTab.settings;
+    }
+    return null;
+  }
+
+  // ── Proactive insights (POST /dashboard/analytics/insights) ────────────────
+  Future<void> _loadInsights() async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/dashboard/analytics/insights'),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({'range': '7d'}),
+      ).timeout(const Duration(seconds: 20));
+      if (!mounted) return;
+      if (res.statusCode != 200) { setState(() => _loadingInsights = false); return; }
+      final d = jsonDecode(res.body) as Map<String, dynamic>;
+      final list = (d['insights'] as List?) ?? const [];
+      setState(() {
+        _insights = list.map((e) => Map<String, dynamic>.from(e as Map)).take(4).toList();
+        _insightsSource = d['cached'] == true
+            ? 'מהמטמון'
+            : (d['source'] == 'ai' ? 'נותח ע״י AI' : 'חישוב ישיר');
+        _loadingInsights = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingInsights = false);
+    }
+  }
+
+  Widget _buildInsightsCard() {
+    if (_loadingInsights && _insights.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        alignment: Alignment.center,
+        child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2),
+      );
+    }
+    if (_insights.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border, width: 0.8)),
+        child: Text('אין מספיק נתונים לתובנות עדיין', textAlign: TextAlign.right, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12.5)),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ..._insights.map((t) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border, width: 0.8)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(t['icon']?.toString() ?? '💡', style: const TextStyle(fontSize: 18)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(t['title']?.toString() ?? '', textAlign: TextAlign.right, style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13)),
+                    const SizedBox(height: 3),
+                    Text(t['detail']?.toString() ?? '', textAlign: TextAlign.right, style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.5)),
+                  ]),
+                ),
+              ]),
+            )),
+        if (_insightsSource.isNotEmpty)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('· $_insightsSource', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10.5)),
+          ),
       ],
     );
   }

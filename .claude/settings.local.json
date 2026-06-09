@@ -9,7 +9,10 @@
       "Bash(npx jest *)",
       "Bash(npm install *)",
       "Bash(ls services/)",
-      "Bash(mkdir -p services)"
+      "Bash(mkdir -p services)",
+      "Bash(node -c server.js)",
+      "Bash(node -c routes/agentCenter.js)",
+      "Bash(node -c services/dashboardLearner.js)"
     ]
   }
 }

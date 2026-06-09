@@ -836,8 +836,8 @@ h1 span{-webkit-text-fill-color:var(--accent2)}
             <div class="settings-field"><label>שם המשתמש</label><input type="text" id="cfg-userName" placeholder="הכנס שם"/></div>
             <div class="settings-field"><label>מגדר</label><select id="cfg-gender"><option value="male">זכר</option><option value="female">נקבה</option></select></div>
           </div>
-          <div class="settings-field" id="cfg-role-field" style="display:none">
-            <label>רמת גישה (Control Center)</label>
+          <div class="settings-field" id="cfg-role-field">
+            <label>🛡 רמת גישה (מרכז שליטה)</label>
             <select id="cfg-role"><option value="user">משתמש — תצוגה אישית</option><option value="admin">אדמין — כל הכרטיסיות</option></select>
           </div>
         </div>
@@ -1910,9 +1910,11 @@ async function loadSettings(){
   _setVal('cfg-assistantName', profile.assistant_name || 'Jarvis');
   _setVal('cfg-personality', profile.personality || 'friendly');
   _setVal('cfg-role', pf.role || 'user');
-  // The role selector is itself admin-only — a regular user can't promote themself.
+  // Dedicated role switch — always visible during development so you can flip
+  // user ⇄ admin without editing the DB. (Previously admin-only, which created a
+  // chicken-and-egg: a fresh 'user' profile could never reach the toggle.)
   const roleField = document.getElementById('cfg-role-field');
-  if (roleField) roleField.style.display = (pf.role === 'admin') ? 'block' : 'none';
+  if (roleField) roleField.style.display = 'block';
   // ── AI / model ──
   _setVal('cfg-cloudProvider', pf.cloudProvider || 'groq');
   _setVal('cfg-responseLength', pf.responseLength || 'medium');
@@ -1977,7 +1979,18 @@ async function saveSettings(){
       telemetryConsent:_getChk('cfg-telemetry'),
     },
   };
-  try { await fetch('/user-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); showToast('הגדרות נשמרו ✓','success'); }
+  try {
+    await fetch('/user-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    showToast('הגדרות נשמרו ✓','success');
+    // If the access role changed, re-apply tab gating immediately (no refresh needed).
+    const newRole = body.role === 'admin' ? 'admin' : 'user';
+    if (newRole !== _ccRole) {
+      _ccRole = newRole;
+      applyRoleGating(_ccRole);
+      if (_ccRole === 'admin') applyLearnedLayout();
+      showToast(newRole === 'admin' ? 'מצב אדמין הופעל 🛡' : 'הוחזר למצב משתמש 👤','success');
+    }
+  }
   catch { showToast('שגיאה בשמירה','error'); }
 }
 async function loadProviders(){

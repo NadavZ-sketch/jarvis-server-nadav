@@ -1925,8 +1925,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildSurveyInsightsCard() {
     if (_loadingSurveys && _surveyInsights.isEmpty && _surveyHistory.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.all(20),
+      return SizedBox(
+        height: 120,
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
       );
     }
@@ -1971,8 +1971,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       return const SizedBox.shrink();
     }
     if (_loadingSurveys && _surveyHistory.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.all(20),
+      return SizedBox(
+        height: 120,
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
       );
     }
@@ -2265,7 +2265,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildFeatureBoard() {
     if (_loadingFeatures) {
-      return Padding(padding: EdgeInsets.all(24),
+      return SizedBox(height: 140,
           child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)));
     }
     if (_done.isEmpty && _building.isEmpty && _planned.isEmpty && _serverOk != true) {
@@ -3159,8 +3159,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildAgentCenter() {
     if (_loadingAgents && _agents.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.all(20),
+      return SizedBox(
+        height: 120,
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
       );
     }

@@ -52,6 +52,9 @@ bool obsidianAutoSync;
   String responseLength; // 'short' | 'medium' | 'long'
   bool saverMode;        // token-saver: forces short replies + low temperature server-side
 
+  // ── Security ──
+  String apiKey; // x-jarvis-key shared secret (empty = no auth)
+
   // ── Notifications ──
   bool notificationsEnabled;
   int quietHoursStart; // hour 0-23
@@ -104,6 +107,7 @@ bool obsidianAutoSync;
     this.temperature = 0.7,
     this.responseLength = 'medium',
     this.saverMode = false,
+    this.apiKey = '',
     this.notificationsEnabled = true,
     this.quietHoursStart = 22,
     this.quietHoursEnd = 8,
@@ -199,6 +203,7 @@ bool obsidianAutoSync;
       temperature:      prefs.getDouble('temperature')      ?? 0.7,
       responseLength:   prefs.getString('responseLength')   ?? 'medium',
       saverMode:        prefs.getBool('saverMode')          ?? false,
+      apiKey:           prefs.getString('apiKey')            ?? '',
       notificationsEnabled: prefs.getBool('notificationsEnabled') ?? true,
       quietHoursStart:  prefs.getInt('quietHoursStart')     ?? 22,
       quietHoursEnd:    prefs.getInt('quietHoursEnd')       ?? 8,
@@ -254,6 +259,7 @@ bool obsidianAutoSync;
     await prefs.setDouble('temperature',    temperature);
     await prefs.setString('responseLength', responseLength);
     await prefs.setBool('saverMode',        saverMode);
+    await prefs.setString('apiKey',           apiKey);
     await prefs.setBool('notificationsEnabled', notificationsEnabled);
     await prefs.setInt('quietHoursStart',   quietHoursStart);
     await prefs.setInt('quietHoursEnd',     quietHoursEnd);

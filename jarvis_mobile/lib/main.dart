@@ -868,6 +868,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     // Local notifications are mobile-only; skip init on web.
     if (!kIsWeb) NotificationService.init().catchError((_) {});
 
+    // Firebase Cloud Messaging — init after local notifications so both channels
+    // are ready. Runs in background; failure never blocks the chat screen.
+    if (!kIsWeb) {
+      NotificationService.initPush(
+        serverUrl: _settings.serverUrl,
+        apiKey: _settings.apiKey,
+      ).catchError((_) {});
+    }
+
     // Track session start for survey
     _sessionStartTime = DateTime.now();
     _agentCallCount = 0;

@@ -334,6 +334,20 @@ class JarvisThemeData {
     return base.copyWith(
       scaffoldBackgroundColor: c.bg,
       colorScheme: colorScheme,
+      // Centralized Hebrew-first typography. 'Heebo' is the intended brand font
+      // (bundle it under pubspec `fonts:` to activate); until then the fallback
+      // chain keeps Hebrew rendering clean on every platform instead of silently
+      // dropping to Latin-optimized defaults. Inline TextStyles still override.
+      fontFamily: 'Heebo',
+      fontFamilyFallback: const [
+        'Rubik', 'Assistant', 'Arial Hebrew', 'Noto Sans Hebrew', 'Arial', 'sans-serif',
+      ],
+      textTheme: base.textTheme.apply(
+        fontFamily: 'Heebo',
+        fontFamilyFallback: const [
+          'Rubik', 'Assistant', 'Arial Hebrew', 'Noto Sans Hebrew', 'Arial', 'sans-serif',
+        ],
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,

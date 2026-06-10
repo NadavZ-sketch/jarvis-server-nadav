@@ -233,6 +233,27 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     });
   }
 
+  @override
+  void didUpdateWidget(covariant ProgressMapScreen old) {
+    super.didUpdateWidget(old);
+    // The parent (main_shell) may rebuild us with new settings carrying a
+    // different role — e.g. the user flips user⇄admin from the main settings
+    // screen. The visible-tab set then changes (2⇄5) but our TabController is
+    // built once in initState. A TabController whose length ≠ the number of
+    // TabBar tabs / TabBarView children silently collapses the layout in
+    // release builds (asserts off) — the symptom is an empty tab strip and a
+    // "BOTTOM OVERFLOWED BY 99899 PIXELS" banner in admin mode. Keep them in sync.
+    if (_tabController.length != _visibleTabs.length) {
+      final keepIdx = _tabController.index.clamp(0, _visibleTabs.length - 1);
+      _tabController.dispose();
+      _tabController = TabController(
+        length: _visibleTabs.length,
+        vsync: this,
+        initialIndex: keepIdx,
+      );
+    }
+  }
+
   // Navigate to a logical tab by mapping it to its position in the currently
   // visible set (the TabController index != enum index once tabs are gated).
   void _goToTab(ControlCenterTab tab) {

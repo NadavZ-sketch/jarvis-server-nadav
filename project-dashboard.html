@@ -4,15 +4,15 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Jarvis — ניהול פרויקטים</title>
-<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script src="/chart.js"></script>
 <style>
 :root{
   --bg:#070b12;--surface:#0c1018;--card:#0f1724;--card2:#131e2e;
   --border:rgba(255,255,255,.07);--glass:rgba(255,255,255,.04);--glass-border:rgba(255,255,255,.09);
-  --text:#e2e8f0;--muted:#4a5568;--muted2:#718096;
-  --accent:#7c3aed;--accent2:#a78bfa;--glow:rgba(124,58,237,.28);
-  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--blue:#38bdf8;--violet:#a78bfa;--pink:#f472b6;
+  --text:#E0D4BE;--muted:#4a5568;--muted2:#6E7F96;
+  --accent:#C8913A;--accent2:#E8B96A;--glow:rgba(200,145,58,.28);
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--blue:#38bdf8;--violet:#E8B96A;--pink:#f472b6;
   --radius:14px;--radius-sm:9px;--blur:blur(20px);
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -31,7 +31,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .header-nav::-webkit-scrollbar{display:none}
 .nav-tab{display:flex;align-items:center;gap:5px;padding:5px 13px;background:none;border:none;color:var(--muted2);font-size:.78rem;font-weight:600;border-radius:var(--radius-sm);transition:all .15s;white-space:nowrap;position:relative}
 .nav-tab:hover{color:var(--text);background:var(--glass)}
-.nav-tab.active{color:var(--accent2);background:rgba(124,58,237,.12)}
+.nav-tab.active{color:var(--accent2);background:rgba(200,145,58,.12)}
 .nav-tab.active::after{content:'';position:absolute;bottom:-15px;right:50%;transform:translateX(50%);width:18px;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:1px}
 .header-end{display:flex;align-items:center;gap:8px;margin-inline-start:auto}
 .server-pill{display:flex;align-items:center;gap:5px;padding:3px 9px;background:var(--glass);border:1px solid var(--glass-border);border-radius:20px;font-size:.7rem;color:var(--muted2)}
@@ -39,7 +39,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .server-dot.online{animation:pulse 2s infinite}.server-dot.offline{background:var(--red)}
 .refresh-btn{background:none;border:none;color:var(--muted2);font-size:.9rem;padding:4px 8px;border-radius:var(--radius-sm);transition:all .15s}
-.refresh-btn:hover{color:var(--accent2);background:rgba(124,58,237,.1)}
+.refresh-btn:hover{color:var(--accent2);background:rgba(200,145,58,.1)}
 @keyframes spin{to{transform:rotate(360deg)}}
 .refresh-btn.spinning{animation:spin .7s linear infinite}
 
@@ -52,8 +52,8 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 
 /* ── BUTTONS ── */
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border:none;border-radius:var(--radius-sm);font-size:.78rem;font-weight:700;cursor:pointer;transition:all .15s}
-.btn-primary{background:linear-gradient(135deg,var(--accent),#6d28d9);color:#fff;box-shadow:0 0 14px rgba(124,58,237,.3)}
-.btn-primary:hover{box-shadow:0 0 22px rgba(124,58,237,.5);transform:translateY(-1px)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),#B07A28);color:#fff;box-shadow:0 0 14px rgba(200,145,58,.3)}
+.btn-primary:hover{box-shadow:0 0 22px rgba(200,145,58,.5);transform:translateY(-1px)}
 .btn-secondary{background:var(--glass);color:var(--text);border:1px solid var(--glass-border)}
 .btn-secondary:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.14)}
 .btn-danger{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
@@ -61,7 +61,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .btn-sm{padding:4px 10px;font-size:.72rem}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .btn-icon{padding:4px 8px;background:none;border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--muted2);font-size:.82rem;transition:all .15s;cursor:pointer}
-.btn-icon:hover{color:var(--text);border-color:var(--accent);background:rgba(124,58,237,.08)}
+.btn-icon:hover{color:var(--text);border-color:var(--accent);background:rgba(200,145,58,.08)}
 
 /* ── BADGES ── */
 .badge{display:inline-flex;align-items:center;gap:3px;font-size:.66rem;font-weight:700;border-radius:5px;padding:2px 7px;letter-spacing:.2px}
@@ -69,7 +69,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .badge-amber{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
 .badge-red{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
 .badge-blue{background:rgba(56,189,248,.1);color:var(--blue);border:1px solid rgba(56,189,248,.2)}
-.badge-violet{background:rgba(167,139,250,.1);color:var(--violet);border:1px solid rgba(167,139,250,.2)}
+.badge-violet{background:rgba(232,185,106,.1);color:var(--violet);border:1px solid rgba(232,185,106,.2)}
 .badge-muted{background:rgba(113,128,150,.08);color:var(--muted2);border:1px solid rgba(113,128,150,.15)}
 .badge-pink{background:rgba(244,114,182,.1);color:var(--pink);border:1px solid rgba(244,114,182,.2)}
 
@@ -92,7 +92,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .stat-card.s-green::before{background:var(--green)}.stat-card.s-green:hover{box-shadow:0 4px 24px rgba(34,197,94,.15)}
 .stat-card.s-amber::before{background:var(--amber)}.stat-card.s-amber:hover{box-shadow:0 4px 24px rgba(245,158,11,.15)}
 .stat-card.s-red::before{background:var(--red)}.stat-card.s-red:hover{box-shadow:0 4px 24px rgba(239,68,68,.15)}
-.stat-card.s-violet::before{background:var(--violet)}.stat-card.s-violet:hover{box-shadow:0 4px 24px rgba(167,139,250,.15)}
+.stat-card.s-violet::before{background:var(--violet)}.stat-card.s-violet:hover{box-shadow:0 4px 24px rgba(232,185,106,.15)}
 .stat-num{font-size:2.2rem;font-weight:900;line-height:1}
 .stat-num.s-blue{color:var(--blue)}.stat-num.s-green{color:var(--green)}.stat-num.s-amber{color:var(--amber)}.stat-num.s-violet{color:var(--violet)}.stat-num.s-red{color:var(--red)}
 .stat-label{font-size:.72rem;color:var(--muted2);font-weight:600}.stat-sub{font-size:.66rem;color:var(--muted)}
@@ -102,7 +102,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .projects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;padding:0 22px 16px}
 .project-card{background:var(--glass);backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:var(--radius);padding:16px;cursor:pointer;position:relative;overflow:hidden;opacity:0;transform:translateY(14px);transition:opacity .35s ease,transform .35s ease,box-shadow .2s,border-color .2s}
 .project-card.visible{opacity:1;transform:translateY(0)}
-.project-card:hover{border-color:rgba(124,58,237,.35);box-shadow:0 6px 32px rgba(124,58,237,.15);transform:translateY(-3px) !important}
+.project-card:hover{border-color:rgba(200,145,58,.35);box-shadow:0 6px 32px rgba(200,145,58,.15);transform:translateY(-3px) !important}
 .project-card::before{content:'';position:absolute;top:0;right:0;left:0;height:3px;border-radius:var(--radius) var(--radius) 0 0}
 .card-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
 .card-ring-wrap{flex-shrink:0}
@@ -138,9 +138,9 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .kanban-col-hdr{padding:11px 14px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;gap:7px;font-size:.8rem;font-weight:700}
 .kanban-col-hdr .col-count{background:rgba(255,255,255,.06);border:1px solid var(--glass-border);border-radius:20px;font-size:.66rem;padding:1px 7px;color:var(--muted2)}
 .kanban-body{padding:10px;display:flex;flex-direction:column;gap:8px;min-height:200px;transition:background .15s}
-.kanban-body.drag-over{background:rgba(124,58,237,.07);border-radius:8px}
+.kanban-body.drag-over{background:rgba(200,145,58,.07);border-radius:8px}
 .kanban-card{background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-sm);padding:12px;cursor:grab;transition:all .15s;position:relative;user-select:none}
-.kanban-card:hover{border-color:rgba(124,58,237,.3);box-shadow:0 2px 16px rgba(124,58,237,.12)}
+.kanban-card:hover{border-color:rgba(200,145,58,.3);box-shadow:0 2px 16px rgba(200,145,58,.12)}
 .kanban-card.dragging{opacity:.45;transform:scale(.96)}
 .kanban-card-title{font-size:.8rem;font-weight:700;margin-bottom:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kanban-card-meta{display:flex;align-items:center;justify-content:space-between;gap:6px}
@@ -195,7 +195,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 
 /* ── AI INSIGHTS ── */
 .insights-wrap{padding:0 22px 16px;display:flex;flex-direction:column;gap:14px}
-.ai-briefing{background:linear-gradient(135deg,rgba(124,58,237,.12),rgba(167,139,250,.06));border:1px solid rgba(124,58,237,.25);border-radius:var(--radius);padding:16px;display:flex;gap:14px;align-items:flex-start}
+.ai-briefing{background:linear-gradient(135deg,rgba(200,145,58,.12),rgba(232,185,106,.06));border:1px solid rgba(200,145,58,.25);border-radius:var(--radius);padding:16px;display:flex;gap:14px;align-items:flex-start}
 .ai-briefing-icon{font-size:1.8rem;flex-shrink:0}
 .ai-briefing-body h3{font-size:.88rem;font-weight:800;color:var(--accent2);margin-bottom:5px}
 .ai-briefing-body p{font-size:.78rem;color:var(--muted2);line-height:1.6}
@@ -207,7 +207,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .alert-card:hover{transform:translateY(-2px)}
 .alert-card.alert-red{border-color:rgba(239,68,68,.25);background:rgba(239,68,68,.05)}
 .alert-card.alert-amber{border-color:rgba(245,158,11,.25);background:rgba(245,158,11,.05)}
-.alert-card.alert-blue{border-color:rgba(124,58,237,.25);background:rgba(124,58,237,.05)}
+.alert-card.alert-blue{border-color:rgba(200,145,58,.25);background:rgba(200,145,58,.05)}
 .alert-icon{font-size:1.3rem;flex-shrink:0;margin-top:1px}
 .alert-body h4{font-size:.78rem;font-weight:700;margin-bottom:4px}
 .alert-body p{font-size:.72rem;color:var(--muted2);line-height:1.5}
@@ -246,7 +246,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .sb-meta-val{font-size:.8rem;font-weight:700}
 .sb-desc{font-size:.78rem;color:var(--muted2);line-height:1.6;background:rgba(255,255,255,.03);border:1px solid var(--glass-border);border-radius:var(--radius-sm);padding:10px 12px;min-height:48px}
 .milestone-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(255,255,255,.03);border:1px solid var(--glass-border);border-radius:var(--radius-sm);margin-bottom:5px;transition:border-color .15s}
-.milestone-item:hover{border-color:rgba(124,58,237,.3)}
+.milestone-item:hover{border-color:rgba(200,145,58,.3)}
 .milestone-check{width:15px;height:15px;border-radius:4px;border:2px solid var(--glass-border);background:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .milestone-check.done{background:var(--green);border-color:var(--green)}
 .milestone-check.done::after{content:'✓';color:#fff;font-size:.6rem;font-weight:900}
@@ -278,7 +278,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .form-group{margin-bottom:13px}
 .form-label{font-size:.74rem;font-weight:700;color:var(--muted2);margin-bottom:5px;display:block}
 .form-input{width:100%;padding:8px 11px;background:rgba(255,255,255,.04);border:1px solid var(--glass-border);border-radius:var(--radius-sm);color:var(--text);font-size:.8rem;transition:border-color .15s;font-family:inherit}
-.form-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,58,237,.12)}
+.form-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(200,145,58,.12)}
 .form-input::placeholder{color:var(--muted)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .color-presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
@@ -301,7 +301,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 .toast{padding:10px 16px;border-radius:var(--radius-sm);font-size:.78rem;font-weight:700;pointer-events:all;display:flex;align-items:center;gap:8px;min-width:210px;backdrop-filter:var(--blur);animation:slideIn .2s ease}
 .toast-success{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);color:var(--green);box-shadow:0 4px 20px rgba(34,197,94,.15)}
 .toast-error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:var(--red);box-shadow:0 4px 20px rgba(239,68,68,.15)}
-.toast-info{background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);color:var(--accent2);box-shadow:0 4px 20px rgba(124,58,237,.15)}
+.toast-info{background:rgba(200,145,58,.12);border:1px solid rgba(200,145,58,.25);color:var(--accent2);box-shadow:0 4px 20px rgba(200,145,58,.15)}
 @keyframes slideIn{from{transform:translateX(-20px);opacity:0}to{transform:translateX(0);opacity:1}}
 @keyframes fadeOut{to{opacity:0;transform:translateX(-10px)}}
 </style>
@@ -309,7 +309,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 <body>
 
 <header class="header">
-  <a href="/progress-map" class="logo"><div class="logo-icon">✦</div><span>Jarvis</span>&nbsp;<span>פרויקטים</span></a>
+  <a href="/progress-map" class="logo"><div class="logo-icon">✦</div><span style="font-family:'Frank Ruhl Libre',serif;font-style:italic">ג׳רביס</span>&nbsp;<span style="font-size:.8rem;font-weight:500;color:var(--muted2)">פרויקטים</span></a>
   <nav class="header-nav">
     <button class="nav-tab active" onclick="switchTab('overview',this)">🏠 סקירה</button>
     <button class="nav-tab" onclick="switchTab('projects',this)">📋 Kanban</button>
@@ -476,7 +476,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
         <div class="form-group"><label class="form-label">התחלה</label><input class="form-input" type="date" id="f-start"/></div>
         <div class="form-group"><label class="form-label">סיום</label><input class="form-input" type="date" id="f-due"/></div>
       </div>
-      <div class="form-group"><label class="form-label">צבע</label><input class="form-input" type="color" id="f-color" value="#7c3aed" style="height:36px;padding:2px 4px;cursor:pointer"/><div class="color-presets" id="color-presets"></div></div>
+      <div class="form-group"><label class="form-label">צבע</label><input class="form-input" type="color" id="f-color" value="#C8913A" style="height:36px;padding:2px 4px;cursor:pointer"/><div class="color-presets" id="color-presets"></div></div>
     </div>
     <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">ביטול</button><button class="btn btn-primary" id="modal-save-btn" onclick="saveProject()">✨ צור פרויקט</button></div>
   </div>
@@ -484,7 +484,7 @@ button{font-family:inherit;cursor:pointer}input,textarea,select{font-family:inhe
 
 <script>
 let allProjects=[],projectDetails={},currentSidebarId=null,editingProjectId=null,charts={},draggedId=null,tlOffsetMonths=0;
-const COLOR_PRESETS=['#7c3aed','#22c55e','#f59e0b','#ef4444','#38bdf8','#a78bfa','#f472b6','#06b6d4','#fb923c','#84cc16'];
+const COLOR_PRESETS=['#C8913A','#22c55e','#f59e0b','#ef4444','#38bdf8','#E8B96A','#f472b6','#06b6d4','#fb923c','#84cc16'];
 
 document.addEventListener('DOMContentLoaded',()=>{
   initColorPresets();
@@ -639,7 +639,7 @@ function renderPriorityChart(){
 }
 function renderProgressChart(){
   destroyChart('progress');
-  const sorted=[...allProjects].map(p=>({name:p.name,pct:computeProgressFromProject(p),color:p.color||'#7c3aed'})).sort((a,b)=>b.pct-a.pct);
+  const sorted=[...allProjects].map(p=>({name:p.name,pct:computeProgressFromProject(p),color:p.color||'#C8913A'})).sort((a,b)=>b.pct-a.pct);
   charts.progress=new Chart(document.getElementById('chart-progress'),{type:'bar',data:{labels:sorted.map(p=>p.name),datasets:[{label:'התקדמות %',data:sorted.map(p=>p.pct),backgroundColor:sorted.map(p=>p.color+'88'),borderColor:sorted.map(p=>p.color),borderWidth:2,borderRadius:6}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,scales:{x:{min:0,max:100,grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#718096',callback:v=>v+'%'}},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#718096',font:{size:11}}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw}%`}}}}});
 }
 function renderGantt(){
@@ -877,8 +877,8 @@ async function markTaskDone(projId,taskId,taskContent,projName){
 
 function initColorPresets(){document.getElementById('color-presets').innerHTML=COLOR_PRESETS.map(c=>`<div class="color-preset" style="background:${c}" data-color="${c}" onclick="selectColorPreset('${c}')"></div>`).join('');}
 function selectColorPreset(c){document.getElementById('f-color').value=c;document.querySelectorAll('.color-preset').forEach(el=>el.classList.toggle('selected',el.dataset.color===c));}
-function openCreateModal(){editingProjectId=null;document.getElementById('modal-title').textContent='✨ פרויקט חדש';document.getElementById('modal-save-btn').textContent='✨ צור פרויקט';['f-name','f-desc'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-priority').value='medium';document.getElementById('f-status').value='active';document.getElementById('f-start').value='';document.getElementById('f-due').value='';selectColorPreset('#7c3aed');document.getElementById('create-modal').classList.add('open');document.getElementById('f-name').focus();}
-function openEditProjectModal(id){const p=allProjects.find(p=>p.id===id);if(!p)return;editingProjectId=id;document.getElementById('modal-title').textContent='✎ עריכת פרויקט';document.getElementById('modal-save-btn').textContent='💾 שמור';document.getElementById('f-name').value=p.name||'';document.getElementById('f-desc').value=p.description||'';document.getElementById('f-priority').value=p.priority||'medium';document.getElementById('f-status').value=p.status||'active';document.getElementById('f-start').value=p.start_date||'';document.getElementById('f-due').value=p.due_date||'';selectColorPreset(p.color||'#7c3aed');document.getElementById('create-modal').classList.add('open');closeSidebar();}
+function openCreateModal(){editingProjectId=null;document.getElementById('modal-title').textContent='✨ פרויקט חדש';document.getElementById('modal-save-btn').textContent='✨ צור פרויקט';['f-name','f-desc'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-priority').value='medium';document.getElementById('f-status').value='active';document.getElementById('f-start').value='';document.getElementById('f-due').value='';selectColorPreset('#C8913A');document.getElementById('create-modal').classList.add('open');document.getElementById('f-name').focus();}
+function openEditProjectModal(id){const p=allProjects.find(p=>p.id===id);if(!p)return;editingProjectId=id;document.getElementById('modal-title').textContent='✎ עריכת פרויקט';document.getElementById('modal-save-btn').textContent='💾 שמור';document.getElementById('f-name').value=p.name||'';document.getElementById('f-desc').value=p.description||'';document.getElementById('f-priority').value=p.priority||'medium';document.getElementById('f-status').value=p.status||'active';document.getElementById('f-start').value=p.start_date||'';document.getElementById('f-due').value=p.due_date||'';selectColorPreset(p.color||'#C8913A');document.getElementById('create-modal').classList.add('open');closeSidebar();}
 function closeModal(){document.getElementById('create-modal').classList.remove('open');editingProjectId=null;}
 async function saveProject(){
   const name=document.getElementById('f-name').value.trim();if(!name){showToast('שם נדרש','error');return;}

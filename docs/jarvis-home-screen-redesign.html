@@ -4,12 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jarvis — עיצוב מחדש מסך הבית</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: 'Segoe UI', 'Arial Hebrew', Arial, sans-serif;
+    font-family: 'Heebo', 'Inter', 'Arial Hebrew', Arial, sans-serif;
     background: #0f0f13;
+    color: #E0D4BE;
     color: #e8e8f0;
     height: 100vh;
     overflow: hidden;
@@ -27,7 +31,7 @@
     border-bottom: 1px solid rgba(255,255,255,0.08);
     flex-shrink: 0;
   }
-  .nav-brand { font-size: 14px; color: #7c6fe0; font-weight: 600; letter-spacing: 1px; }
+  .nav-brand { font-size: 16px; color: #E8B96A; font-weight: 700; font-family: 'Frank Ruhl Libre', serif; font-style: italic; letter-spacing: 0; }
   .nav-controls { display: flex; gap: 12px; align-items: center; }
   .nav-controls button {
     background: rgba(255,255,255,0.08);
@@ -69,7 +73,7 @@
   .slide-hero {
     justify-content: center;
     text-align: center;
-    background: radial-gradient(ellipse at 60% 40%, rgba(124,111,224,0.15) 0%, transparent 70%);
+    background: radial-gradient(ellipse at 60% 40%, rgba(200,145,58,0.15) 0%, transparent 70%);
   }
 
   /* ── Typography ── */
@@ -77,7 +81,7 @@
     font-size: 11px;
     letter-spacing: 3px;
     text-transform: uppercase;
-    color: #7c6fe0;
+    color: #C8913A;
     margin-bottom: 12px;
   }
 
@@ -102,7 +106,7 @@
   h3 {
     font-size: 16px;
     font-weight: 600;
-    color: #7c6fe0;
+    color: #C8913A;
     margin: 20px 0 10px;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -121,8 +125,8 @@
   /* ── Tags ── */
   .tag {
     display: inline-block;
-    background: rgba(124,111,224,0.15);
-    border: 1px solid rgba(124,111,224,0.3);
+    background: rgba(200,145,58,0.15);
+    border: 1px solid rgba(200,145,58,0.3);
     color: #a89cf0;
     padding: 4px 12px;
     border-radius: 20px;
@@ -147,7 +151,7 @@
     padding: 20px;
     transition: border-color 0.2s;
   }
-  .card:hover { border-color: rgba(124,111,224,0.4); }
+  .card:hover { border-color: rgba(200,145,58,0.4); }
   .card-icon { font-size: 28px; margin-bottom: 10px; }
   .card h4 { font-size: 15px; font-weight: 600; color: #e8e8f0; margin-bottom: 6px; }
   .card p { font-size: 13px; color: #888; margin: 0; }
@@ -160,8 +164,8 @@
     margin-top: 16px;
   }
   .kpi {
-    background: rgba(124,111,224,0.08);
-    border: 1px solid rgba(124,111,224,0.2);
+    background: rgba(200,145,58,0.08);
+    border: 1px solid rgba(200,145,58,0.2);
     border-radius: 12px;
     padding: 20px;
     text-align: center;
@@ -179,10 +183,10 @@
   th {
     text-align: right;
     padding: 10px 14px;
-    background: rgba(124,111,224,0.12);
+    background: rgba(200,145,58,0.12);
     color: #a89cf0;
     font-weight: 600;
-    border-bottom: 1px solid rgba(124,111,224,0.2);
+    border-bottom: 1px solid rgba(200,145,58,0.2);
   }
   td {
     padding: 10px 14px;
@@ -236,8 +240,8 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: rgba(124,111,224,0.2);
-    border: 2px solid #7c6fe0;
+    background: rgba(200,145,58,0.2);
+    border: 2px solid #C8913A;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -256,8 +260,8 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: rgba(124,111,224,0.15);
-    border: 1px solid rgba(124,111,224,0.3);
+    background: rgba(200,145,58,0.15);
+    border: 1px solid rgba(200,145,58,0.3);
     padding: 4px 14px;
     border-radius: 20px;
     font-size: 13px;
@@ -302,7 +306,7 @@
   .progress-row { margin-bottom: 14px; }
   .progress-label { display: flex; justify-content: space-between; font-size: 13px; color: #bbb; margin-bottom: 5px; }
   .progress-bar { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
-  .progress-fill { height: 100%; background: linear-gradient(90deg, #7c6fe0, #a89cf0); border-radius: 3px; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #C8913A, #a89cf0); border-radius: 3px; }
 
   /* ── Footer ── */
   .slide-footer {
@@ -320,8 +324,8 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: rgba(124,111,224,0.12);
-    border: 1px solid rgba(124,111,224,0.25);
+    background: rgba(200,145,58,0.12);
+    border: 1px solid rgba(200,145,58,0.25);
     padding: 6px 16px;
     border-radius: 24px;
     font-size: 13px;
@@ -336,7 +340,7 @@
 <body>
 
 <nav>
-  <span class="nav-brand">JARVIS ✦ מסך הבית החכם</span>
+  <span class="nav-brand">ג׳רביס ✦ מסך הבית החכם</span>
   <div class="nav-controls">
     <button onclick="prev()">→ הקודם</button>
     <span class="slide-counter" id="counter">1 / 10</span>
@@ -790,7 +794,7 @@ const [tasks, reminders, memories] = await Promise.all([
       PR #184 · nadavz-sketch/jarvis-server-nadav · מאי 2026
     </div>
     <div class="slide-footer" style="justify-content:center; border-top:none; padding-top:0; margin-top:32px;">
-      <span style="color:#7c6fe0;">Jarvis Smart Dashboard Redesign — נדב זרו</span>
+      <span style="color:#C8913A;">Jarvis Smart Dashboard Redesign — נדב זרו</span>
     </div>
   </div>
 

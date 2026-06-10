@@ -144,7 +144,6 @@ class _SplashScreenState extends State<SplashScreen>
                   color: JC.textMuted,
                   fontSize: 14,
                   fontFamily: 'Heebo',
-                  letterSpacing: 0.3,
                 ),
               ),
             ],

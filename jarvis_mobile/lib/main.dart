@@ -2018,7 +2018,6 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     color: JC.blue400,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
                     fontFamily: 'Heebo',
                   ),
                 ),

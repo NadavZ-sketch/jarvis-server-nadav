@@ -186,7 +186,7 @@ class _EisenhowerMatrixState extends State<EisenhowerMatrix> {
                     subtitle,
                     style: TextStyle(
                       fontFamily: 'Heebo',
-                      fontSize: 9.5,
+                      fontSize: 11,
                       color: JC.textMuted,
                     ),
                     textAlign: TextAlign.center,

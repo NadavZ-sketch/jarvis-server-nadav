@@ -478,7 +478,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
         child: Transform.translate(offset: Offset(0, 14 * (1 - v)), child: child),
       ),
       child: Align(
-        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+        alignment: isUser ? AlignmentDirectional.centerStart : AlignmentDirectional.centerEnd,
         child: GestureDetector(
           onTap: () => setState(() => _showTime = !_showTime),
           onLongPress: () => _showCopyMenu(widget.msg['text'] ?? ''),
@@ -631,17 +631,17 @@ class _ChatBubbleState extends State<_ChatBubble> {
 
   Widget _bubbleSurface({required bool isUser, required Widget child}) {
     final scheme = JC.scheme;
-    final margin = EdgeInsets.only(
+    final margin = EdgeInsetsDirectional.only(
       bottom: 14,
-      right: isUser ? 0 : 48,
-      left: isUser ? 48 : 0,
+      start: isUser ? 0 : 48,
+      end: isUser ? 48 : 0,
     );
     const padding = EdgeInsets.symmetric(horizontal: 16, vertical: 12);
-    final radius = BorderRadius.only(
-      topLeft: const Radius.circular(20),
-      topRight: const Radius.circular(20),
-      bottomLeft: Radius.circular(isUser ? 20 : 6),
-      bottomRight: Radius.circular(isUser ? 6 : 20),
+    final radius = BorderRadiusDirectional.only(
+      topStart: const Radius.circular(20),
+      topEnd: const Radius.circular(20),
+      bottomStart: Radius.circular(isUser ? 6 : 20),
+      bottomEnd: Radius.circular(isUser ? 20 : 6),
     );
     final borderColor = isUser
         ? JC.blue400.withValues(alpha: 0.5)

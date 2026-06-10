@@ -27,11 +27,17 @@ const mailTransporter = nodemailer.createTransport({
 });
 
 async function sendEmail(to, body) {
+    const urlRegex = /https?:\/\/[^\s<>"']+/g;
+    const htmlBody = body
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(urlRegex, url => `<a href="${url}" style="color:#1a73e8">${url}</a>`)
+        .replace(/\n/g, '<br>');
     await mailTransporter.sendMail({
         from: `"Jarvis" <${process.env.GMAIL_USER}>`,
         to,
         subject: 'הודעה מג\'רביס',
         text: body,
+        html: `<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6">${htmlBody}</div>`,
     });
     console.info(`[email] sent to ${to}`);
 }

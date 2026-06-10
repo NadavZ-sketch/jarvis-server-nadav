@@ -52,6 +52,9 @@ bool obsidianAutoSync;
   String responseLength; // 'short' | 'medium' | 'long'
   bool saverMode;        // token-saver: forces short replies + low temperature server-side
 
+  // ── Identity ──
+  String userEmail; // user's own email for self-send (link sharing, etc.)
+
   // ── Security ──
   String apiKey; // x-jarvis-key shared secret (empty = no auth)
 
@@ -107,6 +110,7 @@ bool obsidianAutoSync;
     this.temperature = 0.7,
     this.responseLength = 'medium',
     this.saverMode = false,
+    this.userEmail = '',
     this.apiKey = '',
     this.notificationsEnabled = true,
     this.quietHoursStart = 22,
@@ -203,6 +207,7 @@ bool obsidianAutoSync;
       temperature:      prefs.getDouble('temperature')      ?? 0.7,
       responseLength:   prefs.getString('responseLength')   ?? 'medium',
       saverMode:        prefs.getBool('saverMode')          ?? false,
+      userEmail:        prefs.getString('userEmail')          ?? '',
       apiKey:           prefs.getString('apiKey')            ?? '',
       notificationsEnabled: prefs.getBool('notificationsEnabled') ?? true,
       quietHoursStart:  prefs.getInt('quietHoursStart')     ?? 22,
@@ -259,6 +264,7 @@ bool obsidianAutoSync;
     await prefs.setDouble('temperature',    temperature);
     await prefs.setString('responseLength', responseLength);
     await prefs.setBool('saverMode',        saverMode);
+    await prefs.setString('userEmail',        userEmail);
     await prefs.setString('apiKey',           apiKey);
     await prefs.setBool('notificationsEnabled', notificationsEnabled);
     await prefs.setInt('quietHoursStart',   quietHoursStart);
@@ -285,6 +291,7 @@ bool obsidianAutoSync;
     'gender':         gender,
     'personality':    personality,
     'userName':       userName,
+    'userEmail':      userEmail,
     'useLocalModel':  useLocalModel,
     'useLocalServer': useLocalServer,
     'ttsEnabled':     voiceEnabled,   // server checks settings.ttsEnabled

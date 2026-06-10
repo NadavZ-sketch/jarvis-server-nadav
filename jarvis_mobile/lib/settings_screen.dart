@@ -39,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late AppSettings _s;
   late TextEditingController _assistantNameCtrl;
   late TextEditingController _userNameCtrl;
+  late TextEditingController _userEmailCtrl;
   late TextEditingController _localServerUrlCtrl;
   late TextEditingController _localModelCtrl;
   late TextEditingController _briefingFocusCtrl;
@@ -105,9 +106,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       homeCardsHidden:  w.homeCardsHidden,
       tasksDefaultView: w.tasksDefaultView,
       city:             w.city,
+      userEmail:        w.userEmail,
     );
     _assistantNameCtrl  = TextEditingController(text: _s.assistantName);
     _userNameCtrl       = TextEditingController(text: _s.userName);
+    _userEmailCtrl      = TextEditingController(text: _s.userEmail);
     _localServerUrlCtrl = TextEditingController(text: _s.localServerUrl);
     _localModelCtrl     = TextEditingController(text: _s.localModelName);
     _briefingFocusCtrl  = TextEditingController(text: _s.todayBriefingFocus);
@@ -215,6 +218,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _assistantNameCtrl.dispose();
     _userNameCtrl.dispose();
     _localServerUrlCtrl.dispose();
+    _userEmailCtrl.dispose();
     _localModelCtrl.dispose();
     _briefingFocusCtrl.dispose();
     _cityCtrl.dispose();
@@ -225,6 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _save() {
     _s.assistantName  = _assistantNameCtrl.text.trim().isEmpty ? 'Jarvis'                    : _assistantNameCtrl.text.trim();
     _s.userName       = _userNameCtrl.text.trim().isEmpty      ? 'נדב'                       : _userNameCtrl.text.trim();
+    _s.userEmail      = _userEmailCtrl.text.trim();
     _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
     _s.localModelName = _localModelCtrl.text.trim().isEmpty    ? 'gemma4:e4b'                  : _localModelCtrl.text.trim();
     _s.todayBriefingFocus = _briefingFocusCtrl.text.trim();
@@ -596,6 +601,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required TextEditingController ctrl,
     required String hint,
     TextDirection textDir = TextDirection.ltr,
+    TextInputType? keyboardType,
   }) =>
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -615,6 +621,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 controller: ctrl,
                 textAlign: TextAlign.end,
                 textDirection: textDir,
+                keyboardType: keyboardType,
                 style: TextStyle(
                     color: JC.textSecondary,
                     fontSize: 14,
@@ -1125,6 +1132,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ctrl: _userNameCtrl,
                 hint: 'נדב',
                 textDir: TextDirection.rtl,
+              ),
+              _divider(),
+              _rowField(
+                label: 'המייל שלך',
+                icon: Icons.email_outlined,
+                ctrl: _userEmailCtrl,
+                hint: 'your@email.com',
+                keyboardType: TextInputType.emailAddress,
               ),
               _divider(),
               _rowField(

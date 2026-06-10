@@ -9,6 +9,9 @@ const { createClient } = require('@supabase/supabase-js');
 const googleTTS  = require('google-tts-api');
 const { OpenAI, toFile } = require('openai');
 
+const pushService = require('./services/pushService');
+const systemLog   = require('./services/systemLog');
+
 const groqWhisper = new OpenAI({
     apiKey: process.env.GROQ_API_KEY,
     baseURL: 'https://api.groq.com/openai/v1',
@@ -281,10 +284,31 @@ if (!_corsOrigins) {
 app.use(cors({
     origin: _corsOrigins || '*',
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-User-Id', 'X-User-Role', 'X-User-Plan', 'X-User-Consent', 'X-Confirm-Action'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-User-Id', 'X-User-Role', 'X-User-Plan', 'X-User-Consent', 'X-Confirm-Action', 'X-Jarvis-Key'],
 }));
 
 app.use(express.json({ limit: '10mb' }));
+
+// ─── API Key auth middleware ──────────────────────────────────────────────────
+// Single shared-secret check for a personal single-user deployment.
+// Set JARVIS_API_KEY in production. When the var is unset the middleware is a
+// no-op so all 78 test files keep passing without changes.
+const _JARVIS_API_KEY = process.env.JARVIS_API_KEY || '';
+const _AUTH_EXEMPT = new Set(['/health', '/health/providers', '/google-auth-callback']);
+if (_JARVIS_API_KEY) {
+    app.use((req, res, next) => {
+        // Exempt health checks, OAuth callback, and webhook paths
+        if (_AUTH_EXEMPT.has(req.path)) return next();
+        if (req.path.startsWith('/webhooks/')) return next();
+        // Dashboard HTML served via /progress-map — accept ?key= query param
+        const key = req.headers['x-jarvis-key'] || req.query.key || '';
+        if (key !== _JARVIS_API_KEY) {
+            return res.status(401).json({ ok: false, error: 'Unauthorized' });
+        }
+        next();
+    });
+    console.log('🔑 API key auth active');
+}
 
 const _rl = (max, windowMs = 60_000) => rateLimit({ windowMs, max, standardHeaders: true, legacyHeaders: false });
 app.use('/ask-jarvis',    _rl(30));
@@ -314,6 +338,10 @@ const supabase = supabaseAdmin;
 
 // Persist per-agent latency/intent metrics to Supabase (degrades to in-memory).
 agentMetrics.init(supabase);
+
+// Init push notification service and system logger with the Supabase client.
+pushService.init(supabase);
+systemLog.init(supabase, pushService);
 
 // Intent → registry agent id (e.g. 'task' → 'taskAgent'). Core agents are never
 // disablable, so they are exempt from the disabled check below.
@@ -621,6 +649,28 @@ async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settin
 app.get('/health', (req, res) => {
     res.json({ ok: true, version: 'multi-agent-v3', ts: Date.now(), pinecone: pinecone.isReady() });
 });
+
+// ─── Push notification token registration ────────────────────────────────────
+app.post('/push/register-token', async (req, res) => {
+    const { token, platform, appVersion } = req.body || {};
+    if (!token) return res.status(400).json({ ok: false, error: 'token required' });
+    try {
+        await pushService.registerToken({ token, platform, appVersion });
+        res.json({ ok: true });
+    } catch (err) {
+        systemLog.logError('route:/push/register-token', err).catch(() => {});
+        res.status(500).json({ ok: false, error: 'registration failed' });
+    }
+});
+
+// Debug-only route for manually testing push delivery
+if (!isTestEnv && process.env.PUSH_DRIVER && process.env.PUSH_DRIVER !== 'none') {
+    app.post('/push/test', async (req, res) => {
+        const body = req.body?.body || '🔔 בדיקת התראה מג׳רביס';
+        await pushService.sendPush({ title: 'ג׳רביס — בדיקה', body, category: 'alert' });
+        res.json({ ok: true, message: 'push sent' });
+    });
+}
 
 // Diagnostic: probe each LLM/Search provider with a tiny live request and
 // report which API keys are present and actually working. Open in a browser:
@@ -1073,11 +1123,11 @@ async function askJarvisHandler(req, res) {
         // ── Fire-and-forget: passive memory extraction + summary update ────────
         if (agentName === 'chat' && !imageBase64) {
             setImmediate(() => {
-                autoExtractMemory(originalMessage, answer, supabase, settings).catch(() => {});
+                autoExtractMemory(originalMessage, answer, supabase, settings).catch(e => systemLog.logError('autoExtractMemory', e).catch(() => {}));
                 // Reload fresh history (cache was just invalidated) for summary
                 loadChatHistory(chatId).then(freshHistory => {
-                    conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, supabase, settings).catch(() => {});
-                }).catch(() => {});
+                    conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, supabase, settings).catch(e => systemLog.logError('updateSummaryIfNeeded', e).catch(() => {}));
+                }).catch(e => systemLog.logError('loadChatHistory:postChat', e).catch(() => {}));
             });
         }
 
@@ -3656,10 +3706,10 @@ async function streamJarvisHandler(req, res) {
 
         // Update rolling summary + passive memory extraction (fire-and-forget)
         setImmediate(() => {
-            autoExtractMemory(originalMessage, fullAnswer, supabase, settings).catch(() => {});
+            autoExtractMemory(originalMessage, fullAnswer, supabase, settings).catch(e => systemLog.logError('autoExtractMemory:stream', e).catch(() => {}));
             loadChatHistory(chatId).then(fresh => {
-                conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(() => {});
-            }).catch(() => {});
+                conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(e => systemLog.logError('updateSummaryIfNeeded:stream', e).catch(() => {}));
+            }).catch(e => systemLog.logError('loadChatHistory:stream', e).catch(() => {}));
         });
         }); // end providerContext.run
     } catch (err) {
@@ -3719,10 +3769,29 @@ async function fireDueReminders(db = supabase, nowIso = new Date().toISOString()
                     .update({ scheduled_time: next.toISOString(), fired: false })
                     .eq('id', r.id);
                 console.log(`🔁 Rescheduled "${r.text}" → ${next.toISOString()}`);
+                // Push recurring reminders — app won't have pre-scheduled them for future occurrences
+                pushService.sendPush({
+                    title: 'ג׳רביס 🔔',
+                    body: r.text,
+                    data: { reminderId: String(r.id) },
+                    category: 'reminder',
+                }).catch(() => {});
                 rescheduled++;
             } else {
                 // One-time: mark as fired
                 await db.from('reminders').update({ fired: true }).eq('id', r.id);
+                // Push only if the reminder was created very recently (app couldn't pre-schedule it)
+                const createdRecently = r.created_at
+                    ? (Date.now() - new Date(r.created_at).getTime()) < 2 * 60 * 1000
+                    : false;
+                if (createdRecently) {
+                    pushService.sendPush({
+                        title: 'ג׳רביס 🔔',
+                        body: r.text,
+                        data: { reminderId: String(r.id) },
+                        category: 'reminder',
+                    }).catch(() => {});
+                }
                 fired++;
             }
         }
@@ -3733,27 +3802,53 @@ async function fireDueReminders(db = supabase, nowIso = new Date().toISOString()
     }
 }
 
-if (!isTestEnv) cron.schedule('* * * * *', () => fireDueReminders());
+if (!isTestEnv) scheduledJob('fire_reminders', '* * * * *', () => fireDueReminders());
 
 // Hourly cleanup of expired session/recent memories (24h / 7d TTLs).
-if (!isTestEnv) cron.schedule('17 * * * *', async () => {
-    try {
-        const res = await cleanupExpiredMemories(supabase);
-        if (res.deleted > 0) cacheInvalidate('memories');
-        if (res.errors?.length) console.warn('🧹 memoryCleanup errors:', res.errors);
-    } catch (err) {
-        console.error('🧹 memoryCleanup unexpected error:', err.message);
-    }
+if (!isTestEnv) scheduledJob('memory_cleanup_hourly', '17 * * * *', async () => {
+    const res = await cleanupExpiredMemories(supabase);
+    if (res.deleted > 0) cacheInvalidate('memories');
+    if (res.errors?.length) console.warn('🧹 memoryCleanup errors:', res.errors);
 });
 
 // ─── Proactive Notification Helpers ──────────────────────────────────────────
 
-async function enqueueNotification(text) {
+/**
+ * Queue a notification for the in-app feed AND send a push to the device.
+ * Existing call sites pass only `text`; the options object is optional.
+ * @param {string} text
+ * @param {{ title?: string, category?: string }} [opts]
+ */
+async function enqueueNotification(text, opts = {}) {
+    const { title = 'ג׳רביס 🤖', category = 'proactive' } = opts;
+    // Always write to the reminders feed (in-app polling)
     await supabase.from('reminders').insert([{
         text,
         scheduled_time: new Date().toISOString(),
         fired: true,
     }]);
+    // Also push to the device when a driver is configured
+    pushService.sendPush({ title, body: text, category }).catch(() => {});
+}
+
+// ─── Scheduled job wrapper ────────────────────────────────────────────────────
+// Wraps cron.schedule with error capture → system_events + cron_runs tracking.
+function scheduledJob(name, expr, fn, cronOpts = {}) {
+    return cron.schedule(expr, async () => {
+        try {
+            await fn();
+            supabase.from('cron_runs').upsert(
+                { job_name: name, last_ok_at: new Date().toISOString() },
+                { onConflict: 'job_name' }
+            ).catch(() => {});
+        } catch (err) {
+            systemLog.logError(`cron:${name}`, err).catch(() => {});
+            supabase.from('cron_runs').upsert(
+                { job_name: name, last_err_at: new Date().toISOString(), last_error: err.message?.slice(0, 500) },
+                { onConflict: 'job_name' }
+            ).catch(() => {});
+        }
+    }, cronOpts);
 }
 
 // ─── Morning briefing builder ─────────────────────────────────────────────────
@@ -3815,110 +3910,113 @@ async function buildMorningBriefing(city = '') {
     return briefing.trim();
 }
 
+// ─── Boot-time morning briefing catch-up ─────────────────────────────────────
+// Render free tier may sleep and miss the 07:00 cron. On startup, if the
+// briefing hasn't run today and the hour is between 07:00–12:00 Jerusalem, fire
+// it now so the user doesn't lose the daily summary.
+if (!isTestEnv) {
+    (async () => {
+        try {
+            const nowJer = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+            const hour = nowJer.getHours();
+            if (hour < 7 || hour >= 12) return; // outside catch-up window
+            const today = nowJer.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+            const { data } = await supabase.from('cron_runs')
+                .select('last_ok_at')
+                .eq('job_name', 'morning_briefing')
+                .maybeSingle().catch(() => ({ data: null }));
+            const lastOk = data?.last_ok_at;
+            if (lastOk && lastOk.startsWith(today)) return; // already ran today
+            console.log('🌅 [boot] Running missed morning briefing catch-up');
+            const profile = await getUserProfile().catch(() => null);
+            const briefingText = await buildMorningBriefing(profile?.city || '');
+            await enqueueNotification(briefingText, { title: '🌅 תדריך בוקר', category: 'briefing' });
+            await supabase.from('cron_runs').upsert(
+                { job_name: 'morning_briefing', last_ok_at: new Date().toISOString() },
+                { onConflict: 'job_name' }
+            ).catch(() => {});
+        } catch (err) {
+            systemLog.logError('boot:morning_briefing_catchup', err).catch(() => {});
+        }
+    })();
+}
+
 // Morning briefing — 7:00 AM Jerusalem
-if (!isTestEnv) cron.schedule('0 7 * * *', async () => {
-    try {
-        const profile = await getUserProfile().catch(() => null);
-        const city = profile?.city || '';
-        const briefingText = await buildMorningBriefing(city);
-        await enqueueNotification(briefingText);
-        console.log('🌅 Morning briefing queued');
-    } catch (err) {
-        console.error('Morning briefing error:', err.message);
-    }
+if (!isTestEnv) scheduledJob('morning_briefing', '0 7 * * *', async () => {
+    const profile = await getUserProfile().catch(() => null);
+    const city = profile?.city || '';
+    const briefingText = await buildMorningBriefing(city);
+    await enqueueNotification(briefingText, { title: '🌅 תדריך בוקר', category: 'briefing' });
+    console.log('🌅 Morning briefing queued');
 }, { timezone: 'Asia/Jerusalem' });
 
 // Evening nudge — 21:00 Jerusalem (only when tasks remain open)
-if (!isTestEnv) cron.schedule('0 21 * * *', async () => {
-    try {
-        const { data: tasks } = await supabase.from('tasks').select('id');
-        if (!tasks || tasks.length === 0) return;
-
-        await enqueueNotification(`יש לך ${tasks.length} משימות פתוחות. לילה טוב ✨`);
-        console.log('🌙 Evening nudge queued');
-    } catch (err) {
-        console.error('Evening nudge error:', err.message);
-    }
+if (!isTestEnv) scheduledJob('evening_nudge', '0 21 * * *', async () => {
+    const { data: tasks } = await supabase.from('tasks').select('id').eq('done', false);
+    if (!tasks || tasks.length === 0) return;
+    await enqueueNotification(`יש לך ${tasks.length} משימות פתוחות. לילה טוב ✨`, { title: '🌙 ג׳רביס', category: 'proactive' });
+    console.log('🌙 Evening nudge queued');
 }, { timezone: 'Asia/Jerusalem' });
 
 // Proactive midday push — 13:00 Jerusalem. Fires at most once/day and only on
 // high-signal task states (overdue / stale high-priority), so it complements
 // the morning briefing and evening nudge without nagging.
 let _lastProactivePushDate = null;
-if (!isTestEnv) cron.schedule('0 13 * * *', async () => {
-    try {
-        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
-        if (_lastProactivePushDate === today) return;
-        const sug = await proactiveEngine.computeProactiveSuggestion(supabase);
-        if (sug && (sug.type === 'overdue' || sug.type === 'stale_high')) {
-            await enqueueNotification(`💡 ${sug.message}`);
-            _lastProactivePushDate = today;
-            console.log('💡 Proactive push queued:', sug.type);
-        }
-    } catch (err) {
-        console.error('Proactive push error:', err.message);
+if (!isTestEnv) scheduledJob('proactive_push', '0 13 * * *', async () => {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+    if (_lastProactivePushDate === today) return;
+    const sug = await proactiveEngine.computeProactiveSuggestion(supabase);
+    if (sug && (sug.type === 'overdue' || sug.type === 'stale_high')) {
+        await enqueueNotification(`💡 ${sug.message}`, { title: '💡 ג׳רביס', category: 'proactive' });
+        _lastProactivePushDate = today;
+        console.log('💡 Proactive push queued:', sug.type);
     }
 }, { timezone: 'Asia/Jerusalem' });
 
-// P2: Daily cron — 09:00 Jerusalem — flag agents inactive for 7+ days
-if (!isTestEnv) cron.schedule('0 9 * * *', async () => {
-    try {
-        const snap = await agentMetrics.snapshot();
-        const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-        const inactive = snap.latency.filter(r =>
-            r.lastCalledAt && r.lastCalledAt < sevenDaysAgo && r.count > 0);
-        if (inactive.length === 0) return;
-        const names = inactive.map(r => r.agent).join(', ');
-        console.log(`⚠️ Inactive agents (7+ days): ${names}`);
-        await supabase.from('agent_metrics_alerts').upsert(
-            inactive.map(r => ({
-                agent: r.agent,
-                alert_type: 'inactive',
-                last_called_at: r.lastCalledAt,
-                checked_at: new Date().toISOString(),
-            })),
-            { onConflict: 'agent' }
-        ).catch(() => {}); // table may not exist; best-effort
-    } catch (err) {
-        console.error('Inactive agent cron error:', err.message);
-    }
+// Daily cron — 09:00 Jerusalem — flag agents inactive for 7+ days
+if (!isTestEnv) scheduledJob('inactive_agent_check', '0 9 * * *', async () => {
+    const snap = await agentMetrics.snapshot();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const inactive = snap.latency.filter(r =>
+        r.lastCalledAt && r.lastCalledAt < sevenDaysAgo && r.count > 0);
+    if (inactive.length === 0) return;
+    const names = inactive.map(r => r.agent).join(', ');
+    console.log(`⚠️ Inactive agents (7+ days): ${names}`);
+    await supabase.from('agent_metrics_alerts').upsert(
+        inactive.map(r => ({
+            agent: r.agent,
+            alert_type: 'inactive',
+            last_called_at: r.lastCalledAt,
+            checked_at: new Date().toISOString(),
+        })),
+        { onConflict: 'agent' }
+    ).catch(() => {}); // table may not exist; best-effort
 }, { timezone: 'Asia/Jerusalem' });
 
 // Daily deep-clean at 03:30 — re-run the same cleanupExpiredMemories that runs
 // hourly, but with full Pinecone + Obsidian sync. Catches anything the hourly
 // job missed and keeps the three stores aligned.
-if (!isTestEnv) cron.schedule('30 3 * * *', async () => {
-    try {
-        const res = await cleanupExpiredMemories(supabase);
-        if (res.deleted > 0) {
-            cacheInvalidate('memories');
-            console.log(`🧹 nightly memoryCleanup: removed ${res.deleted} expired memories`);
-        }
-        if (res.errors?.length) console.warn('🧹 nightly memoryCleanup errors:', res.errors);
-    } catch (err) {
-        console.error('Memory cleanup cron error:', err.message);
+if (!isTestEnv) scheduledJob('memory_cleanup_nightly', '30 3 * * *', async () => {
+    const res = await cleanupExpiredMemories(supabase);
+    if (res.deleted > 0) {
+        cacheInvalidate('memories');
+        console.log(`🧹 nightly memoryCleanup: removed ${res.deleted} expired memories`);
     }
+    if (res.errors?.length) console.warn('🧹 nightly memoryCleanup errors:', res.errors);
 }, { timezone: 'Asia/Jerusalem' });
 
 // Daily user-profile learning — 03:45 Jerusalem (after the 03:30 memory cleanup).
 // Derives preferred hours / interests / recurring tasks from behaviour and
 // writes them into the profile without clobbering fields the user set manually.
-if (!isTestEnv) cron.schedule('45 3 * * *', async () => {
-    try {
-        const r = await profileLearner.learnUserProfile(supabase, { getProfile: getUserProfile });
-        if (r.updated) console.log('🧠 User profile auto-learned from behaviour');
-        // Refresh the cache so the style learner reads the row profileLearner just
-        // wrote and merges into it rather than clobbering its auto_learned keys.
-        if (r.updated) cacheInvalidate('userProfile');
-        // Style preferences learned from explicit feedback (Phase 2 of the loop).
-        const s = await styleLearner.learnStyle(supabase, {
-            getProfile: getUserProfile,
-            onUpdate: () => cacheInvalidate('userProfile'),
-        });
-        if (s.updated) console.log('🎯 Style prefs learned from feedback:', JSON.stringify(s.learned));
-    } catch (err) {
-        console.error('Profile learning cron error:', err.message);
-    }
+if (!isTestEnv) scheduledJob('profile_learning', '45 3 * * *', async () => {
+    const r = await profileLearner.learnUserProfile(supabase, { getProfile: getUserProfile });
+    if (r.updated) console.log('🧠 User profile auto-learned from behaviour');
+    if (r.updated) cacheInvalidate('userProfile');
+    const s = await styleLearner.learnStyle(supabase, {
+        getProfile: getUserProfile,
+        onUpdate: () => cacheInvalidate('userProfile'),
+    });
+    if (s.updated) console.log('🎯 Style prefs learned from feedback:', JSON.stringify(s.learned));
 }, { timezone: 'Asia/Jerusalem' });
 
 app.get('/chart.js', (_req, res) => {

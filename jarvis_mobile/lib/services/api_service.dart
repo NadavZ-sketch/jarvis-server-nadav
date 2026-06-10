@@ -22,6 +22,9 @@ class ApiService {
 
   Map<String, String> _headers([Map<String, String>? extra]) {
     final h = Map<String, String>.from(_baseHeaders);
+    // Add API key when configured (single-user auth for the personal server)
+    final key = settings.apiKey;
+    if (key.isNotEmpty) h['x-jarvis-key'] = key;
     if (extra != null) h.addAll(extra);
     return h;
   }

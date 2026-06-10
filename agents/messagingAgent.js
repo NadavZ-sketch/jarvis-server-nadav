@@ -16,18 +16,20 @@ async function findContact(name, supabase) {
     ) || null;
 }
 
-async function runMessagingAgent(userMessage, supabase, useLocal = true) {
+async function runMessagingAgent(userMessage, supabase, useLocal = true, settings = {}) {
     try {
         const parsePrompt = `Parse this Hebrew message and return valid JSON only (no markdown, no explanation):
 {
   "action": "send" or "save_contact",
   "channel": "whatsapp" or "email" or null,
-  "recipient_name": "name or null",
+  "recipient_name": "name, or 'self' if the user is sending to themselves, or null",
   "recipient_phone": "phone number digits only or null",
-  "recipient_email": "email or null",
-  "message_intent": "what the user wants to communicate in Hebrew or null"
+  "recipient_email": "email address if explicitly mentioned or null",
+  "message_intent": "what the user wants to communicate in Hebrew or null",
+  "urls": ["any URLs or links found in the message, empty array if none"]
 }
 
+If the user says "שלח לי", "שלח לעצמי", "תשלח לי", or is clearly requesting something be sent to themselves, set recipient_name to "self".
 Message: "${userMessage}"`;
 
         const raw = await callGemma4(parsePrompt, useLocal);
@@ -63,11 +65,33 @@ Message: "${userMessage}"`;
             return { answer: `✅ "${parsed.recipient_name}" נשמר באנשי הקשר.`, action: null };
         }
 
-        // ── Send message ───────────────────────────────────────────────────────
-        if (!parsed.recipient_name) {
-            return { answer: 'לא הצלחתי לזהות את הנמען. נסה לציין שם ברור.', action: null };
+        // ── Send to self (user requests a link/message to themselves) ─────────
+        if (parsed.recipient_name === 'self' || parsed.recipient_name === null) {
+            const selfEmail = settings.userEmail
+                || settings.userProfile?.email
+                || parsed.recipient_email
+                || null;
+
+            if (!selfEmail) {
+                return {
+                    answer: 'כדי לשלוח לעצמך קישור במייל, הגדר את כתובת המייל שלך בהגדרות (שדה "המייל שלך").',
+                    action: null
+                };
+            }
+
+            const urls = Array.isArray(parsed.urls) ? parsed.urls : [];
+            const baseText = parsed.message_intent || userMessage;
+            const messageBody = urls.length > 0
+                ? `${baseText}\n\n${urls.join('\n')}`
+                : baseText;
+
+            return {
+                answer: `שולח לך את הקישור למייל (${selfEmail}) ✉️`,
+                action: { type: 'email', email: selfEmail, message: messageBody }
+            };
         }
 
+        // ── Send message ───────────────────────────────────────────────────────
         const contact = await findContact(parsed.recipient_name, supabase);
         if (!contact) {
             return {
@@ -77,13 +101,22 @@ Message: "${userMessage}"`;
         }
 
         // Draft the message with Gemma
+        const urls = Array.isArray(parsed.urls) ? parsed.urls : [];
+        const urlNote = urls.length > 0
+            ? `\nחובה לכלול את הקישורים הבאים בהודעה כמות שהם: ${urls.join(', ')}`
+            : '';
         const draftPrompt = `כתוב הודעה קצרה ומתאימה בעברית (עד 3 משפטים) לפי הבקשה הבאה.
-כתוב רק את תוכן ההודעה, ללא כותרות, ללא "הנה ההודעה:" ובלי הסברים נוספים.
+כתוב רק את תוכן ההודעה, ללא כותרות, ללא "הנה ההודעה:" ובלי הסברים נוספים.${urlNote}
 
 בקשה: "${parsed.message_intent || userMessage}"
 נמען: ${contact.name}`;
 
-        const draftedMessage = await callGemma4(draftPrompt, useLocal);
+        let draftedMessage = await callGemma4(draftPrompt, useLocal);
+        // Ensure any extracted URLs appear verbatim in the final message
+        if (urls.length > 0) {
+            const missing = urls.filter(u => !draftedMessage.includes(u));
+            if (missing.length > 0) draftedMessage = draftedMessage.trimEnd() + '\n' + missing.join('\n');
+        }
         if (!draftedMessage || !draftedMessage.trim()) {
             return { answer: 'לא הצלחתי לנסח הודעה. נסה לתאר בצורה ברורה יותר מה לכתוב.', action: null };
         }

@@ -872,8 +872,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     // are ready. Runs in background; failure never blocks the chat screen.
     if (!kIsWeb) {
       NotificationService.initPush(
-        serverUrl: widget.settings.serverUrl,
-        apiKey: widget.settings.apiKey,
+        serverUrl: _settings.serverUrl,
+        apiKey: _settings.apiKey,
       ).catchError((_) {});
     }
 

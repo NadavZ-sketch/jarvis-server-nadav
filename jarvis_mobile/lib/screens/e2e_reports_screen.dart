@@ -192,10 +192,17 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
 
   Widget _buildBody() {
     if (_loading && _reports.isEmpty) {
-      return Center(child: CircularProgressIndicator(color: JC.blue400));
+      // When embedded inside a scrolling parent (control center) the incoming
+      // vertical constraints are unbounded, so a bare Center could expand toward
+      // infinity and overflow. Give it a fixed-height box instead.
+      final spinner = CircularProgressIndicator(color: JC.blue400);
+      if (widget.embedded) {
+        return SizedBox(height: 120, child: Center(child: spinner));
+      }
+      return Center(child: spinner);
     }
     if (_error != null && _reports.isEmpty) {
-      return Center(child: Padding(
+      final errorBody = Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.error_outline, color: JC.cancelRed, size: 48),
@@ -205,7 +212,10 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
           const SizedBox(height: 16),
           TextButton(onPressed: _load, child: const Text('נסה שוב')),
         ]),
-      ));
+      );
+      // Embedded: avoid an unbounded Center (overflows the parent ListView).
+      if (widget.embedded) return errorBody;
+      return Center(child: errorBody);
     }
     if (_reports.isEmpty) {
       if (widget.embedded) {

@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 // ══════════════════════════════════════════════════════════════════════════════
-// AgentDetailSheet — 4 tabs: כרטיס · מידע · חיבורים · דאשבורד
+// AgentDetailSheet — 5 tabs: כרטיס · מידע · חיבורים · דאשבורד · שיחה
 // Used by the unified ProgressMapScreen (Control Center).
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -30,6 +30,13 @@ class _AgentDetailSheetState extends State<AgentDetailSheet>
   bool _promptCopied = false;
   Timer? _copyTimer;
 
+  // Chat tab state
+  final _chatInputCtrl = TextEditingController();
+  final _chatScrollCtrl = ScrollController();
+  final List<Map<String, String>> _chatHistory = [];
+  bool _sendingChat = false;
+  bool _savedCustomization = false;
+
   static const _kAgentIcons = {
     'router': '🔀', 'chatAgent': '💬', 'taskAgent': '✅', 'reminderAgent': '⏰',
     'memoryAgent': '🧠', 'weatherAgent': '🌤', 'newsAgent': '📰', 'stocksAgent': '📈',
@@ -42,13 +49,15 @@ class _AgentDetailSheetState extends State<AgentDetailSheet>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 4, vsync: this);
+    _tabCtrl = TabController(length: 5, vsync: this);
   }
 
   @override
   void dispose() {
     _tabCtrl.dispose();
     _promptCtrl.dispose();
+    _chatInputCtrl.dispose();
+    _chatScrollCtrl.dispose();
     _copyTimer?.cancel();
     super.dispose();
   }
@@ -157,6 +166,70 @@ class _AgentDetailSheetState extends State<AgentDetailSheet>
     _copyTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) setState(() => _promptCopied = false);
     });
+  }
+
+  Future<void> _sendChatMessage() async {
+    final msg = _chatInputCtrl.text.trim();
+    if (msg.isEmpty || _sendingChat) return;
+    _chatInputCtrl.clear();
+    setState(() {
+      _chatHistory.add({'role': 'user', 'content': msg});
+      _sendingChat = true;
+      _savedCustomization = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_chatScrollCtrl.hasClients) {
+        _chatScrollCtrl.animateTo(
+          _chatScrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+    try {
+      final history = _chatHistory.length > 1
+          ? _chatHistory.sublist(0, _chatHistory.length - 1)
+          : <Map<String, String>>[];
+      final res = await http.post(
+        Uri.parse('${widget.base}/progress-map/agents/$_id/chat'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'message': msg, 'history': history}),
+      ).timeout(const Duration(seconds: 30));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final d = jsonDecode(res.body) as Map<String, dynamic>;
+        setState(() {
+          _chatHistory.add({
+            'role': 'agent',
+            'content': d['answer']?.toString() ?? '...',
+          });
+          _savedCustomization = d['savedCustomization'] == true;
+        });
+      } else {
+        setState(() => _chatHistory.add({
+          'role': 'agent', 'content': 'שגיאה בתקשורת עם השרת.',
+        }));
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _chatHistory.add({
+          'role': 'agent', 'content': 'לא הצלחתי להגיע לשרת. נסה שוב.',
+        }));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _sendingChat = false);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_chatScrollCtrl.hasClients) {
+            _chatScrollCtrl.animateTo(
+              _chatScrollCtrl.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      }
+    }
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -306,6 +379,7 @@ class _AgentDetailSheetState extends State<AgentDetailSheet>
                 Tab(text: 'מידע'),
                 Tab(text: 'חיבורים'),
                 Tab(text: 'דאשבורד'),
+                Tab(text: '💬 שיחה'),
               ],
             ),
             // Tab content
@@ -317,6 +391,7 @@ class _AgentDetailSheetState extends State<AgentDetailSheet>
                   _buildInfoTab(),
                   _buildConnectionsTab(),
                   _buildDashboardTab(),
+                  _buildChatTab(),
                 ],
               ),
             ),
@@ -921,6 +996,170 @@ class _AgentDetailSheetState extends State<AgentDetailSheet>
                   fontFamily: 'Heebo', fontSize: 13),
             ),
           ),
+      ],
+    );
+  }
+
+  // ── Tab 5: שיחה ───────────────────────────────────────────────────────────
+  Widget _buildChatTab() {
+    return Column(
+      children: [
+        // Hint text
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+          child: Text(
+            'שוחח עם $_nameHe — שאל שאלות, בקש הסברים, או התאם את הסוכן לצרכיך.',
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: Color(0xFF64748B), fontFamily: 'Heebo', fontSize: 12, height: 1.4,
+            ),
+          ),
+        ),
+        if (_savedCustomization)
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.3)),
+            ),
+            child: const Row(
+              textDirection: TextDirection.rtl,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_outline, color: Color(0xFF22C55E), size: 14),
+                SizedBox(width: 6),
+                Text('ההתאמה נשמרה לסוכן ✓',
+                    style: TextStyle(color: Color(0xFF22C55E), fontFamily: 'Heebo', fontSize: 12)),
+              ],
+            ),
+          ),
+        // Messages
+        Expanded(
+          child: _chatHistory.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_icon, style: const TextStyle(fontSize: 36)),
+                      const SizedBox(height: 10),
+                      Text('שוחח עם $_nameHe',
+                          style: const TextStyle(color: Color(0xFF94A3B8),
+                              fontFamily: 'Heebo', fontSize: 14)),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  controller: _chatScrollCtrl,
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                  itemCount: _chatHistory.length,
+                  itemBuilder: (_, i) {
+                    final m = _chatHistory[i];
+                    final isUser = m['role'] == 'user';
+                    return Align(
+                      alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        constraints: const BoxConstraints(maxWidth: 280),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isUser
+                              ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+                              : const Color(0xFF0A0F1E),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isUser
+                                ? const Color(0xFF6366F1).withValues(alpha: 0.35)
+                                : const Color(0xFF1E3A5F),
+                          ),
+                        ),
+                        child: Text(
+                          m['content'] ?? '',
+                          textAlign: isUser ? TextAlign.left : TextAlign.right,
+                          textDirection: TextDirection.rtl,
+                          style: TextStyle(
+                            color: isUser
+                                ? const Color(0xFFA5B4FC)
+                                : const Color(0xFFE2E8F0),
+                            fontFamily: 'Heebo', fontSize: 13, height: 1.4,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        // Sending indicator
+        if (_sendingChat)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 6),
+            child: SizedBox(
+              width: 20, height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Color(0xFF6366F1),
+              ),
+            ),
+          ),
+        // Input row
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: Color(0xFF1E3A5F), width: 0.6)),
+          ),
+          child: Row(
+            textDirection: TextDirection.rtl,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _chatInputCtrl,
+                  textDirection: TextDirection.rtl,
+                  maxLines: 2,
+                  minLines: 1,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _sendChatMessage(),
+                  style: const TextStyle(
+                      color: Color(0xFFE2E8F0), fontFamily: 'Heebo', fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'שלח הודעה ל$_nameHe...',
+                    hintStyle: const TextStyle(
+                        color: Color(0xFF64748B), fontFamily: 'Heebo', fontSize: 13),
+                    filled: true,
+                    fillColor: const Color(0xFF0A0F1E),
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide:
+                          const BorderSide(color: Color(0xFF6366F1), width: 1.2),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _sendChatMessage,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

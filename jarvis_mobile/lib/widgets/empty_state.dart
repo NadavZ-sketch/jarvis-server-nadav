@@ -51,6 +51,7 @@ class EmptyState extends StatelessWidget {
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: 13,
+                  height: 1.5,
                   fontFamily: 'Heebo',
                 ),
               ),

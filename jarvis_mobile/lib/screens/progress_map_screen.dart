@@ -1386,7 +1386,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   const SizedBox(height: 2),
                   Text(alert.message,
                       textAlign: TextAlign.right,
-                      style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.35)),
+                      style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12, height: 1.5)),
                   if (visible.length > 1) ...[
                     const SizedBox(height: 2),
                     Text('עוד ${visible.length - 1} התראות',

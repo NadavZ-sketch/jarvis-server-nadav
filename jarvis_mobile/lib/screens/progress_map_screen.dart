@@ -183,6 +183,18 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   bool _loadingSurveys = true;
   String? _surveyError;
 
+  // Smart survey
+  List<Map<String, dynamic>> _smartSurveyQuestions = [];
+  final Map<String, String> _smartSurveyResponses = {};
+  bool _showSmartSurvey = false;
+  bool _loadingSmartSurvey = false;
+  bool _submittingSmartSurvey = false;
+
+  // Conversation insights + feedback pipeline (dev tab)
+  Map<String, dynamic> _convInsights = {};
+  List<Map<String, dynamic>> _feedbackConcerns = [];
+  bool _loadingConvInsights = false;
+
   // Live control-center events (alerts + per-tab badges)
   List<_CcAlert> _alerts = const [];
   Map<ControlCenterTab, int> _tabBadges = const {};
@@ -274,12 +286,13 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       final prefs = profile['preferences'];
       final role = (prefs is Map && prefs['role'] is String) ? prefs['role'] as String : 'user';
       if (role == widget.settings.role) return;
+      if (!mounted) return;
       // Capture the current tab from the OLD visible set before flipping role.
       final oldVisible = _visibleTabs;
       final oldTab = oldVisible[_tabController.index.clamp(0, oldVisible.length - 1).toInt()];
+      // Update role and rebuild TabController atomically — same race-condition
+      // guard as _setRole: no await between role assignment and setState.
       widget.settings.role = role;
-      await widget.settings.save();
-      if (!mounted) return;
       _tabController.dispose();
       final newIdx = _visibleTabs.indexOf(oldTab); // _visibleTabs now reflects new role
       _tabController = TabController(
@@ -287,6 +300,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         vsync: this,
         initialIndex: newIdx >= 0 ? newIdx : 0,
       );
+      widget.settings.save(); // fire-and-forget
       setState(() {});
     } catch (_) {}
   }
@@ -611,6 +625,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       _loadProviderTelemetry(),
       _loadRole(),
       _loadInsights(),
+      _loadConvInsights(),
     ]);
     _isRefreshing = false;
     if (mounted && _serverOk != true) _scheduleRetry();
@@ -726,6 +741,93 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       _loadingSurveys = false;
       _surveyError = failures == 2 ? 'שגיאת רשת — לא ניתן לטעון סקרים' : null;
     });
+  }
+
+  Future<void> _loadConvInsights() async {
+    setState(() => _loadingConvInsights = true);
+    try {
+      final resFut = http.get(Uri.parse('$_base/dashboard/conversation-insights'))
+          .timeout(const Duration(seconds: 10));
+      final impactFut = http.get(Uri.parse('$_base/survey-impact'))
+          .timeout(const Duration(seconds: 10));
+      final results = await Future.wait([
+        resFut.then<dynamic>((r) => r).catchError((e) => e),
+        impactFut.then<dynamic>((r) => r).catchError((e) => e),
+      ]);
+      if (!mounted) return;
+      if (results[0] is http.Response && (results[0] as http.Response).statusCode == 200) {
+        try {
+          _convInsights = Map<String, dynamic>.from(
+              jsonDecode((results[0] as http.Response).body));
+        } catch (_) {}
+      }
+      if (results[1] is http.Response && (results[1] as http.Response).statusCode == 200) {
+        try {
+          final d = jsonDecode((results[1] as http.Response).body);
+          _feedbackConcerns = List<Map<String, dynamic>>.from(d['concerns'] ?? []);
+        } catch (_) {}
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loadingConvInsights = false);
+  }
+
+  Future<void> _loadSmartSurvey() async {
+    setState(() { _loadingSmartSurvey = true; _showSmartSurvey = false; });
+    try {
+      final userName = widget.settings.userName.trim();
+      final uri = Uri.parse('$_base/survey-smart-check')
+          .replace(queryParameters: userName.isNotEmpty ? {'userName': userName} : null);
+      final res = await http.get(uri).timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final d = jsonDecode(res.body) as Map<String, dynamic>;
+        final questions = List<Map<String, dynamic>>.from(d['survey'] ?? []);
+        if (questions.isNotEmpty) {
+          setState(() {
+            _smartSurveyQuestions = questions;
+            _smartSurveyResponses.clear();
+            _showSmartSurvey = true;
+          });
+        } else {
+          _showSnack('אין שאלות סקר כרגע');
+        }
+      } else {
+        _showSnack('שגיאה בטעינת הסקר');
+      }
+    } catch (_) {
+      if (mounted) _showSnack('שגיאת חיבור');
+    } finally {
+      if (mounted) setState(() => _loadingSmartSurvey = false);
+    }
+  }
+
+  Future<void> _submitSmartSurvey() async {
+    if (_smartSurveyResponses.isEmpty || _submittingSmartSurvey) return;
+    setState(() => _submittingSmartSurvey = true);
+    try {
+      final userName = widget.settings.userName.trim();
+      final res = await http.post(
+        Uri.parse('$_base/survey-submit'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userName': userName,
+          'responses': _smartSurveyResponses,
+          'survey': _smartSurveyQuestions,
+        }),
+      ).timeout(const Duration(seconds: 10));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        setState(() { _showSmartSurvey = false; _smartSurveyQuestions = []; _smartSurveyResponses.clear(); });
+        _showSnack('תודה! הסקר נשמר בהצלחה ✓');
+        _loadSurveys();
+      } else {
+        _showSnack('שגיאה בשמירת הסקר');
+      }
+    } catch (_) {
+      if (mounted) _showSnack('שגיאת חיבור');
+    } finally {
+      if (mounted) setState(() => _submittingSmartSurvey = false);
+    }
   }
 
   // ── Quick actions ─────────────────────────────────────────────────────────
@@ -1698,6 +1800,20 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   }
 
   Widget _buildDevelopmentTab() => _tabListView([
+        // Conversation insights from real usage data
+        _sectionTitle('📊 תובנות שיחות'),
+        const SizedBox(height: 8),
+        _buildConvInsightsCard(),
+        const SizedBox(height: 18),
+
+        // Feedback → dev pipeline
+        if (_feedbackConcerns.isNotEmpty) ...[
+          _sectionTitle('🔧 פידבק → פיתוח'),
+          const SizedBox(height: 8),
+          _buildFeedbackPipelineCard(),
+          const SizedBox(height: 18),
+        ],
+
         if (!_loadingFeatures && _done.isNotEmpty) ...[
           _buildProgressBar(),
           const SizedBox(height: 20),
@@ -1726,10 +1842,32 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   // ── בדיקות וסקרים: E2E reports (live) + read-only survey summary ───────────
   Widget _buildTestsSurveysTab() {
     final hasUserName = widget.settings.userName.trim().isNotEmpty;
-    return _tabListView([
+    return Stack(
+      children: [
+        _tabListView([
       _sectionTitle('⚡ פעולות מהירות'),
       const SizedBox(height: 8),
       _buildOverviewQuickActions(),
+      const SizedBox(height: 14),
+      // Smart survey button
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: _loadingSmartSurvey ? null : _loadSmartSurvey,
+          icon: _loadingSmartSurvey
+              ? const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('✨', style: TextStyle(fontSize: 16)),
+          label: Text(_loadingSmartSurvey ? 'טוען סקר...' : 'התחל סקר חכם',
+              style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: JC.blue500,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      ),
       const SizedBox(height: 18),
       _sectionTitle('🧪 דוחות בדיקות E2E'),
       const SizedBox(height: 8),
@@ -1779,7 +1917,327 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         const SizedBox(height: 8),
         _buildSurveyHistory(),
       ],
-    ]);
+    ]),
+        // Smart survey modal overlay
+        if (_showSmartSurvey) _buildSmartSurveyOverlay(),
+      ],
+    );
+  }
+
+  // ── Smart survey overlay ──────────────────────────────────────────────────
+  Widget _buildSmartSurveyOverlay() {
+    return Positioned.fill(
+      child: Container(
+        color: JC.bg.withValues(alpha: 0.95),
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  Expanded(
+                    child: Text('✨ סקר חכם',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                            fontWeight: FontWeight.w700, fontSize: 16)),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: JC.textMuted, size: 20),
+                    onPressed: () => setState(() => _showSmartSurvey = false),
+                  ),
+                ],
+              ),
+            ),
+            Text('השאלות נבחרו במיוחד בשבילך על סמך הסוכנים שהשתמשת בהם.',
+                textAlign: TextAlign.right,
+                style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                itemCount: _smartSurveyQuestions.length,
+                itemBuilder: (_, i) {
+                  final q = _smartSurveyQuestions[i];
+                  final qId = q['id']?.toString() ?? 'q$i';
+                  final question = q['question']?.toString() ?? '';
+                  final options = List<String>.from(q['options'] ?? []);
+                  final isOpenText = q['open_text'] == true;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: JC.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: JC.border, width: 0.8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(question,
+                            textAlign: TextAlign.right,
+                            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo',
+                                fontWeight: FontWeight.w600, fontSize: 13)),
+                        const SizedBox(height: 8),
+                        if (isOpenText)
+                          TextField(
+                            textDirection: TextDirection.rtl,
+                            onChanged: (v) => setState(() => _smartSurveyResponses[qId] = v),
+                            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 12),
+                            decoration: InputDecoration(
+                              hintText: 'כתוב תשובה חופשית...',
+                              hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
+                              contentPadding: const EdgeInsets.all(8),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: JC.border),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(color: JC.border),
+                              ),
+                            ),
+                          )
+                        else
+                          Wrap(
+                            spacing: 6, runSpacing: 6,
+                            textDirection: TextDirection.rtl,
+                            children: options.map((opt) {
+                              final selected = _smartSurveyResponses[qId] == opt;
+                              return GestureDetector(
+                                onTap: () => setState(() => _smartSurveyResponses[qId] = opt),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? JC.blue500.withValues(alpha: 0.2)
+                                        : JC.surface,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: selected ? JC.blue400 : JC.border,
+                                      width: selected ? 1.2 : 0.8,
+                                    ),
+                                  ),
+                                  child: Text(opt,
+                                      style: TextStyle(
+                                        color: selected ? JC.blue400 : JC.textSecondary,
+                                        fontFamily: 'Heebo', fontSize: 12,
+                                        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                                      )),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Submit button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: (_submittingSmartSurvey || _smartSurveyResponses.isEmpty)
+                      ? null
+                      : _submitSmartSurvey,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: JC.blue500,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: _submittingSmartSurvey
+                      ? const SizedBox(width: 20, height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('שלח תשובות',
+                          style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 15)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Conversation insights card (dev tab) ──────────────────────────────────
+  Widget _buildConvInsightsCard() {
+    if (_loadingConvInsights) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: JC.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    final topAgents = List<Map<String, dynamic>>.from(_convInsights['topAgents'] ?? []);
+    final intentSplit = Map<String, dynamic>.from(_convInsights['intentClassification'] ?? {});
+    final chatVolume = (_convInsights['recentChatVolume'] as num?)?.toInt() ?? 0;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // Volume stat
+          Row(
+            textDirection: TextDirection.rtl,
+            children: [
+              Text('$chatVolume',
+                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w800, fontSize: 28, height: 1)),
+              const SizedBox(width: 6),
+              Text('שיחות ב-7 ימים',
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
+            ],
+          ),
+          if (topAgents.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('סוכנים פעילים',
+                textAlign: TextAlign.right,
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            ...topAgents.take(5).map((a) {
+              final name = a['agent']?.toString() ?? '';
+              final count = (a['count'] as num?)?.toInt() ?? 0;
+              final maxCount = (topAgents.first['count'] as num?)?.toInt() ?? 1;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    SizedBox(
+                      width: 90,
+                      child: Text(name,
+                          textAlign: TextAlign.right,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 11)),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: maxCount > 0 ? count / maxCount : 0,
+                          color: JC.blue400,
+                          backgroundColor: JC.border,
+                          minHeight: 6,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('$count',
+                        style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                  ],
+                ),
+              );
+            }),
+          ],
+          if (intentSplit.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text('סוגי פניות',
+                textAlign: TextAlign.right,
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6, runSpacing: 4,
+              textDirection: TextDirection.rtl,
+              children: intentSplit.entries.take(6).map((e) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: JC.blue500.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: JC.blue400.withValues(alpha: 0.2)),
+                  ),
+                  child: Text('${e.key} (${e.value})',
+                      style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 10)),
+                );
+              }).toList(),
+            ),
+          ],
+          if (topAgents.isEmpty && intentSplit.isEmpty)
+            Text('אין נתונים להצגה עדיין.',
+                textAlign: TextAlign.right,
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  // ── Feedback → dev pipeline card ─────────────────────────────────────────
+  Widget _buildFeedbackPipelineCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4), width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Row(
+            textDirection: TextDirection.rtl,
+            children: [
+              const Text('🔧', style: TextStyle(fontSize: 14)),
+              const SizedBox(width: 6),
+              Text('${_feedbackConcerns.length} תחומים לשיפור מהסקרים',
+                  style: TextStyle(color: const Color(0xFFF59E0B), fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w600, fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ..._feedbackConcerns.take(4).map((c) {
+            final area = c['area']?.toString() ?? '';
+            final answer = c['answer']?.toString() ?? '';
+            return Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(area,
+                            textAlign: TextAlign.right,
+                            style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo',
+                                fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('תשובה: $answer',
+                            textAlign: TextAlign.right,
+                            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.arrow_forward_ios, color: Color(0xFFF59E0B), size: 12),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
   }
 
   // ── הגדרות: role switch (dev) + launcher to the full settings screen ───────
@@ -1872,10 +2330,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           )
           .timeout(const Duration(seconds: 10));
       if (res.statusCode != 200) throw Exception('status ${res.statusCode}');
-      widget.settings.role = role;
-      await widget.settings.save();
       if (!mounted) return;
-      // Rebuild the TabController for the new visible tab set, preserving the tab.
+      // Update role and rebuild TabController atomically before any await so that
+      // concurrent setState calls (e.g. the event poller) never see a mismatch
+      // between _visibleTabs.length and _tabController.length, which would
+      // produce the "BOTTOM OVERFLOWED BY 99899 PIXELS" blank-tab-bar bug.
+      widget.settings.role = role;
       _tabController.dispose();
       final newIdx = _visibleTabs.indexOf(oldTab);
       _tabController = TabController(
@@ -1884,6 +2344,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         initialIndex: newIdx >= 0 ? newIdx : 0,
       );
       setState(() => _settingRole = false);
+      widget.settings.save(); // fire-and-forget; no await needed for UI correctness
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(role == 'admin' ? 'הופעל מצב אדמין 🛡' : 'הוחזר למצב משתמש 👤',
             style: const TextStyle(fontFamily: 'Heebo')),

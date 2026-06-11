@@ -1761,8 +1761,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
 
   Widget _dismissBackground() {
     return Container(
-      alignment: Alignment.centerLeft,
-      padding: const EdgeInsets.only(left: 24),
+      alignment: AlignmentDirectional.centerEnd,
+      padding: const EdgeInsetsDirectional.only(end: 24),
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: JC.cancelRed.withValues(alpha: 0.15),

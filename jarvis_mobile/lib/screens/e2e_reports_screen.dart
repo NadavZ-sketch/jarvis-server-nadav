@@ -276,8 +276,8 @@ class _E2eReportsScreenState extends State<E2eReportsScreen> {
         return await _confirmDelete() ?? false;
       },
       background: Container(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(left: 24),
+        alignment: AlignmentDirectional.centerEnd,
+        padding: const EdgeInsetsDirectional.only(end: 24),
         margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         decoration: BoxDecoration(
           color: JC.cancelRed.withValues(alpha: 0.15),

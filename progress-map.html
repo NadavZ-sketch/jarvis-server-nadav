@@ -565,6 +565,56 @@ h1 span{color:var(--accent2)}
 .cc-tip-detail{font-size:.77rem;color:var(--muted);line-height:1.6}
 .cc-source{font-size:.68rem;color:var(--muted);margin-top:7px}
 
+/* ── Agent chat tab ── */
+.ac-chat-wrap{padding:4px 0}
+.ac-chat-header{font-size:.84rem;font-weight:700;color:var(--accent2);margin-bottom:4px}
+.ac-chat-hint{font-size:.74rem;color:var(--muted);margin-bottom:10px;line-height:1.45}
+.ac-chat-msgs{max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px}
+.ac-chat-user{background:rgba(200,145,58,.15);border:1px solid rgba(200,145,58,.2);border-radius:8px 8px 2px 8px;padding:8px 12px;font-size:.82rem;align-self:flex-end;max-width:82%;line-height:1.45}
+.ac-chat-bot{background:var(--glass);border:1px solid var(--glass-border);border-radius:8px 8px 8px 2px;padding:8px 12px;font-size:.82rem;align-self:flex-start;max-width:86%;line-height:1.5;white-space:pre-wrap}
+.ac-chat-input-row{display:flex;gap:6px}
+.ac-chat-input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;font-size:.82rem;color:var(--text);font-family:inherit;outline:none}
+.ac-chat-input:focus{border-color:var(--accent)}
+.ac-chat-send{background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);padding:8px 14px;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:opacity .15s}
+.ac-chat-send:hover:not(:disabled){opacity:.85}
+.ac-chat-send:disabled{opacity:.5;cursor:not-allowed}
+.ac-custom-log{margin-top:10px;border-top:1px solid var(--border);padding-top:8px}
+.ac-custom-item{font-size:.75rem;color:var(--muted);padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);line-height:1.4}
+.ac-custom-item span{color:var(--text)}
+
+/* ── Dev tab: conversation insights + feature lab + feedback pipeline ── */
+.dev-insight-stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.dev-stat{text-align:center;padding:10px;flex:1;min-width:80px}
+.dev-stat-n{font-size:1.5rem;font-weight:800;color:var(--accent2);line-height:1}
+.dev-stat-l{font-size:.71rem;color:var(--muted);margin-top:3px}
+.dev-section-label{font-size:.72rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.dev-bar-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:.79rem}
+.dev-bar-label{width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.dev-bar{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.dev-bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .6s ease}
+.dev-bar-val{color:var(--muted);font-size:.7rem;white-space:nowrap;min-width:90px;text-align:right}
+.dev-lab-select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;font-size:.83rem;color:var(--text);font-family:inherit;margin-bottom:8px;outline:none}
+.dev-lab-select:focus{border-color:var(--accent)}
+.dev-lab-textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;font-size:.82rem;color:var(--text);font-family:inherit;min-height:70px;resize:vertical;outline:none;margin-bottom:8px}
+.dev-lab-textarea:focus{border-color:var(--accent)}
+.dev-lab-output{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);padding:12px;margin-top:8px}
+.dev-lab-output-label{font-size:.7rem;color:var(--muted);margin-bottom:6px;font-weight:600}
+.dev-lab-output-text{font-size:.83rem;line-height:1.6;white-space:pre-wrap}
+.dev-concern-row{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.dev-concern-area{font-size:.78rem;font-weight:600;flex:0 0 auto;max-width:45%}
+.dev-concern-answer{font-size:.78rem;color:var(--amber);flex:1;min-width:80px}
+.dev-concern-date{font-size:.7rem;color:var(--muted);white-space:nowrap}
+
+/* ── Smart survey modal inside QA tab ── */
+.survey-modal{background:var(--glass);border:1px solid rgba(200,145,58,.3);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.survey-modal-title{font-size:.84rem;font-weight:700;color:var(--accent2);margin-bottom:12px}
+.survey-opt-row{display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:.83rem}
+.survey-opt-row input{accent-color:var(--accent)}
+.survey-open-input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px;font-size:.82rem;color:var(--text);font-family:inherit;min-height:60px;resize:vertical;outline:none;margin-top:4px}
+.survey-open-input:focus{border-color:var(--accent)}
+.survey-q-block{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.survey-q-block:last-child{border-bottom:none}
+
 /* badge dot on tab buttons + role gating */
 .page-tab-btn{position:relative}
 .tab-badge{position:absolute;top:4px;inset-inline-start:6px;min-width:15px;height:15px;border-radius:8px;
@@ -721,41 +771,35 @@ h1 span{color:var(--accent2)}
 <!-- ════════ TAB 3: פיתוח / Roadmap ════════ -->
 <div id="page-tab-dev" class="page-tab-panel">
 
-<!-- PROGRESS BAR -->
-<div class="section-title">📊 מצב הפרויקט</div>
-<div class="progress-wrap" id="progressWrap" style="display:none">
-  <div class="progress-stats">
-    <div class="ps-item"><div class="ps-dot" style="background:var(--green)"></div><span style="color:var(--green)"><b id="pb-done">—</b> הושלמו</span></div>
-    <div class="ps-item"><div class="ps-dot" style="background:var(--amber)"></div><span style="color:var(--amber)"><b id="pb-building">—</b> בבנייה</span></div>
-    <div class="ps-item"><div class="ps-dot" style="background:var(--muted)"></div><span style="color:var(--muted)"><b id="pb-planned">—</b> מתוכננות</span></div>
-    <span class="pct-label" id="pb-pct-label"></span>
-  </div>
-  <div class="progress-bar-track">
-    <div class="pb-seg" id="pb-done-seg" style="background:var(--green);width:0%"></div>
-    <div class="pb-seg" id="pb-building-seg" style="background:var(--amber);width:0%"></div>
-    <div class="pb-seg" id="pb-planned-seg" style="background:#475569;width:0%"></div>
-  </div>
+<!-- CONVERSATION INSIGHTS -->
+<div class="section-title">📊 שיקוף שיחות בזמן אמת</div>
+<div id="devInsightsWrap">
+  <div class="empty-state"><span>📊</span>טוען נתוני שיחות...</div>
 </div>
 
-<!-- FEATURE BOARD -->
-<div class="section-title">🗂️ סטטוס יכולות</div>
-<div class="board" id="board">
-  <div><div class="col-header done">✅ <span id="done-count">—</span> הושלם</div><div id="col-done"></div></div>
-  <div><div class="col-header building">🔨 <span id="building-count">—</span> בבנייה</div><div id="col-building"></div></div>
-  <div><div class="col-header planned">📋 <span id="planned-count">—</span> מתוכנן</div><div id="col-planned"></div></div>
-</div>
-<p class="edit-hint">לעדכון הרשימה — ערוך <code>features.json</code> בשרת</p>
-
-<!-- RECENT CHANGES -->
-<div class="section-title">🔄 שינויים אחרונים</div>
+<!-- FEATURE LAB -->
+<div class="section-title" style="margin-top:20px">🧪 מעבדת פיצ'רים</div>
 <div class="panel">
-  <div class="changes-list" id="changesFeed"></div>
-  <div class="panel-meta" id="changesUpdatedAt">עודכן: —</div>
-  <div class="panel-warn" id="changesWarn" style="display:none"></div>
+  <div style="font-size:.8rem;color:var(--muted);margin-bottom:10px;line-height:1.5">בדוק כיצד סוכן מגיב לקלט אמיתי לפני שמכניסים שינויים לייצור.</div>
+  <select id="dev-lab-agent" class="dev-lab-select">
+    <option value="">בחר סוכן לבדיקה...</option>
+  </select>
+  <textarea id="dev-lab-input" class="dev-lab-textarea" placeholder="הכנס בקשה לבדיקה (בעברית)..."></textarea>
+  <button class="qa-btn" id="devLabBtn" onclick="devLabTest()">
+    <div class="spinner" id="devLabSpinner" style="width:13px;height:13px;border-width:2px"></div>
+    <span id="devLabText">▶ הרץ בדיקה</span>
+  </button>
+  <div id="dev-lab-result"></div>
 </div>
 
-<!-- AI BACKLOG -->
-<div class="section-title">🤖 Backlog AI</div>
+<!-- FEEDBACK → DEVELOPMENT PIPELINE -->
+<div class="section-title" style="margin-top:20px">🔁 פידבק → פיתוח</div>
+<div id="devFeedbackWrap">
+  <div class="empty-state"><span>🔁</span>טוען נתוני פידבק...</div>
+</div>
+
+<!-- AI BACKLOG (secondary) -->
+<div class="section-title" style="margin-top:20px">🤖 AI Backlog</div>
 <div class="backlog-header">
   <span class="backlog-meta" id="backlog-meta">—</span>
   <button class="gen-btn" id="genBtn" onclick="generateProposals()">
@@ -768,8 +812,6 @@ h1 span{color:var(--accent2)}
 <!-- MANUAL ITEMS -->
 <div class="manual-section">
   <div class="section-title" style="margin-top:8px">📌 פריטים ידניים</div>
-
-  <!-- AI Prompt Generator -->
   <div class="prompt-gen-wrap">
     <div class="prompt-gen-label">🤖 מחולל פרומפט לפיצ'ר חדש ב-Claude Code</div>
     <div class="prompt-gen-row">
@@ -781,8 +823,6 @@ h1 span{color:var(--accent2)}
     </div>
     <div id="promptResult"></div>
   </div>
-
-  <!-- Quick add -->
   <div class="manual-add">
     <input id="backlogInput" placeholder="הוסף פריט ידני מהיר..." />
     <button onclick="addManualItem()">הוסף</button>
@@ -810,7 +850,22 @@ h1 span{color:var(--accent2)}
   <div id="e2eList"><div class="empty-state"><span>🧪</span>טוען דוחות...</div></div>
   <div id="scanResult"></div>
 
-  <div class="section-title" style="margin-top:22px">📋 סקרים</div>
+  <div class="section-title" style="margin-top:22px">📋 לולאת פידבק</div>
+  <div class="qa-actions" style="flex-wrap:wrap;margin-bottom:10px">
+    <button class="qa-btn" id="smartSurveyBtn" onclick="startSmartSurvey()">
+      <div class="spinner" id="smartSurveySpinner" style="width:13px;height:13px;border-width:2px"></div>
+      <span id="smartSurveyText">✨ סקר חכם</span>
+    </button>
+    <button class="qa-btn" onclick="loadSurveySummary()">🔄 רענן</button>
+  </div>
+  <div id="smartSurveyModal" style="display:none" class="survey-modal">
+    <div class="survey-modal-title">✨ סקר מותאם אישית</div>
+    <div id="smartSurveyQuestions"><div class="empty-state" style="padding:10px"><span>⏳</span>מייצר שאלות מותאמות...</div></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="qa-btn" id="submitSurveyBtn" onclick="submitSmartSurvey()">שלח תשובות</button>
+      <button class="qa-btn" onclick="document.getElementById('smartSurveyModal').style.display='none'">ביטול</button>
+    </div>
+  </div>
   <div class="survey-summary" id="surveySummary">טוען סיכום סקרים...</div>
 </div><!-- /page-tab-qa -->
 
@@ -992,10 +1047,11 @@ function switchPageTab(name, btn) {
   if (name === 'overview') loadMetricsCharts();
   if (name === 'analytics' && !anInitDone) { anInitDone = true; loadAnalytics(); }
   if (name === 'qa' && !qaInitDone) { qaInitDone = true; loadE2E(); loadSurveySummary(); }
+  if (name === 'dev' && !devInitDone) { devInitDone = true; devInit(); }
   if (name === 'settings' && !settingsInitDone) { settingsInitDone = true; loadSettings(); }
   ccTrackTab(name); // feed the dashboard learner (most-used-first ordering)
 }
-let qaInitDone = false, settingsInitDone = false, anInitDone = false;
+let qaInitDone = false, settingsInitDone = false, anInitDone = false, devInitDone = false;
 
 // ── Health ─────────────────────────────────────────────────────────────────────
 async function checkHealth() {
@@ -2205,8 +2261,6 @@ async function loadProactiveTips() {
 // ── Init ───────────────────────────────────────────────────────────────────────
 checkHealth();
 loadStats();
-loadFeatures();
-loadBacklog();
 loadMetricsCharts();
 ccInitSmartLayer();
 setInterval(() => { checkHealth(); loadStats(); loadMetricsCharts(); }, 30000);
@@ -2303,7 +2357,8 @@ function acSelect(id) {
       `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(acCurrent)}</div>` +
       `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(acCurrent)}</div>` +
       `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(acCurrent)}</div>` +
-      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(acCurrent)}</div>`;
+      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(acCurrent)}</div>` +
+      `<div id="ac-t-chat" class="ac-tab-panel">${acChatTab(acCurrent)}</div>`;
   } catch(e) {
     content.innerHTML = `<div style="color:var(--red);padding:12px">⚠️ ${e.message}</div>`;
   }
@@ -2327,7 +2382,8 @@ function acRenderOverlay(a) {
       `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(a)}</div>` +
       `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(a)}</div>` +
       `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(a)}</div>` +
-      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(a)}</div>`;
+      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(a)}</div>` +
+      `<div id="ac-t-chat" class="ac-tab-panel">${acChatTab(a)}</div>`;
   } catch(e) {
     content.innerHTML = `<div class="ac-empty"><div style="font-size:2rem">⚠️</div><div style="color:var(--red)">${e.message}</div></div>`;
   }
@@ -2357,7 +2413,8 @@ function acRenderDetails(a) {
       `<div id="ac-t-main" class="ac-tab-panel active">${acMainTab(a)}</div>` +
       `<div id="ac-t-info" class="ac-tab-panel">${acInfoTab(a)}</div>` +
       `<div id="ac-t-conn" class="ac-tab-panel">${acConnTab(a)}</div>` +
-      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(a)}</div>`;
+      `<div id="ac-t-dash" class="ac-tab-panel">${acDashTab(a)}</div>` +
+      `<div id="ac-t-chat" class="ac-tab-panel">${acChatTab(a)}</div>`;
     p.scrollTop = 0;
   } catch(e) {
     p.innerHTML = `<div class="ac-empty"><div style="font-size:2rem">⚠️</div><div style="color:var(--red)">${e.message}</div></div>`;
@@ -2414,9 +2471,10 @@ function acTogMission(id) {
 function acTabsHtml(a) {
   return `<div class="ac-tabs">
     <button class="ac-tab-btn active" onclick="acSwitchTab(this,'ac-t-main')">כרטיס</button>
-    <button class="ac-tab-btn" onclick="acSwitchTab(this,'ac-t-info')">מידע</button>
+    <button class="ac-tab-btn" onclick="acSwitchTab(this,'ac-t-info')">הנחיות</button>
     <button class="ac-tab-btn" onclick="acSwitchTab(this,'ac-t-conn')">חיבורים</button>
-    <button class="ac-tab-btn" onclick="acSwitchTab(this,'ac-t-dash')">דאשבורד</button>
+    <button class="ac-tab-btn" onclick="acSwitchTab(this,'ac-t-dash')">מדדים</button>
+    <button class="ac-tab-btn" onclick="acSwitchTab(this,'ac-t-chat');acLoadChatCustomizations('${a.id}')">💬 שיחה</button>
   </div>`;
 }
 
@@ -2443,9 +2501,22 @@ function acInfoTab(a) {
     {t:'קלטים',items:a.inputs},{t:'פלטים',items:a.outputs},{t:'כלים',items:a.tools},
     {t:'הרשאות',items:a.permissions},{t:'גישת זיכרון',text:a.memoryAccess},{t:'מגבלות',items:a.restrictions}
   ];
-  return `<div class="ac-info-grid">${items.map(i=>`<div class="ac-icard"><div class="ac-icard-title">${i.t}</div>
+  return `<div class="ac-icard" style="margin-bottom:10px">
+    <div class="ac-icard-title" style="display:flex;align-items:center;justify-content:space-between">
+      📋 הנחיות הסוכן (System Prompt)
+      <button class="ac-btn sec" style="font-size:.7rem;padding:3px 8px" onclick="acCopyPrompt('${a.id}')">העתק</button>
+    </div>
+    <pre id="acPromptText-${a.id}" style="white-space:pre-wrap;font-size:.78rem;color:var(--muted);line-height:1.55;max-height:180px;overflow-y:auto;font-family:inherit;margin:0;padding:4px 0">${escapeHtml(a.prompt||'לא מוגדרות הנחיות לסוכן זה.')}</pre>
+  </div>
+  <div class="ac-info-grid">${items.map(i=>`<div class="ac-icard"><div class="ac-icard-title">${i.t}</div>
     ${i.text!==undefined?`<div class="ac-itext">${i.text||'—'}</div>`:`<div class="ac-tag-list">${(i.items||[]).length?(i.items||[]).map(t=>`<span class="ac-tag">${t}</span>`).join(''):'<span style="color:var(--muted);font-size:.76rem">לא מוגדר</span>'}</div>`}
   </div>`).join('')}</div>`;
+}
+
+function acCopyPrompt(agentId) {
+  const el = document.getElementById('acPromptText-' + agentId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).then(() => showToast('הנחיות הועתקו ✓', 'success'));
 }
 
 function acConnTab(a) {
@@ -2587,6 +2658,267 @@ function acCopy(aid){
     const btn=document.querySelector(`#acrev-${aid} .cp`);
     if(btn){const o=btn.textContent;btn.textContent='✅ הועתק!';setTimeout(()=>btn.textContent=o,1500);}
   });
+}
+
+// ── Agent Chat Tab ─────────────────────────────────────────────────────────────
+const _acChatHistory = {};
+
+function acChatTab(a) {
+  return `<div class="ac-chat-wrap" id="chat-wrap-${a.id}">
+    <div class="ac-chat-header">💬 שיחה עם ${escapeHtml(a.nameHe)}</div>
+    <div class="ac-chat-hint">שאל שאלות על יכולות הסוכן, בקש לשנות את התנהגותו, או נסה אותו עם קלט אמיתי.</div>
+    <div class="ac-chat-msgs" id="chat-msgs-${a.id}">
+      <div class="ac-chat-bot">שלום! אני ${escapeHtml(a.nameHe)}. ${escapeHtml((a.mission||'').slice(0,90))}... שאל אותי כל שאלה על יכולותיי.</div>
+    </div>
+    <div class="ac-chat-input-row">
+      <input id="chat-input-${a.id}" class="ac-chat-input" placeholder="שאל שאלה, בקש שינוי..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();acSendChat('${a.id}')}"/>
+      <button class="ac-chat-send" id="chat-send-${a.id}" onclick="acSendChat('${a.id}')">שלח →</button>
+    </div>
+    <div class="ac-custom-log" id="chat-customs-${a.id}" style="display:none">
+      <div class="dev-section-label" style="margin-top:4px">התאמות שנשמרו</div>
+      <div id="chat-customs-list-${a.id}"></div>
+    </div>
+  </div>`;
+}
+
+async function acSendChat(agentId) {
+  const input = document.getElementById(`chat-input-${agentId}`);
+  const msgs = document.getElementById(`chat-msgs-${agentId}`);
+  const sendBtn = document.getElementById(`chat-send-${agentId}`);
+  const message = input?.value?.trim();
+  if (!message || !msgs) return;
+
+  if (!_acChatHistory[agentId]) _acChatHistory[agentId] = [];
+
+  msgs.innerHTML += `<div class="ac-chat-user">${escapeHtml(message)}</div>`;
+  input.value = '';
+  if (sendBtn) sendBtn.disabled = true;
+  msgs.scrollTop = msgs.scrollHeight;
+
+  const loadId = 'ac-load-' + Date.now();
+  msgs.innerHTML += `<div class="ac-chat-bot" id="${loadId}" style="opacity:.5">...</div>`;
+  msgs.scrollTop = msgs.scrollHeight;
+
+  try {
+    const r = await fetch(`/progress-map/agents/${agentId}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history: _acChatHistory[agentId] }),
+    }).then(r => r.json());
+
+    const loadEl = document.getElementById(loadId);
+    if (loadEl) { loadEl.textContent = r.answer || 'שגיאה'; loadEl.style.opacity = '1'; }
+
+    _acChatHistory[agentId].push({ role: 'user', content: message });
+    _acChatHistory[agentId].push({ role: 'assistant', content: r.answer || '' });
+    if (_acChatHistory[agentId].length > 20) _acChatHistory[agentId] = _acChatHistory[agentId].slice(-20);
+
+    if (r.savedCustomization) {
+      showToast('התאמה אישית נשמרה ✓', 'success');
+      acLoadChatCustomizations(agentId);
+    }
+  } catch (e) {
+    const loadEl = document.getElementById(loadId);
+    if (loadEl) { loadEl.textContent = 'שגיאה: ' + e.message; loadEl.style.opacity = '1'; }
+  }
+
+  if (sendBtn) sendBtn.disabled = false;
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+async function acLoadChatCustomizations(agentId) {
+  try {
+    const r = await fetch(`/progress-map/agents/${agentId}/customizations`).then(r => r.json());
+    const customs = r.customizations || [];
+    const wrap = document.getElementById(`chat-customs-${agentId}`);
+    const list = document.getElementById(`chat-customs-list-${agentId}`);
+    if (!wrap || !list) return;
+    if (!customs.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    list.innerHTML = customs.map(c =>
+      `<div class="ac-custom-item"><span>${escapeHtml(c.text)}</span> <span style="color:var(--muted);font-size:.68rem">${new Date(c.at).toLocaleDateString('he-IL')}</span></div>`
+    ).join('');
+  } catch(_) {}
+}
+
+// ── Dev Tab: Conversation Insights + Feature Lab + Feedback Pipeline ───────────
+async function devInit() {
+  await Promise.all([devLoadInsights(), devLoadFeedback()]);
+  devPopulateAgentSelect();
+  loadBacklog();
+}
+
+async function devLoadInsights() {
+  const wrap = document.getElementById('devInsightsWrap');
+  if (!wrap) return;
+  try {
+    const d = await fetch('/dashboard/conversation-insights', { signal: AbortSignal.timeout(8000) }).then(r => r.json());
+    const maxCount = Math.max(...(d.topAgents || []).map(a => a.count), 1);
+    const agentBars = (d.topAgents || []).map(a => {
+      const pct = Math.round((a.count / maxCount) * 100);
+      return `<div class="dev-bar-row">
+        <span class="dev-bar-label">${AC_ICONS[a.agent]||'🤖'} ${a.agent}</span>
+        <span class="dev-bar"><span class="dev-bar-fill" style="width:${pct}%"></span></span>
+        <span class="dev-bar-val">${a.count} שימושים · ${a.avgMs}ms</span>
+      </div>`;
+    }).join('') || '<div style="color:var(--muted);font-size:.82rem;padding:6px 0">אין עדיין נתונים מהיום האחרון</div>';
+
+    wrap.innerHTML = `<div class="panel">
+      <div class="dev-insight-stats">
+        <div class="dev-stat"><div class="dev-stat-n">${d.recentChatVolume||0}</div><div class="dev-stat-l">הודעות ב-7 ימים</div></div>
+        <div class="dev-stat"><div class="dev-stat-n">${(d.intentClassification?.fast||0)+(d.intentClassification?.llm||0)}</div><div class="dev-stat-l">סיווגי intent</div></div>
+        <div class="dev-stat"><div class="dev-stat-n">${d.intentClassification?.llm||0}</div><div class="dev-stat-l">LLM fallbacks</div></div>
+        <div class="dev-stat"><div class="dev-stat-n">${(d.topAgents||[]).length}</div><div class="dev-stat-l">סוכנים פעילים</div></div>
+      </div>
+      <div class="dev-section-label">שימוש בסוכנים (24 שעות אחרונות)</div>
+      ${agentBars}
+    </div>`;
+  } catch {
+    wrap.innerHTML = `<div class="err-state"><span>⚠️</span>לא ניתן לטעון נתוני שיחות<button class="retry-btn" onclick="devLoadInsights()">נסה שוב</button></div>`;
+  }
+}
+
+async function devLoadFeedback() {
+  const wrap = document.getElementById('devFeedbackWrap');
+  if (!wrap) return;
+  const userName = (_profileData?.profile?.user_name) || '';
+  if (!userName) {
+    wrap.innerHTML = `<div class="empty-state"><span>👤</span>הגדר שם משתמש כדי לראות נתוני פידבק</div>`;
+    return;
+  }
+  try {
+    const d = await fetch(`/survey-impact?userName=${encodeURIComponent(userName)}`, { signal: AbortSignal.timeout(8000) }).then(r => r.json());
+    const concerns = d.concerns || [];
+    if (!concerns.length) {
+      wrap.innerHTML = `<div class="panel"><div style="color:var(--muted);font-size:.82rem;padding:6px">אין עדיין פידבק שלילי שנשמר. כשתמלא סקרים עם הערות לשיפור הם יופיעו כאן ויהוו בסיס לפיתוח.</div></div>`;
+      return;
+    }
+    wrap.innerHTML = `<div class="panel">
+      <div class="dev-section-label">נקודות שנמצאו לשיפור (מ-${d.totalSurveys} סקרים)</div>
+      ${concerns.map(c => `<div class="dev-concern-row">
+        <span class="dev-concern-area">${escapeHtml(c.area)}</span>
+        <span class="dev-concern-answer">"${escapeHtml(c.answer)}"</span>
+        <span class="dev-concern-date">${new Date(c.date).toLocaleDateString('he-IL')}</span>
+      </div>`).join('')}
+    </div>`;
+  } catch {
+    wrap.innerHTML = `<div class="err-state"><span>⚠️</span>לא ניתן לטעון נתוני פידבק</div>`;
+  }
+}
+
+function devPopulateAgentSelect() {
+  const sel = document.getElementById('dev-lab-agent');
+  if (!sel) return;
+  acAgents.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = `${AC_ICONS[a.id]||'🤖'} ${a.nameHe} — ${a.role}`;
+    sel.appendChild(opt);
+  });
+}
+
+async function devLabTest() {
+  const agentId = document.getElementById('dev-lab-agent')?.value;
+  const input = document.getElementById('dev-lab-input')?.value?.trim();
+  const result = document.getElementById('dev-lab-result');
+  const btn = document.getElementById('devLabBtn');
+  const spin = document.getElementById('devLabSpinner');
+  const txt = document.getElementById('devLabText');
+  if (!agentId || !input) { showToast('בחר סוכן והכנס קלט לבדיקה', 'warning'); return; }
+
+  if (btn) btn.disabled = true;
+  if (spin) spin.style.display = 'inline-block';
+  if (txt) txt.textContent = 'מריץ בדיקה...';
+  if (result) result.innerHTML = '';
+
+  try {
+    const r = await fetch(`/progress-map/agents/${agentId}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: input, history: [] }),
+    }).then(r => r.json());
+    if (result) result.innerHTML = `<div class="dev-lab-output">
+      <div class="dev-lab-output-label">תגובת הסוכן (${agentId})</div>
+      <div class="dev-lab-output-text">${escapeHtml(r.answer||'אין תשובה')}</div>
+    </div>`;
+  } catch (e) {
+    if (result) result.innerHTML = `<div style="color:var(--red);font-size:.82rem;margin-top:8px">שגיאה: ${e.message}</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+    if (spin) spin.style.display = 'none';
+    if (txt) txt.textContent = '▶ הרץ בדיקה';
+  }
+}
+
+// ── Smart Survey (QA tab) ─────────────────────────────────────────────────────
+let _smartSurveyQuestions = [];
+
+async function startSmartSurvey() {
+  const userName = (_profileData?.profile?.user_name) || '';
+  if (!userName) { showToast('הגדר שם משתמש תחילה (הגדרות)', 'warning'); return; }
+  const modal = document.getElementById('smartSurveyModal');
+  const qDiv = document.getElementById('smartSurveyQuestions');
+  const btn = document.getElementById('smartSurveyBtn');
+  const spin = document.getElementById('smartSurveySpinner');
+  const txt = document.getElementById('smartSurveyText');
+  if (modal) modal.style.display = 'block';
+  if (btn) btn.disabled = true;
+  if (spin) spin.style.display = 'inline-block';
+  if (txt) txt.textContent = 'מייצר...';
+  if (qDiv) qDiv.innerHTML = `<div class="empty-state" style="padding:10px"><span>⏳</span>מייצר שאלות מותאמות אישית...</div>`;
+
+  try {
+    const d = await fetch(`/survey-smart-check?userName=${encodeURIComponent(userName)}`, { signal: AbortSignal.timeout(20000) }).then(r => r.json());
+    _smartSurveyQuestions = d.questions || [];
+    if (!_smartSurveyQuestions.length) throw new Error('לא הוחזרו שאלות');
+
+    if (qDiv) qDiv.innerHTML = _smartSurveyQuestions.map((q, i) => `
+      <div class="survey-q-block">
+        <div class="survey-q-title">${escapeHtml(q.question)}</div>
+        ${q.open_text
+          ? `<textarea id="sq-${i}" class="survey-open-input" placeholder="כתוב תשובה חופשית..."></textarea>`
+          : (q.options||[]).map(o => `<label class="survey-opt-row"><input type="radio" name="sq-${i}" value="${escapeHtml(o)}"/> <span>${escapeHtml(o)}</span></label>`).join('')
+        }
+      </div>`).join('');
+  } catch (e) {
+    if (qDiv) qDiv.innerHTML = `<div style="color:var(--red);font-size:.82rem">שגיאה: ${e.message}</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+    if (spin) spin.style.display = 'none';
+    if (txt) txt.textContent = '✨ סקר חכם';
+  }
+}
+
+async function submitSmartSurvey() {
+  const userName = (_profileData?.profile?.user_name) || '';
+  const responses = {};
+  _smartSurveyQuestions.forEach((q, i) => {
+    if (q.open_text) {
+      const v = document.getElementById(`sq-${i}`)?.value?.trim();
+      if (v) responses[q.id] = v;
+    } else {
+      const r = document.querySelector(`input[name="sq-${i}"]:checked`);
+      if (r) responses[q.id] = r.value;
+    }
+  });
+  if (!Object.keys(responses).length) { showToast('ענה על לפחות שאלה אחת', 'warning'); return; }
+  const btn = document.getElementById('submitSurveyBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/survey-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userName, responses, questionIds: Object.keys(responses) }),
+    });
+    if (!r.ok) throw new Error('שגיאת שרת');
+    document.getElementById('smartSurveyModal').style.display = 'none';
+    showToast('תודה! הפידבק נשמר בהצלחה ✓', 'success');
+    setTimeout(loadSurveySummary, 500);
+  } catch (e) {
+    showToast('שגיאה בשמירה: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 </script>

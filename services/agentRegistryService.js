@@ -478,4 +478,29 @@ async function getAgentRegistry() {
   return agents;
 }
 
-module.exports = { getAgentRegistry, setAgentStatus, setAgentRisk, isProtectedAgent, PROTECTED_AGENT_IDS };
+// Save a free-text customization note for an agent (up to 10 kept per agent).
+async function saveAgentCustomization(agentId, text) {
+  if (!agentId || !text) return false;
+  const overrides = await readStatusOverrides();
+  if (!overrides[agentId]) overrides[agentId] = {};
+  if (!Array.isArray(overrides[agentId].customizations)) overrides[agentId].customizations = [];
+  overrides[agentId].customizations.push({ text, at: new Date().toISOString() });
+  if (overrides[agentId].customizations.length > 10) overrides[agentId].customizations.shift();
+  return writeStatusOverrides(overrides);
+}
+
+// Return saved customizations for one agent.
+async function getAgentCustomizations(agentId) {
+  const overrides = await readStatusOverrides();
+  return overrides[agentId]?.customizations || [];
+}
+
+module.exports = {
+  getAgentRegistry,
+  setAgentStatus,
+  setAgentRisk,
+  isProtectedAgent,
+  PROTECTED_AGENT_IDS,
+  saveAgentCustomization,
+  getAgentCustomizations,
+};

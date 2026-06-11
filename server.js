@@ -58,7 +58,7 @@ const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
 const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore, persistFindings } = require('./agents/e2eAgent');
-const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, buildSurveySummary, aggregateSurveys, insightsFromAggregation } = require('./agents/surveyAgent');
+const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, buildSurveySummary, aggregateSurveys, insightsFromAggregation, isNegativeAnswer } = require('./agents/surveyAgent');
 const { runManusAgent, isManusConfigured } = require('./agents/manusAgent');
 const { analyzePatterns, optimizeDayPlan, runInsightAgent } = require('./agents/insightAgent');
 const priorityEngine          = require('./services/priorityEngine');
@@ -3071,6 +3071,104 @@ app.get('/survey-insights', async (req, res) => {
         });
     } catch (err) {
         console.error('⚠️ /survey-insights error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── GET /survey-smart-check — generate contextual questions using LLM ────────
+// Reads usage data (agent metrics + past concerns) and lets the LLM craft
+// personalised questions, making each survey feel relevant rather than generic.
+app.get('/survey-smart-check', async (req, res) => {
+    const { userName = '' } = req.query;
+    try {
+        const snap = await agentMetrics.snapshot().catch(() => ({ latency: [] }));
+        const topAgents = (snap.latency || [])
+            .filter(r => r.count > 0)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5)
+            .map(r => ({ agent: r.agent, count: r.count }));
+
+        let pastConcerns = [];
+        if (userName) {
+            const { data: surveyRows } = await supabase
+                .from('user_surveys')
+                .select('responses')
+                .eq('user_id', userName)
+                .order('created_at', { ascending: false })
+                .limit(5);
+            for (const s of surveyRows || []) {
+                let resp = s.responses;
+                if (typeof resp === 'string') { try { resp = JSON.parse(resp); } catch (_) { resp = {}; } }
+                for (const [qId, answer] of Object.entries(resp || {})) {
+                    if (isNegativeAnswer(answer) && SURVEY_QUESTIONS[qId]) {
+                        pastConcerns.push({ area: SURVEY_QUESTIONS[qId].question, answer });
+                    }
+                }
+            }
+        }
+
+        const { generateSmartSurvey } = require('./agents/surveyAgent');
+        const questions = await generateSmartSurvey(callGemma4, { topAgents, pastConcerns });
+        res.json({ showSurvey: true, questions, smart: true });
+    } catch (err) {
+        console.error('⚠️ /survey-smart-check error:', err.message);
+        res.json({ showSurvey: false });
+    }
+});
+
+// ─── GET /survey-impact — feedback loop: what concerns came from surveys ───────
+app.get('/survey-impact', async (req, res) => {
+    const { userName = '' } = req.query;
+    try {
+        const { data: surveyRows } = await supabase
+            .from('user_surveys')
+            .select('responses, created_at')
+            .eq('user_id', userName)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        const concerns = [];
+        for (const s of surveyRows || []) {
+            let resp = s.responses;
+            if (typeof resp === 'string') { try { resp = JSON.parse(resp); } catch (_) { resp = {}; } }
+            for (const [qId, answer] of Object.entries(resp || {})) {
+                if (isNegativeAnswer(answer) && SURVEY_QUESTIONS[qId]) {
+                    concerns.push({ area: SURVEY_QUESTIONS[qId].question, answer, date: s.created_at });
+                }
+            }
+        }
+        res.json({ concerns, totalSurveys: (surveyRows || []).length });
+    } catch (err) {
+        console.error('⚠️ /survey-impact error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── GET /dashboard/conversation-insights — usage patterns from agent metrics ──
+app.get('/dashboard/conversation-insights', async (req, res) => {
+    try {
+        const snap = await agentMetrics.snapshot().catch(() => ({ latency: [], intent: { fast: 0, llm: 0 } }));
+        const topAgents = (snap.latency || [])
+            .filter(r => r.count > 0)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 8)
+            .map(r => ({ agent: r.agent, count: r.count, avgMs: r.avgMs || 0 }));
+
+        const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const { count: recentChats } = await supabase
+            .from('chat_history')
+            .select('id', { count: 'exact', head: true })
+            .gte('created_at', since7)
+            .eq('role', 'user');
+
+        res.json({
+            topAgents,
+            intentClassification: snap.intent,
+            recentChatVolume: recentChats || 0,
+            generatedAt: new Date().toISOString(),
+        });
+    } catch (err) {
+        console.error('⚠️ /dashboard/conversation-insights error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

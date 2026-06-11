@@ -2,7 +2,7 @@
 
 const express = require('express');
 const path = require('path');
-const { getAgentRegistry, setAgentStatus, setAgentRisk, isProtectedAgent } = require('../services/agentRegistryService');
+const { getAgentRegistry, setAgentStatus, setAgentRisk, isProtectedAgent, saveAgentCustomization, getAgentCustomizations } = require('../services/agentRegistryService');
 
 function detectCategory(text) {
   const t = text.toLowerCase();
@@ -347,6 +347,62 @@ ${notes || 'אין'}
       }
 
       res.json({ prompt: fullPrompt, reviewText });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Agent chat: converse with a specific agent in its own domain ──────────
+  // POST /progress-map/agents/:id/chat  { message, history[] }
+  router.post('/agents/:id/chat', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { message, history = [] } = req.body || {};
+      if (!message) return res.status(400).json({ error: 'message required' });
+
+      const agents = await getAgentRegistry();
+      const agent = agents.find(a => a.id === id);
+      if (!agent) return res.status(404).json({ error: 'agent not found' });
+
+      const systemPrompt = `אתה ${agent.nameHe} (${agent.name}), סוכן AI חלק ממערכת ג'רביס.
+תפקיד: ${agent.role}
+משימה: ${agent.mission}
+אחריות: ${(agent.responsibilities || []).join(', ')}
+כלים: ${(agent.tools || []).join(', ')}
+הנחיות פעולה: ${agent.prompt || 'לא מוגדרות'}
+רמת סיכון: ${agent.risk} | מצב: ${agent.mode} | אוטונומיה: ${agent.autonomy}%
+
+ענה על שאלות המשתמש לגבי יכולותיך ואופן פעולתך.
+אם המשתמש מבקש לשנות את התנהגותך (תהיה יותר קצר, תמיד השתמש בכדורים, וכו'), אשר שהבנת ותסביר כיצד תפעל.
+ענה תמיד בעברית.`;
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...history.slice(-6).map(h => ({ role: h.role, content: h.content })),
+        { role: 'user', content: message },
+      ];
+
+      const answer = await callGemma4(messages, false, 500);
+
+      // Detect customization intent and persist as a note.
+      const isCustomization = /תהיה|אל תהיה|תמיד|אף פעם|שנה.{0,10}התנהגות|התנהג|הפסק לענות|התחל לענות/i.test(message);
+      let savedCustomization = null;
+      if (isCustomization) {
+        const ok = await saveAgentCustomization(id, message);
+        if (ok) savedCustomization = { text: message, at: new Date().toISOString() };
+      }
+
+      res.json({ answer, agentId: id, savedCustomization });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /progress-map/agents/:id/customizations
+  router.get('/agents/:id/customizations', async (req, res) => {
+    try {
+      const customizations = await getAgentCustomizations(req.params.id);
+      res.json({ customizations });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

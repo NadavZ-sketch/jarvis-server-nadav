@@ -368,8 +368,8 @@ class _ShoppingScreenState extends State<ShoppingScreen> {
 }
 
 Widget _deleteBg() => Container(
-      alignment: Alignment.centerLeft,
-      padding: const EdgeInsets.only(left: 20),
+      alignment: AlignmentDirectional.centerEnd,
+      padding: const EdgeInsetsDirectional.only(end: 20),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: JC.cancelRed.withValues(alpha: 0.18),

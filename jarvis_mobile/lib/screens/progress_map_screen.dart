@@ -2969,8 +2969,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             color: const Color(0xFFEF4444).withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(9),
           ),
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.only(left: 16),
+          alignment: AlignmentDirectional.centerEnd,
+          padding: const EdgeInsetsDirectional.only(end: 16),
           child: const Icon(Icons.delete_rounded, color: Colors.white, size: 20),
         ),
         onDismissed: (_) {

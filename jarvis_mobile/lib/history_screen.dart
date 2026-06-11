@@ -130,8 +130,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   key: Key(session['chat_id'] as String? ?? session['date'] as String? ?? '$index'),
                   direction: DismissDirection.endToStart,
                   background: Container(
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.only(left: 24),
+                    alignment: AlignmentDirectional.centerEnd,
+                    padding: const EdgeInsetsDirectional.only(end: 24),
                     margin: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(

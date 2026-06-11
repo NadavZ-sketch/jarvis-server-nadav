@@ -14,12 +14,13 @@ import 'e2e_reports_screen.dart';
 
 /// Unified Control Center tabs. Order drives both the TabBar and the per-tab
 /// badge mapping from /control-center/events.
-///   overview     → סקירה ובריאות
+///   overview     → סקירה
 ///   agents       → סוכנים
+///   analytics    → אנליטיקה
 ///   development  → פיתוח / Roadmap
 ///   testsSurveys → בדיקות וסקרים (E2E reports + read-only survey summary)
 ///   settings     → הגדרות
-enum ControlCenterTab { overview, agents, development, testsSurveys, settings }
+enum ControlCenterTab { overview, agents, analytics, development, testsSurveys, settings }
 
 class _CcAlert {
   final String id;
@@ -99,6 +100,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
 
+  // ── Control-centre gold palette (matches the web progress-map.html) ────────
+  static const Color _kGold    = Color(0xFFC9A84C);
+  static const Color _kGoldDim = Color(0xFF8B7035);
+
   static const _kCatMap = {
     'feature': "פיצ'ר", 'improvement': 'שיפור', 'bug': 'באג', 'ux': 'UX',
   };
@@ -166,6 +171,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   // Agent center
   List<Map<String, dynamic>> _agents = [];
   bool _loadingAgents = true;
+  String _agentSearch = '';
 
   // NL command bar (POST /progress-map/command)
   final _cmdCtrl = TextEditingController();
@@ -416,10 +422,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     raw.forEach((k, v) {
       if (v is! num) return;
       final key = k.toString();
-      // Legacy server keys (insights / surveys) now both fold into the merged
-      // "בדיקות וסקרים" tab so existing event payloads keep working.
+      // Legacy server keys fold into the nearest equivalent tab.
       final tab = switch (key) {
-        'insights' || 'surveys' => ControlCenterTab.testsSurveys,
+        'insights' => ControlCenterTab.analytics,
+        'surveys'  => ControlCenterTab.testsSurveys,
         _ => ControlCenterTab.values.firstWhere(
               (t) => t.name == key,
               orElse: () => ControlCenterTab.overview,
@@ -1343,9 +1349,21 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           elevation: 0,
           shadowColor: Colors.transparent,
           centerTitle: true,
-          title: Text('מרכז שליטה',
-              style: TextStyle(color: JC.blue400, fontSize: 18,
-                  fontWeight: FontWeight.w700, fontFamily: 'Heebo')),
+          title: RichText(
+            text: TextSpan(
+              style: const TextStyle(fontFamily: 'Heebo', fontSize: 17),
+              children: [
+                const TextSpan(
+                  text: 'ג׳רביס',
+                  style: TextStyle(color: _kGold, fontWeight: FontWeight.w800),
+                ),
+                TextSpan(
+                  text: ' — לוח ניהול',
+                  style: TextStyle(color: JC.textMuted, fontWeight: FontWeight.w400, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
           actions: [
             IconButton(
               icon: Icon(Icons.refresh_rounded, color: JC.textSecondary, size: 20),
@@ -1353,7 +1371,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             ),
           ],
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(46),
+            preferredSize: const Size.fromHeight(62),
             child: Container(
               decoration: BoxDecoration(
                 border: Border(
@@ -1361,26 +1379,26 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                 ),
               ),
               child: TabBar(
-            controller: _tabController,
-            isScrollable: true,
-            labelColor: JC.blue400,
-            unselectedLabelColor: JC.textMuted,
-            indicator: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: JC.blue500.withOpacity(0.15),
-              border: Border.all(color: JC.blue400.withOpacity(0.45), width: 0.8),
-              boxShadow: [
-                BoxShadow(color: JC.blue500.withOpacity(0.2), blurRadius: 10, spreadRadius: 0),
-              ],
+                controller: _tabController,
+                isScrollable: true,
+                labelColor: _kGold,
+                unselectedLabelColor: JC.textMuted,
+                indicator: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: _kGold.withOpacity(0.12),
+                  border: Border.all(color: _kGold.withOpacity(0.45), width: 0.8),
+                  boxShadow: [
+                    BoxShadow(color: _kGold.withOpacity(0.18), blurRadius: 10, spreadRadius: 0),
+                  ],
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicatorPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+                dividerColor: Colors.transparent,
+                labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 11),
+                unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 11),
+                tabs: _visibleTabs.map((t) => _tabWithBadge(_tabLabel(t), t)).toList(),
+              ),
             ),
-            indicatorSize: TabBarIndicatorSize.tab,
-            indicatorPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
-            dividerColor: Colors.transparent,
-            labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 12.5),
-            unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 12.5),
-            tabs: _visibleTabs.map((t) => _tabWithBadge(_tabLabel(t), t)).toList(),
-          ),
-        ),
           ),
         ),
         body: Column(
@@ -1398,44 +1416,61 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   }
 
   String _tabLabel(ControlCenterTab t) => switch (t) {
-        ControlCenterTab.overview => 'סקירה ובריאות',
-        ControlCenterTab.agents => 'סוכנים',
-        ControlCenterTab.development => 'פיתוח',
-        ControlCenterTab.testsSurveys => 'בדיקות וסקרים',
-        ControlCenterTab.settings => 'הגדרות',
+        ControlCenterTab.overview     => 'סקירה',
+        ControlCenterTab.agents       => 'סוכנים',
+        ControlCenterTab.analytics    => 'אנליטיקה',
+        ControlCenterTab.development  => 'פיתוח',
+        ControlCenterTab.testsSurveys => 'בדיקות',
+        ControlCenterTab.settings     => 'הגדרות',
+      };
+
+  IconData _tabIcon(ControlCenterTab t) => switch (t) {
+        ControlCenterTab.overview     => Icons.bar_chart_rounded,
+        ControlCenterTab.agents       => Icons.smart_toy_outlined,
+        ControlCenterTab.analytics    => Icons.analytics_outlined,
+        ControlCenterTab.development  => Icons.build_outlined,
+        ControlCenterTab.testsSurveys => Icons.science_outlined,
+        ControlCenterTab.settings     => Icons.settings_outlined,
       };
 
   Widget _buildTabBody(ControlCenterTab t) => switch (t) {
-        ControlCenterTab.overview => _buildOverviewTab(),
-        ControlCenterTab.agents => _buildAgentsTab(),
-        ControlCenterTab.development => _buildDevelopmentTab(),
+        ControlCenterTab.overview     => _buildOverviewTab(),
+        ControlCenterTab.agents       => _buildAgentsTab(),
+        ControlCenterTab.analytics    => _buildAnalyticsTab(),
+        ControlCenterTab.development  => _buildDevelopmentTab(),
         ControlCenterTab.testsSurveys => _buildTestsSurveysTab(),
-        ControlCenterTab.settings => _buildSettingsTab(),
+        ControlCenterTab.settings     => _buildSettingsTab(),
       };
 
   Widget _tabWithBadge(String label, ControlCenterTab tab) {
     final count = _tabBadges[tab] ?? 0;
-    if (count <= 0) return Tab(text: label);
+    final icon = Icon(_tabIcon(tab), size: 18);
+    final iconWidget = count <= 0
+        ? icon
+        : Stack(
+            clipBehavior: Clip.none,
+            children: [
+              icon,
+              Positioned(
+                top: -4, right: -6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(8)),
+                  constraints: const BoxConstraints(minWidth: 14),
+                  child: Text(
+                    count > 9 ? '9+' : '$count',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 9, fontFamily: 'Heebo', fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          );
     return Tab(
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label),
-          const SizedBox(width: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEF4444),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            constraints: const BoxConstraints(minWidth: 18),
-            child: Text(
-              count > 9 ? '9+' : count.toString(),
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 10, fontFamily: 'Heebo', fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [iconWidget, const SizedBox(height: 2), Text(label)],
       ),
     );
   }
@@ -1448,7 +1483,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         ? const Color(0xFFEF4444)
         : alert.severity == 'warning'
             ? const Color(0xFFF59E0B)
-            : JC.blue400;
+            : _kGold;
     final icon = alert.severity == 'urgent'
         ? Icons.error_outline
         : alert.severity == 'warning'
@@ -1523,7 +1558,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   Widget _tabListView(List<Widget> children) {
     return RefreshIndicator(
       onRefresh: _loadAll,
-      color: JC.blue400,
+      color: _kGold,
       backgroundColor: JC.surface,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
@@ -1532,31 +1567,205 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     );
   }
 
+  Widget _buildGreeting() {
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? 'בוקר טוב'
+        : hour < 17
+            ? 'צהריים טובים'
+            : 'ערב טוב';
+    final name = widget.settings.userName.trim();
+    final greeting2 = name.isEmpty ? greeting : '$greeting, $name';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [_kGold.withOpacity(0.10), _kGold.withOpacity(0.02)],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _kGold.withOpacity(0.25), width: 0.8),
+      ),
+      child: Row(
+        textDirection: TextDirection.rtl,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(greeting2,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w700, fontSize: 15)),
+                const SizedBox(height: 2),
+                Text('ג׳רביס — לוח ניהול',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          if (_isAdmin)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _kGold.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: _kGold.withOpacity(0.5), width: 0.8),
+              ),
+              child: Text('🛡 אדמין',
+                  style: TextStyle(color: _kGold, fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w700, fontSize: 11)),
+            )
+          else
+            Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _kGold.withOpacity(0.12),
+                border: Border.all(color: _kGold.withOpacity(0.3), width: 0.8),
+              ),
+              child: const Center(child: Text('👤', style: TextStyle(fontSize: 18))),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildOverviewTab() => _tabListView([
+        _buildGreeting(),
+        const SizedBox(height: 12),
         _buildCommandBar(),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         _buildStatusBar(),
         const SizedBox(height: 10),
         _buildOverviewQuickActions(),
         const SizedBox(height: 14),
-        _buildMetrics(),
-        const SizedBox(height: 14),
         _sectionTitle('💡 תובנות פרואקטיביות'),
         const SizedBox(height: 8),
         _buildInsightsCard(),
-        const SizedBox(height: 14),
-        _sectionTitle('📊 שימוש מודלים (מהשרת)'),
-        const SizedBox(height: 8),
-        Container(
+      ]);
+
+  // ── Analytics tab ─────────────────────────────────────────────────────────
+  Widget _buildAnalyticsTab() {
+    final pendingProposals = _proposals.where((p) => p['status'] == _PS.proposal).length;
+    final activeProposals  = _proposals.where((p) => p['status'] == _PS.active).length;
+    final counters = [
+      ('שיחות',   _stats['chat']?['total'],     '${_stats['chat']?['today'] ?? 0} היום',    Icons.chat_bubble_outline),
+      ('משימות',  _stats['tasks']?['total'],    '${(_stats['tasks']?['total'] ?? 0) - (_stats['tasks']?['done'] ?? 0)} פתוחות', Icons.task_alt_rounded),
+      ('תזכורות', _stats['reminders']?['total'],'${_stats['reminders']?['active'] ?? 0} פעילות', Icons.alarm_rounded),
+      ('הצעות',   pendingProposals,             '$activeProposals פעילות',                  Icons.lightbulb_outline),
+    ];
+    final topAgents = List<Map<String, dynamic>>.from(_convInsights['topAgents'] ?? []);
+    final intentSplit = Map<String, dynamic>.from(_convInsights['intentClassification'] ?? {});
+    return _tabListView([
+      // ── 4 counter cards ──────────────────────────────────────────
+      GridView.count(
+        crossAxisCount: 2, crossAxisSpacing: 10, mainAxisSpacing: 10,
+        shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        childAspectRatio: 1.5,
+        children: counters.map(((label, num, sub, icon)) => Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: JC.surface,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: JC.border, width: 0.8),
+            border: Border.all(color: _kGold.withOpacity(0.25), width: 0.8),
+            boxShadow: [BoxShadow(color: _kGold.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 3))],
           ),
-          child: _buildProviderBreakdown(),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(icon, size: 16, color: _kGoldDim),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+            ]),
+            const Spacer(),
+            Text(_loadingStats ? '…' : (num?.toString() ?? '—'),
+                style: const TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 28, fontWeight: FontWeight.w800, height: 1)),
+            Text(sub, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10), overflow: TextOverflow.ellipsis),
+          ]),
+        )).toList(),
+      ),
+      const SizedBox(height: 18),
+      // ── Top agents ───────────────────────────────────────────────
+      _sectionTitle('🤖 סוכנים פעילים'),
+      const SizedBox(height: 8),
+      if (_loadingConvInsights && topAgents.isEmpty)
+        const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(strokeWidth: 2, color: _kGold)))
+      else if (topAgents.isEmpty)
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border, width: 0.8)),
+          child: Text('אין נתוני שיחות עדיין', textAlign: TextAlign.right, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12.5)),
+        )
+      else
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border, width: 0.8)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            ...topAgents.take(6).map((a) {
+              final name = a['agent']?.toString() ?? '';
+              final count = (a['count'] as num?)?.toInt() ?? 0;
+              final maxCount = (topAgents.first['count'] as num?)?.toInt() ?? 1;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Row(textDirection: TextDirection.rtl, children: [
+                    Text(name, textAlign: TextAlign.right,
+                        style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    Text('$count', style: TextStyle(color: _kGoldDim, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w700)),
+                  ]),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: maxCount > 0 ? count / maxCount : 0,
+                      minHeight: 5,
+                      color: _kGold,
+                      backgroundColor: _kGold.withOpacity(0.12),
+                    ),
+                  ),
+                ]),
+              );
+            }),
+          ]),
         ),
-      ]);
+      const SizedBox(height: 18),
+      // ── Intent breakdown ─────────────────────────────────────────
+      if (intentSplit.isNotEmpty) ...[
+        _sectionTitle('📊 פילוח כוונות'),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border, width: 0.8)),
+          child: Wrap(
+            spacing: 6, runSpacing: 6,
+            textDirection: TextDirection.rtl,
+            children: intentSplit.entries.take(8).map((e) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _kGold.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: _kGold.withOpacity(0.25)),
+              ),
+              child: Text('${e.key}  ${e.value}',
+                  style: TextStyle(color: _kGoldDim, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+            )).toList(),
+          ),
+        ),
+        const SizedBox(height: 18),
+      ],
+      // ── Provider breakdown ───────────────────────────────────────
+      _sectionTitle('⚡ פילוח מודלים'),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border, width: 0.8)),
+        child: _buildProviderBreakdown(),
+      ),
+    ]);
+  }
 
   Widget _buildOverviewQuickActions() {
     return Row(
@@ -1565,12 +1774,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           child: OutlinedButton.icon(
             onPressed: _triggeringE2e ? null : _triggerE2eRun,
             icon: _triggeringE2e
-                ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400))
+                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: _kGold))
                 : const Icon(Icons.play_circle_outline_rounded, size: 18),
             label: const Text('הרץ e2e עכשיו', style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600)),
             style: OutlinedButton.styleFrom(
-              foregroundColor: JC.blue400,
-              side: BorderSide(color: JC.blue400, width: 0.8),
+              foregroundColor: _kGold,
+              side: const BorderSide(color: _kGold, width: 0.8),
               padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
@@ -1597,25 +1806,32 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   }
 
   // ── NL command bar (POST /progress-map/command) ───────────────────────────
+  static const List<String> _kCommandSuggestions = [
+    'הצג סטטיסטיקות',
+    'כבה סוכן',
+    'הרץ סריקה',
+    'פתח אנליטיקה',
+  ];
+
   Widget _buildCommandBar() {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [JC.blue500.withValues(alpha: 0.16), JC.blue500.withValues(alpha: 0.04)],
+          colors: [_kGold.withOpacity(0.12), _kGold.withOpacity(0.03)],
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
         ),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: JC.blue400.withValues(alpha: 0.30), width: 0.8),
+        border: Border.all(color: _kGold.withOpacity(0.30), width: 0.8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(children: [
-            Icon(Icons.bolt_rounded, size: 18, color: JC.blue400),
+            Icon(Icons.bolt_rounded, size: 18, color: _kGold),
             const SizedBox(width: 6),
-            Text('שורת פקודה', style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13)),
+            Text('שורת פקודה', style: TextStyle(color: _kGold, fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13)),
           ]),
           const SizedBox(height: 10),
           Row(children: [
@@ -1633,7 +1849,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JC.border, width: 0.8)),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JC.border, width: 0.8)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JC.blue400, width: 1.2)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kGold, width: 1.2)),
                 ),
               ),
             ),
@@ -1643,7 +1859,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               child: ElevatedButton(
                 onPressed: _runningCmd ? null : _runCommand,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: JC.blue500,
+                  backgroundColor: _kGold,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1654,6 +1870,32 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               ),
             ),
           ]),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _kCommandSuggestions.map((s) => Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: GestureDetector(
+                  onTap: () {
+                    _cmdCtrl.text = s;
+                    _runCommand();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: _kGold.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: _kGold.withOpacity(0.30), width: 0.8),
+                    ),
+                    child: Text(s,
+                        style: TextStyle(color: _kGoldDim, fontFamily: 'Heebo',
+                            fontSize: 11, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              )).toList(),
+            ),
+          ),
           if (_cmdAnswer != null) ...[
             const SizedBox(height: 10),
             Container(
@@ -1712,22 +1954,14 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     }
   }
 
-  // Map the server's tab ids (overview/agents/analytics/dev/qa/settings) onto the
-  // mobile control-center tabs. The web has a dedicated analytics tab; on mobile
-  // those charts live under overview.
   ControlCenterTab? _serverTabToCc(String? id) {
     switch (id) {
-      case 'overview':
-      case 'analytics':
-        return ControlCenterTab.overview;
-      case 'agents':
-        return ControlCenterTab.agents;
-      case 'dev':
-        return ControlCenterTab.development;
-      case 'qa':
-        return ControlCenterTab.testsSurveys;
-      case 'settings':
-        return ControlCenterTab.settings;
+      case 'overview': return ControlCenterTab.overview;
+      case 'analytics': return ControlCenterTab.analytics;
+      case 'agents': return ControlCenterTab.agents;
+      case 'dev': return ControlCenterTab.development;
+      case 'qa': return ControlCenterTab.testsSurveys;
+      case 'settings': return ControlCenterTab.settings;
     }
     return null;
   }
@@ -1761,7 +1995,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       return Container(
         padding: const EdgeInsets.all(20),
         alignment: Alignment.center,
-        child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2),
+        child: CircularProgressIndicator(color: _kGold, strokeWidth: 2),
       );
     }
     if (_insights.isEmpty) {
@@ -1833,11 +2067,75 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         _buildManualItems(),
       ]);
 
-  Widget _buildAgentsTab() => _tabListView([
-        _sectionTitle('🤖 מרכז סוכנים'),
+  Widget _buildAgentsTab() {
+    final filtered = _agentSearch.isEmpty
+        ? _agents
+        : _agents.where((a) {
+            final name = (a['nameHe'] ?? a['name'] ?? a['id'] ?? '').toString().toLowerCase();
+            final role = (a['role'] ?? '').toString().toLowerCase();
+            final q = _agentSearch.toLowerCase();
+            return name.contains(q) || role.contains(q);
+          }).toList();
+
+    return Column(
+      children: [
+        // Search bar pinned at top
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: TextField(
+            textDirection: TextDirection.rtl,
+            onChanged: (v) => setState(() => _agentSearch = v),
+            style: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'חיפוש סוכן...',
+              hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12.5),
+              prefixIcon: Icon(Icons.search, size: 18, color: JC.textMuted),
+              filled: true,
+              fillColor: JC.surface,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: JC.border, width: 0.8)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: JC.border, width: 0.8)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _kGold, width: 1.2)),
+            ),
+          ),
+        ),
         const SizedBox(height: 8),
-        _buildAgentCenter(),
-      ]);
+        if (_loadingAgents && _agents.isEmpty)
+          const Expanded(child: Center(child: CircularProgressIndicator(color: _kGold, strokeWidth: 2)))
+        else if (_agents.isEmpty)
+          Expanded(child: Center(child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('לא נטענו סוכנים. בדוק חיבור לשרת.',
+                textAlign: TextAlign.right,
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
+          )))
+        else
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadAgents,
+              color: _kGold,
+              backgroundColor: JC.surface,
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                itemCount: filtered.isEmpty ? 1 : filtered.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                itemBuilder: (_, i) {
+                  if (filtered.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text('אין תוצאות לחיפוש "$_agentSearch"',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
+                    );
+                  }
+                  return _buildAgentTile(filtered[i]);
+                },
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
   // ── בדיקות וסקרים: E2E reports (live) + read-only survey summary ───────────
   Widget _buildTestsSurveysTab() {
@@ -1861,7 +2159,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           label: Text(_loadingSmartSurvey ? 'טוען סקר...' : 'התחל סקר חכם',
               style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
           style: ElevatedButton.styleFrom(
-            backgroundColor: JC.blue500,
+            backgroundColor: _kGold,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 12),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1938,9 +2236,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                 textDirection: TextDirection.rtl,
                 children: [
                   Expanded(
-                    child: Text('✨ סקר חכם',
+                    child: const Text('✨ סקר חכם',
                         textAlign: TextAlign.right,
-                        style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                        style: TextStyle(color: _kGold, fontFamily: 'Heebo',
                             fontWeight: FontWeight.w700, fontSize: 16)),
                   ),
                   IconButton(
@@ -2011,17 +2309,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                   decoration: BoxDecoration(
                                     color: selected
-                                        ? JC.blue500.withValues(alpha: 0.2)
+                                        ? _kGold.withOpacity(0.15)
                                         : JC.surface,
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
-                                      color: selected ? JC.blue400 : JC.border,
+                                      color: selected ? _kGold : JC.border,
                                       width: selected ? 1.2 : 0.8,
                                     ),
                                   ),
                                   child: Text(opt,
                                       style: TextStyle(
-                                        color: selected ? JC.blue400 : JC.textSecondary,
+                                        color: selected ? _kGold : JC.textSecondary,
                                         fontFamily: 'Heebo', fontSize: 12,
                                         fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
                                       )),
@@ -2045,7 +2343,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                       ? null
                       : _submitSmartSurvey,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: JC.blue500,
+                    backgroundColor: _kGold,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -2095,7 +2393,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             textDirection: TextDirection.rtl,
             children: [
               Text('$chatVolume',
-                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                  style: const TextStyle(color: _kGold, fontFamily: 'Heebo',
                       fontWeight: FontWeight.w800, fontSize: 28, height: 1)),
               const SizedBox(width: 6),
               Text('שיחות ב-7 ימים',
@@ -2131,7 +2429,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
                           value: maxCount > 0 ? count / maxCount : 0,
-                          color: JC.blue400,
+                          color: _kGold,
                           backgroundColor: JC.border,
                           minHeight: 6,
                         ),
@@ -2159,12 +2457,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: JC.blue500.withValues(alpha: 0.08),
+                    color: _kGold.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: JC.blue400.withValues(alpha: 0.2)),
+                    border: Border.all(color: _kGold.withOpacity(0.2)),
                   ),
                   child: Text('${e.key} (${e.value})',
-                      style: TextStyle(color: JC.blue400, fontFamily: 'Heebo', fontSize: 10)),
+                      style: const TextStyle(color: _kGoldDim, fontFamily: 'Heebo', fontSize: 10)),
                 );
               }).toList(),
             ),
@@ -2290,7 +2588,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _roleChip(String label, bool active, VoidCallback onTap) {
     return Material(
-      color: active ? JC.blue500 : JC.surfaceAlt,
+      color: active ? _kGold : JC.surfaceAlt,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: _settingRole ? null : onTap,
@@ -2300,7 +2598,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: active ? JC.blue500 : JC.border, width: 1),
+            border: Border.all(color: active ? _kGold : JC.border, width: 1),
           ),
           child: Text(
             label,
@@ -2382,7 +2680,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             icon: const Icon(Icons.tune_rounded, size: 18),
             label: const Text('פתח הגדרות מלאות', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: JC.blue500,
+              backgroundColor: _kGold,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
@@ -2409,7 +2707,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     if (_loadingSurveys && _surveyInsights.isEmpty && _surveyHistory.isEmpty) {
       return SizedBox(
         height: 120,
-        child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
+        child: Center(child: CircularProgressIndicator(color: _kGold, strokeWidth: 2)),
       );
     }
     if (_surveyInsights.isEmpty) {
@@ -2455,7 +2753,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     if (_loadingSurveys && _surveyHistory.isEmpty) {
       return SizedBox(
         height: 120,
-        child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
+        child: Center(child: CircularProgressIndicator(color: _kGold, strokeWidth: 2)),
       );
     }
     if (_surveyHistory.isEmpty) {
@@ -2549,8 +2847,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           else if (ok == false)
             GestureDetector(
               onTap: _loadAll,
-              child: Text('נסה עכשיו',
-                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+              child: const Text('נסה עכשיו',
+                  style: TextStyle(color: _kGold, fontFamily: 'Heebo',
                       fontWeight: FontWeight.w600, fontSize: 12)),
             ),
         ],
@@ -2748,7 +3046,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   Widget _buildFeatureBoard() {
     if (_loadingFeatures) {
       return SizedBox(height: 140,
-          child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)));
+          child: Center(child: CircularProgressIndicator(color: _kGold, strokeWidth: 2)));
     }
     if (_done.isEmpty && _building.isEmpty && _planned.isEmpty && _serverOk != true) {
       return Padding(
@@ -2765,12 +3063,12 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: JC.blue500.withValues(alpha: 0.1),
+                  color: _kGold.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: JC.blue400.withValues(alpha: 0.4)),
+                  border: Border.all(color: _kGold.withOpacity(0.4)),
                 ),
-                child: Text('טעון מחדש',
-                    style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                child: const Text('טעון מחדש',
+                    style: TextStyle(color: _kGold, fontFamily: 'Heebo',
                         fontWeight: FontWeight.w600, fontSize: 13)),
               ),
             ),
@@ -3023,8 +3321,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           Padding(
             padding: EdgeInsets.symmetric(vertical: 28),
             child: Column(children: [
-              CircularProgressIndicator(color: JC.blue400, strokeWidth: 2),
-              SizedBox(height: 10),
+              const CircularProgressIndicator(color: _kGold, strokeWidth: 2),
+              const SizedBox(height: 10),
               Text('Jarvis מנתח את הפרויקט ויוצר הצעות...',
                   style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12),
                   textAlign: TextAlign.center),
@@ -3088,7 +3386,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                     ? '🧪 ולידציה'
                     : '✅ הושלם';
     final statusColor = status == _PS.active
-        ? JC.blue400
+        ? _kGold
         : status == _PS.validation
             ? const Color(0xFFF59E0B)
             : isDone ? const Color(0xFF22C55E) : JC.textMuted;
@@ -3115,9 +3413,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   color: JC.surfaceAlt,
                   border: Border(
                     right: BorderSide(color: priorityColor, width: 3),
-                    left:   BorderSide(color: isActive ? JC.blue400.withValues(alpha: 0.4) : JC.border, width: 0.8),
-                    top:    BorderSide(color: isActive ? JC.blue400.withValues(alpha: 0.4) : JC.border, width: 0.8),
-                    bottom: BorderSide(color: isActive ? JC.blue400.withValues(alpha: 0.4) : JC.border, width: 0.8),
+                    left:   BorderSide(color: isActive ? _kGold.withOpacity(0.4) : JC.border, width: 0.8),
+                    top:    BorderSide(color: isActive ? _kGold.withOpacity(0.4) : JC.border, width: 0.8),
+                    bottom: BorderSide(color: isActive ? _kGold.withOpacity(0.4) : JC.border, width: 0.8),
                   ),
                 ),
                 child: Padding(
@@ -3180,7 +3478,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                             _badge('Impact ${scores['impact'] ?? '—'}/5', const Color(0xFF22C55E)),
                             _badge('Effort ${scores['effort'] ?? '—'}/5', const Color(0xFFF59E0B)),
                             _badge('Risk ${scores['risk'] ?? '—'}/5', const Color(0xFFEF4444)),
-                            _badge('Conf ${scores['confidence'] ?? '—'}/5', JC.blue400),
+                            _badge('Conf ${scores['confidence'] ?? '—'}/5', _kGoldDim),
                             _badge('Score ${scores['weighted_score'] ?? '—'}', const Color(0xFFA78BFA)),
                           ],
                         ),
@@ -3190,9 +3488,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                           decoration: BoxDecoration(
-                            color: JC.blue500.withValues(alpha: 0.08),
+                            color: _kGold.withOpacity(0.08),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: JC.blue400.withValues(alpha: 0.22), width: 0.8),
+                            border: Border.all(color: _kGold.withOpacity(0.22), width: 0.8),
                           ),
                           child: Text(
                             'למה עכשיו: $whyNow',
@@ -3271,17 +3569,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: isActive ? Colors.transparent : JC.blue500.withValues(alpha: 0.12),
+                                  color: isActive ? Colors.transparent : _kGold.withOpacity(0.12),
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: JC.blue400.withValues(alpha: 0.35), width: 0.8),
+                                  border: Border.all(color: _kGold.withOpacity(0.35), width: 0.8),
                                 ),
                                 child: activating
-                                    ? SizedBox(
+                                    ? const SizedBox(
                                         width: 13, height: 13,
-                                        child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400),
+                                        child: CircularProgressIndicator(strokeWidth: 1.8, color: _kGold),
                                       )
                                     : Text(isActive ? '⏸ חזרה לתכנון' : isDraftPlan ? '⚡ התחל ביצוע' : isValidation ? '⚡ חזרה לביצוע' : '🧭 צור תכנית',
-                                        style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                                        style: const TextStyle(color: _kGold, fontFamily: 'Heebo',
                                             fontWeight: FontWeight.w600, fontSize: 11)),
                               ),
                             ),
@@ -3335,9 +3633,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               margin: const EdgeInsets.only(top: 4),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: JC.blue500.withValues(alpha: 0.06),
+                color: _kGold.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: JC.blue400.withValues(alpha: 0.2)),
+                border: Border.all(color: _kGold.withOpacity(0.2)),
               ),
               child: Directionality(
                 textDirection: TextDirection.rtl,
@@ -3346,15 +3644,15 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   children: [
                     Row(
                       children: [
-                        Text('🤖 ג׳רביס:',
-                            style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                        const Text('🤖 ג׳רביס:',
+                            style: TextStyle(color: _kGold, fontFamily: 'Heebo',
                                 fontWeight: FontWeight.w700, fontSize: 12)),
                         const Spacer(),
                         if (widget.onSwitchToChat != null)
                           GestureDetector(
                             onTap: () => _switchToChatWithProposal(p),
-                            child: Text('המשך בצ׳אט ←',
-                                style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+                            child: const Text('המשך בצ׳אט ←',
+                                style: TextStyle(color: _kGold, fontFamily: 'Heebo',
                                     fontSize: 12, fontWeight: FontWeight.w600)),
                           ),
                       ],
@@ -3388,10 +3686,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
           Row(
             children: [
               Spacer(),
-              Icon(Icons.auto_awesome_rounded, color: JC.blue400, size: 13),
-              SizedBox(width: 5),
-              Text("מחולל פרומפט לפיצ'ר חדש ב-Claude Code",
-                  style: TextStyle(color: JC.blue400, fontFamily: 'Heebo',
+              const Icon(Icons.auto_awesome_rounded, color: _kGold, size: 13),
+              const SizedBox(width: 5),
+              const Text("מחולל פרומפט לפיצ'ר חדש ב-Claude Code",
+                  style: TextStyle(color: _kGold, fontFamily: 'Heebo',
                       fontSize: 12, fontWeight: FontWeight.w700)),
             ],
           ),
@@ -3415,7 +3713,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 decoration: BoxDecoration(
-                  color: _generatingPrompt ? JC.blue500.withValues(alpha: 0.5) : JC.blue500,
+                  color: _generatingPrompt ? _kGold.withOpacity(0.5) : _kGold,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: _generatingPrompt
@@ -3451,10 +3749,10 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(_promptCopied ? Icons.check_rounded : Icons.copy_rounded,
-                              size: 12, color: JC.blue400),
+                              size: 12, color: _kGold),
                           const SizedBox(width: 4),
                           Text(_promptCopied ? 'הועתק!' : 'העתק',
-                              style: TextStyle(color: JC.blue400,
+                              style: const TextStyle(color: _kGold,
                                   fontFamily: 'Heebo', fontSize: 12)),
                         ]),
                       ),
@@ -3510,7 +3808,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
-                color: JC.blue500,
+                color: _kGold,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text('הוסף',
@@ -3522,7 +3820,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         const SizedBox(height: 10),
         if (_loadingBacklog)
           Padding(padding: EdgeInsets.all(20),
-              child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2))
+              child: CircularProgressIndicator(color: _kGold, strokeWidth: 2))
         else if (_items.isEmpty)
           Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
@@ -3565,7 +3863,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             backgroundColor: JC.surfaceAlt,
             action: SnackBarAction(
               label: 'בטל',
-              textColor: JC.blue400,
+              textColor: _kGold,
               onPressed: () => _addItemWithText(text),
             ),
           ));
@@ -3643,7 +3941,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     if (_loadingAgents && _agents.isEmpty) {
       return SizedBox(
         height: 120,
-        child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
+        child: Center(child: CircularProgressIndicator(color: _kGold, strokeWidth: 2)),
       );
     }
     if (_agents.isEmpty) {
@@ -3736,7 +4034,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                       ? JC.textMuted
                       : status == 'active'
                           ? const Color(0xFF22C55E)
-                          : JC.blue400,
+                          : _kGoldDim,
                 ),
               ),
               const SizedBox(width: 10),
@@ -3787,7 +4085,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                     spacing: 4,
                     children: [
                       _badge(_riskLabel(risk), _riskColor(risk)),
-                      if (mode.isNotEmpty) _badge(mode, JC.blue400),
+                      if (mode.isNotEmpty) _badge(mode, _kGoldDim),
                       _badge('${autonomy.toInt()}%', JC.textMuted),
                     ],
                   ),
@@ -3803,7 +4101,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
               SizedBox(
                 width: 28, height: 28,
                 child: isToggling
-                    ? Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: JC.blue400))
+                    ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: _kGold))
                     : IconButton(
                         padding: EdgeInsets.zero,
                         tooltip: isDisabled ? 'הפעל סוכן' : 'השבת סוכן',
@@ -3841,16 +4139,16 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: selected ? JC.blue500.withValues(alpha: 0.15) : JC.surface,
+          color: selected ? _kGold.withOpacity(0.15) : JC.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected ? JC.blue400.withValues(alpha: 0.6) : JC.border,
+            color: selected ? _kGold.withOpacity(0.6) : JC.border,
             width: selected ? 1.0 : 0.7,
           ),
         ),
         child: Text(label,
             style: TextStyle(
-              color: selected ? JC.blue400 : JC.textMuted,
+              color: selected ? _kGold : JC.textMuted,
               fontFamily: 'Heebo',
               fontSize: 11,
               fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
@@ -3877,21 +4175,21 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: JC.blue500.withValues(alpha: 0.08),
+          color: _kGold.withOpacity(0.08),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: JC.blue400.withValues(alpha: 0.4), width: 0.8),
+          border: Border.all(color: _kGold.withOpacity(0.4), width: 0.8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (loading)
-              SizedBox(width: 13, height: 13,
-                  child: CircularProgressIndicator(strokeWidth: 1.8, color: JC.blue400))
+              const SizedBox(width: 13, height: 13,
+                  child: CircularProgressIndicator(strokeWidth: 1.8, color: _kGold))
             else if (icon != null)
-              Icon(icon, size: 14, color: JC.blue400),
+              Icon(icon, size: 14, color: _kGold),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(
-                color: JC.blue400, fontFamily: 'Heebo',
+            Text(label, style: const TextStyle(
+                color: _kGold, fontFamily: 'Heebo',
                 fontWeight: FontWeight.w600, fontSize: 13)),
           ],
         ),
@@ -3914,7 +4212,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
             borderSide: BorderSide(color: JC.border, width: 0.8)),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: JC.blue400)),
+            borderSide: const BorderSide(color: _kGold)),
       );
 
   Widget _sectionTitle(String title) => Padding(
@@ -3922,8 +4220,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     child: Row(children: [
       Expanded(child: Divider(color: JC.border, height: 1)),
       const SizedBox(width: 8),
-      Text(title, style: TextStyle(
-          color: JC.blue400, fontSize: 11, fontWeight: FontWeight.w700,
+      Text(title, style: const TextStyle(
+          color: _kGoldDim, fontSize: 11, fontWeight: FontWeight.w700,
           fontFamily: 'Heebo', letterSpacing: 0.8)),
     ]),
   );

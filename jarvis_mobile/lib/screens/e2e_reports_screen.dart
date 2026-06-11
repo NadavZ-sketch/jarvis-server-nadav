@@ -1061,7 +1061,7 @@ class _E2eReportDetailScreenState extends State<E2eReportDetailScreen> {
       final active = group.contains(v);
       final col = colorFn(v);
       return Padding(
-        padding: const EdgeInsets.only(left: 6),
+        padding: const EdgeInsetsDirectional.only(end: 6),
         child: GestureDetector(
           onTap: () => _toggleFilter(group, v),
           child: AnimatedContainer(

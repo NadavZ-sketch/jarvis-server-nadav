@@ -2512,7 +2512,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                 children: [
                   for (final s in _statusFilters)
                     Padding(
-                      padding: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsetsDirectional.only(end: 6),
                       child: _filterChip(
                         _statusFilterLabel(s),
                         _filterStatus == s,
@@ -2525,7 +2525,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
                   const SizedBox(width: 8),
                   for (final p in _priorityFilters)
                     Padding(
-                      padding: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsetsDirectional.only(end: 6),
                       child: _filterChip(
                         _priorityFilterLabel(p),
                         _filterPriority == p,

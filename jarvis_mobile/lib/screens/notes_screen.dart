@@ -419,7 +419,7 @@ class _NoteEditScreenState extends State<NoteEditScreen> {
           actions: [
             if (_saving)
               Padding(
-                padding: EdgeInsets.only(right: 16),
+                padding: EdgeInsetsDirectional.only(start: 16),
                 child: Center(
                   child: SizedBox(
                     width: 20,

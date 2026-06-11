@@ -840,7 +840,7 @@ class _ProjectsHubScreenState extends State<ProjectsHubScreen> {
         children: ['all', 'active', 'completed'].map((f) {
           final selected = _filter == f;
           return Padding(
-            padding: const EdgeInsets.only(left: 8),
+            padding: const EdgeInsetsDirectional.only(end: 8),
             child: ChoiceChip(
               label: Text(
                 _filterLabel(f),
@@ -1700,7 +1700,7 @@ class _CreateProjectSheetState extends State<_CreateProjectSheet> {
                     child: Container(
                       width: 28,
                       height: 28,
-                      margin: const EdgeInsets.only(left: 8),
+                      margin: const EdgeInsetsDirectional.only(end: 8),
                       decoration: BoxDecoration(
                         color: _parseColor(c),
                         shape: BoxShape.circle,

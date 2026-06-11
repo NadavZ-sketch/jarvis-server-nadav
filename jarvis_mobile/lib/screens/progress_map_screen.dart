@@ -1665,26 +1665,32 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
         crossAxisCount: 2, crossAxisSpacing: 10, mainAxisSpacing: 10,
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         childAspectRatio: 1.5,
-        children: counters.map(((label, num, sub, icon)) => Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: JC.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _kGold.withOpacity(0.25), width: 0.8),
-            boxShadow: [BoxShadow(color: _kGold.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 3))],
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(icon, size: 16, color: _kGoldDim),
-              const SizedBox(width: 6),
-              Text(label, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+        children: counters.map((entry) {
+          final label = entry.$1;
+          final val   = entry.$2;
+          final sub   = entry.$3;
+          final icon  = entry.$4;
+          return Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: JC.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _kGold.withOpacity(0.25), width: 0.8),
+              boxShadow: [BoxShadow(color: _kGold.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 3))],
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(icon, size: 16, color: _kGoldDim),
+                const SizedBox(width: 6),
+                Text(label, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+              ]),
+              const Spacer(),
+              Text(_loadingStats ? '…' : (val?.toString() ?? '—'),
+                  style: const TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 28, fontWeight: FontWeight.w800, height: 1)),
+              Text(sub, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10), overflow: TextOverflow.ellipsis),
             ]),
-            const Spacer(),
-            Text(_loadingStats ? '…' : (num?.toString() ?? '—'),
-                style: const TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 28, fontWeight: FontWeight.w800, height: 1)),
-            Text(sub, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10), overflow: TextOverflow.ellipsis),
-          ]),
-        )).toList(),
+          );
+        }).toList(),
       ),
       const SizedBox(height: 18),
       // ── Top agents ───────────────────────────────────────────────

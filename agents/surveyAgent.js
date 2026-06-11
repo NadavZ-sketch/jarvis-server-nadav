@@ -188,6 +188,66 @@ function insightsFromAggregation(agg) {
   return insights.slice(0, 5);
 }
 
+// Generate smart, personalised survey questions using LLM context.
+// Falls back gracefully to static questions if the LLM call fails.
+async function generateSmartSurvey(callGemma4Fn, context = {}) {
+  const { topAgents = [], pastConcerns = [] } = context;
+
+  const agentNames = topAgents.slice(0, 5)
+    .map(a => `${a.agent} (${a.count} שימושים)`).join(', ');
+  const concernText = pastConcerns.slice(0, 3)
+    .map(c => `- ${c.area}: "${c.answer}"`).join('\n');
+
+  const prompt = `אתה מנהל מוצר של ג'רביס, עוזר AI אישי בעברית.
+המשתמש השתמש לאחרונה ב: ${agentNames || 'לא ידוע'}
+${concernText ? `בסקרים קודמים ציין בעיות ב:\n${concernText}` : ''}
+
+צור 4 שאלות סקר מותאמות אישית. הנחיות:
+- כל שאלה צריכה להיות ספציפית לסוכנים שבהם נעשה שימוש
+- אם יש בעיות קודמות — שאל האם הן טופלו
+- כלול שאלה פתוחה אחת (open_text:true) לכתיבה חופשית
+- הימנע משאלות גנריות
+
+החזר JSON בלבד:
+{"questions":[{"id":"q1","question":"...","options":["...","..."],"open_text":false}]}`;
+
+  try {
+    const raw = await callGemma4Fn(
+      [{ role: 'user', content: prompt }],
+      false,
+      600,
+    );
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      if (Array.isArray(parsed?.questions) && parsed.questions.length >= 2) {
+        const anchor = {
+          id: 'responseQuality',
+          question: SURVEY_QUESTIONS.responseQuality.question,
+          options: SURVEY_QUESTIONS.responseQuality.options,
+          open_text: false,
+        };
+        return [anchor, ...parsed.questions.slice(0, 4)];
+      }
+    }
+  } catch (e) {
+    console.error('[surveyAgent] generateSmartSurvey error:', e.message);
+  }
+  return buildSurveyJson(selectSurveyQuestions({}, []));
+}
+
+// Extract actionable concern objects from a response map.
+function extractConcerns(responses) {
+  return Object.entries(responses)
+    .filter(([qId, answer]) => isNegativeAnswer(answer) && SURVEY_QUESTIONS[qId])
+    .map(([qId, answer]) => ({
+      area: SURVEY_QUESTIONS[qId].question,
+      answer,
+      questionId: qId,
+      timestamp: new Date().toISOString(),
+    }));
+}
+
 module.exports = {
   SURVEY_QUESTIONS,
   selectSurveyQuestions,
@@ -196,4 +256,6 @@ module.exports = {
   aggregateSurveys,
   insightsFromAggregation,
   isNegativeAnswer,
+  generateSmartSurvey,
+  extractConcerns,
 };

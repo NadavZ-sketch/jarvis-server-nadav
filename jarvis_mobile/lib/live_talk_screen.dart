@@ -687,21 +687,21 @@ class _LiveBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = msg['sender'] == 'user';
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isUser ? AlignmentDirectional.centerStart : AlignmentDirectional.centerEnd,
       child: Container(
-        margin: EdgeInsets.only(
+        margin: EdgeInsetsDirectional.only(
           bottom: 10,
-          right: isUser ? 0 : 48,
-          left: isUser ? 48 : 0,
+          start: isUser ? 0 : 48,
+          end: isUser ? 48 : 0,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: isUser ? JC.userBubble : JC.jarvisBubble,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isUser ? 18 : 6),
-            bottomRight: Radius.circular(isUser ? 6 : 18),
+          borderRadius: BorderRadiusDirectional.only(
+            topStart: const Radius.circular(18),
+            topEnd: const Radius.circular(18),
+            bottomStart: Radius.circular(isUser ? 6 : 18),
+            bottomEnd: Radius.circular(isUser ? 18 : 6),
           ),
           border: Border.all(
             color: isUser

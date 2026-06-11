@@ -295,7 +295,7 @@ class _KanbanBoardState extends State<KanbanBoard> {
                     child: Text(
                       '${storyPoints}נק׳',
                       style: TextStyle(
-                        fontSize: 9.5,
+                        fontSize: 10.5,
                         fontFamily: 'Heebo',
                         color: JC.indigo300,
                       ),

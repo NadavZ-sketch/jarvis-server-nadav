@@ -598,7 +598,7 @@ class GanttPainter extends CustomPainter {
       text: TextSpan(
         text: label,
         style: const TextStyle(
-          fontSize: 9.5,
+          fontSize: 10.5,
           color: Color(0xFF94A3B8),
           fontFamily: 'Heebo',
           fontWeight: FontWeight.w600,
@@ -733,7 +733,7 @@ class GanttPainter extends CustomPainter {
         text: TextSpan(
           text: label,
           style: TextStyle(
-            fontSize: 9.5,
+            fontSize: 10.5,
             color: Colors.white.withOpacity(0.9),
             fontFamily: 'Heebo',
           ),

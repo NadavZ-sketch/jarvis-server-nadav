@@ -444,7 +444,7 @@ class _ScrumViewState extends State<ScrumView> {
                         return Text(
                           name,
                           style: TextStyle(
-                            fontSize: 8.5,
+                            fontSize: 10.5,
                             fontFamily: 'Heebo',
                             color: JC.textMuted,
                           ),

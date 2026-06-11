@@ -10,7 +10,6 @@ import '../settings_screen.dart';
 import '../services/proposal_scoring.dart';
 import '../services/telemetry_policy.dart';
 import '../transitions/slide_fade_route.dart';
-import 'user_profile_screen.dart';
 import 'e2e_reports_screen.dart';
 
 /// Unified Control Center tabs. Order drives both the TabBar and the per-tab
@@ -209,6 +208,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+  // True while a role-switch POST is in flight (disables the role chips).
+  bool _settingRole = false;
+
   // Regular users see only the personal tabs (overview + settings); admins see
   // all five. Mirrors the role gating in the web control center (progress-map.html).
   bool get _isAdmin => widget.settings.role == 'admin';
@@ -231,6 +233,27 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       // events fetch carries a real `since` cursor.
       _schedulePoll(initial: true);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant ProgressMapScreen old) {
+    super.didUpdateWidget(old);
+    // The parent (main_shell) may rebuild us with new settings carrying a
+    // different role — e.g. the user flips user⇄admin from the main settings
+    // screen. The visible-tab set then changes (2⇄5) but our TabController is
+    // built once in initState. A TabController whose length ≠ the number of
+    // TabBar tabs / TabBarView children silently collapses the layout in
+    // release builds (asserts off) — the symptom is an empty tab strip and a
+    // "BOTTOM OVERFLOWED BY 99899 PIXELS" banner in admin mode. Keep them in sync.
+    if (_tabController.length != _visibleTabs.length) {
+      final keepIdx = _tabController.index.clamp(0, _visibleTabs.length - 1);
+      _tabController.dispose();
+      _tabController = TabController(
+        length: _visibleTabs.length,
+        vsync: this,
+        initialIndex: keepIdx,
+      );
+    }
   }
 
   // Navigate to a logical tab by mapping it to its position in the currently
@@ -1759,24 +1782,122 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     ]);
   }
 
-  // ── הגדרות: profile snapshot + launcher to the full settings screen ────────
+  // ── הגדרות: role switch (dev) + launcher to the full settings screen ───────
   Widget _buildSettingsTab() => _tabListView([
-        _sectionTitle('👤 מה למדנו עליך'),
+        _sectionTitle('🛡 רמת גישה'),
         const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: JC.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: JC.border, width: 0.8),
-          ),
-          child: UserProfilePanel(settings: widget.settings),
-        ),
+        _buildRoleSwitchCard(),
         const SizedBox(height: 24),
         _sectionTitle('⚙️ הגדרות עוזר'),
         const SizedBox(height: 8),
         _buildSettingsLauncher(),
       ]);
+
+  // Dedicated, always-visible role toggle (user ⇄ admin). During development this
+  // lets you flip access level without editing the DB. Persists to /user-profile
+  // (preferences.role) and rebuilds the visible tab set immediately.
+  Widget _buildRoleSwitchCard() {
+    final isAdmin = _isAdmin;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: JC.border, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            isAdmin
+                ? 'אדמין — רואה את כל הכרטיסיות (סוכנים, אנליטיקה, פיתוח, בדיקות).'
+                : 'משתמש — רואה תצוגה אישית (סקירה + הגדרות).',
+            textAlign: TextAlign.right,
+            style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: _roleChip('👤 משתמש', !isAdmin, () => _setRole('user')),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _roleChip('🛡 אדמין', isAdmin, () => _setRole('admin')),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _roleChip(String label, bool active, VoidCallback onTap) {
+    return Material(
+      color: active ? JC.blue500 : JC.surfaceAlt,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: _settingRole ? null : onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: active ? JC.blue500 : JC.border, width: 1),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? JC.onAccent : JC.textSecondary,
+              fontFamily: 'Heebo',
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setRole(String role) async {
+    if (_settingRole || role == widget.settings.role) return;
+    setState(() => _settingRole = true);
+    final oldVisible = _visibleTabs;
+    final oldTab = oldVisible[_tabController.index.clamp(0, oldVisible.length - 1).toInt()];
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_base/user-profile'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'role': role}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) throw Exception('status ${res.statusCode}');
+      widget.settings.role = role;
+      await widget.settings.save();
+      if (!mounted) return;
+      // Rebuild the TabController for the new visible tab set, preserving the tab.
+      _tabController.dispose();
+      final newIdx = _visibleTabs.indexOf(oldTab);
+      _tabController = TabController(
+        length: _visibleTabs.length,
+        vsync: this,
+        initialIndex: newIdx >= 0 ? newIdx : 0,
+      );
+      setState(() => _settingRole = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(role == 'admin' ? 'הופעל מצב אדמין 🛡' : 'הוחזר למצב משתמש 👤',
+            style: const TextStyle(fontFamily: 'Heebo')),
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _settingRole = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('שגיאה בשינוי רמת גישה', style: TextStyle(fontFamily: 'Heebo')),
+        duration: Duration(seconds: 2),
+      ));
+    }
+  }
 
   Widget _buildSettingsLauncher() {
     return Container(
@@ -1825,8 +1946,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildSurveyInsightsCard() {
     if (_loadingSurveys && _surveyInsights.isEmpty && _surveyHistory.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.all(20),
+      return SizedBox(
+        height: 120,
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
       );
     }
@@ -1871,8 +1992,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       return const SizedBox.shrink();
     }
     if (_loadingSurveys && _surveyHistory.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.all(20),
+      return SizedBox(
+        height: 120,
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
       );
     }
@@ -2165,7 +2286,7 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildFeatureBoard() {
     if (_loadingFeatures) {
-      return Padding(padding: EdgeInsets.all(24),
+      return SizedBox(height: 140,
           child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)));
     }
     if (_done.isEmpty && _building.isEmpty && _planned.isEmpty && _serverOk != true) {
@@ -3059,8 +3180,8 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
 
   Widget _buildAgentCenter() {
     if (_loadingAgents && _agents.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.all(20),
+      return SizedBox(
+        height: 120,
         child: Center(child: CircularProgressIndicator(color: JC.blue400, strokeWidth: 2)),
       );
     }

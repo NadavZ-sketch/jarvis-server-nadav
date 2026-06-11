@@ -201,6 +201,13 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   List<Map<String, dynamic>> _feedbackConcerns = [];
   bool _loadingConvInsights = false;
 
+  // Smart proposals (AI-generated from survey + usage data)
+  List<Map<String, dynamic>> _smartProposals = [];
+  bool _loadingSmartProposals = false;
+  bool _smartProposalsGenerated = false;
+  final Set<String> _dismissedSmartProposals = {};
+  final Map<String, TextEditingController> _proposalFeedbackCtrl = {};
+
   // Live control-center events (alerts + per-tab badges)
   List<_CcAlert> _alerts = const [];
   Map<ControlCenterTab, int> _tabBadges = const {};
@@ -321,6 +328,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     _addCtrl.dispose();
     _promptCtrl.dispose();
     _cmdCtrl.dispose();
+    for (final ctrl in _proposalFeedbackCtrl.values) {
+      ctrl.dispose();
+    }
     super.dispose();
   }
 
@@ -775,6 +785,65 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
       }
     } catch (_) {}
     if (mounted) setState(() => _loadingConvInsights = false);
+  }
+
+  Future<void> _loadSmartProposals() async {
+    if (_loadingSmartProposals) return;
+    if (mounted) setState(() => _loadingSmartProposals = true);
+    try {
+      final userName = widget.settings.userName;
+      final res = await http.post(
+        Uri.parse('$_base/dashboard/smart-proposals/generate'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'userName': userName}),
+      ).timeout(const Duration(seconds: 35));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final d = jsonDecode(res.body) as Map<String, dynamic>;
+        final all = List<Map<String, dynamic>>.from(d['proposals'] ?? []);
+        setState(() {
+          _smartProposals = all.where((p) => !_dismissedSmartProposals.contains(p['id']?.toString())).toList();
+          _smartProposalsGenerated = true;
+        });
+      }
+    } catch (_) {} finally {
+      if (mounted) setState(() => _loadingSmartProposals = false);
+    }
+  }
+
+  Future<void> _approveSmartProposal(Map<String, dynamic> p, {String? feedback}) async {
+    final id = p['id']?.toString() ?? '';
+    try {
+      final body = {
+        'title': p['title'] ?? '',
+        'plan': [p['description'] ?? '', if (feedback != null && feedback.isNotEmpty) 'פידבק: $feedback'].join('\n\n'),
+        'priority': (p['priority_score'] ?? 5) >= 8 ? 'high' : (p['priority_score'] ?? 5) >= 5 ? 'medium' : 'low',
+        'category': p['category'] ?? 'improvement',
+      };
+      final res = await http.post(
+        Uri.parse('$_base/dashboard/backlog'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        setState(() {
+          _dismissedSmartProposals.add(id);
+          _smartProposals.removeWhere((x) => x['id']?.toString() == id);
+          _proposalFeedbackCtrl[id]?.dispose();
+          _proposalFeedbackCtrl.remove(id);
+        });
+        await _loadBacklog();
+      }
+    } catch (_) {}
+  }
+
+  void _dismissSmartProposal(String id) {
+    setState(() {
+      _dismissedSmartProposals.add(id);
+      _smartProposals.removeWhere((p) => p['id']?.toString() == id);
+      _proposalFeedbackCtrl[id]?.dispose();
+      _proposalFeedbackCtrl.remove(id);
+    });
   }
 
   Future<void> _loadSmartSurvey() async {
@@ -2040,13 +2109,17 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   }
 
   Widget _buildDevelopmentTab() => _tabListView([
-        // Conversation insights from real usage data
+        // ── Smart proposals (personalised from survey + usage) ────────────────
+        _buildSmartProposalsSection(),
+        const SizedBox(height: 20),
+
+        // ── Conversation insights ─────────────────────────────────────────────
         _sectionTitle('📊 תובנות שיחות'),
         const SizedBox(height: 8),
         _buildConvInsightsCard(),
         const SizedBox(height: 18),
 
-        // Feedback → dev pipeline
+        // ── Feedback pipeline (only if concerns exist) ────────────────────────
         if (_feedbackConcerns.isNotEmpty) ...[
           _sectionTitle('🔧 פידבק → פיתוח'),
           const SizedBox(height: 8),
@@ -2369,6 +2442,288 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   }
 
   // ── Conversation insights card (dev tab) ──────────────────────────────────
+  // ── Smart proposals section ───────────────────────────────────────────────
+  Widget _buildSmartProposalsSection() {
+    final visible = _smartProposals.where((p) => !_dismissedSmartProposals.contains(p['id']?.toString())).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Header row
+        Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            const Text('🎯', style: TextStyle(fontSize: 16)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text('הצעות חכמות',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                      color: _kGold,
+                      fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15)),
+            ),
+            if (_smartProposalsGenerated && !_loadingSmartProposals)
+              TextButton.icon(
+                onPressed: () {
+                  setState(() { _smartProposals = []; _smartProposalsGenerated = false; });
+                  _loadSmartProposals();
+                },
+                icon: const Icon(Icons.refresh, size: 14),
+                label: const Text('רענן', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
+                style: TextButton.styleFrom(foregroundColor: _kGoldDim, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text('מבוסס על תשובות הסקרים שלך ודפוסי השימוש',
+            textAlign: TextAlign.right,
+            style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+        const SizedBox(height: 10),
+
+        // Generate button (first load)
+        if (!_smartProposalsGenerated && !_loadingSmartProposals)
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _loadSmartProposals,
+              icon: const Icon(Icons.auto_awesome, size: 16),
+              label: const Text('הפק הצעות חכמות', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _kGold,
+                side: BorderSide(color: _kGold.withOpacity(0.6), width: 1.2),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+
+        // Loading state
+        if (_loadingSmartProposals)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: JC.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _kGold.withOpacity(0.2), width: 0.8),
+            ),
+            child: Column(children: [
+              const CircularProgressIndicator(strokeWidth: 2, color: _kGold),
+              const SizedBox(height: 12),
+              Text('מנתח סקרים ודפוסי שימוש…',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+            ]),
+          ),
+
+        // Empty state (generated but nothing)
+        if (_smartProposalsGenerated && !_loadingSmartProposals && visible.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: JC.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: JC.border, width: 0.8),
+            ),
+            child: Text('כל ההצעות טופלו ✓\nלחץ "רענן" לייצר הצעות חדשות.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+          ),
+
+        // Proposal cards
+        ...visible.map((p) => _buildSmartProposalCard(p)),
+      ],
+    );
+  }
+
+  Widget _buildSmartProposalCard(Map<String, dynamic> p) {
+    final id             = p['id']?.toString() ?? '';
+    final title          = p['title']?.toString() ?? '';
+    final description    = p['description']?.toString() ?? '';
+    final rationale      = p['rationale']?.toString() ?? '';
+    final source         = p['source']?.toString() ?? 'usage';
+    final category       = p['category']?.toString() ?? 'improvement';
+    final priorityScore  = (p['priority_score'] as num?)?.toInt() ?? 5;
+
+    _proposalFeedbackCtrl.putIfAbsent(id, () => TextEditingController());
+    final feedCtrl = _proposalFeedbackCtrl[id]!;
+
+    final (sourceBadge, sourceColor) = switch (source) {
+      'survey' => ('🗣️ סקר',       const Color(0xFF7C3AED)),
+      'both'   => ('⭐ סקר+שימוש', const Color(0xFFEA580C)),
+      _        => ('📊 שימוש',     const Color(0xFF0EA5E9)),
+    };
+    final priorityColor = priorityScore >= 8
+        ? const Color(0xFFEF4444)
+        : priorityScore >= 6
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFF6B7280);
+
+    final categoryLabel = switch (category) {
+      'bug_fix'     => 'תיקון',
+      'ux'          => 'חוויה',
+      'performance' => 'ביצועים',
+      'feature'     => 'פיצ\'ר',
+      _             => 'שיפור',
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _kGold.withOpacity(0.2), width: 0.9),
+        boxShadow: [BoxShadow(color: _kGold.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // Badges row
+            Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                // Source badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: sourceColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: sourceColor.withOpacity(0.3), width: 0.7),
+                  ),
+                  child: Text(sourceBadge,
+                      style: TextStyle(color: sourceColor, fontFamily: 'Heebo', fontSize: 10, fontWeight: FontWeight.w600)),
+                ),
+                const SizedBox(width: 6),
+                // Category badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: JC.border.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(categoryLabel,
+                      style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                ),
+                const Spacer(),
+                // Priority badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: priorityColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: priorityColor.withOpacity(0.35), width: 0.7),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.priority_high, size: 10, color: priorityColor),
+                      const SizedBox(width: 3),
+                      Text('$priorityScore/10',
+                          style: TextStyle(color: priorityColor, fontFamily: 'Heebo', fontSize: 10, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                // Dismiss X
+                GestureDetector(
+                  onTap: () => _dismissSmartProposal(id),
+                  child: Icon(Icons.close, size: 16, color: JC.textMuted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 9),
+
+            // Title
+            Text(title,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                    color: JC.textPrimary, fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w700, fontSize: 14)),
+            const SizedBox(height: 5),
+
+            // Description
+            Text(description,
+                textAlign: TextAlign.right,
+                style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5, height: 1.45)),
+
+            if (rationale.isNotEmpty) ...[
+              const SizedBox(height: 5),
+              Row(
+                textDirection: TextDirection.rtl,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 12, color: _kGoldDim),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(rationale,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(color: _kGoldDim, fontFamily: 'Heebo', fontSize: 11, fontStyle: FontStyle.italic)),
+                  ),
+                ],
+              ),
+            ],
+
+            const SizedBox(height: 10),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+
+            // Feedback field (optional)
+            TextField(
+              controller: feedCtrl,
+              textDirection: TextDirection.rtl,
+              style: const TextStyle(fontFamily: 'Heebo', fontSize: 11.5),
+              decoration: InputDecoration(
+                hintText: 'הוסף הערה אופציונלית לפני האישור...',
+                hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _kGold, width: 1.0)),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Action buttons
+            Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _approveSmartProposal(p, feedback: feedCtrl.text.trim().isEmpty ? null : feedCtrl.text.trim()),
+                    icon: const Icon(Icons.check, size: 14),
+                    label: const Text('הוסף לפיתוח', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _kGold,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _dismissSmartProposal(id),
+                  icon: const Icon(Icons.thumb_down_outlined, size: 13),
+                  label: const Text('לא רלוונטי', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: JC.textMuted,
+                    side: BorderSide(color: JC.border, width: 0.8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildConvInsightsCard() {
     if (_loadingConvInsights) {
       return Container(

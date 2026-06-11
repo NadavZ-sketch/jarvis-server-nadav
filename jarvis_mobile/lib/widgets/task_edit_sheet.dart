@@ -230,7 +230,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
         ('low', '🟢 נמוך'),
       ])
         Padding(
-          padding: const EdgeInsets.only(left: 6),
+          padding: const EdgeInsetsDirectional.only(end: 6),
           child: GestureDetector(
             onTap: () => setState(() => _priority = entry.$1),
             child: Container(

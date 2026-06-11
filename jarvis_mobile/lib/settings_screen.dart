@@ -545,7 +545,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _brightnessChip(AppBrightnessMode mode, IconData icon) {
     final selected = _s.brightnessMode == mode;
     return Padding(
-      padding: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsetsDirectional.only(start: 6),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: () {

@@ -258,7 +258,7 @@ class _SmartHomeScreenState extends State<SmartHomeScreen>
       actions: [
         if (_offline)
           Padding(
-            padding: const EdgeInsets.only(left: 12),
+            padding: const EdgeInsetsDirectional.only(end: 12),
             child: Icon(Icons.wifi_off_rounded,
                 color: JC.amber400, size: 18),
           ),
@@ -767,7 +767,7 @@ class _StripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SurfaceCard(
-      margin: const EdgeInsets.only(left: 10),
+      margin: const EdgeInsetsDirectional.only(end: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       radius: 14,
       child: SizedBox(

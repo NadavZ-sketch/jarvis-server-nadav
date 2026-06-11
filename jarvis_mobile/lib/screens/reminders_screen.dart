@@ -277,7 +277,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 children: _recurrenceOptions.map((opt) {
                   final active = selectedRecurrence == opt.value;
                   return Padding(
-                    padding: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsetsDirectional.only(start: 6),
                     child: GestureDetector(
                       onTap: () =>
                           setSheet(() => selectedRecurrence = opt.value),

@@ -3173,6 +3173,122 @@ app.get('/dashboard/conversation-insights', async (req, res) => {
     }
 });
 
+// ─── POST /dashboard/smart-proposals/generate ─────────────────────────────────
+// Generates personalized dev proposals from survey answers + usage patterns.
+app.post('/dashboard/smart-proposals/generate', async (req, res) => {
+    const { userName = '' } = req.body;
+    try {
+        // 1. Collect survey concerns (negative answers only)
+        const { data: surveyRows } = await supabase
+            .from('user_surveys')
+            .select('responses, created_at')
+            .eq('user_id', userName)
+            .order('created_at', { ascending: false })
+            .limit(15);
+
+        const concerns = [];
+        for (const s of surveyRows || []) {
+            let resp = s.responses;
+            if (typeof resp === 'string') { try { resp = JSON.parse(resp); } catch (_) { resp = {}; } }
+            for (const [qId, answer] of Object.entries(resp || {})) {
+                if (isNegativeAnswer(answer) && SURVEY_QUESTIONS[qId]) {
+                    concerns.push({ area: SURVEY_QUESTIONS[qId].question, answer });
+                }
+            }
+        }
+
+        // 2. Collect usage patterns from agent metrics
+        const snap = await agentMetrics.snapshot().catch(() => ({ latency: [], intent: {} }));
+        const topAgents = (snap.latency || [])
+            .filter(r => r.count > 0)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 6)
+            .map(r => ({ agent: r.agent, count: r.count, avgMs: r.avgMs || 0 }));
+
+        // 3. Recent chat volume
+        const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const { count: recentChats } = await supabase
+            .from('chat_history')
+            .select('id', { count: 'exact', head: true })
+            .gte('created_at', since7)
+            .eq('role', 'user');
+
+        // 4. Build personalised prompt
+        const concernsText = concerns.length > 0
+            ? concerns.map(c => `- "${c.area}": תשובה שלילית: "${c.answer}"`).join('\n')
+            : 'אין תלונות ספציפיות מהסקרים';
+        const agentsText = topAgents.length > 0
+            ? topAgents.map(a => `${a.agent} (${a.count} שיחות, ${a.avgMs}ms ממוצע)`).join(', ')
+            : 'אין נתוני שימוש עדיין';
+        const intentText = Object.entries(snap.intent || {}).map(([k, v]) => `${k}: ${v}`).join(', ') || 'אין נתונים';
+
+        const prompt = `אתה מנהל מוצר בכיר של "ג'רביס" — עוזר AI אישי בעברית (Flutter + Node.js).
+
+==נתוני שימוש (7 ימים אחרונים)==
+שיחות כולל: ${recentChats || 0}
+סוכנים הכי בשימוש: ${agentsText}
+פיצ'ר זיהוי כוונות: ${intentText}
+
+==תלונות מסקרי המשתמש==
+${concernsText}
+
+==מטרה==
+צור 4-5 הצעות פיתוח ממוקדות ואישיות. כל הצעה חייבת:
+1. להתייחס ישירות לנתונים (סוכן ספציפי, תלונה ספציפית, או שניהם)
+2. להיות מעשית ויישומית — לא כללית
+3. להסביר למה זה חשוב עכשיו בהתבסס על הנתונים
+
+החזר JSON בלבד (ללא markdown, ללא הסברים):
+[
+  {
+    "title": "כותרת קצרה בעברית (עד 55 תווים)",
+    "description": "מה לעשות ואיך — 2 משפטים",
+    "rationale": "למה עכשיו — משפט אחד שמתייחס לנתון ספציפי",
+    "source": "survey",
+    "category": "improvement",
+    "priority_score": 8
+  }
+]
+source: "survey" (מבוסס על תלונה), "usage" (מבוסס על שימוש), "both" (שניהם)
+category: "improvement", "feature", "bug_fix", "ux", "performance"
+priority_score: 1-10 (בהתאם לדחיפות ולהשפעה על המשתמש)`;
+
+        const raw = await callGemma4(prompt, false, 1400);
+        const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+        const start = stripped.indexOf('[');
+        const end   = stripped.lastIndexOf(']');
+        if (start === -1 || end === -1 || end <= start) {
+            return res.status(500).json({ error: 'לא הצלחתי לייצר הצעות — נסה שוב' });
+        }
+        let proposals;
+        try {
+            proposals = JSON.parse(stripped.slice(start, end + 1));
+        } catch (_) {
+            return res.status(500).json({ error: 'שגיאת JSON מהמודל — נסה שוב' });
+        }
+
+        const now = Date.now();
+        const tagged = (Array.isArray(proposals) ? proposals : [])
+            .filter(p => p.title && p.description)
+            .map((p, i) => ({
+                id: `smart_${now}_${i}`,
+                title:          (p.title || '').toString().slice(0, 80),
+                description:    (p.description || '').toString(),
+                rationale:      (p.rationale || '').toString(),
+                source:         ['survey', 'usage', 'both'].includes(p.source) ? p.source : 'usage',
+                category:       ['improvement', 'feature', 'bug_fix', 'ux', 'performance'].includes(p.category)
+                                    ? p.category : 'improvement',
+                priority_score: Math.min(10, Math.max(1, Number(p.priority_score) || 5)),
+            }))
+            .sort((a, b) => b.priority_score - a.priority_score);
+
+        res.json({ proposals: tagged, generatedAt: new Date().toISOString(), basedOn: { surveys: concerns.length, topAgents: topAgents.length } });
+    } catch (err) {
+        console.error('⚠️ /dashboard/smart-proposals/generate error:', err.message);
+        res.status(500).json({ error: 'שגיאה פנימית' });
+    }
+});
+
 // ─── GET /scan/errors — run code error scanner and return JSON report ─────────
 app.get('/scan/errors', _rl(5), async (_req, res) => {
     try {

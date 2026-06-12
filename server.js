@@ -4709,6 +4709,70 @@ ${list}
     }
 });
 
+// POST /dashboard/smart-proposals/clarify — AI generates 2-3 targeted clarifying questions
+// for a smart proposal, each with 3 suggested chip answers
+app.post('/dashboard/smart-proposals/clarify', async (req, res) => {
+    const { title = '', description = '', category = 'improvement', rationale = '' } = req.body;
+    if (!title.trim()) return res.status(400).json({ error: 'title required' });
+    const catHe = { bug_fix: 'תיקון באג', ux: 'שיפור UX', performance: 'ביצועים', feature: "פיצ'ר", improvement: 'שיפור' }[category] || 'שיפור';
+    const sysPrompt = `אתה עוזר לבנות פרומפט מדויק לפיתוח עבור "ג'רביס" (Flutter + Node.js).
+ניתנת לך הצעת פיתוח. עליך לייצר 2-3 שאלות קצרות ומדויקות שיעזרו לדייק את כוונת המשתמש.
+לכל שאלה — ספק 3 אפשרויות תשובה קצרות בעברית (chips).
+ענה JSON בלבד, ללא markdown:
+[{"id":"q1","question":"...","chips":["...","...","..."]}]`;
+    const userMsg = `הצעה: ${title}
+קטגוריה: ${catHe}
+תיאור: ${description}
+${rationale ? `רציונל: ${rationale}` : ''}
+צור 2-3 שאלות אבחוניות ממוקדות.`;
+    try {
+        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 600);
+        const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+        const start = stripped.indexOf('[');
+        const end   = stripped.lastIndexOf(']');
+        if (start === -1 || end === -1) return res.json({ questions: [] });
+        const parsed = JSON.parse(stripped.slice(start, end + 1));
+        const questions = (Array.isArray(parsed) ? parsed : []).slice(0, 3).map((q, i) => ({
+            id: q.id || `q${i + 1}`,
+            question: (q.question || '').toString().trim(),
+            chips: (Array.isArray(q.chips) ? q.chips : []).slice(0, 3).map(c => c.toString().trim()),
+        })).filter(q => q.question);
+        res.json({ questions });
+    } catch (err) {
+        console.error('POST /dashboard/smart-proposals/clarify error:', err.message);
+        res.status(500).json({ error: 'שגיאה בייצור שאלות' });
+    }
+});
+
+// POST /dashboard/smart-proposals/refine-prompt — builds a refined dev prompt from proposal + answers
+app.post('/dashboard/smart-proposals/refine-prompt', async (req, res) => {
+    const { title = '', description = '', category = 'improvement', rationale = '', answers = [] } = req.body;
+    if (!title.trim()) return res.status(400).json({ error: 'title required' });
+    const catHe = { bug_fix: 'תיקון באג', ux: 'שיפור UX', performance: 'ביצועים', feature: "פיצ'ר", improvement: 'שיפור' }[category] || 'שיפור';
+    const answersBlock = answers.length
+        ? answers.map(a => `- ${a.question}: ${a.answer}`).join('\n')
+        : '';
+    const sysPrompt = `אתה כותב פרומפט לפיתוח ב-Claude Code עבור "ג'רביס" (Flutter + Node.js).
+כתוב פרומפט מפורט בעברית שמכיל:
+1. תיאור מדויק של מה לממש
+2. קבצים/מודולים רלוונטיים (Flutter + Node.js)
+3. סדר עבודה מומלץ
+4. נקודות קצה ומה לבדוק
+ענה בפרומפט ישירות, ללא כותרת, ללא JSON.`;
+    const userMsg = `הצעה: ${title}
+קטגוריה: ${catHe}
+תיאור: ${description}
+${rationale ? `רציונל: ${rationale}` : ''}
+${answersBlock ? `\nפרטים שהמשתמש סיפק:\n${answersBlock}` : ''}`;
+    try {
+        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 800);
+        res.json({ prompt: raw.trim() });
+    } catch (err) {
+        console.error('POST /dashboard/smart-proposals/refine-prompt error:', err.message);
+        res.status(500).json({ error: 'שגיאה בייצור פרומפט' });
+    }
+});
+
 app.get('/dashboard/backlog/config', (_req, res) => {
     res.json(PROGRESS_MAP_CONFIG);
 });

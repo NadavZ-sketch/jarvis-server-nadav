@@ -5377,25 +5377,52 @@ class _ProposalClarifySheetState extends State<_ProposalClarifySheet> {
       if (res.statusCode == 200) {
         final d = jsonDecode(res.body) as Map<String, dynamic>;
         final qs = List<Map<String, dynamic>>.from(d['questions'] ?? []);
-        // If server returned no questions, skip straight to prompt generation
-        if (qs.isEmpty) {
-          await _generatePrompt(skipQuestions: true);
+        if (qs.isNotEmpty) {
+          setState(() {
+            _questions = qs;
+            _step = 1;
+            _loadingQuestions = false;
+          });
+          for (final q in qs) {
+            _freeText.putIfAbsent(q['id'] as String, () => TextEditingController());
+          }
           return;
         }
-        setState(() {
-          _questions = qs;
-          _step = 1;
-          _loadingQuestions = false;
-        });
-        for (final q in qs) {
-          _freeText.putIfAbsent(q['id'] as String, () => TextEditingController());
-        }
-      } else {
-        setState(() { _loadError = 'שגיאה בטעינת שאלות'; _loadingQuestions = false; });
       }
+      // Fallback: build questions locally from proposal data
+      _applyLocalQuestions();
     } catch (_) {
-      if (mounted) setState(() { _loadError = 'שגיאת חיבור'; _loadingQuestions = false; });
+      if (mounted) _applyLocalQuestions();
     }
+  }
+
+  void _applyLocalQuestions() {
+    if (!mounted) return;
+    final category = widget.proposal['category']?.toString() ?? 'improvement';
+    final qs = _localQuestions(category);
+    setState(() {
+      _questions = qs;
+      _step = 1;
+      _loadingQuestions = false;
+    });
+    for (final q in qs) {
+      _freeText.putIfAbsent(q['id'] as String, () => TextEditingController());
+    }
+  }
+
+  List<Map<String, dynamic>> _localQuestions(String category) {
+    final base = [
+      {'id': 'q1', 'question': 'מה הסדר עדיפויות של הפיתוח הזה?', 'chips': ['דחוף — נדרש עכשיו', 'בינוני — בשבועות הקרובים', 'נמוך — יום אחד']},
+      {'id': 'q2', 'question': 'באיזה חלק של המערכת מתמקד השינוי?', 'chips': ['Flutter (אפליקציה)', 'Node.js (שרת)', 'שניהם']},
+    ];
+    final byCategory = {
+      'feature':     {'id': 'q3', 'question': "מי המשתמש העיקרי של הפיצ'ר?", 'chips': ['המשתמש היומיומי', 'מנהל/אדמין', 'שניהם']},
+      'bug_fix':     {'id': 'q3', 'question': 'כמה דחוף תיקון הבאג?', 'chips': ['קריטי — חוסם שימוש', 'מציק אך לא חוסם', 'קוסמטי בלבד']},
+      'ux':          {'id': 'q3', 'question': 'מה ה-friction העיקרי לפתרון?', 'chips': ['יותר מהיר', 'יותר ברור', 'יותר אינטואיטיבי']},
+      'performance': {'id': 'q3', 'question': 'מה מדד ההצלחה?', 'chips': ['טעינה <1 שניה', 'פחות קריאות API', 'פחות סוללה/זיכרון']},
+      'improvement': {'id': 'q3', 'question': 'מה ההשפעה הצפויה?', 'chips': ['חוויה טובה יותר', 'פחות שגיאות', 'יותר תובנות']},
+    };
+    return [...base, byCategory[category] ?? byCategory['improvement']!];
   }
 
   Future<void> _generatePrompt({bool skipQuestions = false}) async {
@@ -5426,9 +5453,9 @@ class _ProposalClarifySheetState extends State<_ProposalClarifySheet> {
       if (!mounted) return;
       if (res.statusCode == 200) {
         final d = jsonDecode(res.body) as Map<String, dynamic>;
-        _promptCtrl.text = d['prompt']?.toString() ?? '';
+        final text = d['prompt']?.toString() ?? '';
+        _promptCtrl.text = text.isNotEmpty ? text : _fallbackPrompt();
       } else {
-        // Fallback to local prompt
         _promptCtrl.text = _fallbackPrompt();
       }
     } catch (_) {

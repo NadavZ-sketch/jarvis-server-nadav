@@ -209,6 +209,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   final Set<String> _dismissedSmartProposals = {};
   final Map<String, TextEditingController> _proposalFeedbackCtrl = {};
 
+  // Feature description generation
+  bool _generatingFeatureDescriptions = false;
+
   // Live control-center events (alerts + per-tab badges)
   List<_CcAlert> _alerts = const [];
   Map<ControlCenterTab, int> _tabBadges = const {};
@@ -847,6 +850,100 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     });
   }
 
+  // Build the dev prompt string for a smart proposal (title + rationale + description)
+  String _smartProposalDevPrompt(Map<String, dynamic> p) {
+    final title       = p['title']?.toString() ?? '';
+    final description = p['description']?.toString() ?? '';
+    final rationale   = p['rationale']?.toString() ?? '';
+    final category    = p['category']?.toString() ?? 'improvement';
+    final catHe = switch (category) {
+      'bug_fix'     => 'תיקון באג',
+      'ux'          => 'שיפור חוויית משתמש',
+      'performance' => 'שיפור ביצועים',
+      'feature'     => 'פיצ\'ר חדש',
+      _             => 'שיפור',
+    };
+    return '''📋 הצעת פיתוח: $title
+סוג: $catHe
+
+תיאור:
+$description
+${rationale.isNotEmpty ? '\nרציונל:\n$rationale' : ''}
+
+בקשה לקלוד:
+1. תכנן את השלבים לממש את זה ב-Jarvis (Flutter + Node.js)
+2. פרט אילו קבצים לשנות/ליצור
+3. הצע קוד לדוגמה לחלקים המורכבים
+4. מה לבדוק לאחר הפיתוח''';
+  }
+
+  Future<void> _sendProposalAsTask(Map<String, dynamic> p) async {
+    final defaultTitle = p['title']?.toString() ?? 'הצעת פיתוח';
+    final prompt = _smartProposalDevPrompt(p);
+    final titleCtrl = TextEditingController(text: defaultTitle);
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: JC.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: const Text('שלח כמשימה', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('כותרת המשימה:', style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: titleCtrl,
+                textDirection: TextDirection.rtl,
+                style: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _kGold, width: 1.0)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text('הפרומפט יישמר כתוכן המשימה בקטגוריה "ג\'רביס".',
+                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('ביטול', style: TextStyle(fontFamily: 'Heebo'))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: _kGold, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+              onPressed: () => Navigator.pop(dCtx, true),
+              child: const Text('שלח', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final taskTitle = titleCtrl.text.trim().isEmpty ? defaultTitle : titleCtrl.text.trim();
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/tasks'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'content': '$taskTitle\n\n$prompt', 'category': 'ג\'רביס'}),
+      ).timeout(const Duration(seconds: 10));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(res.statusCode == 200 || res.statusCode == 201 ? '✅ המשימה נוצרה בהצלחה' : '⚠️ שגיאה ביצירת המשימה',
+              style: const TextStyle(fontFamily: 'Heebo')),
+          backgroundColor: res.statusCode == 200 || res.statusCode == 201 ? _kGold : const Color(0xFFEF4444),
+        ));
+      }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('שגיאת חיבור', style: TextStyle(fontFamily: 'Heebo'))));
+    }
+  }
+
   // ── Feature CRUD ─────────────────────────────────────────────────────────
 
   Future<bool> _patchFeature({
@@ -890,6 +987,67 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     } catch (_) {}
     return false;
   }
+
+  // Returns AI-suggested description for a single feature (used inside the sheet)
+  Future<String?> _suggestFeatureDescription(String name, String status) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/dashboard/features/suggest-description'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': name, 'status': status}),
+      ).timeout(const Duration(seconds: 20));
+      if (res.statusCode == 200) {
+        final d = jsonDecode(res.body) as Map<String, dynamic>;
+        return d['description']?.toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // Batch-generates descriptions for all features that have no description yet
+  Future<void> _generateFeatureDescriptions() async {
+    if (_generatingFeatureDescriptions) return;
+    setState(() => _generatingFeatureDescriptions = true);
+    try {
+      final all = [
+        ..._done.map((f) => {...f, 'status': 'done'}),
+        ..._building.map((f) => {...f, 'status': 'building'}),
+        ..._planned.map((f) => {...f, 'status': 'planned'}),
+      ];
+      final res = await http.post(
+        Uri.parse('$_base/dashboard/features/generate-descriptions'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'features': all}),
+      ).timeout(const Duration(seconds: 40));
+      if (res.statusCode != 200 || !mounted) return;
+
+      final d = jsonDecode(res.body) as Map<String, dynamic>;
+      final descriptions = List<Map<String, dynamic>>.from(d['descriptions'] ?? []);
+      if (descriptions.isEmpty) return;
+
+      // Apply descriptions to local lists and save each to server
+      final byName = {for (final d in descriptions) d['name'].toString(): d['description'].toString()};
+      for (final list in [_done, _building, _planned]) {
+        for (final f in list) {
+          final name = f['name']?.toString() ?? '';
+          if ((f['desc'] ?? '').toString().isEmpty && byName.containsKey(name)) {
+            final status = list == _done ? 'done' : list == _building ? 'building' : 'planned';
+            f['desc'] = byName[name];
+            // Persist to server (fire-and-forget per feature)
+            http.patch(
+              Uri.parse('$_base/dashboard/features'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'name': name, 'oldStatus': status, 'newStatus': status, 'desc': byName[name]}),
+            ).timeout(const Duration(seconds: 8)).catchError((_) => http.Response('', 500));
+          }
+        }
+      }
+      if (mounted) setState(() {});
+    } catch (_) {} finally {
+      if (mounted) setState(() => _generatingFeatureDescriptions = false);
+    }
+  }
+
 
   // ── "Send to Claude" ──────────────────────────────────────────────────────
 
@@ -1041,6 +1199,7 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
         onDelete: _deleteFeature,
         onSendToClaud: (prompt) => _showSendToClaudeMenu(ctx, prompt, title: feature['name']?.toString() ?? ''),
         featureToPrompt: _featureToPrompt,
+        onSuggestDesc: _suggestFeatureDescription,
       ),
     );
   }
@@ -2327,13 +2486,9 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
           const SizedBox(height: 18),
         ],
 
-        if (!_loadingFeatures && _done.isNotEmpty) ...[
-          _buildProgressBar(),
-          const SizedBox(height: 20),
-        ],
         _sectionTitle('🗂️ סטטוס יכולות'),
         const SizedBox(height: 8),
-        _buildFeatureBoard(),
+        _buildCapabilitiesSection(),
         const SizedBox(height: 24),
         _sectionTitle('🤖 Backlog AI'),
         const SizedBox(height: 8),
@@ -2886,33 +3041,67 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
             ),
             const SizedBox(height: 8),
 
-            // Action buttons
+            // Action buttons — row 1: primary actions
             Row(
               textDirection: TextDirection.rtl,
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () => _approveSmartProposal(p, feedback: feedCtrl.text.trim().isEmpty ? null : feedCtrl.text.trim()),
-                    icon: const Icon(Icons.check, size: 14),
-                    label: const Text('הוסף לפיתוח', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 12)),
+                    icon: const Icon(Icons.check, size: 13),
+                    label: const Text('הוסף לפיתוח', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 11.5)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _kGold,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                       elevation: 0,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _sendProposalAsTask(p),
+                    icon: const Icon(Icons.task_alt_outlined, size: 13),
+                    label: const Text('שלח כמשימה', style: TextStyle(fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _kGold,
+                      side: BorderSide(color: _kGold.withOpacity(0.6), width: 0.9),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            // Row 2: secondary actions
+            Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showSendToClaudeMenu(context, _smartProposalDevPrompt(p), title: title),
+                    icon: const Icon(Icons.open_in_new, size: 12),
+                    label: const Text('שלח לקלוד', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: JC.textSecondary,
+                      side: BorderSide(color: JC.border, width: 0.7),
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
                 OutlinedButton.icon(
                   onPressed: () => _dismissSmartProposal(id),
-                  icon: const Icon(Icons.thumb_down_outlined, size: 13),
+                  icon: const Icon(Icons.thumb_down_outlined, size: 12),
                   label: const Text('לא רלוונטי', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: JC.textMuted,
-                    side: BorderSide(color: JC.border, width: 0.8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    side: BorderSide(color: JC.border, width: 0.7),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                   ),
                 ),
@@ -3602,6 +3791,286 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
     ],
   );
 
+  // ── Capabilities section (core agents + features in dev) ─────────────────
+
+  Widget _buildCapabilitiesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Section A: יכולות ליבה (real Jarvis agents) ──────────────────
+        _buildCoreCapabilitiesSection(),
+        const SizedBox(height: 20),
+        // ── Section B: בפיתוח (features.json building + planned) ─────────
+        _buildInDevFeaturesSection(),
+      ],
+    );
+  }
+
+  Widget _buildCoreCapabilitiesSection() {
+    if (_loadingAgents && _agents.isEmpty) {
+      return Container(
+        height: 100,
+        alignment: Alignment.center,
+        child: const CircularProgressIndicator(color: _kGold, strokeWidth: 2),
+      );
+    }
+    if (_agents.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border, width: 0.8)),
+        child: Text('לא נטענו יכולות', textAlign: TextAlign.center, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
+      );
+    }
+    // Sort agents by usage count (most used first)
+    final sorted = [..._agents];
+    sorted.sort((a, b) {
+      final ca = ((a['metrics'] as Map?)??{})['count'] as num? ?? 0;
+      final cb = ((b['metrics'] as Map?)??{})['count'] as num? ?? 0;
+      return cb.compareTo(ca);
+    });
+
+    final unusedCount = sorted.where((a) {
+      final c = ((a['metrics'] as Map?)??{})['count'] as num? ?? 0;
+      return c == 0;
+    }).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header row
+        Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Expanded(
+              child: Text('⚙️ יכולות ליבה — ${sorted.length} סוכנים',
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ),
+            if (unusedCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.35), width: 0.7),
+                ),
+                child: Text('$unusedCount ישן',
+                    style: const TextStyle(color: Color(0xFFEF4444), fontFamily: 'Heebo', fontSize: 10, fontWeight: FontWeight.w600)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...sorted.map((agent) => _buildCoreCapabilityTile(agent)),
+      ],
+    );
+  }
+
+  Widget _buildCoreCapabilityTile(Map<String, dynamic> agent) {
+    final id       = (agent['id'] ?? '').toString();
+    final nameHe   = (agent['nameHe'] ?? agent['name'] ?? id).toString();
+    final role     = (agent['role'] ?? '').toString();
+    final status   = (agent['status'] ?? 'active').toString();
+    final isDisabled = status == 'disabled';
+    final isToggling = _togglingAgents.contains(id);
+    final metrics  = agent['metrics'] as Map<String, dynamic>?;
+    final callCount = (metrics?['count'] as num?)?.toInt() ?? 0;
+    final avgMs    = metrics?['avgMs'] as num?;
+    final isUnused = callCount == 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isUnused
+              ? const Color(0xFFEF4444).withOpacity(0.25)
+              : isDisabled
+                  ? JC.border.withOpacity(0.5)
+                  : JC.border,
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        textDirection: TextDirection.rtl,
+        children: [
+          // Status dot
+          Container(
+            width: 7, height: 7,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isDisabled
+                  ? JC.textMuted
+                  : isUnused
+                      ? const Color(0xFFEF4444)
+                      : const Color(0xFF22C55E),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    Expanded(
+                      child: Text(nameHe,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: JC.textPrimary, fontFamily: 'Heebo',
+                            fontWeight: FontWeight.w600, fontSize: 13,
+                            decoration: isDisabled ? TextDecoration.lineThrough : null,
+                          )),
+                    ),
+                    if (isUnused)
+                      Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444).withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('לא בשימוש',
+                            style: TextStyle(color: Color(0xFFEF4444), fontFamily: 'Heebo', fontSize: 9, fontWeight: FontWeight.w600)),
+                      ),
+                  ],
+                ),
+                if (role.isNotEmpty)
+                  Text(role, textAlign: TextAlign.right,
+                      style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+                      overflow: TextOverflow.ellipsis),
+                // Usage stats
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (callCount > 0)
+                      Text('$callCount קריאות',
+                          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                    if (callCount > 0 && avgMs != null)
+                      Text(' · ', style: TextStyle(color: JC.textMuted, fontSize: 10)),
+                    if (avgMs != null)
+                      Text('${avgMs.toInt()}ms ממוצע',
+                          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                    if (callCount == 0)
+                      Text('עדיין לא נוצל',
+                          style: TextStyle(color: const Color(0xFFEF4444).withOpacity(0.7), fontFamily: 'Heebo', fontSize: 10)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Action buttons: details + send to claude + toggle
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Details
+              GestureDetector(
+                onTap: () => _showAgentDetails(agent),
+                child: Icon(Icons.info_outline, size: 18, color: JC.textMuted),
+              ),
+              const SizedBox(width: 4),
+              // Send to Claude for improvement
+              Builder(builder: (ctx) => GestureDetector(
+                onTap: () {
+                  final prompt = '''שיפור יכולת ב-Jarvis: $nameHe
+תפקיד: $role
+${callCount > 0 ? 'שימוש: $callCount קריאות, ממוצע ${avgMs?.toInt() ?? 0}ms' : 'מצב: לא בשימוש כלל'}
+
+אנא עזור לי לשפר את הסוכן הזה:
+1. מה ניתן לשפר בלוגיקה ובתגובות?
+2. איך לגרום למשתמשים להשתמש בו יותר?
+3. קוד לדוגמה לשיפורים עיקריים
+4. מה מדדי הצלחה מומלצים?''';
+                  _showSendToClaudeMenu(ctx, prompt, title: nameHe);
+                },
+                child: Icon(Icons.open_in_new, size: 17, color: _kGoldDim),
+              )),
+              const SizedBox(width: 2),
+              // Toggle enable/disable
+              SizedBox(
+                width: 28, height: 28,
+                child: isToggling
+                    ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: _kGold))
+                    : IconButton(
+                        padding: EdgeInsets.zero,
+                        tooltip: isDisabled ? 'הפעל' : 'השבת',
+                        onPressed: () => _toggleAgent(agent),
+                        icon: Icon(
+                          isDisabled ? Icons.play_circle_outline : Icons.pause_circle_outline,
+                          size: 20,
+                          color: isDisabled ? const Color(0xFF22C55E) : JC.textMuted,
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInDevFeaturesSection() {
+    final inDev = [..._building, ..._planned];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header
+        Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Expanded(
+              child: Text('🔨 בפיתוח — ${inDev.length} פיצ\'רים',
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ),
+            Builder(builder: (ctx) => GestureDetector(
+              onTap: () => _showAddFeatureDialog(ctx),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _kGold.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: _kGold.withOpacity(0.4), width: 0.7),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add, size: 12, color: _kGold),
+                  const SizedBox(width: 3),
+                  Text('הוסף', style: TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 10.5, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+            )),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_loadingFeatures)
+          const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: _kGold, strokeWidth: 2)))
+        else if (inDev.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(child: Text('אין פיצ\'רים בפיתוח — לחץ הוסף',
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
+          )
+        else
+          Builder(builder: (ctx) => Wrap(
+            spacing: 6, runSpacing: 6,
+            textDirection: TextDirection.rtl,
+            children: [
+              ..._building.map((f) => _featureChip(f, const Color(0xFFF59E0B), 'building', ctx)),
+              ..._planned.map((f) => _featureChip(f, JC.textSecondary, 'planned', ctx)),
+            ],
+          )),
+        if (_featuresUpdated.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('עודכן: $_featuresUpdated',
+                style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                textAlign: TextAlign.center),
+          ),
+      ],
+    );
+  }
+
   // ── Feature board ─────────────────────────────────────────────────────────
 
   Widget _buildFeatureBoard() {
@@ -3646,9 +4115,49 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
     final currentColor = colors[_featureTabIndex];
     final currentStatusKey = statusKeys[_featureTabIndex];
 
+    // Count features without descriptions
+    final emptyDescCount = [..._done, ..._building, ..._planned]
+        .where((f) => (f['desc'] ?? '').toString().trim().isEmpty).length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // "Generate descriptions" banner — shown when features have no description
+        if (emptyDescCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: GestureDetector(
+              onTap: _generatingFeatureDescriptions ? null : _generateFeatureDescriptions,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: _kGold.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _kGold.withOpacity(0.3), width: 0.8),
+                ),
+                child: Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    if (_generatingFeatureDescriptions)
+                      const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5, color: _kGold))
+                    else
+                      const Text('🤖', style: TextStyle(fontSize: 13)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _generatingFeatureDescriptions
+                            ? 'מייצר הסברים...'
+                            : 'ייצר הסברים ל-$emptyDescCount יכולות ללא תיאור',
+                        style: TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    if (!_generatingFeatureDescriptions)
+                      Icon(Icons.auto_awesome, size: 14, color: _kGold.withOpacity(0.7)),
+                  ],
+                ),
+              ),
+            ),
+          ),
         // Tab selector
         Row(
           children: List.generate(3, (i) {
@@ -3738,22 +4247,46 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
 
   Widget _featureChip(Map<String, dynamic> f, Color color, String statusKey, BuildContext ctx) {
     final name = f['name']?.toString() ?? '—';
+    final desc = f['desc']?.toString().trim() ?? '';
+    final hasDesc = desc.isNotEmpty;
     return GestureDetector(
       onTap: () => _showFeatureDetailSheet(ctx, f, statusKey),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: EdgeInsets.fromLTRB(10, hasDesc ? 8 : 6, 10, hasDesc ? 8 : 6),
         decoration: BoxDecoration(
           color: JC.surfaceAlt,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(hasDesc ? 10 : 20),
           border: Border.all(color: color.withOpacity(0.35), width: 0.8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(name,
-                style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(name,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
+                          fontSize: 12, fontWeight: hasDesc ? FontWeight.w600 : FontWeight.w400)),
+                  if (hasDesc) ...[
+                    const SizedBox(height: 2),
+                    Text(desc,
+                        textAlign: TextAlign.right,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10.5, height: 1.35)),
+                  ],
+                ],
+              ),
+            ),
             const SizedBox(width: 4),
-            Icon(Icons.chevron_right, size: 12, color: color.withOpacity(0.6)),
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(Icons.chevron_right, size: 12, color: color.withOpacity(0.6)),
+            ),
           ],
         ),
       ),
@@ -4982,6 +5515,7 @@ class _FeatureDetailSheet extends StatefulWidget {
   final Future<bool> Function({required String name, required String status}) onDelete;
   final void Function(String prompt) onSendToClaud;
   final String Function(Map<String, dynamic>, String) featureToPrompt;
+  final Future<String?> Function(String name, String status) onSuggestDesc;
 
   const _FeatureDetailSheet({
     required this.feature,
@@ -4991,6 +5525,7 @@ class _FeatureDetailSheet extends StatefulWidget {
     required this.onDelete,
     required this.onSendToClaud,
     required this.featureToPrompt,
+    required this.onSuggestDesc,
   });
   @override State<_FeatureDetailSheet> createState() => _FeatureDetailSheetState();
 }
@@ -4999,6 +5534,7 @@ class _FeatureDetailSheetState extends State<_FeatureDetailSheet> {
   late String _status;
   late TextEditingController _descCtrl;
   bool _saving = false;
+  bool _suggestingDesc = false;
   bool _deleting = false;
   bool _edited = false;
 
@@ -5121,7 +5657,45 @@ class _FeatureDetailSheetState extends State<_FeatureDetailSheet> {
               }).toList()),
               const SizedBox(height: 14),
               // Description
-              Text('תיאור', style: TextStyle(color: Colors.grey.shade500, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+              Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  Text('תיאור', style: TextStyle(color: Colors.grey.shade500, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _suggestingDesc ? null : () async {
+                      setState(() => _suggestingDesc = true);
+                      final name = widget.feature['name']?.toString() ?? '';
+                      final suggestion = await widget.onSuggestDesc(name, _status);
+                      if (mounted && suggestion != null) {
+                        _descCtrl.text = suggestion;
+                        setState(() => _edited = true);
+                      }
+                      if (mounted) setState(() => _suggestingDesc = false);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _kGold.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: _kGold.withOpacity(0.3), width: 0.7),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_suggestingDesc)
+                            const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: _kGold))
+                          else
+                            const Text('🤖', style: TextStyle(fontSize: 10)),
+                          const SizedBox(width: 4),
+                          Text(_suggestingDesc ? 'מייצר...' : 'הצע תיאור',
+                              style: const TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 10, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 6),
               TextField(
                 controller: _descCtrl,

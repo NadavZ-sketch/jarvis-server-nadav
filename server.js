@@ -3192,6 +3192,11 @@ app.get('/dashboard/conversation-insights', async (req, res) => {
 // Generates personalized dev proposals from survey answers + usage patterns.
 app.post('/dashboard/smart-proposals/generate', async (req, res) => {
     const { userName = '' } = req.body;
+    // Cache proposals for 30 min per user — the underlying data (surveys, metrics)
+    // changes slowly; repeated dashboard clicks should not burn LLM tokens.
+    const proposalsCacheKey = `smart_proposals:${userName}`;
+    const cached = cacheGet(proposalsCacheKey);
+    if (cached) return res.json(cached);
     try {
         // 1. Collect survey concerns (negative answers only)
         const { data: surveyRows } = await supabase
@@ -3297,7 +3302,9 @@ priority_score: 1-10 (בהתאם לדחיפות ולהשפעה על המשתמש
             }))
             .sort((a, b) => b.priority_score - a.priority_score);
 
-        res.json({ proposals: tagged, generatedAt: new Date().toISOString(), basedOn: { surveys: concerns.length, topAgents: topAgents.length } });
+        const payload = { proposals: tagged, generatedAt: new Date().toISOString(), basedOn: { surveys: concerns.length, topAgents: topAgents.length } };
+        cacheSet(proposalsCacheKey, payload, 30 * 60 * 1000); // 30 min
+        res.json(payload);
     } catch (err) {
         console.error('⚠️ /dashboard/smart-proposals/generate error:', err.message);
         res.status(500).json({ error: 'שגיאה פנימית' });
@@ -4094,18 +4101,22 @@ async function enqueueNotification(text, opts = {}) {
 // Wraps cron.schedule with error capture → system_events + cron_runs tracking.
 function scheduledJob(name, expr, fn, cronOpts = {}) {
     return cron.schedule(expr, async () => {
-        try {
-            await fn();
+        let jobErr = null;
+        try { await fn(); } catch (err) { jobErr = err; }
+
+        if (jobErr) {
+            systemLog.logError(`cron:${name}`, jobErr).catch(() => {});
+            // Use .then(ok, err) instead of .catch() — Supabase v2 builder is
+            // thenable but doesn't expose .catch() as a standalone method.
+            supabase.from('cron_runs').upsert(
+                { job_name: name, last_err_at: new Date().toISOString(), last_error: jobErr.message?.slice(0, 500) },
+                { onConflict: 'job_name' }
+            ).then(null, () => {});
+        } else {
             supabase.from('cron_runs').upsert(
                 { job_name: name, last_ok_at: new Date().toISOString() },
                 { onConflict: 'job_name' }
-            ).catch(() => {});
-        } catch (err) {
-            systemLog.logError(`cron:${name}`, err).catch(() => {});
-            supabase.from('cron_runs').upsert(
-                { job_name: name, last_err_at: new Date().toISOString(), last_error: err.message?.slice(0, 500) },
-                { onConflict: 'job_name' }
-            ).catch(() => {});
+            ).then(null, () => {});
         }
     }, cronOpts);
 }

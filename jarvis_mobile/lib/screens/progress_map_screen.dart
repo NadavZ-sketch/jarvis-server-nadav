@@ -209,6 +209,9 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
   final Set<String> _dismissedSmartProposals = {};
   final Map<String, TextEditingController> _proposalFeedbackCtrl = {};
 
+  // Feature description generation
+  bool _generatingFeatureDescriptions = false;
+
   // Live control-center events (alerts + per-tab badges)
   List<_CcAlert> _alerts = const [];
   Map<ControlCenterTab, int> _tabBadges = const {};
@@ -891,6 +894,67 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     return false;
   }
 
+  // Returns AI-suggested description for a single feature (used inside the sheet)
+  Future<String?> _suggestFeatureDescription(String name, String status) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/dashboard/features/suggest-description'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': name, 'status': status}),
+      ).timeout(const Duration(seconds: 20));
+      if (res.statusCode == 200) {
+        final d = jsonDecode(res.body) as Map<String, dynamic>;
+        return d['description']?.toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // Batch-generates descriptions for all features that have no description yet
+  Future<void> _generateFeatureDescriptions() async {
+    if (_generatingFeatureDescriptions) return;
+    setState(() => _generatingFeatureDescriptions = true);
+    try {
+      final all = [
+        ..._done.map((f) => {...f, 'status': 'done'}),
+        ..._building.map((f) => {...f, 'status': 'building'}),
+        ..._planned.map((f) => {...f, 'status': 'planned'}),
+      ];
+      final res = await http.post(
+        Uri.parse('$_base/dashboard/features/generate-descriptions'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'features': all}),
+      ).timeout(const Duration(seconds: 40));
+      if (res.statusCode != 200 || !mounted) return;
+
+      final d = jsonDecode(res.body) as Map<String, dynamic>;
+      final descriptions = List<Map<String, dynamic>>.from(d['descriptions'] ?? []);
+      if (descriptions.isEmpty) return;
+
+      // Apply descriptions to local lists and save each to server
+      final byName = {for (final d in descriptions) d['name'].toString(): d['description'].toString()};
+      for (final list in [_done, _building, _planned]) {
+        for (final f in list) {
+          final name = f['name']?.toString() ?? '';
+          if ((f['desc'] ?? '').toString().isEmpty && byName.containsKey(name)) {
+            final status = list == _done ? 'done' : list == _building ? 'building' : 'planned';
+            f['desc'] = byName[name];
+            // Persist to server (fire-and-forget per feature)
+            http.patch(
+              Uri.parse('$_base/dashboard/features'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'name': name, 'oldStatus': status, 'newStatus': status, 'desc': byName[name]}),
+            ).timeout(const Duration(seconds: 8)).catchError((_) => http.Response('', 500));
+          }
+        }
+      }
+      if (mounted) setState(() {});
+    } catch (_) {} finally {
+      if (mounted) setState(() => _generatingFeatureDescriptions = false);
+    }
+  }
+
+
   // ── "Send to Claude" ──────────────────────────────────────────────────────
 
   void _showSendToClaudeMenu(BuildContext ctx, String prompt, {String title = ''}) {
@@ -1041,6 +1105,7 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
         onDelete: _deleteFeature,
         onSendToClaud: (prompt) => _showSendToClaudeMenu(ctx, prompt, title: feature['name']?.toString() ?? ''),
         featureToPrompt: _featureToPrompt,
+        onSuggestDesc: _suggestFeatureDescription,
       ),
     );
   }
@@ -3646,9 +3711,49 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
     final currentColor = colors[_featureTabIndex];
     final currentStatusKey = statusKeys[_featureTabIndex];
 
+    // Count features without descriptions
+    final emptyDescCount = [..._done, ..._building, ..._planned]
+        .where((f) => (f['desc'] ?? '').toString().trim().isEmpty).length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // "Generate descriptions" banner — shown when features have no description
+        if (emptyDescCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: GestureDetector(
+              onTap: _generatingFeatureDescriptions ? null : _generateFeatureDescriptions,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: _kGold.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _kGold.withOpacity(0.3), width: 0.8),
+                ),
+                child: Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    if (_generatingFeatureDescriptions)
+                      const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5, color: _kGold))
+                    else
+                      const Text('🤖', style: TextStyle(fontSize: 13)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _generatingFeatureDescriptions
+                            ? 'מייצר הסברים...'
+                            : 'ייצר הסברים ל-$emptyDescCount יכולות ללא תיאור',
+                        style: TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    if (!_generatingFeatureDescriptions)
+                      Icon(Icons.auto_awesome, size: 14, color: _kGold.withOpacity(0.7)),
+                  ],
+                ),
+              ),
+            ),
+          ),
         // Tab selector
         Row(
           children: List.generate(3, (i) {
@@ -3738,22 +3843,46 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
 
   Widget _featureChip(Map<String, dynamic> f, Color color, String statusKey, BuildContext ctx) {
     final name = f['name']?.toString() ?? '—';
+    final desc = f['desc']?.toString().trim() ?? '';
+    final hasDesc = desc.isNotEmpty;
     return GestureDetector(
       onTap: () => _showFeatureDetailSheet(ctx, f, statusKey),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: EdgeInsets.fromLTRB(10, hasDesc ? 8 : 6, 10, hasDesc ? 8 : 6),
         decoration: BoxDecoration(
           color: JC.surfaceAlt,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(hasDesc ? 10 : 20),
           border: Border.all(color: color.withOpacity(0.35), width: 0.8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(name,
-                style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(name,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo',
+                          fontSize: 12, fontWeight: hasDesc ? FontWeight.w600 : FontWeight.w400)),
+                  if (hasDesc) ...[
+                    const SizedBox(height: 2),
+                    Text(desc,
+                        textAlign: TextAlign.right,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10.5, height: 1.35)),
+                  ],
+                ],
+              ),
+            ),
             const SizedBox(width: 4),
-            Icon(Icons.chevron_right, size: 12, color: color.withOpacity(0.6)),
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(Icons.chevron_right, size: 12, color: color.withOpacity(0.6)),
+            ),
           ],
         ),
       ),
@@ -4982,6 +5111,7 @@ class _FeatureDetailSheet extends StatefulWidget {
   final Future<bool> Function({required String name, required String status}) onDelete;
   final void Function(String prompt) onSendToClaud;
   final String Function(Map<String, dynamic>, String) featureToPrompt;
+  final Future<String?> Function(String name, String status) onSuggestDesc;
 
   const _FeatureDetailSheet({
     required this.feature,
@@ -4991,6 +5121,7 @@ class _FeatureDetailSheet extends StatefulWidget {
     required this.onDelete,
     required this.onSendToClaud,
     required this.featureToPrompt,
+    required this.onSuggestDesc,
   });
   @override State<_FeatureDetailSheet> createState() => _FeatureDetailSheetState();
 }
@@ -4999,6 +5130,7 @@ class _FeatureDetailSheetState extends State<_FeatureDetailSheet> {
   late String _status;
   late TextEditingController _descCtrl;
   bool _saving = false;
+  bool _suggestingDesc = false;
   bool _deleting = false;
   bool _edited = false;
 
@@ -5121,7 +5253,45 @@ class _FeatureDetailSheetState extends State<_FeatureDetailSheet> {
               }).toList()),
               const SizedBox(height: 14),
               // Description
-              Text('תיאור', style: TextStyle(color: Colors.grey.shade500, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+              Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  Text('תיאור', style: TextStyle(color: Colors.grey.shade500, fontFamily: 'Heebo', fontSize: 11, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _suggestingDesc ? null : () async {
+                      setState(() => _suggestingDesc = true);
+                      final name = widget.feature['name']?.toString() ?? '';
+                      final suggestion = await widget.onSuggestDesc(name, _status);
+                      if (mounted && suggestion != null) {
+                        _descCtrl.text = suggestion;
+                        setState(() => _edited = true);
+                      }
+                      if (mounted) setState(() => _suggestingDesc = false);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _kGold.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: _kGold.withOpacity(0.3), width: 0.7),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_suggestingDesc)
+                            const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: _kGold))
+                          else
+                            const Text('🤖', style: TextStyle(fontSize: 10)),
+                          const SizedBox(width: 4),
+                          Text(_suggestingDesc ? 'מייצר...' : 'הצע תיאור',
+                              style: const TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 10, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 6),
               TextField(
                 controller: _descCtrl,

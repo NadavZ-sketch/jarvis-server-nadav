@@ -2917,9 +2917,6 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
     final category       = p['category']?.toString() ?? 'improvement';
     final priorityScore  = (p['priority_score'] as num?)?.toInt() ?? 5;
 
-    _proposalFeedbackCtrl.putIfAbsent(id, () => TextEditingController());
-    final feedCtrl = _proposalFeedbackCtrl[id]!;
-
     final (sourceBadge, sourceColor) = switch (source) {
       'survey' => ('🗣️ סקר',       const Color(0xFF7C3AED)),
       'both'   => ('⭐ סקר+שימוש', const Color(0xFFEA580C)),
@@ -3041,36 +3038,20 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
             const Divider(height: 1),
             const SizedBox(height: 8),
 
-            // Feedback field (optional)
-            TextField(
-              controller: feedCtrl,
-              textDirection: TextDirection.rtl,
-              style: const TextStyle(fontFamily: 'Heebo', fontSize: 11.5),
-              decoration: InputDecoration(
-                hintText: 'הוסף הערה אופציונלית לפני האישור...',
-                hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _kGold, width: 1.0)),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Action buttons — row 1: primary actions
+            // Action buttons
             Row(
               textDirection: TextDirection.rtl,
               children: [
                 Expanded(
+                  flex: 3,
                   child: ElevatedButton.icon(
-                    onPressed: () => _approveSmartProposal(p, feedback: feedCtrl.text.trim().isEmpty ? null : feedCtrl.text.trim()),
-                    icon: const Icon(Icons.check, size: 13),
+                    onPressed: () => _showProposalClarifyFlow(p, mode: 'claude'),
+                    icon: const Icon(Icons.auto_awesome, size: 13),
                     label: const Text('הוסף לפיתוח', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 11.5)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _kGold,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 9),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                       elevation: 0,
                     ),
@@ -3078,49 +3059,30 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
                 ),
                 const SizedBox(width: 6),
                 Expanded(
+                  flex: 2,
                   child: OutlinedButton.icon(
                     onPressed: () => _showProposalClarifyFlow(p, mode: 'task'),
                     icon: const Icon(Icons.task_alt_outlined, size: 13),
-                    label: const Text('שלח כמשימה', style: TextStyle(fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
+                    label: const Text('משימה', style: TextStyle(fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _kGold,
                       side: BorderSide(color: _kGold.withOpacity(0.6), width: 0.9),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            // Row 2: secondary actions
-            Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showProposalClarifyFlow(p, mode: 'claude'),
-                    icon: const Icon(Icons.open_in_new, size: 12),
-                    label: const Text('שלח לקלוד', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: JC.textSecondary,
-                      side: BorderSide(color: JC.border, width: 0.7),
-                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      padding: const EdgeInsets.symmetric(vertical: 9),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                     ),
                   ),
                 ),
                 const SizedBox(width: 6),
-                OutlinedButton.icon(
+                OutlinedButton(
                   onPressed: () => _dismissSmartProposal(id),
-                  icon: const Icon(Icons.thumb_down_outlined, size: 12),
-                  label: const Text('לא רלוונטי', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: JC.textMuted,
                     side: BorderSide(color: JC.border, width: 0.7),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    minimumSize: Size.zero,
                   ),
+                  child: const Icon(Icons.thumb_down_outlined, size: 14),
                 ),
               ],
             ),

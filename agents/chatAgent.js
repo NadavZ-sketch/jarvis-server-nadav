@@ -250,8 +250,10 @@ ${chatSummary}
     // Cap memories to 2000 chars (~650 tokens) so a large memory bank can't
     // flood the context budget. The most relevant lines are already ranked first
     // by filterRelevantMemoriesAsync, so the tail is the least useful content.
-    const memoriesCapped = (longTermMemories || '').length > 2000
-        ? longTermMemories.slice(0, 2000) + '\n(ועוד…)'
+    // Cap at 1200 chars (~400 tokens). Relevant memories are ranked first by
+    // filterRelevantMemoriesAsync, so the trimmed tail is the least useful content.
+    const memoriesCapped = (longTermMemories || '').length > 1200
+        ? longTermMemories.slice(0, 1200) + '\n(ועוד…)'
         : (longTermMemories || '');
 
     const styleHint = userMessage && !voiceMode ? (() => {
@@ -405,7 +407,9 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
         // Generate follow-up suggestions only for substantive exchanges (saves ~80
         // tokens + 1 LLM call on short replies like "תודה", "הבנתי", etc.)
         let suggestions = [];
-        if (!voiceMode && !imageBase64 && userMessage.length > 60 && finalAnswer.length > 80) {
+        // Higher threshold: suggestions are only useful after substantive exchanges,
+        // not every reply. Saves ~350 tokens + 1 LLM call on short conversations.
+        if (!voiceMode && !imageBase64 && userMessage.length > 150 && finalAnswer.length > 300) {
             try {
                 const sugPrompt = `בהתבסס על השיחה הבאה, הצע 2-3 שאלות המשך קצרות בעברית שהמשתמש עשוי לרצות לשאול. החזר JSON בלבד: {"suggestions":["...","..."]}
 שאלת המשתמש: "${userMessage.slice(0, 100)}"

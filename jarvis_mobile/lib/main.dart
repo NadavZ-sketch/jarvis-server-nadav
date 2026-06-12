@@ -1465,6 +1465,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         final rawSug = data['suggestions'];
         final suggestions = rawSug is List ? List<String>.from(rawSug.whereType<String>()) : <String>[];
         final provider = data['provider']?.toString();
+        final memorySaved = data['memorySaved']?.toString();
         setState(() => messages.add({
               'sender': 'jarvis',
               'text': answer,
@@ -1476,6 +1477,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             }));
         _persistMessages();
         _checkForFinalPrompt(answer);
+
+        if (memorySaved != null && memorySaved.isNotEmpty && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('🧠 זכרתי: $memorySaved'),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
 
         // Navigate actions render an inline button in the bubble (see _ChatBubble);
         // settings_update actions are applied silently; whatsapp/email need dialog.
@@ -1554,6 +1563,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
       String accumulated = '';
       String lineBuffer  = '';
+      int?  streamingMsgIdx;
+      DateTime? lastChunkRender;
 
       await for (final raw in sr.stream.transform(utf8.decoder)) {
         if (!mounted) break;
@@ -1569,8 +1580,27 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             if (data['error'] != null) throw Exception(data['error'].toString());
             if (data['chatId'] is String) _chatId = data['chatId'] as String;
 
+            // Thinking frame: server signals it has started processing — no UI change needed
+            // (already in JarvisState.thinking from sendCommand)
+            if (data['thinking'] == true) continue;
+
             if (data['chunk'] is String) {
               accumulated += data['chunk'] as String;
+              // Progressive rendering: show text as it arrives, throttled to ~20fps
+              if (streamingMsgIdx == null) {
+                setState(() {
+                  messages.add({'sender': 'jarvis', 'text': accumulated, 'time': _getCurrentTime()});
+                  streamingMsgIdx = messages.length - 1;
+                });
+                lastChunkRender = DateTime.now();
+              } else {
+                final now = DateTime.now();
+                if (lastChunkRender == null ||
+                    now.difference(lastChunkRender!).inMilliseconds > 50) {
+                  setState(() => messages[streamingMsgIdx!]['text'] = accumulated);
+                  lastChunkRender = now;
+                }
+              }
             }
 
             if (data['done'] == true) {
@@ -1580,17 +1610,26 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               final isNav     = action is Map && action['type'] == 'navigate';
               final navTarget = isNav ? action['target']?.toString() : null;
               final navLabel  = isNav ? action['label']?.toString() : null;
+              final rawSug    = data['suggestions'];
+              final suggestions = rawSug is List ? List<String>.from(rawSug.whereType<String>()) : <String>[];
               // Server signals skipAudio=true in voiceMode: flutter_tts is the
               // sole audio engine; ignore any server-side Google TTS audio.
               final skipAudio = data['skipAudio'] == true;
               setState(() {
-                messages.add({
+                final finalMsg = {
                   'sender': 'jarvis',
                   'text': answer,
                   'time': _getCurrentTime(),
                   if (navTarget != null) 'navTarget': navTarget,
                   if (navLabel != null) 'navLabel': navLabel,
-                });
+                  if (suggestions.isNotEmpty) 'suggestions': suggestions,
+                };
+                if (streamingMsgIdx != null && streamingMsgIdx! < messages.length) {
+                  messages[streamingMsgIdx!] = finalMsg;
+                } else {
+                  messages.add(finalMsg);
+                }
+                streamingMsgIdx = null;
                 _currentState = JarvisState.idle;
               });
               _persistMessages();

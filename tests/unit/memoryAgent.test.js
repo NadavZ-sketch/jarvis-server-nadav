@@ -307,6 +307,6 @@ describe('autoExtractMemory', () => {
     test('does not throw when LLM returns invalid JSON', async () => {
         callGemma4.mockResolvedValue('not valid json at all');
         const supabase = makeSupabase([]);
-        await expect(autoExtractMemory('נתון כלשהו', 'תשובה', supabase, {})).resolves.toBeUndefined();
+        await expect(autoExtractMemory('נתון כלשהו', 'תשובה', supabase, {})).resolves.toBeNull();
     });
 });

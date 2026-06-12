@@ -196,6 +196,10 @@ async function deleteReminder(userMessage, supabase) {
     return { answer: `בסדר, מחקתי את התזכורת: "${data[0].text}"` };
 }
 
+function hasTimeSignal(msg) {
+    return /בעוד|מחר|מחרתיים|ב-\d|בשעה|ביום\s+(ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)|כל\s+(יום|שבוע|חודש)|עוד\s+\d/i.test(msg);
+}
+
 async function runReminderAgent(userMessage, supabase) {
     try {
         // List reminders
@@ -214,6 +218,11 @@ async function runReminderAgent(userMessage, supabase) {
         }
 
         // Add reminder
+        if (!hasTimeSignal(userMessage)) {
+            return {
+                answer: 'מתי תרצה שאזכיר לך? 🕐\nלמשל: "בעוד שעה", "מחר בשמונה", "ביום שישי ב-14:00"',
+            };
+        }
         const fireDate = parseTime(userMessage);
         if (!fireDate) throw new Error('Could not parse time from message');
 
@@ -239,7 +248,13 @@ async function runReminderAgent(userMessage, supabase) {
 
     } catch (err) {
         console.error('ReminderAgent Error:', err.message);
-        return { answer: 'לא הצלחתי להבין את מועד התזכורת. נסה למשל: "תזכיר לי בעוד 30 דקות לשתות מים"' };
+        const isDb = /supabase|PGRST/i.test(err.message || '');
+        return {
+            answer: isDb
+                ? 'מסד הנתונים לא זמין — התזכורת לא נשמרה. נסה שוב.'
+                : 'לא הצלחתי להבין את מועד התזכורת. נסה למשל: "תזכיר לי בעוד 30 דקות לשתות מים"',
+            suggestions: isDb ? ['נסה שוב'] : ['נסח מחדש'],
+        };
     }
 }
 

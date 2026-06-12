@@ -93,7 +93,8 @@ User message: `;
 
 async function autoExtractMemory(userMessage, assistantAnswer, supabase, settings = {}) {
     try {
-        if (!userMessage || userMessage.trim().length < 8) return null;
+        // Skip extraction on short/filler messages — nothing memorable in "תודה" or "יאלה".
+        if (!userMessage || userMessage.trim().length < 30) return null;
         if (/מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת|מחק זיכרון|הסר זיכרון|שכח ש|מזג האוויר|תחזית|חדשות|כותרות|ספורט|תוצאות|מניות|שוק המניות|שוק|מניה/i.test(userMessage)) return null;
 
         const prompt = AUTO_EXTRACT_PROMPT + userMessage

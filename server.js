@@ -4587,6 +4587,76 @@ app.get('/dashboard/features', (_req, res) => {
     } catch { res.status(500).json({ error: 'features.json not found' }); }
 });
 
+// PATCH /dashboard/features — move a feature between buckets and/or update its description
+app.patch('/dashboard/features', (req, res) => {
+    const { name, oldStatus, newStatus, desc } = req.body;
+    if (!name || !oldStatus) return res.status(400).json({ error: 'name and oldStatus required' });
+    const VALID = ['done', 'building', 'planned'];
+    if (!VALID.includes(oldStatus)) return res.status(400).json({ error: 'invalid oldStatus' });
+    const dst = VALID.includes(newStatus) ? newStatus : oldStatus;
+    try {
+        const filePath = path.join(__dirname, 'features.json');
+        const data = JSON.parse(require('fs').readFileSync(filePath, 'utf8'));
+        const feats = data.features;
+        const idx = (feats[oldStatus] || []).findIndex(f => f.name === name);
+        if (idx === -1) return res.status(404).json({ error: 'Feature not found' });
+        const feature = { ...feats[oldStatus][idx] };
+        if (desc !== undefined) feature.desc = desc;
+        feats[oldStatus].splice(idx, 1);
+        if (!feats[dst]) feats[dst] = [];
+        feats[dst].push(feature);
+        data.lastUpdated = new Date().toISOString().slice(0, 10);
+        require('fs').writeFileSync(filePath, JSON.stringify(data, null, 2));
+        res.json({ ok: true, feature, movedFrom: oldStatus, movedTo: dst });
+    } catch (err) {
+        console.error('PATCH /dashboard/features error:', err.message);
+        res.status(500).json({ error: 'Internal error' });
+    }
+});
+
+// POST /dashboard/features — add a new feature
+app.post('/dashboard/features', (req, res) => {
+    const { name, desc = '', status = 'planned' } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+    const VALID = ['done', 'building', 'planned'];
+    const bucket = VALID.includes(status) ? status : 'planned';
+    try {
+        const filePath = path.join(__dirname, 'features.json');
+        const data = JSON.parse(require('fs').readFileSync(filePath, 'utf8'));
+        if (!data.features[bucket]) data.features[bucket] = [];
+        // Prevent duplicates
+        const exists = (data.features.done || []).concat(data.features.building || [], data.features.planned || [])
+            .some(f => f.name.trim().toLowerCase() === name.trim().toLowerCase());
+        if (exists) return res.status(409).json({ error: 'Feature with this name already exists' });
+        data.features[bucket].push({ name: name.trim(), desc: desc.trim() });
+        data.lastUpdated = new Date().toISOString().slice(0, 10);
+        require('fs').writeFileSync(filePath, JSON.stringify(data, null, 2));
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('POST /dashboard/features error:', err.message);
+        res.status(500).json({ error: 'Internal error' });
+    }
+});
+
+// DELETE /dashboard/features — remove a feature
+app.delete('/dashboard/features', (req, res) => {
+    const { name, status } = req.body;
+    if (!name || !status) return res.status(400).json({ error: 'name and status required' });
+    try {
+        const filePath = path.join(__dirname, 'features.json');
+        const data = JSON.parse(require('fs').readFileSync(filePath, 'utf8'));
+        const before = (data.features[status] || []).length;
+        data.features[status] = (data.features[status] || []).filter(f => f.name !== name);
+        if (data.features[status].length === before) return res.status(404).json({ error: 'Not found' });
+        data.lastUpdated = new Date().toISOString().slice(0, 10);
+        require('fs').writeFileSync(filePath, JSON.stringify(data, null, 2));
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('DELETE /dashboard/features error:', err.message);
+        res.status(500).json({ error: 'Internal error' });
+    }
+});
+
 app.get('/dashboard/backlog/config', (_req, res) => {
     res.json(PROGRESS_MAP_CONFIG);
 });
@@ -4857,7 +4927,8 @@ app.delete('/dashboard/backlog/:id', (req, res) => {
 });
 
 // ─── Dashboard – AI backlog generation ───────────────────────────────────────
-app.post('/dashboard/backlog/generate', async (_req, res) => {
+app.post('/dashboard/backlog/generate', async (req, res) => {
+    const { userName = '' } = req.body || {};
     try {
         const features = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'features.json'), 'utf8'));
         const backlog  = readBacklog();
@@ -4866,19 +4937,44 @@ app.post('/dashboard/backlog/generate', async (_req, res) => {
         const building = features.features?.building || [];
         const planned  = features.features?.planned  || [];
 
-        const prompt = `You are a senior project manager for "Jarvis" — a personal AI assistant built with Flutter + Node.js.
+        // ── Pull user context: memories + recent chat themes ──────────────────
+        let memoriesContext = '';
+        let chatThemesContext = '';
+        try {
+            const [memResult, chatResult] = await Promise.all([
+                supabase.from('memories').select('content').order('created_at', { ascending: false }).limit(25),
+                supabase.from('chat_history').select('content').eq('role', 'user')
+                    .gte('created_at', new Date(Date.now() - 14 * 86400000).toISOString())
+                    .order('created_at', { ascending: false }).limit(40),
+            ]);
+            if (memResult.data?.length) {
+                memoriesContext = '\n\n==זיכרונות המשתמש (העדפות, הרגלים)==\n' +
+                    memResult.data.map(m => `- ${m.content}`).join('\n');
+            }
+            if (chatResult.data?.length) {
+                // Extract distinct keywords/topics from recent chats
+                const msgs = chatResult.data.map(m => m.content || '').filter(Boolean);
+                chatThemesContext = '\n\n==הודעות אחרונות מהמשתמש (14 ימים)==\n' +
+                    msgs.slice(0, 20).map(m => `• ${m.slice(0, 120)}`).join('\n');
+            }
+        } catch (_) { /* context enrichment is best-effort */ }
 
-Project status:
-DONE (${done.length}): ${done.map(f => f.name).join(', ')}
-IN PROGRESS (${building.length}): ${building.map(f => `${f.name}`).join(', ')}
-PLANNED (${planned.length}): ${planned.map(f => `${f.name}`).join(', ')}
+        const prompt = `אתה מנהל פרויקט בכיר של "ג'רביס" — עוזר AI אישי ב-Flutter + Node.js.
 
-Suggest 6 high-priority backlog items sorted by urgency.
+==סטטוס הפרויקט==
+הושלם (${done.length}): ${done.map(f => f.name).join(', ')}
+בבנייה (${building.length}): ${building.map(f => f.name).join(', ')}
+מתוכנן (${planned.length}): ${planned.map(f => f.name).join(', ')}
+${memoriesContext}${chatThemesContext}
 
-IMPORTANT: Respond with ONLY a JSON array. No markdown, no explanation, no code blocks. Use ONLY these exact English field names.
+==מטרה==
+הצע 6 פריטי backlog בעלי עדיפות גבוהה, ממוינים לפי דחיפות.
+התייחס ישירות לזיכרונות ולהודעות המשתמש בהצעות — הצעות גנריות פחות טובות.
+אם המשתמש ביקש פיצ'ר ספציפי בשיחות — הצע לממש אותו.
+אם יש תקלה שעלתה בשיחות — הצע לתקן אותה.
 
-Output format (copy exactly, replace the values):
-[{"title":"short title in Hebrew (max 60 chars)","plan":"detailed plan in Hebrew (3-4 sentences: what to do, why it matters, how to implement technically)","priority":"high","category":"improvement"},{"title":"...","plan":"...","priority":"medium","category":"feature"}]`;
+ענה JSON בלבד (ללא markdown):
+[{"title":"כותרת קצרה בעברית (עד 60 תווים)","plan":"תוכנית מפורטת בעברית (3-4 משפטים: מה לעשות, למה זה חשוב, איך לממש טכנית)","priority":"high","category":"improvement"},{"title":"...","plan":"...","priority":"medium","category":"feature"}]`;
 
         const raw = await callGemma4(prompt, false, 1000);
 

@@ -260,7 +260,7 @@ describe('autoExtractMemory', () => {
     test('extracts and saves a long_term fact', async () => {
         callGemma4.mockResolvedValue('{"items":[{"content":"[location] גר בתל אביב","scope":"long_term"}]}');
         const supabase = makeSupabase([{ id: 10, content: '[location] גר בתל אביב' }]);
-        await autoExtractMemory('אני גר בתל אביב', 'מעולה, שמרתי!', supabase, {});
+        await autoExtractMemory('אני גר בתל אביב כבר שלוש שנים ונהנה מהעיר מאוד', 'מעולה, שמרתי!', supabase, {});
         expect(supabase.from).toHaveBeenCalledWith('memories');
         expect(supabase._chain.insert).toHaveBeenCalledWith([
             { content: '[location] גר בתל אביב', scope: 'long_term' }
@@ -288,7 +288,7 @@ describe('autoExtractMemory', () => {
         callGemma4.mockResolvedValue('{"items":[{"content":"[hobby] פיצה","scope":"long_term"}]}');
         pinecone.findSimilarMemory.mockResolvedValue({ id: '1', content: '[hobby] פיצה', score: 0.97 });
         const supabase = makeSupabase([]);
-        await autoExtractMemory('אני אוהב פיצה', 'שמרתי', supabase, {});
+        await autoExtractMemory('אני אוהב פיצה ומעדיף אותה על פני כל מאכל אחר', 'שמרתי', supabase, {});
         expect(supabase._chain.insert).not.toHaveBeenCalled();
     });
 
@@ -300,13 +300,13 @@ describe('autoExtractMemory', () => {
             { content: '[d] ד', scope: 'long_term' }, // 4th — should be ignored
         ]}));
         const supabase = makeSupabase([{ id: 1 }, { id: 2 }, { id: 3 }]);
-        await autoExtractMemory('יש לי הרבה מידע לשמור היום', 'כן', supabase, {});
+        await autoExtractMemory('יש לי הרבה מידע חשוב לשמור היום לגבי הפרויקט החדש', 'כן', supabase, {});
         expect(supabase._chain.insert).toHaveBeenCalledTimes(3);
     });
 
     test('does not throw when LLM returns invalid JSON', async () => {
         callGemma4.mockResolvedValue('not valid json at all');
         const supabase = makeSupabase([]);
-        await expect(autoExtractMemory('נתון כלשהו', 'תשובה', supabase, {})).resolves.toBeUndefined();
+        await expect(autoExtractMemory('נתון כלשהו', 'תשובה', supabase, {})).resolves.toBeNull();
     });
 });

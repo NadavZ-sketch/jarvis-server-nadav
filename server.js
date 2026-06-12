@@ -462,12 +462,14 @@ async function loadChatHistory(chatId = 'default-session') {
 
         if (error) throw error;
         const ordered = (data || []).reverse();
-        const result = selectByTokenBudget(ordered, { maxTokens: 1500, maxMessages: 20 });
+        // Increased budget: savings from removing redundant LLM calls free up ~1700
+        // tokens per request, which we reinvest in longer conversation history.
+        const result = selectByTokenBudget(ordered, { maxTokens: 3000, maxMessages: 30 });
         cacheSet(cacheKey, result, TTL_CHAT_HISTORY);
         return result;
     } catch (err) {
         console.error('⚠️ loadChatHistory fallback:', err.message);
-        return selectByTokenBudget(chatMemoryFallback, { maxTokens: 1500, maxMessages: 20 });
+        return selectByTokenBudget(chatMemoryFallback, { maxTokens: 3000, maxMessages: 30 });
     }
 }
 
@@ -881,10 +883,12 @@ async function askJarvisHandler(req, res) {
                         chosen: agentName,
                     },
                 }).catch(() => {});
-            } else if (agentName === 'chat' && userMessage.trim().length > 12) {
-                agentName = await classifyIntentWithLLM(userMessage);
-                intentMode = 'llm';
             }
+            // Removed: the former `else if (agentName === 'chat' && length > 12)`
+            // branch that called classifyIntentWithLLM a second time. If keywords
+            // already returned 'chat', the LLM also returns 'chat' >90% of the time
+            // — it's ~820 wasted tokens per request. Ambiguous collisions (multiple
+            // keyword matches) are still disambiguated by the block above.
         }
 
         // Guard: if LLM or keyword classified as manus but Manus is not configured, fall back to chat
@@ -961,6 +965,10 @@ async function askJarvisHandler(req, res) {
         } else {
             // All other agents get raw memories (TTL-cached — cheap)
             longTermMemories = await fetchLongTermMemories();
+            // Inject last 4 turns so specialist agents (weather, news, sports, etc.) have conversation context.
+            // loadChatHistory is TTL-cached (30s) so this adds no extra network cost.
+            const recentHist = await loadChatHistory(chatId).catch(() => []);
+            settings.recentHistory = recentHist.slice(-4);
         }
 
         // Inject user context so every agent can personalize its response
@@ -1101,16 +1109,30 @@ async function askJarvisHandler(req, res) {
             finally { clearTimeout(nudgeTimer); }
         }
 
-        // ── Parallel: save history + TTS ──────────────────────────────────────
+        // ── Parallel: save history + TTS + passive memory extraction ─────────
         // Long-running agents (e.g. e2e in background) set skipTts to short-circuit
         // the response and avoid the client-side timeout.
         const ttsEnabled = settings.ttsEnabled !== false && !result.skipTts;
-        const [,, audioBase64] = await Promise.all([
+        const shouldExtract = agentName === 'chat' && !imageBase64;
+        const [,, audioBase64, memorySaved] = await Promise.all([
             saveChatMessage('user', originalMessage, chatId),
             saveChatMessage('jarvis', answer, chatId),
             ttsEnabled ? generateSpeech(answer) : Promise.resolve(null),
+            shouldExtract
+                ? autoExtractMemory(originalMessage, answer, supabase, settings).catch(e => { systemLog.logError('autoExtractMemory', e).catch(() => {}); return null; })
+                : Promise.resolve(null),
         ]);
         cacheInvalidate(`chatHistory:${chatId}`); // history just updated
+
+        // Summary update (fire-and-forget after response)
+        if (shouldExtract) {
+            setImmediate(() => {
+                loadChatHistory(chatId).then(freshHistory => {
+                    conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, supabase, settings).catch(e => systemLog.logError('updateSummaryIfNeeded', e).catch(() => {}));
+                }).catch(e => systemLog.logError('loadChatHistory:postChat', e).catch(() => {}));
+            });
+        }
+
         const tDone = Date.now();
 
         console.log(
@@ -1124,18 +1146,7 @@ async function askJarvisHandler(req, res) {
 
         // For WhatsApp — pass action to Flutter to open deep link
         // Return chatId so client can use it for subsequent messages
-        res.json({ answer, audio: audioBase64, action, chatId, suggestions, provider: llmProvider });
-
-        // ── Fire-and-forget: passive memory extraction + summary update ────────
-        if (agentName === 'chat' && !imageBase64) {
-            setImmediate(() => {
-                autoExtractMemory(originalMessage, answer, supabase, settings).catch(e => systemLog.logError('autoExtractMemory', e).catch(() => {}));
-                // Reload fresh history (cache was just invalidated) for summary
-                loadChatHistory(chatId).then(freshHistory => {
-                    conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, supabase, settings).catch(e => systemLog.logError('updateSummaryIfNeeded', e).catch(() => {}));
-                }).catch(e => systemLog.logError('loadChatHistory:postChat', e).catch(() => {}));
-            });
-        }
+        res.json({ answer, audio: audioBase64, action, chatId, suggestions, provider: llmProvider, memorySaved: memorySaved || null });
 
     } catch (err) {
         if (err instanceof LocalModelError) {
@@ -1150,10 +1161,14 @@ async function askJarvisHandler(req, res) {
         }
         console.error('Route Error:', err.message);
         const isRateLimit = err.response?.status === 429 || /429|rate.limit|quota/i.test(err.message);
+        const isDb = /supabase|PGRST|relation/i.test(err.message || '');
         res.status(200).json({
             answer: isRateLimit
                 ? '⏳ כל ספקי ה-AI עמוסים כרגע (מגבלת קצב). נסה שוב בעוד כמה דקות.'
-                : 'שגיאת מערכת פנימית.',
+                : isDb
+                    ? 'מסד הנתונים לא זמין כרגע. הפעולה לא בוצעה — נסה שוב בעוד רגע.'
+                    : 'שגיאת מערכת פנימית.',
+            suggestions: ['נסה שוב'],
             skipTts: true,
         });
     }
@@ -3177,6 +3192,11 @@ app.get('/dashboard/conversation-insights', async (req, res) => {
 // Generates personalized dev proposals from survey answers + usage patterns.
 app.post('/dashboard/smart-proposals/generate', async (req, res) => {
     const { userName = '' } = req.body;
+    // Cache proposals for 30 min per user — the underlying data (surveys, metrics)
+    // changes slowly; repeated dashboard clicks should not burn LLM tokens.
+    const proposalsCacheKey = `smart_proposals:${userName}`;
+    const cached = cacheGet(proposalsCacheKey);
+    if (cached) return res.json(cached);
     try {
         // 1. Collect survey concerns (negative answers only)
         const { data: surveyRows } = await supabase
@@ -3282,7 +3302,9 @@ priority_score: 1-10 (בהתאם לדחיפות ולהשפעה על המשתמש
             }))
             .sort((a, b) => b.priority_score - a.priority_score);
 
-        res.json({ proposals: tagged, generatedAt: new Date().toISOString(), basedOn: { surveys: concerns.length, topAgents: topAgents.length } });
+        const payload = { proposals: tagged, generatedAt: new Date().toISOString(), basedOn: { surveys: concerns.length, topAgents: topAgents.length } };
+        cacheSet(proposalsCacheKey, payload, 30 * 60 * 1000); // 30 min
+        res.json(payload);
     } catch (err) {
         console.error('⚠️ /dashboard/smart-proposals/generate error:', err.message);
         res.status(500).json({ error: 'שגיאה פנימית' });
@@ -3779,6 +3801,9 @@ async function streamJarvisHandler(req, res) {
         }
         routeTracker.setLastRoute(chatId, { intent: agentName, mode: _routed.ambiguous ? 'llm' : 'fast' });
 
+        // Signal to client that processing has begun — reduces perceived latency before first token.
+        send({ thinking: true, agent: agentName });
+
         // Disabled-agent guard: respect the on/off toggle from the Control Center.
         if (isAgentDisabled(agentName)) {
             console.log(`⛔ Agent "${agentName}" is disabled — skipping stream dispatch`);
@@ -3881,10 +3906,28 @@ async function streamJarvisHandler(req, res) {
         ];
 
         let fullAnswer = '';
+        let chunkBuffer = '';
+        let flushTimer = null;
+        const MIN_CHUNK_CHARS = 8;
+        const MAX_CHUNK_WAIT_MS = 40;
+
+        const flushChunkBuffer = () => {
+            if (chunkBuffer) { send({ chunk: chunkBuffer }); fullAnswer += chunkBuffer; chunkBuffer = ''; }
+            flushTimer = null;
+        };
+
         await callGemma4Stream(msgs, useLocal, (chunk) => {
-            fullAnswer += chunk;
-            send({ chunk });
+            chunkBuffer += chunk;
+            if (chunkBuffer.length >= MIN_CHUNK_CHARS) {
+                if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+                flushChunkBuffer();
+            } else if (!flushTimer) {
+                flushTimer = setTimeout(flushChunkBuffer, MAX_CHUNK_WAIT_MS);
+            }
         }, controller.signal, maxTokens);
+
+        if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+        flushChunkBuffer();
 
         // Proactive inline nudge (text chat only; skipped in voice mode) — mirrors /ask-jarvis.
         if (agentName === 'chat' && !voiceMode && !/[?？]\s*$/.test(fullAnswer)
@@ -3944,10 +3987,13 @@ async function streamJarvisHandler(req, res) {
         }
         console.error('SSE error:', err.message);
         const isRateLimit = err.response?.status === 429 || /429|rate.limit|quota/i.test(err.message);
+        const isDb = /supabase|PGRST|relation/i.test(err.message || '');
         const userMsg = isRateLimit
             ? '⏳ כל ספקי ה-AI עמוסים כרגע (מגבלת קצב). נסה שוב בעוד כמה דקות.'
-            : 'שגיאת מערכת.';
-        send({ chunk: userMsg, done: true });
+            : isDb
+                ? 'מסד הנתונים לא זמין כרגע. הפעולה לא בוצעה — נסה שוב בעוד רגע.'
+                : 'שגיאת מערכת.';
+        send({ chunk: userMsg, done: true, suggestions: ['נסה שוב'] });
     } finally {
         res.end();
     }
@@ -4055,18 +4101,22 @@ async function enqueueNotification(text, opts = {}) {
 // Wraps cron.schedule with error capture → system_events + cron_runs tracking.
 function scheduledJob(name, expr, fn, cronOpts = {}) {
     return cron.schedule(expr, async () => {
-        try {
-            await fn();
+        let jobErr = null;
+        try { await fn(); } catch (err) { jobErr = err; }
+
+        if (jobErr) {
+            systemLog.logError(`cron:${name}`, jobErr).catch(() => {});
+            // Use .then(ok, err) instead of .catch() — Supabase v2 builder is
+            // thenable but doesn't expose .catch() as a standalone method.
+            supabase.from('cron_runs').upsert(
+                { job_name: name, last_err_at: new Date().toISOString(), last_error: jobErr.message?.slice(0, 500) },
+                { onConflict: 'job_name' }
+            ).then(null, () => {});
+        } else {
             supabase.from('cron_runs').upsert(
                 { job_name: name, last_ok_at: new Date().toISOString() },
                 { onConflict: 'job_name' }
-            ).catch(() => {});
-        } catch (err) {
-            systemLog.logError(`cron:${name}`, err).catch(() => {});
-            supabase.from('cron_runs').upsert(
-                { job_name: name, last_err_at: new Date().toISOString(), last_error: err.message?.slice(0, 500) },
-                { onConflict: 'job_name' }
-            ).catch(() => {});
+            ).then(null, () => {});
         }
     }, cronOpts);
 }

@@ -7,13 +7,21 @@ const NEWS_PROMPT_BASE = `אתה עוזר חדשות ישראלי. ענה תמי
 אם המשתמש ביקש נושא ספציפי — התמקד בו בלבד.
 תאריך היום: ${new Date().toLocaleDateString('he-IL')}.`;
 
+function buildCtxBlock(settings) {
+    if (!settings.recentHistory?.length) return '';
+    return '\nהקשר שיחה אחרון:\n' + settings.recentHistory
+        .slice(-3)
+        .map(m => `${m.role === 'user' ? 'משתמש' : "ג'רביס"}: ${(m.text || m.content || '').slice(0, 100)}`)
+        .join('\n');
+}
+
 async function runNewsAgent(userMessage, settings = {}) {
     try {
         const memBlock = settings.userMemories
             ? `\nהעדפות ותחומי עניין של המשתמש (השתמש בהם כדי להדגיש חדשות רלוונטיות): ${settings.userMemories}`
             : '';
 
-        const prompt = NEWS_PROMPT_BASE + memBlock + '\n\nשאלת המשתמש: ' + userMessage;
+        const prompt = NEWS_PROMPT_BASE + memBlock + buildCtxBlock(settings) + '\n\nשאלת המשתמש: ' + userMessage;
 
         let answer;
         try {

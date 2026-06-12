@@ -93,8 +93,9 @@ User message: `;
 
 async function autoExtractMemory(userMessage, assistantAnswer, supabase, settings = {}) {
     try {
-        if (!userMessage || userMessage.trim().length < 8) return;
-        if (/מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת|מחק זיכרון|הסר זיכרון|שכח ש|מזג האוויר|תחזית|חדשות|כותרות|ספורט|תוצאות|מניות|שוק המניות|שוק|מניה/i.test(userMessage)) return;
+        // Skip extraction on short/filler messages — nothing memorable in "תודה" or "יאלה".
+        if (!userMessage || userMessage.trim().length < 30) return null;
+        if (/מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת|מחק זיכרון|הסר זיכרון|שכח ש|מזג האוויר|תחזית|חדשות|כותרות|ספורט|תוצאות|מניות|שוק המניות|שוק|מניה/i.test(userMessage)) return null;
 
         const prompt = AUTO_EXTRACT_PROMPT + userMessage
             + `\nAssistant reply: ${(assistantAnswer || '').slice(0, 200)}`;
@@ -108,15 +109,15 @@ async function autoExtractMemory(userMessage, assistantAnswer, supabase, setting
         // Parse the first complete JSON object from the response.
         const firstOpen  = aiText.indexOf('{');
         const lastClose  = aiText.lastIndexOf('}');
-        if (firstOpen === -1 || lastClose === -1) return;
+        if (firstOpen === -1 || lastClose === -1) return null;
 
         let parsed;
-        try { parsed = JSON.parse(aiText.substring(firstOpen, lastClose + 1)); } catch { return; }
+        try { parsed = JSON.parse(aiText.substring(firstOpen, lastClose + 1)); } catch { return null; }
 
         const items = Array.isArray(parsed.items) ? parsed.items : [];
-        if (items.length === 0) return;
+        if (items.length === 0) return null;
 
-        let savedAny = false;
+        let firstSaved = null;
         for (const item of items.slice(0, 3)) {
             const content = (item.content || '').trim();
             const scope   = item.scope === 'session' ? 'session' : 'long_term';
@@ -132,12 +133,14 @@ async function autoExtractMemory(userMessage, assistantAnswer, supabase, setting
                 .from('memories').insert([{ content, scope }]).select('id').limit(1);
             obsidianSync.dbToVault('memories', { content, scope });
             if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
-            savedAny = true;
+            if (!firstSaved) firstSaved = content;
             console.log(`🧠 AutoExtract saved [${scope}]:`, content);
         }
-        if (savedAny) _invalidateMemoryCache();
+        if (firstSaved) _invalidateMemoryCache();
+        return firstSaved;
     } catch (err) {
         console.error('AutoExtract error (suppressed):', err.message);
+        return null;
     }
 }
 

@@ -246,10 +246,10 @@ describe('runReminderAgent', () => {
         expect(result.answer).toContain('חודשי');
     });
 
-    test('add reminder with unparseable time → returns error message', async () => {
+    test('add reminder with unparseable time → returns clarification question', async () => {
         const supabase = makeSupabase();
         const result = await runReminderAgent('ספר לי על הפרויקט', supabase);
-        expect(result.answer).toContain('לא הצלחתי להבין');
+        expect(result.answer).toContain('מתי תרצה שאזכיר לך');
     });
 
     test('supabase insert error → returns error message', async () => {

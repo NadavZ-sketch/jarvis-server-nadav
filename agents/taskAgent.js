@@ -112,6 +112,9 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         console.log('📋 TaskAgent:', parsed);
 
         if (parsed.intent === 'add') {
+            if (!parsed.taskDetails || parsed.taskDetails.trim().length < 3) {
+                return { answer: 'מה המשימה? תאר בקצרה מה צריך לעשות.' };
+            }
             // Category: prefer LLM output; fall back to keyword classifier
             const validCats = new Set(['work', 'personal', 'financial', 'project', 'general']);
             const category = validCats.has(parsed.category)
@@ -386,9 +389,14 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
 
     } catch (err) {
         console.error('TaskAgent Error:', err.message);
+        const isDb = /supabase|PGRST/i.test(err.message || '');
+        return {
+            answer: isDb
+                ? 'מסד הנתונים לא זמין — המשימה לא נשמרה. נסה שוב.'
+                : 'הייתה בעיה בעיבוד המשימה, נסה לנסח אחרת.',
+            suggestions: isDb ? ['נסה שוב'] : ['נסח מחדש'],
+        };
     }
-
-    return { answer: 'הייתה בעיה בעיבוד המשימה, נסה שוב.' };
 }
 
 module.exports = { runTaskAgent, classifyCategory, CATEGORY_META };

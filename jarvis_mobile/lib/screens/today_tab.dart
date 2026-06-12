@@ -4,7 +4,6 @@ import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
-import '../widgets/animated_list_item.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
 import '../widgets/markdown_lite.dart';
@@ -27,27 +26,23 @@ class TodayTab extends StatefulWidget {
 class _TodayTabState extends State<TodayTab> {
   Map<String, dynamic>? _stats;
   List<Map<String, dynamic>> _items = [];
-  Map<String, dynamic>? _todayMsg;
   bool _loading = true;
   String? _error;
   final Set<String> _completing = {};
 
-  // ── Weekly briefing ──
   String? _briefing;
   bool _briefingLoading = false;
+  bool _briefingExpanded = true;
 
   @override
   void initState() {
     super.initState();
     _loadCache();
     _fetch();
-    // Briefing is started after _fetch() completes so _items is populated
-    // when _fetchBriefing() builds the prompt.
   }
 
-  // Cache key includes the focus so changing the focus invalidates the cache.
   String get _briefingCacheKey =>
-      'today_briefing::${widget.settings.todayBriefingFocus.trim()}';
+      'today_briefing_v2::${widget.settings.todayBriefingFocus.trim()}';
 
   Future<void> _loadBriefingCache() async {
     try {
@@ -56,14 +51,16 @@ class _TodayTabState extends State<TodayTab> {
       final tsStr = prefs.getString('${_briefingCacheKey}_ts');
       if (text != null && tsStr != null) {
         final ts = DateTime.tryParse(tsStr);
-        if (ts != null && DateTime.now().difference(ts).inDays < 7) {
+        // Daily refresh — if older than 20 hours, regenerate
+        if (ts != null && DateTime.now().difference(ts).inHours < 20) {
           if (mounted) setState(() => _briefing = text);
           return;
         }
       }
-      // No fresh cache → generate one.
       _fetchBriefing();
-    } catch (_) {}
+    } catch (_) {
+      _fetchBriefing();
+    }
   }
 
   Future<void> _fetchBriefing() async {
@@ -77,17 +74,15 @@ class _TodayTabState extends State<TodayTab> {
           .join(', ');
       final focus = widget.settings.todayBriefingFocus.trim();
       final focusLine = focus.isEmpty ? '' : ' שים דגש על: $focus.';
-      // Avoid Hebrew task/reminder root words ("משימ", "תזכור") in the prompt
-      // prefix — they trigger the keyword router on older server builds.
       final message =
-          'בריפינג שבועי קצר בעברית. הנושאים לשבוע: ${titles.isEmpty ? 'לא נמצאו פריטים פתוחים' : titles}. '
-          'תן סיכום ממוקד של מה חשוב השבוע ב-3 נקודות מקסימום.$focusLine';
+          'בריפינג יומי קצר בעברית. הנושאים להיום: ${titles.isEmpty ? 'לא נמצאו פריטים פתוחים' : titles}. '
+          'תן סיכום ממוקד של מה חשוב היום ב-3 נקודות מקסימום.$focusLine';
       final result = await ApiService(widget.settings)
           .askJarvis(message, widget.settings, intent: 'chat');
       final raw = ((result['answer'] as String?) ?? '').trim();
-      final looksLikeError = (raw.contains('בעיה') && raw.contains('נסה שוב')) ||
-          raw.contains('לא הצלחתי') ||
-          raw.contains('לא ניתן');
+      final looksLikeError = raw.contains('לא הצלחתי') ||
+          raw.contains('לא ניתן') ||
+          (raw.contains('בעיה') && raw.contains('נסה שוב'));
       final text = (raw.isNotEmpty && !looksLikeError) ? raw : '';
       if (text.isNotEmpty) {
         final prefs = await SharedPreferences.getInstance();
@@ -118,8 +113,8 @@ class _TodayTabState extends State<TodayTab> {
     if (overdue > 0) lines.add('• ⚠️ $overdue פריטים עברו את המועד — טפל בהם ראשון');
     if (today > 0) lines.add('• יש לך $today פריטים להיום — בחר 3 עדיפויות ועמוד בהן');
     if (lines.isEmpty) {
-      lines.add('• הרשימה נקייה — זמן טוב לתכנן את השבוע הבא');
-      lines.add('• הגדר יעד ברור אחד לשבוע זה');
+      lines.add('• הרשימה נקייה — זמן טוב לתכנן');
+      lines.add('• הגדר יעד ברור אחד ליום זה');
     }
     lines.add('• קבע זמן קבוע לכל פריט ועמוד בו');
     return lines.join('\n');
@@ -149,6 +144,8 @@ class _TodayTabState extends State<TodayTab> {
             style: TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
         backgroundColor: JC.surfaceAlt,
         duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ));
     } catch (_) {
       if (mounted) setState(() => _completing.remove(id));
@@ -162,19 +159,16 @@ class _TodayTabState extends State<TodayTab> {
       final results = await Future.wait([
         api.getStats(),
         api.getTodayItems(),
-        api.getTodayMessage(),
       ]);
       if (!mounted) return;
       setState(() {
-        _stats    = results[0] as Map<String, dynamic>;
-        _items    = List<Map<String, dynamic>>.from(results[1] as List);
-        _todayMsg = results[2] as Map<String, dynamic>;
-        _loading  = false;
-        _error    = null;
+        _stats = results[0] as Map<String, dynamic>;
+        _items = List<Map<String, dynamic>>.from(results[1] as List);
+        _loading = false;
+        _error = null;
       });
       CacheService.saveList('today_items', _items);
-      // Start briefing now that _items is populated.
-      if (widget.settings.todayBriefingEnabled && _briefing == null) {
+      if (widget.settings.todayBriefingEnabled) {
         _loadBriefingCache();
       }
     } catch (e) {
@@ -206,73 +200,209 @@ class _TodayTabState extends State<TodayTab> {
     final overdue   = _section('overdue');
     final today     = _section('today');
     final reminders = _section('reminder');
-    final isEmpty   = overdue.isEmpty && today.isEmpty && reminders.isEmpty;
+    final allItems  = [...overdue, ...today];
+    final focusTasks = allItems
+        .where((i) => i['type'] != 'reminder')
+        .take(3)
+        .toList();
+    final remainingTasks = allItems
+        .where((i) => i['type'] != 'reminder')
+        .skip(3)
+        .toList();
+    final isEmpty = overdue.isEmpty && today.isEmpty && reminders.isEmpty;
 
     return RefreshIndicator(
       color: JC.blue400,
       backgroundColor: JC.surfaceAlt,
       onRefresh: _fetch,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 96),
         children: [
-          _JarvisMessageCard(data: _todayMsg, loading: _stats == null),
-          const SizedBox(height: 10),
-          _StatsHeader(
-            stats: _stats,
-            onGoToTasks: widget.onGoToTasks,
-            onGoToReminders: widget.onGoToReminders,
-          ),
-          const SizedBox(height: 16),
-          if (widget.settings.todayBriefingEnabled) ...[
-            _WeeklyBriefingCard(
-              text: _briefing,
-              loading: _briefingLoading,
-              onRefresh: _fetchBriefing,
+          _TodayHeroHeader(stats: _stats),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // AI Briefing — first content block
+                if (widget.settings.todayBriefingEnabled) ...[
+                  const SizedBox(height: 14),
+                  _BriefingCard(
+                    text: _briefing,
+                    loading: _briefingLoading,
+                    expanded: _briefingExpanded,
+                    onToggle: () =>
+                        setState(() => _briefingExpanded = !_briefingExpanded),
+                    onRefresh: () {
+                      setState(() => _briefing = null);
+                      _fetchBriefing();
+                    },
+                  ),
+                ],
+                // Focus tasks — top 3 as prominent cards
+                if (focusTasks.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  _SectionLabel(
+                    label: 'פוקוס',
+                    count: focusTasks.length,
+                    icon: Icons.bolt_rounded,
+                    color: JC.amber400,
+                  ),
+                  const SizedBox(height: 8),
+                  ...focusTasks.map((item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _FocusTaskCard(
+                      item: item,
+                      isCompleting: _completing.contains(item['id']?.toString() ?? ''),
+                      onComplete: () => _completeTask(item),
+                    ),
+                  )),
+                ],
+                // Remaining tasks
+                if (remainingTasks.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _SectionLabel(
+                    label: 'יתר המשימות',
+                    count: remainingTasks.length,
+                    icon: Icons.list_alt_rounded,
+                    color: JC.blue400,
+                    onTap: widget.onGoToTasks,
+                  ),
+                  const SizedBox(height: 8),
+                  ...remainingTasks.map((item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _TodayItemTile(
+                      item: item,
+                      isCompleting: _completing.contains(item['id']?.toString() ?? ''),
+                      onComplete: () => _completeTask(item),
+                    ),
+                  )),
+                ],
+                // Reminders
+                if (reminders.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _SectionLabel(
+                    label: 'תזכורות',
+                    count: reminders.length,
+                    icon: Icons.notifications_outlined,
+                    color: JC.amber400,
+                    onTap: widget.onGoToReminders,
+                  ),
+                  const SizedBox(height: 8),
+                  ...reminders.map((item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _TodayItemTile(
+                      item: item,
+                      isCompleting: false,
+                      onComplete: null,
+                    ),
+                  )),
+                ],
+                if (isEmpty) ...[
+                  const SizedBox(height: 32),
+                  EmptyState(
+                    icon: Icons.check_circle_outline_rounded,
+                    title: 'הכל נקי להיום! 🌟',
+                    subtitle: 'אין משימות פתוחות — כל הכבוד!',
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(height: 16),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Hero header ──────────────────────────────────────────────────────────────
+
+class _TodayHeroHeader extends StatelessWidget {
+  final Map<String, dynamic>? stats;
+  const _TodayHeroHeader({required this.stats});
+
+  static const _days    = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+  static const _months  = ['', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+      'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'בוקר טוב ☀️';
+    if (hour < 17) return 'צהריים טובים 🌤️';
+    return 'ערב טוב 🌙';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final tasks = stats?['tasks'] as Map<String, dynamic>? ?? {};
+    final pending = (tasks['pending'] as num?)?.toInt() ?? 0;
+    final done    = (tasks['done']    as num?)?.toInt() ?? 0;
+    final remindersData = stats?['reminders'] as Map<String, dynamic>? ?? {};
+    final active  = (remindersData['active'] as num?)?.toInt() ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            JC.blue500.withOpacity(0.18),
+            JC.indigo500.withOpacity(0.10),
+            JC.bg,
           ],
-          if (isEmpty)
-            EmptyState(
-              icon: Icons.check_circle_outline_rounded,
-              title: 'הכל נקי להיום! 🌟',
-              subtitle: 'אין משימות פתוחות — כל הכבוד!',
-            )
-          else ...[
-            if (overdue.isNotEmpty) ...[
-              _SectionHeader(label: '⚠️ מאוחרות (${overdue.length})'),
-              ...overdue.asMap().entries.map((e) => AnimatedListItem(
-                index: e.key,
-                child: _TodayItemTile(
-  item: e.value,
-  isCompleting: _completing.contains(e.value['id']?.toString() ?? ''),
-  onComplete: () => _completeTask(e.value),
-),
-              )),
-              const SizedBox(height: 8),
-            ],
-            if (today.isNotEmpty) ...[
-              _SectionHeader(label: '📅 להיום (${today.length})'),
-              ...today.asMap().entries.map((e) => AnimatedListItem(
-                index: e.key,
-                child: _TodayItemTile(
-  item: e.value,
-  isCompleting: _completing.contains(e.value['id']?.toString() ?? ''),
-  onComplete: () => _completeTask(e.value),
-),
-              )),
-              const SizedBox(height: 8),
-            ],
-            if (reminders.isNotEmpty) ...[
-              _SectionHeader(label: '🔔 תזכורות (${reminders.length})'),
-              ...reminders.asMap().entries.map((e) => AnimatedListItem(
-                index: e.key,
-                child: _TodayItemTile(
-  item: e.value,
-  isCompleting: _completing.contains(e.value['id']?.toString() ?? ''),
-  onComplete: () => _completeTask(e.value),
-),
-              )),
-            ],
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          stops: const [0.0, 0.5, 1.0],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            _greeting,
+            textDirection: TextDirection.rtl,
+            style: TextStyle(
+              color: JC.textSecondary,
+              fontSize: 14,
+              fontFamily: 'Heebo',
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'יום ${_days[now.weekday % 7]}, ${now.day} ב${_months[now.month]}',
+            textDirection: TextDirection.rtl,
+            style: TextStyle(
+              color: JC.textPrimary,
+              fontSize: 22,
+              fontFamily: 'Heebo',
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (stats != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                _StatChip(
+                  value: '$pending',
+                  label: 'משימות',
+                  color: pending > 0 ? JC.blue400 : JC.textMuted,
+                ),
+                const SizedBox(width: 8),
+                _StatChip(
+                  value: '$done',
+                  label: 'הושלמו',
+                  color: done > 0 ? JC.green500 : JC.textMuted,
+                ),
+                const SizedBox(width: 8),
+                _StatChip(
+                  value: '$active',
+                  label: 'תזכורות',
+                  color: active > 0 ? JC.amber400 : JC.textMuted,
+                ),
+              ],
+            ),
           ],
         ],
       ),
@@ -280,201 +410,198 @@ class _TodayTabState extends State<TodayTab> {
   }
 }
 
-// ─── Jarvis message card ──────────────────────────────────────────────────────
-
-class _JarvisMessageCard extends StatelessWidget {
-  final Map<String, dynamic>? data;
-  final bool loading;
-  const _JarvisMessageCard({required this.data, required this.loading});
+class _StatChip extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color color;
+  const _StatChip({required this.value, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1E1B4B), Color(0xFF0F1929)],
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: JC.indigo500.withValues(alpha: 0.3), width: 0.8),
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.25), width: 0.8),
       ),
-      child: loading || data == null
-          ? Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Container(height: 14, width: 200,
-                          decoration: BoxDecoration(color: JC.border, borderRadius: BorderRadius.circular(6))),
-                      const SizedBox(height: 6),
-                      Container(height: 12, width: 140,
-                          decoration: BoxDecoration(color: JC.border, borderRadius: BorderRadius.circular(6))),
-                    ],
-                  ),
-                ),
-              ],
-            )
-          : Row(
-              textDirection: TextDirection.rtl,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  data!['emoji']?.toString() ?? '☀️',
-                  style: const TextStyle(fontSize: 32),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    data!['message']?.toString() ?? '',
-                    textDirection: TextDirection.rtl,
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 14,
-                      fontFamily: 'Heebo',
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(value, style: TextStyle(
+              color: color, fontFamily: 'Heebo',
+              fontSize: 13, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(
+              color: color.withOpacity(0.8), fontFamily: 'Heebo', fontSize: 11)),
+        ],
+      ),
     );
   }
 }
 
-// ─── Stats header ─────────────────────────────────────────────────────────────
+// ─── Section label ────────────────────────────────────────────────────────────
 
-class _StatsHeader extends StatelessWidget {
-  final Map<String, dynamic>? stats;
-  final VoidCallback? onGoToTasks;
-  final VoidCallback? onGoToReminders;
-  const _StatsHeader(
-      {required this.stats, this.onGoToTasks, this.onGoToReminders});
-
-  @override
-  Widget build(BuildContext context) {
-    if (stats == null) {
-      return Row(
-        children: List.generate(
-            3,
-            (_) => Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    height: 64,
-                    decoration: BoxDecoration(
-                        color: JC.surfaceAlt,
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                )),
-      );
-    }
-
-    final tasks     = stats!['tasks']     as Map<String, dynamic>? ?? {};
-    final reminders = stats!['reminders'] as Map<String, dynamic>? ?? {};
-    final total   = (tasks['total']   as num?)?.toInt() ?? 0;
-    final done    = (tasks['done']    as num?)?.toInt() ?? 0;
-    final pending = (tasks['pending'] as num?)?.toInt() ?? 0;
-    final active  = (reminders['active'] as num?)?.toInt() ?? 0;
-    final pct     = total > 0 ? (done / total * 100).round() : 0;
-
-    return Row(
-      textDirection: TextDirection.rtl,
-      children: [
-        _StatCard(
-          value: '$pct%',
-          label: 'הושלם',
-          color: JC.blue400,
-          onTap: onGoToTasks,
-          icon: Icons.check_circle_outline_rounded,
-        ),
-        _StatCard(
-          value: '$pending',
-          label: 'ממתינות',
-          color: JC.amber400,
-          onTap: onGoToTasks,
-          icon: Icons.list_alt_rounded,
-        ),
-        _StatCard(
-          value: '$active',
-          label: 'תזכורות',
-          color: JC.textSecondary,
-          onTap: onGoToReminders,
-          icon: Icons.notifications_outlined,
-        ),
-      ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String value;
+class _SectionLabel extends StatelessWidget {
   final String label;
+  final int count;
+  final IconData icon;
   final Color color;
   final VoidCallback? onTap;
-  final IconData? icon;
-  const _StatCard(
-      {required this.value,
-      required this.label,
-      required this.color,
-      this.onTap,
-      this.icon});
+  const _SectionLabel({
+    required this.label,
+    required this.count,
+    required this.icon,
+    required this.color,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: JC.surfaceAlt,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: onTap != null
-                    ? color.withValues(alpha: 0.25)
-                    : JC.border,
-                width: 0.8),
-            boxShadow: onTap != null
-                ? [
-                    BoxShadow(
-                        color: color.withOpacity(0.07),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2))
-                  ]
-                : null,
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        textDirection: TextDirection.rtl,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(
+              color: JC.textSecondary, fontFamily: 'Heebo',
+              fontSize: 12, fontWeight: FontWeight.w700,
+              letterSpacing: 0.4)),
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('$count', style: TextStyle(
+                color: color, fontSize: 10,
+                fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
           ),
-          child: Column(
-            children: [
-              Text(value,
-                  style: TextStyle(
-                      color: color,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      fontFamily: 'Heebo')),
-              const SizedBox(height: 2),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
+          if (onTap != null) ...[
+            const Spacer(),
+            Icon(Icons.chevron_left_rounded, size: 16, color: JC.textMuted),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── AI briefing card ─────────────────────────────────────────────────────────
+
+class _BriefingCard extends StatelessWidget {
+  final String? text;
+  final bool loading;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final VoidCallback onRefresh;
+
+  const _BriefingCard({
+    required this.text,
+    required this.loading,
+    required this.expanded,
+    required this.onToggle,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: JC.surfaceAlt,
+          border: Border(
+            right: BorderSide(color: JC.blue500, width: 3),
+            top: BorderSide(color: JC.border.withOpacity(0.5), width: 0.8),
+            left: BorderSide(color: JC.border.withOpacity(0.5), width: 0.8),
+            bottom: BorderSide(color: JC.border.withOpacity(0.5), width: 0.8),
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 10, color: JC.textMuted),
-                    const SizedBox(width: 3),
-                  ],
-                  Text(label,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: JC.textMuted,
-                          fontSize: 10,
-                          fontFamily: 'Heebo')),
+                  Row(
+                    textDirection: TextDirection.rtl,
+                    children: [
+                      Icon(Icons.auto_awesome_rounded, size: 16, color: JC.blue400),
+                      const SizedBox(width: 7),
+                      Text(
+                        'סיכום יומי',
+                        style: TextStyle(
+                          color: JC.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Heebo',
+                        ),
+                      ),
+                      const Spacer(),
+                      if (loading)
+                        SizedBox(
+                          width: 14, height: 14,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 1.8, color: JC.blue400),
+                        )
+                      else
+                        GestureDetector(
+                          onTap: onRefresh,
+                          child: Icon(Icons.refresh_rounded, size: 16, color: JC.textMuted),
+                        ),
+                      const SizedBox(width: 8),
+                      AnimatedRotation(
+                        turns: expanded ? 0 : 0.5,
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(Icons.expand_less_rounded, size: 18, color: JC.textMuted),
+                      ),
+                    ],
+                  ),
+                  AnimatedCrossFade(
+                    firstChild: const SizedBox.shrink(),
+                    secondChild: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 10),
+                        if (text != null && text!.trim().isNotEmpty)
+                          MarkdownLite(
+                            text: text!,
+                            textDirection: TextDirection.rtl,
+                            baseStyle: TextStyle(
+                              color: JC.textSecondary,
+                              fontSize: 13,
+                              height: 1.65,
+                              fontFamily: 'Heebo',
+                            ),
+                          )
+                        else
+                          Text(
+                            loading ? 'מכין סיכום יומי...' : 'לחץ ריענון לטעינת הסיכום',
+                            textDirection: TextDirection.rtl,
+                            style: TextStyle(
+                              color: JC.textSecondary,
+                              fontSize: 13,
+                              fontFamily: 'Heebo',
+                            ),
+                          ),
+                      ],
+                    ),
+                    crossFadeState: expanded
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                    duration: const Duration(milliseconds: 220),
+                  ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -482,32 +609,113 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-// ─── Section header ───────────────────────────────────────────────────────────
+// ─── Focus task card (prominent) ─────────────────────────────────────────────
 
-class _SectionHeader extends StatelessWidget {
-  final String label;
-  const _SectionHeader({required this.label});
+class _FocusTaskCard extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final bool isCompleting;
+  final VoidCallback? onComplete;
+  const _FocusTaskCard({
+    required this.item,
+    this.isCompleting = false,
+    this.onComplete,
+  });
+
+  Color get _priorityColor => switch (item['priority']?.toString()) {
+    'high' => JC.cancelRed,
+    'low'  => JC.green500,
+    _      => JC.amber400,
+  };
+
+  String _formatTime(dynamic iso) {
+    if (iso == null) return '';
+    try {
+      final dt = DateTime.parse(iso.toString()).toLocal();
+      final now = DateTime.now();
+      final day = DateTime(dt.year, dt.month, dt.day);
+      final today = DateTime(now.year, now.month, now.day);
+      final hhmm = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      if (day == today) return 'היום $hhmm';
+      if (day == today.subtract(const Duration(days: 1))) return 'אתמול';
+      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
+    } catch (_) { return ''; }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        label,
+    final isOverdue = item['section'] == 'overdue';
+    final timeLabel = _formatTime(item['time']);
+    final pColor = isOverdue ? JC.cancelRed : _priorityColor;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: pColor.withOpacity(0.4), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: pColor.withOpacity(0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
         textDirection: TextDirection.rtl,
-        style: TextStyle(
-          color: JC.textSecondary,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          fontFamily: 'Heebo',
-          letterSpacing: 0.3,
-        ),
+        children: [
+          GestureDetector(
+            onTap: isCompleting ? null : onComplete,
+            child: SizedBox(
+              width: 26,
+              height: 26,
+              child: isCompleting
+                  ? CircularProgressIndicator(strokeWidth: 2.5, color: JC.green500)
+                  : Icon(Icons.radio_button_unchecked_rounded,
+                      color: pColor, size: 24),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  item['title']?.toString() ?? '',
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                    color: JC.textPrimary,
+                    fontSize: 15,
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (timeLabel.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(timeLabel, style: TextStyle(
+                    color: isOverdue ? JC.cancelRed : JC.textMuted,
+                    fontSize: 11, fontFamily: 'Heebo',
+                    fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
+                  )),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 10, height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: pColor,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ─── Today item tile ──────────────────────────────────────────────────────────
+// ─── Regular today item tile ──────────────────────────────────────────────────
 
 class _TodayItemTile extends StatelessWidget {
   final Map<String, dynamic> item;
@@ -528,66 +736,50 @@ class _TodayItemTile extends StatelessWidget {
   String _formatTime(dynamic iso) {
     if (iso == null) return '';
     try {
-      final dt    = DateTime.parse(iso.toString()).toLocal();
-      final now   = DateTime.now();
-      final day   = DateTime(dt.year, dt.month, dt.day);
+      final dt = DateTime.parse(iso.toString()).toLocal();
+      final now = DateTime.now();
+      final day = DateTime(dt.year, dt.month, dt.day);
       final today = DateTime(now.year, now.month, now.day);
-      final hhmm  = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      final hhmm = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
       if (day == today) return 'היום $hhmm';
       if (day == today.subtract(const Duration(days: 1))) return 'אתמול';
-      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')} $hhmm';
-    } catch (_) {
-      return '';
-    }
+      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
+    } catch (_) { return ''; }
   }
 
   @override
   Widget build(BuildContext context) {
     final isReminder = item['type'] == 'reminder';
-    final hasId      = item['id'] != null;
-    final timeLabel  = _formatTime(item['time']);
-    final isOverdue  = item['section'] == 'overdue';
-    final canComplete = !isReminder && hasId;
+    final canComplete = !isReminder && item['id'] != null && onComplete != null;
+    final timeLabel = _formatTime(item['time']);
+    final isOverdue = item['section'] == 'overdue';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
         color: JC.surfaceAlt,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isOverdue ? JC.cancelRed.withValues(alpha: 0.35) : JC.border,
+          color: isOverdue ? JC.cancelRed.withOpacity(0.3) : JC.border,
           width: 0.8,
         ),
       ),
       child: Row(
         textDirection: TextDirection.rtl,
         children: [
-          // Leading icon / complete button
           if (canComplete)
             GestureDetector(
               onTap: isCompleting ? null : onComplete,
               child: SizedBox(
-                width: 24,
-                height: 24,
+                width: 22, height: 22,
                 child: isCompleting
-                    ? CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: JC.green500,
-                      )
-                    : Icon(
-                        Icons.radio_button_unchecked_rounded,
-                        color: _priorityColor,
-                        size: 22,
-                      ),
+                    ? CircularProgressIndicator(strokeWidth: 2.2, color: JC.green500)
+                    : Icon(Icons.radio_button_unchecked_rounded,
+                        color: _priorityColor, size: 20),
               ),
             )
           else
-            Icon(
-              Icons.notifications_outlined,
-              color: JC.amber400,
-              size: 20,
-            ),
+            Icon(Icons.notifications_outlined, color: JC.amber400, size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -597,29 +789,21 @@ class _TodayItemTile extends StatelessWidget {
                   item['title']?.toString() ?? '',
                   textDirection: TextDirection.rtl,
                   style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 14,
-                    fontFamily: 'Heebo',
-                  ),
+                    color: JC.textPrimary, fontSize: 14, fontFamily: 'Heebo'),
                 ),
                 if (timeLabel.isNotEmpty)
-                  Text(
-                    timeLabel,
-                    style: TextStyle(
-                      color: isOverdue ? JC.cancelRed : JC.textMuted,
-                      fontSize: 11,
-                      fontFamily: 'Heebo',
-                      fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
+                  Text(timeLabel, style: TextStyle(
+                    color: isOverdue ? JC.cancelRed : JC.textMuted,
+                    fontSize: 11, fontFamily: 'Heebo',
+                    fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
+                  )),
               ],
             ),
           ),
           if (canComplete) ...[
             const SizedBox(width: 6),
             Container(
-              width: 8,
-              height: 8,
+              width: 7, height: 7,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _priorityColor,
@@ -627,94 +811,6 @@ class _TodayItemTile extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-// ─── Weekly briefing card ───────────────────────────────────────────────────────
-
-class _WeeklyBriefingCard extends StatelessWidget {
-  final String? text;
-  final bool loading;
-  final VoidCallback onRefresh;
-
-  const _WeeklyBriefingCard({
-    required this.text,
-    required this.loading,
-    required this.onRefresh,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // ClipRRect owns the border-radius; the inner Container uses a non-uniform
-    // Border without a radius — mixing the two in BoxDecoration causes Flutter
-    // to skip painting the decoration entirely (and sometimes the child too).
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: JC.surfaceAlt,
-          border: Border(
-            right: BorderSide(color: JC.blue500, width: 3),
-            top: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
-            left: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
-            bottom: BorderSide(color: JC.border.withValues(alpha: 0.7), width: 0.8),
-          ),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                Icon(Icons.insights_rounded, size: 18, color: JC.blue400),
-                const SizedBox(width: 8),
-                Text(
-                  'בריפינג שבועי',
-                  style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Heebo',
-                  ),
-                ),
-                const Spacer(),
-                if (loading)
-                  const SizedBox(
-                      width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                else
-                  GestureDetector(
-                    onTap: onRefresh,
-                    child: Icon(Icons.refresh_rounded, size: 18, color: JC.textMuted),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (text != null && text!.trim().isNotEmpty)
-              MarkdownLite(
-                text: text!,
-                textDirection: TextDirection.rtl,
-                baseStyle: TextStyle(
-                  color: JC.textSecondary,
-                  fontSize: 14,
-                  height: 1.6,
-                  fontFamily: 'Heebo',
-                ),
-              )
-            else
-              Text(
-                loading ? 'מכין בריפינג שבועי...' : 'לחץ על ריענון לטעינת הבריפינג.',
-                textDirection: TextDirection.rtl,
-                style: TextStyle(
-                  color: JC.textSecondary,
-                  fontSize: 13,
-                  fontFamily: 'Heebo',
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }

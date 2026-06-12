@@ -3051,7 +3051,7 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _kGold,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                       elevation: 0,
                     ),

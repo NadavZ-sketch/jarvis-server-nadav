@@ -877,9 +877,9 @@ ${rationale.isNotEmpty ? '\nרציונל:\n$rationale' : ''}
 4. מה לבדוק לאחר הפיתוח''';
   }
 
-  Future<void> _sendProposalAsTask(Map<String, dynamic> p) async {
+  Future<void> _sendProposalAsTask(Map<String, dynamic> p, {String? refinedPrompt}) async {
     final defaultTitle = p['title']?.toString() ?? 'הצעת פיתוח';
-    final prompt = _smartProposalDevPrompt(p);
+    final prompt = refinedPrompt ?? _smartProposalDevPrompt(p);
     final titleCtrl = TextEditingController(text: defaultTitle);
     if (!mounted) return;
     final confirmed = await showDialog<bool>(
@@ -942,6 +942,23 @@ ${rationale.isNotEmpty ? '\nרציונל:\n$rationale' : ''}
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('שגיאת חיבור', style: TextStyle(fontFamily: 'Heebo'))));
     }
+  }
+
+  // Open the 2-step clarify sheet for a smart proposal.
+  // mode = 'claude' | 'task'
+  void _showProposalClarifyFlow(Map<String, dynamic> p, {required String mode}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ProposalClarifySheet(
+        proposal: p,
+        mode: mode,
+        base: _base,
+        onSendToClaud: (prompt) => _showSendToClaudeMenu(context, prompt, title: p['title']?.toString() ?? ''),
+        onSendAsTask: _sendProposalAsTask,
+      ),
+    );
   }
 
   // ── Feature CRUD ─────────────────────────────────────────────────────────
@@ -2900,9 +2917,6 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
     final category       = p['category']?.toString() ?? 'improvement';
     final priorityScore  = (p['priority_score'] as num?)?.toInt() ?? 5;
 
-    _proposalFeedbackCtrl.putIfAbsent(id, () => TextEditingController());
-    final feedCtrl = _proposalFeedbackCtrl[id]!;
-
     final (sourceBadge, sourceColor) = switch (source) {
       'survey' => ('🗣️ סקר',       const Color(0xFF7C3AED)),
       'both'   => ('⭐ סקר+שימוש', const Color(0xFFEA580C)),
@@ -3024,31 +3038,15 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
             const Divider(height: 1),
             const SizedBox(height: 8),
 
-            // Feedback field (optional)
-            TextField(
-              controller: feedCtrl,
-              textDirection: TextDirection.rtl,
-              style: const TextStyle(fontFamily: 'Heebo', fontSize: 11.5),
-              decoration: InputDecoration(
-                hintText: 'הוסף הערה אופציונלית לפני האישור...',
-                hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _kGold, width: 1.0)),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Action buttons — row 1: primary actions
+            // Action buttons
             Row(
               textDirection: TextDirection.rtl,
               children: [
                 Expanded(
+                  flex: 3,
                   child: ElevatedButton.icon(
-                    onPressed: () => _approveSmartProposal(p, feedback: feedCtrl.text.trim().isEmpty ? null : feedCtrl.text.trim()),
-                    icon: const Icon(Icons.check, size: 13),
+                    onPressed: () => _showProposalClarifyFlow(p, mode: 'claude'),
+                    icon: const Icon(Icons.auto_awesome, size: 13),
                     label: const Text('הוסף לפיתוח', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 11.5)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _kGold,
@@ -3061,49 +3059,30 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
                 ),
                 const SizedBox(width: 6),
                 Expanded(
+                  flex: 2,
                   child: OutlinedButton.icon(
-                    onPressed: () => _sendProposalAsTask(p),
+                    onPressed: () => _showProposalClarifyFlow(p, mode: 'task'),
                     icon: const Icon(Icons.task_alt_outlined, size: 13),
-                    label: const Text('שלח כמשימה', style: TextStyle(fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
+                    label: const Text('משימה', style: TextStyle(fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _kGold,
                       side: BorderSide(color: _kGold.withOpacity(0.6), width: 0.9),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            // Row 2: secondary actions
-            Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showSendToClaudeMenu(context, _smartProposalDevPrompt(p), title: title),
-                    icon: const Icon(Icons.open_in_new, size: 12),
-                    label: const Text('שלח לקלוד', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: JC.textSecondary,
-                      side: BorderSide(color: JC.border, width: 0.7),
-                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      padding: const EdgeInsets.symmetric(vertical: 9),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                     ),
                   ),
                 ),
                 const SizedBox(width: 6),
-                OutlinedButton.icon(
+                OutlinedButton(
                   onPressed: () => _dismissSmartProposal(id),
-                  icon: const Icon(Icons.thumb_down_outlined, size: 12),
-                  label: const Text('לא רלוונטי', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: JC.textMuted,
                     side: BorderSide(color: JC.border, width: 0.7),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    minimumSize: Size.zero,
                   ),
+                  child: const Icon(Icons.thumb_down_outlined, size: 14),
                 ),
               ],
             ),
@@ -5325,6 +5304,462 @@ ${callCount > 0 ? 'שימוש: $callCount קריאות, ממוצע ${avgMs?.toIn
           fontFamily: 'Heebo', letterSpacing: 0.8)),
     ]),
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Smart-proposal clarify + prompt-edit bottom sheet (2-step)
+// ─────────────────────────────────────────────────────────────────────────────
+class _ProposalClarifySheet extends StatefulWidget {
+  final Map<String, dynamic> proposal;
+  final String mode; // 'claude' | 'task'
+  final String base;
+  final void Function(String prompt) onSendToClaud;
+  final Future<void> Function(Map<String, dynamic> p, {String? refinedPrompt}) onSendAsTask;
+
+  const _ProposalClarifySheet({
+    required this.proposal,
+    required this.mode,
+    required this.base,
+    required this.onSendToClaud,
+    required this.onSendAsTask,
+  });
+
+  @override
+  State<_ProposalClarifySheet> createState() => _ProposalClarifySheetState();
+}
+
+class _ProposalClarifySheetState extends State<_ProposalClarifySheet> {
+  static const Color _kGold    = Color(0xFFC9A84C);
+  static const Color _kGoldDim = Color(0xFF8B7035);
+
+  int _step = 0; // 0 = loading questions, 1 = questions, 2 = editing prompt
+  List<Map<String, dynamic>> _questions = [];
+  // answers: questionId → answer string
+  final Map<String, String> _answers = {};
+  // free text per question (shown alongside chips)
+  final Map<String, TextEditingController> _freeText = {};
+  bool _loadingQuestions = true;
+  String? _loadError;
+
+  bool _generatingPrompt = false;
+  late TextEditingController _promptCtrl;
+  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _promptCtrl = TextEditingController();
+    _loadQuestions();
+  }
+
+  @override
+  void dispose() {
+    _promptCtrl.dispose();
+    for (final c in _freeText.values) c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadQuestions() async {
+    setState(() { _loadingQuestions = true; _loadError = null; });
+    try {
+      final p = widget.proposal;
+      final res = await http.post(
+        Uri.parse('${widget.base}/dashboard/smart-proposals/clarify'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'title': p['title'] ?? '',
+          'description': p['description'] ?? '',
+          'category': p['category'] ?? 'improvement',
+          'rationale': p['rationale'] ?? '',
+        }),
+      ).timeout(const Duration(seconds: 20));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final d = jsonDecode(res.body) as Map<String, dynamic>;
+        final qs = List<Map<String, dynamic>>.from(d['questions'] ?? []);
+        if (qs.isNotEmpty) {
+          setState(() {
+            _questions = qs;
+            _step = 1;
+            _loadingQuestions = false;
+          });
+          for (final q in qs) {
+            _freeText.putIfAbsent(q['id'] as String, () => TextEditingController());
+          }
+          return;
+        }
+      }
+      // Fallback: build questions locally from proposal data
+      _applyLocalQuestions();
+    } catch (_) {
+      if (mounted) _applyLocalQuestions();
+    }
+  }
+
+  void _applyLocalQuestions() {
+    if (!mounted) return;
+    final category = widget.proposal['category']?.toString() ?? 'improvement';
+    final qs = _localQuestions(category);
+    setState(() {
+      _questions = qs;
+      _step = 1;
+      _loadingQuestions = false;
+    });
+    for (final q in qs) {
+      _freeText.putIfAbsent(q['id'] as String, () => TextEditingController());
+    }
+  }
+
+  List<Map<String, dynamic>> _localQuestions(String category) {
+    final base = [
+      {'id': 'q1', 'question': 'מה הסדר עדיפויות של הפיתוח הזה?', 'chips': ['דחוף — נדרש עכשיו', 'בינוני — בשבועות הקרובים', 'נמוך — יום אחד']},
+      {'id': 'q2', 'question': 'באיזה חלק של המערכת מתמקד השינוי?', 'chips': ['Flutter (אפליקציה)', 'Node.js (שרת)', 'שניהם']},
+    ];
+    final byCategory = {
+      'feature':     {'id': 'q3', 'question': "מי המשתמש העיקרי של הפיצ'ר?", 'chips': ['המשתמש היומיומי', 'מנהל/אדמין', 'שניהם']},
+      'bug_fix':     {'id': 'q3', 'question': 'כמה דחוף תיקון הבאג?', 'chips': ['קריטי — חוסם שימוש', 'מציק אך לא חוסם', 'קוסמטי בלבד']},
+      'ux':          {'id': 'q3', 'question': 'מה ה-friction העיקרי לפתרון?', 'chips': ['יותר מהיר', 'יותר ברור', 'יותר אינטואיטיבי']},
+      'performance': {'id': 'q3', 'question': 'מה מדד ההצלחה?', 'chips': ['טעינה <1 שניה', 'פחות קריאות API', 'פחות סוללה/זיכרון']},
+      'improvement': {'id': 'q3', 'question': 'מה ההשפעה הצפויה?', 'chips': ['חוויה טובה יותר', 'פחות שגיאות', 'יותר תובנות']},
+    };
+    return [...base, byCategory[category] ?? byCategory['improvement']!];
+  }
+
+  Future<void> _generatePrompt({bool skipQuestions = false}) async {
+    setState(() { _generatingPrompt = true; _step = 2; _loadingQuestions = false; });
+    try {
+      final p = widget.proposal;
+      final answersList = skipQuestions
+          ? <Map<String, dynamic>>[]
+          : _questions.map((q) {
+              final qid = q['id'] as String;
+              final free = _freeText[qid]?.text.trim() ?? '';
+              final sel  = _answers[qid] ?? '';
+              final ans  = free.isNotEmpty ? free : sel;
+              return {'question': q['question'], 'answer': ans};
+            }).where((a) => (a['answer'] as String).isNotEmpty).toList();
+
+      final res = await http.post(
+        Uri.parse('${widget.base}/dashboard/smart-proposals/refine-prompt'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'title': p['title'] ?? '',
+          'description': p['description'] ?? '',
+          'category': p['category'] ?? 'improvement',
+          'rationale': p['rationale'] ?? '',
+          'answers': answersList,
+        }),
+      ).timeout(const Duration(seconds: 25));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final d = jsonDecode(res.body) as Map<String, dynamic>;
+        final text = d['prompt']?.toString() ?? '';
+        _promptCtrl.text = text.isNotEmpty ? text : _fallbackPrompt();
+      } else {
+        _promptCtrl.text = _fallbackPrompt();
+      }
+    } catch (_) {
+      if (mounted) _promptCtrl.text = _fallbackPrompt();
+    } finally {
+      if (mounted) setState(() => _generatingPrompt = false);
+    }
+  }
+
+  String _fallbackPrompt() {
+    final p = widget.proposal;
+    final title       = p['title']?.toString() ?? '';
+    final description = p['description']?.toString() ?? '';
+    final rationale   = p['rationale']?.toString() ?? '';
+    return '''📋 הצעת פיתוח: $title
+
+תיאור:
+$description
+${rationale.isNotEmpty ? '\nרציונל:\n$rationale' : ''}
+
+אנא עזור לי לממש זאת ב-Jarvis (Flutter + Node.js):
+1. מה בדיוק לפתח
+2. אילו קבצים לשנות/ליצור
+3. סדר עבודה מומלץ
+4. מה לבדוק לאחר הפיתוח''';
+  }
+
+  Future<void> _confirm() async {
+    if (_sending) return;
+    setState(() => _sending = true);
+    final prompt = _promptCtrl.text.trim();
+    if (widget.mode == 'claude') {
+      Navigator.pop(context);
+      widget.onSendToClaud(prompt);
+    } else {
+      Navigator.pop(context);
+      await widget.onSendAsTask(widget.proposal, refinedPrompt: prompt);
+    }
+    if (mounted) setState(() => _sending = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Container(
+        decoration: BoxDecoration(
+          color: JC.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (_, sc) => Column(
+            children: [
+              // Handle bar
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 6),
+                child: Container(width: 36, height: 4, decoration: BoxDecoration(color: JC.border, borderRadius: BorderRadius.circular(2))),
+              ),
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                child: Row(
+                  children: [
+                    Icon(_step == 2 ? Icons.edit_note : Icons.help_outline, size: 18, color: _kGold),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _step == 2
+                            ? (widget.mode == 'claude' ? '✏️ ערוך פרומפט לקלוד' : '✏️ ערוך פרומפט למשימה')
+                            : '🎯 דייק את הפרומפט',
+                        style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 15),
+                      ),
+                    ),
+                    if (_step == 2)
+                      GestureDetector(
+                        onTap: () => setState(() { _step = 1; }),
+                        child: Text('← חזור', style: TextStyle(color: _kGoldDim, fontFamily: 'Heebo', fontSize: 12)),
+                      ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: sc,
+                  padding: const EdgeInsets.all(16),
+                  child: _buildBody(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    // Loading questions
+    if (_loadingQuestions) {
+      return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const SizedBox(height: 40),
+        const CircularProgressIndicator(color: _kGold, strokeWidth: 2),
+        const SizedBox(height: 12),
+        Text('מייצר שאלות מדויקות...', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
+      ]);
+    }
+    if (_loadError != null) {
+      return Column(children: [
+        const SizedBox(height: 30),
+        Text(_loadError!, style: const TextStyle(color: Color(0xFFEF4444), fontFamily: 'Heebo', fontSize: 13)),
+        const SizedBox(height: 12),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: _kGold, foregroundColor: Colors.white),
+          onPressed: _loadQuestions,
+          child: const Text('נסה שוב', style: TextStyle(fontFamily: 'Heebo')),
+        ),
+      ]);
+    }
+    // Generating prompt
+    if (_step == 2 && _generatingPrompt) {
+      return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const SizedBox(height: 40),
+        const CircularProgressIndicator(color: _kGold, strokeWidth: 2),
+        const SizedBox(height: 12),
+        Text('מייצר פרומפט מדויק...', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
+      ]);
+    }
+    // Step 1: Questions
+    if (_step == 1) return _buildQuestionsStep();
+    // Step 2: Edit prompt
+    return _buildPromptStep();
+  }
+
+  Widget _buildQuestionsStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Proposal mini-summary
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: _kGold.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _kGold.withOpacity(0.2), width: 0.7),
+          ),
+          child: Text(
+            widget.proposal['title']?.toString() ?? '',
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13, color: _kGold),
+          ),
+        ),
+        const SizedBox(height: 16),
+        ...List.generate(_questions.length, (i) {
+          final q = _questions[i];
+          final qid   = q['id'] as String;
+          final chips = List<String>.from(q['chips'] ?? []);
+          final sel   = _answers[qid];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Question number + text
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(q['question']?.toString() ?? '',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w600, fontSize: 13, color: JC.textPrimary)),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 20, height: 20,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(color: _kGold.withOpacity(0.15), shape: BoxShape.circle),
+                      child: Text('${i + 1}', style: const TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 10, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Chips
+                Wrap(
+                  spacing: 6, runSpacing: 6,
+                  textDirection: TextDirection.rtl,
+                  children: chips.map((chip) {
+                    final isSelected = sel == chip;
+                    return GestureDetector(
+                      onTap: () => setState(() {
+                        _answers[qid] = isSelected ? '' : chip;
+                        if (!isSelected) _freeText[qid]?.clear();
+                      }),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected ? _kGold.withOpacity(0.15) : JC.surfaceAlt,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected ? _kGold : JC.border,
+                            width: isSelected ? 1.2 : 0.7,
+                          ),
+                        ),
+                        child: Text(chip,
+                            style: TextStyle(
+                                fontFamily: 'Heebo', fontSize: 12,
+                                color: isSelected ? _kGold : JC.textSecondary,
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                // Free text (optional override)
+                TextField(
+                  controller: _freeText[qid],
+                  textDirection: TextDirection.rtl,
+                  onChanged: (_) => setState(() => _answers.remove(qid)),
+                  style: const TextStyle(fontFamily: 'Heebo', fontSize: 12),
+                  decoration: InputDecoration(
+                    hintText: 'או כתוב בעצמך...',
+                    hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11.5),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.7)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.7)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _kGold, width: 1.0)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () => _generatePrompt(),
+          icon: const Icon(Icons.auto_awesome, size: 15),
+          label: const Text('צור פרומפט מדויק', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _kGold,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            elevation: 0,
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextButton(
+          onPressed: () => _generatePrompt(skipQuestions: true),
+          child: Text('דלג על שאלות', style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPromptStep() {
+    final isClaudeMode = widget.mode == 'claude';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('ערוך את הפרומפט לפי הצורך:',
+            textAlign: TextAlign.right,
+            style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 12)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _promptCtrl,
+          textDirection: TextDirection.rtl,
+          maxLines: null,
+          minLines: 8,
+          style: const TextStyle(fontFamily: 'Heebo', fontSize: 12.5, height: 1.5),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.all(12),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JC.border, width: 0.8)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: JC.border, width: 0.8)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kGold, width: 1.0)),
+          ),
+        ),
+        const SizedBox(height: 14),
+        ElevatedButton.icon(
+          onPressed: _sending ? null : _confirm,
+          icon: _sending
+              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : Icon(isClaudeMode ? Icons.open_in_new : Icons.task_alt_outlined, size: 16),
+          label: Text(
+            isClaudeMode ? 'שלח לקלוד' : 'שלח כמשימה',
+            style: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _kGold,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            elevation: 0,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

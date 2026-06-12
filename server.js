@@ -4759,6 +4759,106 @@ ${list}
     }
 });
 
+// Deterministic fallback questions per category (used when LLM is unavailable)
+function _clarifyFallback(category, title) {
+    const base = [
+        { id: 'q1', question: 'מה הסדר עדיפויות של הפיתוח הזה?', chips: ['דחוף — נדרש עכשיו', 'בינוני — בשבועות הקרובים', 'נמוך — יום אחד'] },
+        { id: 'q2', question: 'באיזה חלק של המערכת מתמקד השינוי?', chips: ['Flutter (אפליקציה)', 'Node.js (שרת)', 'שניהם'] },
+    ];
+    const byCategory = {
+        feature:     [{ id: 'q3', question: 'מי המשתמש העיקרי של הפיצ\'ר הזה?', chips: ['המשתמש היומיומי', 'מנהל/אדמין', 'שניהם'] }],
+        bug_fix:     [{ id: 'q3', question: 'כמה דחוף תיקון הבאג?', chips: ['קריטי — חוסם שימוש', 'מציק אך לא חוסם', 'קוסמטי בלבד'] }],
+        ux:          [{ id: 'q3', question: 'מה ה-friction העיקרי שרוצים לפתור?', chips: ['יותר מהיר', 'יותר ברור', 'יותר אינטואיטיבי'] }],
+        performance: [{ id: 'q3', question: 'מה מדד ההצלחה לשיפור הביצועים?', chips: ['זמן טעינה <1 שניה', 'פחות קריאות API', 'פחות זיכרון/סוללה'] }],
+        improvement: [{ id: 'q3', question: 'מה ההשפעה הצפויה של השיפור?', chips: ['חוויה טובה יותר', 'פחות שגיאות', 'יותר נתונים/תובנות'] }],
+    };
+    return [...base, ...(byCategory[category] || byCategory.improvement)];
+}
+
+// POST /dashboard/smart-proposals/clarify — AI generates 2-3 targeted clarifying questions
+// for a smart proposal, each with 3 suggested chip answers
+app.post('/dashboard/smart-proposals/clarify', async (req, res) => {
+    const { title = '', description = '', category = 'improvement', rationale = '' } = req.body;
+    if (!title.trim()) return res.status(400).json({ error: 'title required' });
+    const catHe = { bug_fix: 'תיקון באג', ux: 'שיפור UX', performance: 'ביצועים', feature: "פיצ'ר", improvement: 'שיפור' }[category] || 'שיפור';
+    const sysPrompt = `אתה עוזר לבנות פרומפט מדויק לפיתוח עבור "ג'רביס" (Flutter + Node.js).
+ניתנת לך הצעת פיתוח. עליך לייצר 2-3 שאלות קצרות ומדויקות שיעזרו לדייק את כוונת המשתמש.
+לכל שאלה — ספק 3 אפשרויות תשובה קצרות בעברית (chips).
+ענה JSON בלבד, ללא markdown:
+[{"id":"q1","question":"...","chips":["...","...","..."]}]`;
+    const userMsg = `הצעה: ${title}
+קטגוריה: ${catHe}
+תיאור: ${description}
+${rationale ? `רציונל: ${rationale}` : ''}
+צור 2-3 שאלות אבחוניות ממוקדות.`;
+    try {
+        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 600);
+        const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+        const start = stripped.indexOf('[');
+        const end   = stripped.lastIndexOf(']');
+        if (start === -1 || end === -1) return res.json({ questions: _clarifyFallback(category, title) });
+        const parsed = JSON.parse(stripped.slice(start, end + 1));
+        const questions = (Array.isArray(parsed) ? parsed : []).slice(0, 3).map((q, i) => ({
+            id: q.id || `q${i + 1}`,
+            question: (q.question || '').toString().trim(),
+            chips: (Array.isArray(q.chips) ? q.chips : []).slice(0, 3).map(c => c.toString().trim()),
+        })).filter(q => q.question);
+        res.json({ questions: questions.length ? questions : _clarifyFallback(category, title) });
+    } catch (err) {
+        console.warn('POST /dashboard/smart-proposals/clarify LLM failed, using fallback:', err.message);
+        res.json({ questions: _clarifyFallback(category, title) });
+    }
+});
+
+// Deterministic fallback prompt (used when LLM unavailable)
+function _refineFallback({ title, description, category, rationale, answers }) {
+    const catHe = { bug_fix: 'תיקון באג', ux: 'שיפור UX', performance: 'ביצועים', feature: "פיצ'ר", improvement: 'שיפור' }[category] || 'שיפור';
+    const answersBlock = (answers || []).length
+        ? `\nפרטים:\n${answers.map(a => `- ${a.question}: ${a.answer}`).join('\n')}`
+        : '';
+    return `📋 הצעת פיתוח ב-Jarvis: ${title}
+סוג: ${catHe}
+
+תיאור:
+${description}${rationale ? `\n\nרציונל:\n${rationale}` : ''}${answersBlock}
+
+בקשה לפיתוח (Flutter + Node.js):
+1. מה בדיוק לממש — תיאור טכני מפורט
+2. אילו קבצים/מודולים לשנות או ליצור (Flutter ו/או Node.js)
+3. סדר עבודה מומלץ עם אבני דרך
+4. קצוות קצה ומקרי שגיאה לטפל בהם
+5. מה לבדוק לאחר הפיתוח`;
+}
+
+// POST /dashboard/smart-proposals/refine-prompt — builds a refined dev prompt from proposal + answers
+app.post('/dashboard/smart-proposals/refine-prompt', async (req, res) => {
+    const { title = '', description = '', category = 'improvement', rationale = '', answers = [] } = req.body;
+    if (!title.trim()) return res.status(400).json({ error: 'title required' });
+    const catHe = { bug_fix: 'תיקון באג', ux: 'שיפור UX', performance: 'ביצועים', feature: "פיצ'ר", improvement: 'שיפור' }[category] || 'שיפור';
+    const answersBlock = answers.length
+        ? answers.map(a => `- ${a.question}: ${a.answer}`).join('\n')
+        : '';
+    const sysPrompt = `אתה כותב פרומפט לפיתוח ב-Claude Code עבור "ג'רביס" (Flutter + Node.js).
+כתוב פרומפט מפורט בעברית שמכיל:
+1. תיאור מדויק של מה לממש
+2. קבצים/מודולים רלוונטיים (Flutter + Node.js)
+3. סדר עבודה מומלץ
+4. נקודות קצה ומה לבדוק
+ענה בפרומפט ישירות, ללא כותרת, ללא JSON.`;
+    const userMsg = `הצעה: ${title}
+קטגוריה: ${catHe}
+תיאור: ${description}
+${rationale ? `רציונל: ${rationale}` : ''}
+${answersBlock ? `\nפרטים שהמשתמש סיפק:\n${answersBlock}` : ''}`;
+    try {
+        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 800);
+        res.json({ prompt: raw.trim() });
+    } catch (err) {
+        console.warn('POST /dashboard/smart-proposals/refine-prompt LLM failed, using fallback:', err.message);
+        res.json({ prompt: _refineFallback({ title, description, category, rationale, answers }) });
+    }
+});
+
 app.get('/dashboard/backlog/config', (_req, res) => {
     res.json(PROGRESS_MAP_CONFIG);
 });

@@ -850,6 +850,100 @@ class _ProgressMapScreenState extends State<ProgressMapScreen>
     });
   }
 
+  // Build the dev prompt string for a smart proposal (title + rationale + description)
+  String _smartProposalDevPrompt(Map<String, dynamic> p) {
+    final title       = p['title']?.toString() ?? '';
+    final description = p['description']?.toString() ?? '';
+    final rationale   = p['rationale']?.toString() ?? '';
+    final category    = p['category']?.toString() ?? 'improvement';
+    final catHe = switch (category) {
+      'bug_fix'     => 'תיקון באג',
+      'ux'          => 'שיפור חוויית משתמש',
+      'performance' => 'שיפור ביצועים',
+      'feature'     => 'פיצ\'ר חדש',
+      _             => 'שיפור',
+    };
+    return '''📋 הצעת פיתוח: $title
+סוג: $catHe
+
+תיאור:
+$description
+${rationale.isNotEmpty ? '\nרציונל:\n$rationale' : ''}
+
+בקשה לקלוד:
+1. תכנן את השלבים לממש את זה ב-Jarvis (Flutter + Node.js)
+2. פרט אילו קבצים לשנות/ליצור
+3. הצע קוד לדוגמה לחלקים המורכבים
+4. מה לבדוק לאחר הפיתוח''';
+  }
+
+  Future<void> _sendProposalAsTask(Map<String, dynamic> p) async {
+    final defaultTitle = p['title']?.toString() ?? 'הצעת פיתוח';
+    final prompt = _smartProposalDevPrompt(p);
+    final titleCtrl = TextEditingController(text: defaultTitle);
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          backgroundColor: JC.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: const Text('שלח כמשימה', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('כותרת המשימה:', style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: titleCtrl,
+                textDirection: TextDirection.rtl,
+                style: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: JC.border, width: 0.8)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _kGold, width: 1.0)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text('הפרומפט יישמר כתוכן המשימה בקטגוריה "ג\'רביס".',
+                  style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11)),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('ביטול', style: TextStyle(fontFamily: 'Heebo'))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: _kGold, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+              onPressed: () => Navigator.pop(dCtx, true),
+              child: const Text('שלח', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final taskTitle = titleCtrl.text.trim().isEmpty ? defaultTitle : titleCtrl.text.trim();
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/tasks'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'content': '$taskTitle\n\n$prompt', 'category': 'ג\'רביס'}),
+      ).timeout(const Duration(seconds: 10));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(res.statusCode == 200 || res.statusCode == 201 ? '✅ המשימה נוצרה בהצלחה' : '⚠️ שגיאה ביצירת המשימה',
+              style: const TextStyle(fontFamily: 'Heebo')),
+          backgroundColor: res.statusCode == 200 || res.statusCode == 201 ? _kGold : const Color(0xFFEF4444),
+        ));
+      }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('שגיאת חיבור', style: TextStyle(fontFamily: 'Heebo'))));
+    }
+  }
+
   // ── Feature CRUD ─────────────────────────────────────────────────────────
 
   Future<bool> _patchFeature({
@@ -2392,13 +2486,9 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
           const SizedBox(height: 18),
         ],
 
-        if (!_loadingFeatures && _done.isNotEmpty) ...[
-          _buildProgressBar(),
-          const SizedBox(height: 20),
-        ],
         _sectionTitle('🗂️ סטטוס יכולות'),
         const SizedBox(height: 8),
-        _buildFeatureBoard(),
+        _buildCapabilitiesSection(),
         const SizedBox(height: 24),
         _sectionTitle('🤖 Backlog AI'),
         const SizedBox(height: 8),
@@ -2951,33 +3041,67 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
             ),
             const SizedBox(height: 8),
 
-            // Action buttons
+            // Action buttons — row 1: primary actions
             Row(
               textDirection: TextDirection.rtl,
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () => _approveSmartProposal(p, feedback: feedCtrl.text.trim().isEmpty ? null : feedCtrl.text.trim()),
-                    icon: const Icon(Icons.check, size: 14),
-                    label: const Text('הוסף לפיתוח', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 12)),
+                    icon: const Icon(Icons.check, size: 13),
+                    label: const Text('הוסף לפיתוח', style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 11.5)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _kGold,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                       elevation: 0,
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _sendProposalAsTask(p),
+                    icon: const Icon(Icons.task_alt_outlined, size: 13),
+                    label: const Text('שלח כמשימה', style: TextStyle(fontFamily: 'Heebo', fontSize: 11.5, fontWeight: FontWeight.w600)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _kGold,
+                      side: BorderSide(color: _kGold.withOpacity(0.6), width: 0.9),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            // Row 2: secondary actions
+            Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showSendToClaudeMenu(context, _smartProposalDevPrompt(p), title: title),
+                    icon: const Icon(Icons.open_in_new, size: 12),
+                    label: const Text('שלח לקלוד', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: JC.textSecondary,
+                      side: BorderSide(color: JC.border, width: 0.7),
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
                 OutlinedButton.icon(
                   onPressed: () => _dismissSmartProposal(id),
-                  icon: const Icon(Icons.thumb_down_outlined, size: 13),
+                  icon: const Icon(Icons.thumb_down_outlined, size: 12),
                   label: const Text('לא רלוונטי', style: TextStyle(fontFamily: 'Heebo', fontSize: 11)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: JC.textMuted,
-                    side: BorderSide(color: JC.border, width: 0.8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    side: BorderSide(color: JC.border, width: 0.7),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
                   ),
                 ),
@@ -3666,6 +3790,286 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
       Text(label, style: TextStyle(color: color, fontFamily: 'Heebo', fontSize: 12)),
     ],
   );
+
+  // ── Capabilities section (core agents + features in dev) ─────────────────
+
+  Widget _buildCapabilitiesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Section A: יכולות ליבה (real Jarvis agents) ──────────────────
+        _buildCoreCapabilitiesSection(),
+        const SizedBox(height: 20),
+        // ── Section B: בפיתוח (features.json building + planned) ─────────
+        _buildInDevFeaturesSection(),
+      ],
+    );
+  }
+
+  Widget _buildCoreCapabilitiesSection() {
+    if (_loadingAgents && _agents.isEmpty) {
+      return Container(
+        height: 100,
+        alignment: Alignment.center,
+        child: const CircularProgressIndicator(color: _kGold, strokeWidth: 2),
+      );
+    }
+    if (_agents.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: JC.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: JC.border, width: 0.8)),
+        child: Text('לא נטענו יכולות', textAlign: TextAlign.center, style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13)),
+      );
+    }
+    // Sort agents by usage count (most used first)
+    final sorted = [..._agents];
+    sorted.sort((a, b) {
+      final ca = ((a['metrics'] as Map?)??{})['count'] as num? ?? 0;
+      final cb = ((b['metrics'] as Map?)??{})['count'] as num? ?? 0;
+      return cb.compareTo(ca);
+    });
+
+    final unusedCount = sorted.where((a) {
+      final c = ((a['metrics'] as Map?)??{})['count'] as num? ?? 0;
+      return c == 0;
+    }).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header row
+        Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Expanded(
+              child: Text('⚙️ יכולות ליבה — ${sorted.length} סוכנים',
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ),
+            if (unusedCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.35), width: 0.7),
+                ),
+                child: Text('$unusedCount ישן',
+                    style: const TextStyle(color: Color(0xFFEF4444), fontFamily: 'Heebo', fontSize: 10, fontWeight: FontWeight.w600)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...sorted.map((agent) => _buildCoreCapabilityTile(agent)),
+      ],
+    );
+  }
+
+  Widget _buildCoreCapabilityTile(Map<String, dynamic> agent) {
+    final id       = (agent['id'] ?? '').toString();
+    final nameHe   = (agent['nameHe'] ?? agent['name'] ?? id).toString();
+    final role     = (agent['role'] ?? '').toString();
+    final status   = (agent['status'] ?? 'active').toString();
+    final isDisabled = status == 'disabled';
+    final isToggling = _togglingAgents.contains(id);
+    final metrics  = agent['metrics'] as Map<String, dynamic>?;
+    final callCount = (metrics?['count'] as num?)?.toInt() ?? 0;
+    final avgMs    = metrics?['avgMs'] as num?;
+    final isUnused = callCount == 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isUnused
+              ? const Color(0xFFEF4444).withOpacity(0.25)
+              : isDisabled
+                  ? JC.border.withOpacity(0.5)
+                  : JC.border,
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        textDirection: TextDirection.rtl,
+        children: [
+          // Status dot
+          Container(
+            width: 7, height: 7,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isDisabled
+                  ? JC.textMuted
+                  : isUnused
+                      ? const Color(0xFFEF4444)
+                      : const Color(0xFF22C55E),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    Expanded(
+                      child: Text(nameHe,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: JC.textPrimary, fontFamily: 'Heebo',
+                            fontWeight: FontWeight.w600, fontSize: 13,
+                            decoration: isDisabled ? TextDecoration.lineThrough : null,
+                          )),
+                    ),
+                    if (isUnused)
+                      Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444).withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('לא בשימוש',
+                            style: TextStyle(color: Color(0xFFEF4444), fontFamily: 'Heebo', fontSize: 9, fontWeight: FontWeight.w600)),
+                      ),
+                  ],
+                ),
+                if (role.isNotEmpty)
+                  Text(role, textAlign: TextAlign.right,
+                      style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 11),
+                      overflow: TextOverflow.ellipsis),
+                // Usage stats
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (callCount > 0)
+                      Text('$callCount קריאות',
+                          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                    if (callCount > 0 && avgMs != null)
+                      Text(' · ', style: TextStyle(color: JC.textMuted, fontSize: 10)),
+                    if (avgMs != null)
+                      Text('${avgMs.toInt()}ms ממוצע',
+                          style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 10)),
+                    if (callCount == 0)
+                      Text('עדיין לא נוצל',
+                          style: TextStyle(color: const Color(0xFFEF4444).withOpacity(0.7), fontFamily: 'Heebo', fontSize: 10)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Action buttons: details + send to claude + toggle
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Details
+              GestureDetector(
+                onTap: () => _showAgentDetails(agent),
+                child: Icon(Icons.info_outline, size: 18, color: JC.textMuted),
+              ),
+              const SizedBox(width: 4),
+              // Send to Claude for improvement
+              Builder(builder: (ctx) => GestureDetector(
+                onTap: () {
+                  final prompt = '''שיפור יכולת ב-Jarvis: $nameHe
+תפקיד: $role
+${callCount > 0 ? 'שימוש: $callCount קריאות, ממוצע ${avgMs?.toInt() ?? 0}ms' : 'מצב: לא בשימוש כלל'}
+
+אנא עזור לי לשפר את הסוכן הזה:
+1. מה ניתן לשפר בלוגיקה ובתגובות?
+2. איך לגרום למשתמשים להשתמש בו יותר?
+3. קוד לדוגמה לשיפורים עיקריים
+4. מה מדדי הצלחה מומלצים?''';
+                  _showSendToClaudeMenu(ctx, prompt, title: nameHe);
+                },
+                child: Icon(Icons.open_in_new, size: 17, color: _kGoldDim),
+              )),
+              const SizedBox(width: 2),
+              // Toggle enable/disable
+              SizedBox(
+                width: 28, height: 28,
+                child: isToggling
+                    ? const Padding(padding: EdgeInsets.all(6), child: CircularProgressIndicator(strokeWidth: 2, color: _kGold))
+                    : IconButton(
+                        padding: EdgeInsets.zero,
+                        tooltip: isDisabled ? 'הפעל' : 'השבת',
+                        onPressed: () => _toggleAgent(agent),
+                        icon: Icon(
+                          isDisabled ? Icons.play_circle_outline : Icons.pause_circle_outline,
+                          size: 20,
+                          color: isDisabled ? const Color(0xFF22C55E) : JC.textMuted,
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInDevFeaturesSection() {
+    final inDev = [..._building, ..._planned];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Header
+        Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Expanded(
+              child: Text('🔨 בפיתוח — ${inDev.length} פיצ\'רים',
+                  style: TextStyle(color: JC.textSecondary, fontFamily: 'Heebo', fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ),
+            Builder(builder: (ctx) => GestureDetector(
+              onTap: () => _showAddFeatureDialog(ctx),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _kGold.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: _kGold.withOpacity(0.4), width: 0.7),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add, size: 12, color: _kGold),
+                  const SizedBox(width: 3),
+                  Text('הוסף', style: TextStyle(color: _kGold, fontFamily: 'Heebo', fontSize: 10.5, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+            )),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_loadingFeatures)
+          const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: _kGold, strokeWidth: 2)))
+        else if (inDev.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Center(child: Text('אין פיצ\'רים בפיתוח — לחץ הוסף',
+                style: TextStyle(color: JC.textMuted, fontFamily: 'Heebo', fontSize: 13))),
+          )
+        else
+          Builder(builder: (ctx) => Wrap(
+            spacing: 6, runSpacing: 6,
+            textDirection: TextDirection.rtl,
+            children: [
+              ..._building.map((f) => _featureChip(f, const Color(0xFFF59E0B), 'building', ctx)),
+              ..._planned.map((f) => _featureChip(f, JC.textSecondary, 'planned', ctx)),
+            ],
+          )),
+        if (_featuresUpdated.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('עודכן: $_featuresUpdated',
+                style: TextStyle(color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo'),
+                textAlign: TextAlign.center),
+          ),
+      ],
+    );
+  }
 
   // ── Feature board ─────────────────────────────────────────────────────────
 

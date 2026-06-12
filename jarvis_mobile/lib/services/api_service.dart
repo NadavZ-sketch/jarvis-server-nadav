@@ -819,4 +819,80 @@ class ApiService {
   Future<void> updateTaskStoryPoints(String taskId, int? points) async {
     await updateTask(taskId, storyPoints: points);
   }
+
+  // ─── Calendar (Google Calendar + Tasks with due dates + Reminders) ─────────
+
+  /// Unified calendar events from all three sources. Google Calendar failures
+  /// are silently swallowed so the screen still shows tasks & reminders.
+  Future<List<Map<String, dynamic>>> getCalendarEvents() async {
+    final results = await Future.wait([
+      _fetchGoogleCalendarEvents(),
+      _fetchTasksAsEvents(),
+      _fetchRemindersAsEvents(),
+    ]);
+    final all = [for (final list in results) ...list];
+    all.sort((a, b) {
+      final ad = (a['date'] as String?) ?? '';
+      final bd = (b['date'] as String?) ?? '';
+      return ad.compareTo(bd);
+    });
+    return all;
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchGoogleCalendarEvents() async {
+    try {
+      final res = await _client
+          .get(_uri('/calendar-events'), headers: _baseHeaders)
+          .timeout(_timeout);
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final list =
+          (data['events'] as List? ?? []).whereType<Map<String, dynamic>>().toList();
+      return list
+          .map((e) => <String, dynamic>{
+                ...e,
+                'type': 'calendar',
+                'title': e['title']?.toString() ??
+                    e['summary']?.toString() ??
+                    '',
+                'date': e['date']?.toString() ?? e['start']?.toString(),
+              })
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchTasksAsEvents() async {
+    try {
+      final list = await getTasks();
+      return list
+          .where((t) => t['due_date'] != null && t['done'] != true)
+          .map((t) => <String, dynamic>{
+                ...t,
+                'type': 'task',
+                'title': t['content']?.toString() ?? '',
+                'date': t['due_date']?.toString(),
+              })
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchRemindersAsEvents() async {
+    try {
+      final list = await getReminders();
+      return list
+          .map((r) => <String, dynamic>{
+                ...r,
+                'type': 'reminder',
+                'title': r['text']?.toString() ?? '',
+                'date': r['scheduled_time']?.toString(),
+              })
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }

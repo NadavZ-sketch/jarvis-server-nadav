@@ -30,11 +30,24 @@ class ProductivityScreen extends StatefulWidget {
 class _ProductivityScreenState extends State<ProductivityScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  int _currentTab = 0;
+
+  static const _tabs = [
+    _TabDef('היום',   Icons.wb_sunny_rounded,       Icons.wb_sunny_outlined),
+    _TabDef('משימות', Icons.check_circle_rounded,    Icons.check_circle_outline_rounded),
+    _TabDef('תזכורות', Icons.notifications_rounded,  Icons.notifications_outlined),
+    _TabDef('לוח שנה', Icons.calendar_month_rounded, Icons.calendar_month_outlined),
+  ];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging || _tabController.index != _currentTab) {
+        setState(() => _currentTab = _tabController.index);
+      }
+    });
     widget.jumpToTab?.addListener(_onJumpToTab);
   }
 
@@ -55,7 +68,7 @@ class _ProductivityScreenState extends State<ProductivityScreen>
     return Scaffold(
       backgroundColor: JC.bg,
       appBar: AppBar(
-        backgroundColor: JC.surface.withOpacity(0.92),
+        backgroundColor: JC.surface.withOpacity(0.95),
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         shadowColor: Colors.transparent,
@@ -78,12 +91,12 @@ class _ProductivityScreenState extends State<ProductivityScreen>
               )
             : null,
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
+          preferredSize: const Size.fromHeight(60),
           child: Container(
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: JC.border.withOpacity(0.5),
+                  color: JC.border.withOpacity(0.4),
                   width: 0.6,
                 ),
               ),
@@ -92,37 +105,48 @@ class _ProductivityScreenState extends State<ProductivityScreen>
               controller: _tabController,
               labelColor: JC.blue400,
               unselectedLabelColor: JC.textMuted,
-              indicator: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: JC.blue500.withOpacity(0.15),
-                border: Border.all(
-                  color: JC.blue400.withOpacity(0.45),
-                  width: 0.8,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: JC.blue500.withOpacity(0.2),
-                    blurRadius: 10,
-                    spreadRadius: 0,
-                  ),
-                ],
-              ),
+              indicator: _PillIndicator(color: JC.blue500),
               indicatorSize: TabBarIndicatorSize.tab,
               indicatorPadding: const EdgeInsets.symmetric(
-                  horizontal: 6, vertical: 5),
+                  horizontal: 4, vertical: 6),
               dividerColor: Colors.transparent,
               labelStyle: const TextStyle(
                   fontFamily: 'Heebo',
                   fontWeight: FontWeight.w700,
-                  fontSize: 13.5),
+                  fontSize: 11.5),
               unselectedLabelStyle: const TextStyle(
-                  fontFamily: 'Heebo', fontSize: 13.5),
-              tabs: const [
-                Tab(text: 'היום ☀️'),
-                Tab(text: 'משימות ✅'),
-                Tab(text: 'תזכורות 🔔'),
-                Tab(text: 'לוח שנה 📅'),
-              ],
+                  fontFamily: 'Heebo', fontSize: 11.5),
+              tabs: List.generate(_tabs.length, (i) {
+                final tab = _tabs[i];
+                final active = _currentTab == i;
+                return Tab(
+                  height: 52,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(
+                          active ? tab.activeIcon : tab.icon,
+                          key: ValueKey(active),
+                          size: 20,
+                          color: active ? JC.blue400 : JC.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        tab.label,
+                        style: TextStyle(
+                          color: active ? JC.blue400 : JC.textMuted,
+                          fontFamily: 'Heebo',
+                          fontSize: 11,
+                          fontWeight: active ? FontWeight.w700 : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
             ),
           ),
         ),
@@ -146,6 +170,57 @@ class _ProductivityScreenState extends State<ProductivityScreen>
           CalendarScreen(settings: widget.settings),
         ],
       ),
+    );
+  }
+}
+
+// ─── Tab definition ───────────────────────────────────────────────────────────
+
+class _TabDef {
+  final String label;
+  final IconData activeIcon;
+  final IconData icon;
+  const _TabDef(this.label, this.activeIcon, this.icon);
+}
+
+// ─── Pill indicator ───────────────────────────────────────────────────────────
+
+class _PillIndicator extends Decoration {
+  final Color color;
+  const _PillIndicator({required this.color});
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) =>
+      _PillPainter(color: color);
+}
+
+class _PillPainter extends BoxPainter {
+  final Color color;
+  _PillPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    final size = configuration.size!;
+    final rect = offset & size;
+    final paint = Paint()
+      ..color = color.withOpacity(0.15)
+      ..style = PaintingStyle.fill;
+    const radius = Radius.circular(10);
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, radius), paint);
+
+    // Bottom accent line
+    final linePaint = Paint()
+      ..color = color.withOpacity(0.7)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final lineWidth = size.width * 0.45;
+    final lineY = offset.dy + size.height - 2;
+    final lineX = offset.dx + (size.width - lineWidth) / 2;
+    canvas.drawLine(
+      Offset(lineX, lineY),
+      Offset(lineX + lineWidth, lineY),
+      linePaint,
     );
   }
 }

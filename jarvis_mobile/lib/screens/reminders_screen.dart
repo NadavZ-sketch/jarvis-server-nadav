@@ -4,7 +4,6 @@ import '../app_settings.dart';
 import '../services/api_service.dart';
 import '../services/cache_service.dart';
 import '../services/notification_service.dart';
-import '../widgets/animated_list_item.dart';
 import '../widgets/delete_snackbar.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/jarvis_search_bar.dart';
@@ -67,7 +66,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
         setState(() { _items = items; _loading = false; });
         widget.onCountUpdate?.call(items.length);
         CacheService.saveList('reminders', items);
-        // Re-sync all local notifications from server state
         NotificationService.rescheduleAll(items).catchError((_) {});
       }
     } catch (e) {
@@ -81,11 +79,30 @@ class _RemindersScreenState extends State<RemindersScreen> {
   }
 
   static const _recurrenceOptions = [
-    (value: null,       label: 'חד-פעמי', icon: Icons.looks_one_rounded),
-    (value: 'daily',    label: 'יומי',    icon: Icons.today_rounded),
-    (value: 'weekly',   label: 'שבועי',   icon: Icons.date_range_rounded),
-    (value: 'monthly',  label: 'חודשי',   icon: Icons.calendar_month_rounded),
+    (value: null,      label: 'חד-פעמי', icon: Icons.looks_one_rounded),
+    (value: 'daily',   label: 'יומי',    icon: Icons.today_rounded),
+    (value: 'weekly',  label: 'שבועי',   icon: Icons.date_range_rounded),
+    (value: 'monthly', label: 'חודשי',   icon: Icons.calendar_month_rounded),
   ];
+
+  // Groups: overdue, today, tomorrow, week, later
+  _ReminderGroup _classify(Map<String, dynamic> item) {
+    final raw = item['scheduled_time'];
+    if (raw == null) return _ReminderGroup.later;
+    try {
+      final dt = DateTime.parse(raw.toString()).toLocal();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final itemDay = DateTime(dt.year, dt.month, dt.day);
+      if (itemDay.isBefore(today)) return _ReminderGroup.overdue;
+      if (itemDay == today) return _ReminderGroup.today;
+      if (itemDay == today.add(const Duration(days: 1))) return _ReminderGroup.tomorrow;
+      if (itemDay.isBefore(today.add(const Duration(days: 8)))) return _ReminderGroup.week;
+      return _ReminderGroup.later;
+    } catch (_) {
+      return _ReminderGroup.later;
+    }
+  }
 
   String _formatTime(dynamic iso) {
     if (iso == null) return '';
@@ -152,40 +169,50 @@ class _RemindersScreenState extends State<RemindersScreen> {
       isScrollControlled: true,
       backgroundColor: JC.surfaceAlt,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => Padding(
           padding: EdgeInsets.only(
               left: 20,
               right: 20,
-              top: 20,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+              top: 24,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 36, height: 4,
+                  decoration: BoxDecoration(
+                    color: JC.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
               Text(isEdit ? 'עריכת תזכורת' : 'תזכורת חדשה',
                   style: TextStyle(
                       color: JC.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
                       fontFamily: 'Heebo'),
                   textDirection: TextDirection.rtl),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               TextField(
                 controller: textCtrl,
                 textDirection: TextDirection.rtl,
                 autofocus: true,
                 style: TextStyle(
-                    color: JC.textPrimary, fontFamily: 'Heebo'),
+                    color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 15),
                 decoration: InputDecoration(
                   hintText: 'מה להזכיר לך?',
-                  hintStyle:
-                      TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+                  hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
                   filled: true,
                   fillColor: JC.surface,
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
+                      horizontal: 14, vertical: 12),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(color: JC.border)),
@@ -194,12 +221,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       borderSide: BorderSide(color: JC.border)),
                   focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: JC.blue500)),
+                      borderSide: BorderSide(color: JC.blue500, width: 1.5)),
                 ),
               ),
               const SizedBox(height: 10),
-
-              // ── Date/Time picker ─────────────────────────────────────────
+              // Date+Time picker as one tap
               GestureDetector(
                 onTap: () async {
                   final date = await showDatePicker(
@@ -236,8 +262,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 },
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   decoration: BoxDecoration(
                     color: JC.surface,
                     borderRadius: BorderRadius.circular(12),
@@ -261,15 +286,15 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-
-              // ── Recurrence selector ──────────────────────────────────────
+              // Recurrence selector
               Align(
                 alignment: Alignment.centerRight,
                 child: Text('חזרתיות',
                     style: TextStyle(
                         color: JC.textMuted,
                         fontSize: 12,
-                        fontFamily: 'Heebo')),
+                        fontFamily: 'Heebo',
+                        fontWeight: FontWeight.w600)),
               ),
               const SizedBox(height: 6),
               Row(
@@ -284,10 +309,10 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
+                            horizontal: 10, vertical: 7),
                         decoration: BoxDecoration(
                           color: active
-                              ? JC.blue500.withValues(alpha: 0.2)
+                              ? JC.blue500.withOpacity(0.2)
                               : JC.surface,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
@@ -304,9 +329,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                             const SizedBox(width: 5),
                             Text(opt.label,
                                 style: TextStyle(
-                                  color: active
-                                      ? JC.blue400
-                                      : JC.textSecondary,
+                                  color: active ? JC.blue400 : JC.textSecondary,
                                   fontSize: 12,
                                   fontFamily: 'Heebo',
                                   fontWeight: active
@@ -320,13 +343,13 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   );
                 }).toList(),
               ),
-
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   style: FilledButton.styleFrom(
                       backgroundColor: JC.blue500,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12))),
                   onPressed: () => _submitReminder(
@@ -336,7 +359,8 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   child: Text(isEdit ? 'שמור' : 'הוסף',
                       style: const TextStyle(
                           fontFamily: 'Heebo',
-                          fontWeight: FontWeight.w600)),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15)),
                 ),
               ),
             ],
@@ -370,7 +394,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
             scheduledTime: iso,
             recurrence: recurrence ?? 'none');
         await NotificationService.cancel(id).catchError((_) {});
-        // Only schedule local notification for non-recurring (OS handles once)
         if (recurrence == null) {
           await NotificationService.schedule(id, val, dateTime)
               .catchError((_) {});
@@ -390,7 +413,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
       return;
     }
 
-    // Add new reminder
     try {
       final res = await ApiService(widget.settings)
           .addReminder(val, iso, recurrence: recurrence);
@@ -469,39 +491,103 @@ class _RemindersScreenState extends State<RemindersScreen> {
                               color: JC.blue400,
                               backgroundColor: JC.surfaceAlt,
                               onRefresh: _fetch,
-                              child: ListView.builder(
-                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                                itemCount: _filtered.length,
-                                itemBuilder: (ctx, i) {
-                                  final item = _filtered[i];
-                                  return AnimatedListItem(
-                                    index: i,
-                                    child: Dismissible(
-                                      key: ValueKey(item['id']),
-                                      direction: DismissDirection.endToStart,
-                                      background: _remDismissBg(),
-                                      onDismissed: (_) => _onDismissed(item),
-                                      child: _ReminderItem(
-                                        item: item,
-                                        formatTime: _formatTime,
-                                        onTap: () => _showReminderSheet(existing: item),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
+                              child: _buildTimeline(),
                             ),
                     ),
                   ],
                 ),
     );
   }
+
+  Widget _buildTimeline() {
+    // Build ordered groups
+    final groups = <_ReminderGroup, List<Map<String, dynamic>>>{};
+    for (final item in _filtered) {
+      final g = _classify(item);
+      groups.putIfAbsent(g, () => []).add(item);
+    }
+
+    final order = [
+      _ReminderGroup.overdue,
+      _ReminderGroup.today,
+      _ReminderGroup.tomorrow,
+      _ReminderGroup.week,
+      _ReminderGroup.later,
+    ];
+
+    final sections = <Widget>[];
+    for (final group in order) {
+      final list = groups[group];
+      if (list == null || list.isEmpty) continue;
+      sections.add(_GroupHeader(group: group));
+      for (final item in list) {
+        sections.add(
+          Dismissible(
+            key: ValueKey(item['id']),
+            direction: DismissDirection.endToStart,
+            background: _dismissBg(),
+            onDismissed: (_) => _onDismissed(item),
+            child: _ReminderCard(
+              item: item,
+              group: group,
+              formatTime: _formatTime,
+              onTap: () => _showReminderSheet(existing: item),
+            ),
+          ),
+        );
+      }
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+      children: sections,
+    );
+  }
 }
 
-// ─── Reminder item ────────────────────────────────────────────────────────────
+// ─── Group enum ───────────────────────────────────────────────────────────────
 
-class _ReminderItem extends StatelessWidget {
+enum _ReminderGroup { overdue, today, tomorrow, week, later }
+
+// ─── Group header ─────────────────────────────────────────────────────────────
+
+class _GroupHeader extends StatelessWidget {
+  final _ReminderGroup group;
+  const _GroupHeader({required this.group});
+
+  static const _labels = {
+    _ReminderGroup.overdue:  ('⚠️ עברו המועד', true),
+    _ReminderGroup.today:    ('היום', false),
+    _ReminderGroup.tomorrow: ('מחר', false),
+    _ReminderGroup.week:     ('השבוע', false),
+    _ReminderGroup.later:    ('אחר כך', false),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, isUrgent) = _labels[group] ?? ('', false);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 16, 2, 8),
+      child: Text(
+        label,
+        textDirection: TextDirection.rtl,
+        style: TextStyle(
+          color: isUrgent ? JC.cancelRed : JC.textMuted,
+          fontFamily: 'Heebo',
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Reminder card ────────────────────────────────────────────────────────────
+
+class _ReminderCard extends StatelessWidget {
   final Map<String, dynamic> item;
+  final _ReminderGroup group;
   final String Function(dynamic) formatTime;
   final VoidCallback onTap;
 
@@ -511,85 +597,123 @@ class _ReminderItem extends StatelessWidget {
     'monthly': 'חודשי',
   };
 
-  const _ReminderItem({
+  const _ReminderCard({
     required this.item,
+    required this.group,
     required this.formatTime,
     required this.onTap,
   });
 
+  Color get _accentColor {
+    if (group == _ReminderGroup.overdue) return JC.cancelRed;
+    if (group == _ReminderGroup.today) return JC.amber400;
+    return JC.blue400;
+  }
+
   @override
   Widget build(BuildContext context) {
     final recurrence = item['recurrence'] as String?;
+    final accent = _accentColor;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: JC.surfaceAlt,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: JC.border, width: 0.8),
+          border: Border.all(
+            color: group == _ReminderGroup.overdue
+                ? JC.cancelRed.withOpacity(0.4)
+                : JC.border,
+            width: 0.8,
+          ),
         ),
-        child: Row(
-          textDirection: TextDirection.rtl,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: JC.blue500.withValues(alpha: 0.15),
-              ),
-              child: Icon(Icons.access_time_rounded, color: JC.blue400, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    item['text']?.toString() ?? '',
-                    textDirection: TextDirection.rtl,
-                    style: TextStyle(
-                      color: JC.textPrimary,
-                      fontSize: 15,
-                      fontFamily: 'Heebo',
-                    ),
+        child: IntrinsicHeight(
+          child: Row(
+            textDirection: TextDirection.rtl,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Left accent bar
+              Container(
+                width: 4,
+                decoration: BoxDecoration(
+                  color: accent,
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(14),
+                    bottomRight: Radius.circular(14),
                   ),
-                  const SizedBox(height: 3),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  child: Row(
+                    textDirection: TextDirection.rtl,
                     children: [
-                      if (recurrence != null) ...[
-                        Icon(Icons.repeat_rounded, size: 11, color: JC.blue400),
-                        const SizedBox(width: 3),
-                        Text(
-                          _recurrenceLabel[recurrence] ?? '',
-                          style: TextStyle(
-                            color: JC.blue400,
-                            fontSize: 11,
-                            fontFamily: 'Heebo',
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                      Text(
-                        formatTime(item['scheduled_time']),
-                        textDirection: TextDirection.rtl,
-                        style: TextStyle(
-                          color: JC.textMuted,
-                          fontSize: 12,
-                          fontFamily: 'Heebo',
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              item['text']?.toString() ?? '',
+                              textDirection: TextDirection.rtl,
+                              style: TextStyle(
+                                color: JC.textPrimary,
+                                fontSize: 15,
+                                fontFamily: 'Heebo',
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (recurrence != null) ...[
+                                  Icon(Icons.repeat_rounded,
+                                      size: 11, color: JC.blue400),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    _recurrenceLabel[recurrence] ?? '',
+                                    style: TextStyle(
+                                      color: JC.blue400,
+                                      fontSize: 11,
+                                      fontFamily: 'Heebo',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                Icon(Icons.access_time_rounded,
+                                    size: 11, color: JC.textMuted),
+                                const SizedBox(width: 3),
+                                Text(
+                                  formatTime(item['scheduled_time']),
+                                  style: TextStyle(
+                                    color: group == _ReminderGroup.overdue
+                                        ? JC.cancelRed
+                                        : JC.textMuted,
+                                    fontSize: 12,
+                                    fontFamily: 'Heebo',
+                                    fontWeight: group == _ReminderGroup.overdue
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Icon(Icons.chevron_left_rounded,
+                          color: JC.textMuted.withOpacity(0.4), size: 18),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -598,14 +722,13 @@ class _ReminderItem extends StatelessWidget {
 
 // ─── Dismiss background ───────────────────────────────────────────────────────
 
-Widget _remDismissBg() => Container(
+Widget _dismissBg() => Container(
       alignment: AlignmentDirectional.centerEnd,
       padding: const EdgeInsetsDirectional.only(end: 20),
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: JC.cancelRed.withValues(alpha: 0.18),
+        color: JC.cancelRed.withOpacity(0.15),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
-

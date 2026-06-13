@@ -1256,17 +1256,16 @@ let _proposalAnswers = {};
 let _proposalMode = 'prompt'; // 'prompt' | 'draft_plan'
 
 async function sendToDraftPlan(id) {
-  _proposalMode = 'draft_plan';
-  await useProposalAsPrompt(id);
+  await useProposalAsPrompt(id, 'draft_plan');
 }
 
-async function useProposalAsPrompt(id) {
+async function useProposalAsPrompt(id, mode = 'prompt') {
   const proposal = _proposalCtx.find(p => p.id === id);
   if (!proposal) { showToast('הצעה לא נמצאה', 'error'); return; }
 
   _activeProposal = proposal;
   _proposalAnswers = {};
-  if (_proposalMode !== 'draft_plan') _proposalMode = 'prompt';
+  _proposalMode = mode;
 
   // Show questions panel below the proposal
   const proposalEl = document.getElementById(`pr-${id}`);
@@ -1300,53 +1299,60 @@ function renderProposalQuestions(id, questions) {
   const wrap = document.getElementById(`pq-${id}`);
   if (!wrap) return;
 
+  const submitLabel = _proposalMode === 'draft_plan' ? '🧭 צור פרומפט ושלח לתכנון' : '✨ צור פרומפט';
+  // Build HTML with data-* only — no label/value interpolated into JS attributes
   const questionsHtml = questions.map((q, qi) => `
-    <div class="pq-question" data-qi="${qi}">
+    <div class="pq-question" data-qi="${qi}" data-label="${escapeHtml(q.label)}">
       <div class="pq-question-label">${escapeHtml(q.label)}</div>
       ${q.reason ? `<div class="pq-question-reason">${escapeHtml(q.reason)}</div>` : ''}
       <div class="pq-options">
         ${(q.options || []).map(opt => `
           <button class="pq-option" data-qi="${qi}" data-val="${escapeHtml(opt.value)}"
-            onclick="selectPqOption(this,'${id}',${qi},'${escapeHtml(opt.value)}','${escapeHtml(q.label)}')"
           >${escapeHtml(opt.label)}</button>
         `).join('')}
       </div>
-      <input class="pq-other-input" id="pq-other-${id}-${qi}" placeholder="פרט..." style="display:none"
-        oninput="setPqOtherAnswer('${id}',${qi},'${escapeHtml(q.label)}',this.value)" />
+      <input class="pq-other-input" id="pq-other-${id}-${qi}" placeholder="פרט..." style="display:none" />
     </div>
   `).join('');
 
-  const submitLabel = _proposalMode === 'draft_plan' ? '🧭 צור פרומפט ושלח לתכנון' : '✨ צור פרומפט';
   wrap.innerHTML = `
     <div class="pq-title">כמה שאלות קטנות כדי שנבין בדיוק מה צריך ✍️</div>
     ${questionsHtml}
     <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
-      <button class="pq-submit" id="pq-submit-${id}" onclick="submitProposalQuestions('${id}')">
+      <button class="pq-submit" id="pq-submit-${id}">
         <div class="spinner" id="pq-spinner-${id}" style="width:12px;height:12px;border-width:2px"></div>
         ${submitLabel}
       </button>
-      <button class="pq-skip" onclick="skipProposalQuestions('${id}')">דלג</button>
+      <button class="pq-skip">דלג</button>
     </div>
     <div id="pq-result-${id}"></div>
   `;
-}
 
-function selectPqOption(btn, proposalId, qi, val, label) {
-  // Toggle selection in same question
-  btn.closest('.pq-options').querySelectorAll('.pq-option').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
-  const otherInput = document.getElementById(`pq-other-${proposalId}-${qi}`);
-  if (val === 'other') {
-    otherInput.style.display = 'block';
-    otherInput.focus();
-  } else {
-    otherInput.style.display = 'none';
-    _proposalAnswers[label] = btn.textContent.trim();
-  }
-}
-
-function setPqOtherAnswer(proposalId, qi, label, value) {
-  _proposalAnswers[label] = value;
+  // Wire event listeners — avoids inline JS with interpolated strings
+  wrap.querySelectorAll('.pq-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const qi = parseInt(btn.dataset.qi, 10);
+      const val = btn.dataset.val;
+      const label = btn.closest('.pq-question').dataset.label;
+      btn.closest('.pq-options').querySelectorAll('.pq-option').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      const otherInput = document.getElementById(`pq-other-${id}-${qi}`);
+      if (val === 'other') {
+        otherInput.style.display = 'block';
+        otherInput.focus();
+      } else {
+        otherInput.style.display = 'none';
+        _proposalAnswers[label] = btn.textContent.trim();
+      }
+    });
+  });
+  wrap.querySelectorAll('.pq-other-input').forEach(input => {
+    const qi = parseInt(input.id.split('-').pop(), 10);
+    const label = input.closest('.pq-question').dataset.label;
+    input.addEventListener('input', () => { _proposalAnswers[label] = input.value; });
+  });
+  document.getElementById(`pq-submit-${id}`).addEventListener('click', () => submitProposalQuestions(id));
+  wrap.querySelector('.pq-skip').addEventListener('click', () => submitProposalQuestions(id));
 }
 
 async function submitProposalQuestions(id) {
@@ -1367,20 +1373,7 @@ async function submitProposalQuestions(id) {
     if (d.prompt) {
       window._generatedPrompt = d.prompt;
 
-      // If mode is draft_plan — also advance the status and save the prompt
-      if (_proposalMode === 'draft_plan' && _activeProposal?.id != null) {
-        await fetch(`/dashboard/backlog/proposals/${_activeProposal.id}/draft-plan`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ claudePrompt: d.prompt, actor: 'user' }),
-        }).catch(() => {});
-        // Update local state
-        const p = _proposalCtx.find(p => p.id === _activeProposal.id);
-        if (p) { p.status = 'draft_plan'; p.claudePrompt = d.prompt; }
-        renderProposals(_proposalCtx);
-        showToast('ההצעה עברה לתכנון 🧭', 'success');
-      }
-
+      // Show the prompt first so the user can see/copy it
       result.innerHTML = `
         <div class="prompt-result" style="margin-top:12px">
           <div class="prompt-result-header">
@@ -1389,6 +1382,23 @@ async function submitProposalQuestions(id) {
           </div>
           <pre class="prompt-text">${escapeHtml(d.prompt)}</pre>
         </div>`;
+
+      // If mode is draft_plan — advance status and re-render list (after result is shown)
+      if (_proposalMode === 'draft_plan' && _activeProposal?.id != null) {
+        await fetch(`/dashboard/backlog/proposals/${_activeProposal.id}/draft-plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ claudePrompt: d.prompt, actor: 'user' }),
+        }).catch(() => {});
+        const p = _proposalCtx.find(p => p.id === _activeProposal.id);
+        if (p) { p.status = 'draft_plan'; p.claudePrompt = d.prompt; }
+        // Persist the prompt HTML into a detached node, re-render, then re-attach
+        const promptHtml = result.innerHTML;
+        renderProposals(_proposalCtx);
+        const newResult = document.getElementById(`pq-result-${_activeProposal.id}`);
+        if (newResult) newResult.innerHTML = promptHtml;
+        showToast('ההצעה עברה לתכנון 🧭', 'success');
+      }
     } else {
       result.innerHTML = `<div class="empty-state" style="padding:8px"><span>⚠️</span>${escapeHtml(d.error || 'שגיאה')}</div>`;
     }

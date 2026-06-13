@@ -301,6 +301,7 @@ bool obsidianAutoSync;
     'userEmail':      userEmail,
     'useLocalModel':  useLocalModel,
     'useLocalServer': useLocalServer,
+    'localServerUrl': localServerUrl,
     'ttsEnabled':     voiceEnabled,   // server checks settings.ttsEnabled
     'telemetryConsent': telemetryConsent,
     'cloudProvider':   cloudProvider,
@@ -319,6 +320,8 @@ bool obsidianAutoSync;
     // AI / model
     'cloudProvider':   cloudProvider,
     'useLocalModel':   useLocalModel,
+    'useLocalServer':  useLocalServer,
+    'localServerUrl':  localServerUrl,
     'localModelName':  localModelName,
     'openrouterModel': openrouterModel,
     'temperature':     temperature,
@@ -358,6 +361,8 @@ bool obsidianAutoSync;
     // AI / model
     cloudProvider   = pick('cloudProvider', cloudProvider);
     useLocalModel   = pick('useLocalModel', useLocalModel);
+    useLocalServer  = pick('useLocalServer', useLocalServer);
+    localServerUrl  = pick('localServerUrl', localServerUrl);
     localModelName  = pick('localModelName', localModelName);
     openrouterModel = pick('openrouterModel', openrouterModel);
     temperature     = (p['temperature'] is num) ? (p['temperature'] as num).toDouble() : temperature;

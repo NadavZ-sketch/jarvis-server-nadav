@@ -651,7 +651,7 @@ class _ScrumViewState extends State<ScrumView> {
             },
             body: jsonEncode({
               'message': message,
-              'settings': {'userName': widget.settings.userName},
+              'settings': widget.settings.toJson(),
             }),
           )
           .timeout(const Duration(seconds: 45));

@@ -444,7 +444,7 @@ class _EisenhowerMatrixState extends State<EisenhowerMatrix> {
             },
             body: jsonEncode({
               'message': message,
-              'settings': {},
+              'settings': widget.settings.toJson(),
             }),
           )
           .timeout(const Duration(seconds: 30));

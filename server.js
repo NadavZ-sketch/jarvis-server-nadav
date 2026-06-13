@@ -341,6 +341,10 @@ const supabaseAdmin = (SUPABASE_SERVICE_ROLE_KEY === SUPABASE_ANON_KEY)
     ? supabasePublic
     : createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const supabase = supabaseAdmin;
+// Data-access seam: agents/controllers that have been migrated receive `repos`
+// instead of the raw client (see services/dataAccess).
+const { createRepos } = require('./services/dataAccess');
+const repos = createRepos(supabase);
 
 // Persist per-agent latency/intent metrics to Supabase (degrades to in-memory).
 agentMetrics.init(supabase);
@@ -1006,7 +1010,7 @@ async function askJarvisHandler(req, res) {
         // Build the per-request context once. The dispatcher's per-entry
         // adapters destructure what each agent actually needs.
         const ctx = {
-            userMessage, supabase, useLocal, settings,
+            userMessage, supabase, repos, useLocal, settings,
             chatHistory, longTermMemories, imageBase64,
             sendEmail, chatId,
         };
@@ -3855,7 +3859,7 @@ async function streamJarvisHandler(req, res) {
             const syncEntry = dispatcher.getEntry(agentName);
             let result;
             if (syncEntry && syncEntry.mode === 'sync') {
-                const ctx = { userMessage, supabase, useLocal, settings, sendEmail, chatId };
+                const ctx = { userMessage, supabase, repos, useLocal, settings, sendEmail, chatId };
                 result = await dispatcher.dispatch(agentName, ctx, AGENTS);
                 if (syncEntry.cacheBust) cacheInvalidate(syncEntry.cacheBust);
             } else {

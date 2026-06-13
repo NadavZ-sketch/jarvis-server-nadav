@@ -9,28 +9,7 @@ jest.mock('../../services/obsidianSync', () => ({ dbToVault: jest.fn() }));
 
 const { callGemma4 } = require('../../agents/models');
 const { runTaskAgent } = require('../../agents/taskAgent');
-
-function makeChain(data = [], error = null) {
-    const chain = {
-        then(res) { return Promise.resolve({ data, error }).then(res); },
-        catch(rej) { return Promise.resolve({ data, error }).catch(rej); },
-        select:  jest.fn().mockReturnThis(),
-        single:  jest.fn().mockReturnThis(),
-        insert:  jest.fn().mockReturnThis(),
-        update:  jest.fn().mockReturnThis(),
-        delete:  jest.fn().mockReturnThis(),
-        eq:      jest.fn().mockReturnThis(),
-        ilike:   jest.fn().mockReturnThis(),
-        order:   jest.fn().mockReturnThis(),
-        limit:   jest.fn().mockReturnThis(),
-    };
-    return chain;
-}
-
-function makeSupabase(data, error) {
-    const chain = makeChain(data, error);
-    return { from: jest.fn(() => chain), _chain: chain };
-}
+const { makeRepos } = require('../helpers/fakeRepos');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -39,11 +18,10 @@ beforeEach(() => {
 describe('runTaskAgent', () => {
     test('add intent inserts task and confirms', async () => {
         callGemma4.mockResolvedValue('{"intent":"add","taskDetails":"buy milk","category":"general"}');
-        const supabase = makeSupabase();
-        const result = await runTaskAgent('הוסף משימה לקנות חלב', supabase);
-        expect(supabase.from).toHaveBeenCalledWith('tasks');
-        expect(supabase._chain.insert).toHaveBeenCalledWith(
-            expect.arrayContaining([expect.objectContaining({ content: 'buy milk', category: 'general' })])
+        const repos = makeRepos();
+        const result = await runTaskAgent('הוסף משימה לקנות חלב', repos);
+        expect(repos.tasks.addGraceful).toHaveBeenCalledWith(
+            expect.objectContaining({ content: 'buy milk', category: 'general' })
         );
         expect(result.answer).toContain('הוספתי');
         expect(result.action).toEqual({ type: 'navigate', target: 'tasks', label: 'פתח משימות' });
@@ -51,83 +29,76 @@ describe('runTaskAgent', () => {
 
     test('list intent queries tasks and returns list', async () => {
         callGemma4.mockResolvedValue('{"intent":"list","taskDetails":""}');
-        const supabase = makeSupabase([{ content: 'buy milk' }, { content: 'call mom' }]);
-        const result = await runTaskAgent('מה המשימות שלי', supabase);
-        expect(supabase._chain.select).toHaveBeenCalled();
+        const repos = makeRepos({ tasks: [{ content: 'buy milk' }, { content: 'call mom' }] });
+        const result = await runTaskAgent('מה המשימות שלי', repos);
+        expect(repos.tasks.listAll).toHaveBeenCalled();
         expect(result.answer).toContain('buy milk');
     });
 
     test('list intent with empty tasks → no tasks message', async () => {
         callGemma4.mockResolvedValue('{"intent":"list","taskDetails":""}');
-        const supabase = makeSupabase([]);
-        const result = await runTaskAgent('מה המשימות שלי', supabase);
+        const result = await runTaskAgent('מה המשימות שלי', makeRepos({ tasks: [] }));
         expect(result.answer).toContain('אין לך משימות');
     });
 
     test('JSON wrapped in markdown still parsed via lastIndexOf', async () => {
         callGemma4.mockResolvedValue('Here is the result: {"intent":"list","taskDetails":""} — done');
-        const supabase = makeSupabase([{ content: 'task1' }]);
-        const result = await runTaskAgent('רשימת משימות', supabase);
+        const result = await runTaskAgent('רשימת משימות', makeRepos({ tasks: [{ content: 'task1' }] }));
         expect(result.answer).toContain('task1');
     });
 
     test('delete intent removes matching task', async () => {
         callGemma4.mockResolvedValue('{"intent":"delete","taskDetails":"buy milk"}');
-        const supabase = makeSupabase([{ content: 'buy milk' }]);
-        const result = await runTaskAgent('מחק משימה לקנות חלב', supabase);
-        expect(supabase._chain.delete).toHaveBeenCalled();
-        expect(supabase._chain.ilike).toHaveBeenCalledWith('content', '%buy milk%');
+        const repos = makeRepos({ tasks: [{ id: 9, content: 'buy milk' }] });
+        const result = await runTaskAgent('מחק משימה לקנות חלב', repos);
+        expect(repos.tasks.findByContent).toHaveBeenCalledWith('buy milk');
+        expect(repos.tasks.deleteById).toHaveBeenCalledWith(9);
         expect(result.answer).toContain('מחקתי');
     });
 
     test('delete intent with no match → not found message', async () => {
         callGemma4.mockResolvedValue('{"intent":"delete","taskDetails":"buy milk"}');
-        const supabase = makeSupabase([]);
-        const result = await runTaskAgent('מחק משימה', supabase);
+        const result = await runTaskAgent('מחק משימה', makeRepos({ tasks: [] }));
         expect(result.answer).toContain('לא מצאתי');
     });
 
     test('complete intent removes and celebrates', async () => {
         callGemma4.mockResolvedValue('{"intent":"complete","taskDetails":"buy milk"}');
-        const supabase = makeSupabase([{ content: 'buy milk' }]);
-        const result = await runTaskAgent('סיימתי לקנות חלב', supabase);
+        const result = await runTaskAgent('סיימתי לקנות חלב', makeRepos({ tasks: [{ id: 1, content: 'buy milk' }] }));
         expect(result.answer).toContain('כל הכבוד');
     });
 
     test('recategorize intent updates category of matching task', async () => {
         callGemma4.mockResolvedValue('{"intent":"recategorize","taskDetails":"קניות","category":"financial"}');
-        const supabase = makeSupabase([{ id: 7, content: 'קניות לשבת' }]);
-        const result = await runTaskAgent('תעביר את קניות לפיננסי', supabase);
-        expect(supabase._chain.update).toHaveBeenCalledWith({ category: 'financial' });
+        const repos = makeRepos({ tasks: [{ id: 7, content: 'קניות לשבת' }] });
+        const result = await runTaskAgent('תעביר את קניות לפיננסי', repos);
+        expect(repos.tasks.setCategory).toHaveBeenCalledWith(7, 'financial');
         expect(result.answer).toContain('פיננסי');
     });
 
     test('recategorize with invalid category → asks for clarification', async () => {
         callGemma4.mockResolvedValue('{"intent":"recategorize","taskDetails":"קניות","category":"banana"}');
-        const supabase = makeSupabase([{ id: 7, content: 'קניות' }]);
-        const result = await runTaskAgent('תעביר את קניות לבננה', supabase);
-        expect(supabase._chain.update).not.toHaveBeenCalled();
+        const repos = makeRepos({ tasks: [{ id: 7, content: 'קניות' }] });
+        const result = await runTaskAgent('תעביר את קניות לבננה', repos);
+        expect(repos.tasks.setCategory).not.toHaveBeenCalled();
         expect(result.answer).toContain('קטגוריה');
     });
 
     test('recategorize with no matching task → not found message', async () => {
         callGemma4.mockResolvedValue('{"intent":"recategorize","taskDetails":"לא קיים","category":"work"}');
-        const supabase = makeSupabase([]);
-        const result = await runTaskAgent('תעביר את לא קיים לעבודה', supabase);
+        const result = await runTaskAgent('תעביר את לא קיים לעבודה', makeRepos({ tasks: [] }));
         expect(result.answer).toContain('לא מצאתי');
     });
 
     test('LLM returns no JSON → error message', async () => {
         callGemma4.mockResolvedValue('Sorry, I cannot help with that.');
-        const supabase = makeSupabase();
-        const result = await runTaskAgent('בלה בלה', supabase);
+        const result = await runTaskAgent('בלה בלה', makeRepos());
         expect(result.answer).toContain('לא הצלחתי לעבד את הבקשה');
     });
 
     test('callGemma4 throws → error message', async () => {
         callGemma4.mockRejectedValue(new Error('Network error'));
-        const supabase = makeSupabase();
-        const result = await runTaskAgent('הוסף משימה', supabase);
+        const result = await runTaskAgent('הוסף משימה', makeRepos());
         expect(result.answer).toContain('הייתה בעיה בעיבוד המשימה');
     });
 });
@@ -135,44 +106,43 @@ describe('runTaskAgent', () => {
 describe('runTaskAgent — recurring tasks', () => {
     test('add with recurrence stores recurrence and notes it', async () => {
         callGemma4.mockResolvedValue('{"intent":"add","taskDetails":"שתיית מים","category":"personal","recurrence":"daily"}');
-        const supabase = makeSupabase();
-        const result = await runTaskAgent('הוסף משימה לשתות מים כל יום', supabase);
-        expect(supabase._chain.insert).toHaveBeenCalledWith(
-            expect.arrayContaining([expect.objectContaining({ content: 'שתיית מים', recurrence: 'daily' })])
+        const repos = makeRepos();
+        const result = await runTaskAgent('הוסף משימה לשתות מים כל יום', repos);
+        expect(repos.tasks.addGraceful).toHaveBeenCalledWith(
+            expect.objectContaining({ content: 'שתיית מים', recurrence: 'daily' })
         );
         expect(result.answer).toContain('🔁');
     });
 
     test('recurrence falls back to keyword detection when LLM omits it', async () => {
         callGemma4.mockResolvedValue('{"intent":"add","taskDetails":"דוח שבועי","category":"work","recurrence":null}');
-        const supabase = makeSupabase();
-        await runTaskAgent('הוסף משימה דוח כל שבוע', supabase);
-        expect(supabase._chain.insert).toHaveBeenCalledWith(
-            expect.arrayContaining([expect.objectContaining({ recurrence: 'weekly' })])
+        const repos = makeRepos();
+        await runTaskAgent('הוסף משימה דוח כל שבוע', repos);
+        expect(repos.tasks.addGraceful).toHaveBeenCalledWith(
+            expect.objectContaining({ recurrence: 'weekly' })
         );
     });
 
     test('completing a recurring task spawns the next occurrence', async () => {
         callGemma4.mockResolvedValue('{"intent":"complete","taskDetails":"שתיית מים"}');
-        const supabase = makeSupabase([
+        const repos = makeRepos({ tasks: [
             { id: 'r1', content: 'שתיית מים', category: 'personal', priority: 'medium', recurrence: 'daily', due_date: '2026-06-06' },
-        ]);
-        const result = await runTaskAgent('סיימתי לשתות מים', supabase);
-        // First update marks done; then a fresh insert creates the next occurrence.
-        expect(supabase._chain.update).toHaveBeenCalledWith({ done: true });
-        expect(supabase._chain.insert).toHaveBeenCalledWith(
-            expect.arrayContaining([expect.objectContaining({ content: 'שתיית מים', recurrence: 'daily', due_date: '2026-06-07' })])
+        ] });
+        const result = await runTaskAgent('סיימתי לשתות מים', repos);
+        expect(repos.tasks.complete).toHaveBeenCalledWith('r1');
+        expect(repos.tasks.insertNext).toHaveBeenCalledWith(
+            expect.objectContaining({ content: 'שתיית מים', recurrence: 'daily', due_date: '2026-06-07' })
         );
         expect(result.answer).toContain('🔁');
     });
 
     test('completing a non-recurring task does not insert anything', async () => {
         callGemma4.mockResolvedValue('{"intent":"complete","taskDetails":"buy milk"}');
-        const supabase = makeSupabase([
+        const repos = makeRepos({ tasks: [
             { id: 't1', content: 'buy milk', category: 'general', priority: 'low', recurrence: null, due_date: null },
-        ]);
-        const result = await runTaskAgent('סיימתי לקנות חלב', supabase);
-        expect(supabase._chain.insert).not.toHaveBeenCalled();
+        ] });
+        const result = await runTaskAgent('סיימתי לקנות חלב', repos);
+        expect(repos.tasks.insertNext).not.toHaveBeenCalled();
         expect(result.answer).toContain('כל הכבוד');
     });
 });

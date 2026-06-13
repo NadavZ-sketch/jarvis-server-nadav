@@ -1,4 +1,4 @@
-const { sanitizeLike, nowJerusalem, todayISODate, extractJSON } = require('./utils');
+const { nowJerusalem, todayISODate, extractJSON } = require('./utils');
 const { parseRecurrence, RECURRENCE_LABELS } = require('./reminderAgent');
 require('dotenv').config();
 const { callGemma4 } = require('./models');
@@ -98,8 +98,9 @@ Return ONLY a JSON object (no explanation):
 
 User message: `;
 
-async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {}) {
+async function runTaskAgent(userMessage, repos, useLocal = true, settings = {}) {
     const userName = settings.userName || 'נדב';
+    const tasks = repos.tasks;
 
     try {
         const today = todayISODate();
@@ -132,16 +133,8 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
             if (parsed.priority && parsed.priority !== 'null') insertData.priority = parsed.priority;
             if (recurrence) insertData.recurrence = recurrence;
 
-            // Graceful insert: drop optional columns that may not exist yet and retry.
-            const { error: insertErr } = await supabase.from('tasks').insert([insertData]);
-            if (insertErr) {
-                if (/column "(category|recurrence)"/.test(insertErr.message || '')) {
-                    const { category: _c, recurrence: _r, ...rowMinimal } = insertData;
-                    await supabase.from('tasks').insert([rowMinimal]);
-                } else {
-                    console.error('TaskAgent insert error:', insertErr.message);
-                }
-            }
+            // Graceful insert (drops optional columns that may not exist yet).
+            await tasks.addGraceful(insertData);
             obsidianSync.dbToVault('tasks', { content: parsed.taskDetails, category });
 
             const catMeta = CATEGORY_META[category] || CATEGORY_META.general;
@@ -168,18 +161,8 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
             tomorrow.setDate(tomorrow.getDate() + 1);
             const tomorrowISO = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth()+1).padStart(2,'0')}-${String(tomorrow.getDate()).padStart(2,'0')}`;
 
-            const { data: todayTasks } = await supabase
-                .from('tasks')
-                .select('*')
-                .eq('done', false)
-                .lte('due_date', tomorrowISO)
-                .order('due_date', { ascending: true });
-
-            const { data: overdue } = await supabase
-                .from('tasks')
-                .select('*')
-                .eq('done', false)
-                .lt('due_date', today);
+            const todayTasks = await tasks.listDueUpTo(tomorrowISO);
+            const overdue = await tasks.listOverdue(today);
 
             const dueTodayItems = (todayTasks || []).filter(t => t.due_date === today);
             const dueTomorrow = (todayTasks || []).filter(t => t.due_date === tomorrowISO);
@@ -216,7 +199,7 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         }
 
         if (parsed.intent === 'list') {
-            const { data } = await supabase.from('tasks').select('*').order('due_date', { ascending: true, nullsFirst: false });
+            const data = await tasks.listAll();
             if (!data || data.length === 0) return { answer: `אין לך משימות כרגע ${userName}, אתה חופשי. בואו נוצור משהו? 💡` };
 
             const pending = data.filter(t => !t.done);
@@ -266,16 +249,13 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         }
 
         if (parsed.intent === 'delete') {
-            const { data: matches } = await supabase
-                .from('tasks')
-                .select('id, content')
-                .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`);
+            const matches = await tasks.findByContent(parsed.taskDetails);
             if (!matches || matches.length === 0) return { answer: 'לא מצאתי משימה כזו למחוק.' };
             if (matches.length > 1) {
                 const list = matches.map((t, i) => `${i + 1}. ${t.content}`).join('\n');
                 return { answer: `מצאתי ${matches.length} משימות תואמות. תוכל להיות יותר ספציפי?\n${list}` };
             }
-            await supabase.from('tasks').delete().eq('id', matches[0].id);
+            await tasks.deleteById(matches[0].id);
             return { answer: `מחקתי את המשימה: ${matches[0].content}` };
         }
 
@@ -286,18 +266,14 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                 return { answer: 'לא הבנתי לאיזו קטגוריה להעביר. נסה: עבודה / אישי / פיננסי / פרויקט / כללי.' };
             }
 
-            const { data: matches } = await supabase
-                .from('tasks')
-                .select('id, content')
-                .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`)
-                .eq('done', false);
+            const matches = await tasks.findByContent(parsed.taskDetails, { openOnly: true });
             if (!matches || matches.length === 0) return { answer: 'לא מצאתי משימה כזו לעדכן.' };
             if (matches.length > 1) {
                 const list = matches.map((t, i) => `${i + 1}. ${t.content}`).join('\n');
                 return { answer: `מצאתי ${matches.length} משימות תואמות. על איזו מהן?\n${list}` };
             }
 
-            const { error: updErr } = await supabase.from('tasks').update({ category }).eq('id', matches[0].id);
+            const { error: updErr } = await tasks.setCategory(matches[0].id, category);
             const catMeta = CATEGORY_META[category];
             if (updErr) {
                 if (/column "category"/.test(updErr.message || '')) {
@@ -310,11 +286,10 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         }
 
         if (parsed.intent === 'complete') {
-            const { data: matches } = await supabase
-                .from('tasks')
-                .select('id, content, category, priority, recurrence, due_date')
-                .ilike('content', `%${sanitizeLike(parsed.taskDetails)}%`)
-                .eq('done', false);
+            const matches = await tasks.findByContent(parsed.taskDetails, {
+                openOnly: true,
+                columns: 'id, content, category, priority, recurrence, due_date',
+            });
             if (!matches || matches.length === 0) return { answer: 'לא מצאתי משימה כזו. נסה לציין את שם המשימה.' };
             if (matches.length > 1) {
                 const list = matches.map((t, i) => `${i + 1}. ${t.content}`).join('\n');
@@ -322,7 +297,7 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
             }
 
             const completed = matches[0];
-            await supabase.from('tasks').update({ done: true }).eq('id', completed.id);
+            await tasks.complete(completed.id);
 
             // Recurring task: spawn the next occurrence with an advanced due date.
             let recurNote = '';
@@ -332,17 +307,13 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
                 if (completed.category) nextRow.category = completed.category;
                 if (completed.priority) nextRow.priority = completed.priority;
                 if (nextDue) nextRow.due_date = nextDue;
-                const { error: recurErr } = await supabase.from('tasks').insert([nextRow]);
+                const { error: recurErr } = await tasks.insertNext(nextRow);
                 if (!recurErr) {
                     recurNote = `\n\n🔁 משימה חוזרת (${RECURRENCE_LABELS[completed.recurrence]}) — יצרתי את המופע הבא${nextDue ? ` ל-${formatDate(nextDue)}` : ''}.`;
                 }
             }
 
-            const { data: remaining } = await supabase
-                .from('tasks')
-                .select('content, due_date')
-                .eq('done', false)
-                .limit(1);
+            const remaining = await tasks.firstOpen();
 
             let nextSuggestion = '';
             if (remaining && remaining.length > 0) {
@@ -353,7 +324,7 @@ async function runTaskAgent(userMessage, supabase, useLocal = true, settings = {
         }
 
         if (parsed.intent === 'suggest') {
-            const { data } = await supabase.from('tasks').select('*').order('created_at', { ascending: false }).limit(5);
+            const data = await tasks.recentTop(5);
 
             if (!data || data.length === 0) {
                 return { answer: `אין לך משימות כרגע ${userName}. יוצר משימה יכול לעזור לך לארגן את היום. מה אתה צריך לעשות?` };

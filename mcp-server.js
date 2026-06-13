@@ -117,7 +117,7 @@ const TOOLS = [
             },
             required: ['message'],
         },
-        handler: (message) => runShoppingAgent(message, supabase, DEFAULT_SETTINGS.useLocal, DEFAULT_SETTINGS),
+        handler: (message) => runShoppingAgent(message, repos, DEFAULT_SETTINGS.useLocal, DEFAULT_SETTINGS),
         actionType: 'shopping.manage',
     },
 ];

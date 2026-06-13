@@ -84,6 +84,15 @@ function makeNoteRepo(opts = {}) {
     };
 }
 
+function makeShoppingRepo(opts = {}) {
+    const { rows = [], addResult } = opts;
+    return {
+        add:            jest.fn(async () => addResult || { error: null }),
+        listOpen:       jest.fn(async () => rows),
+        deleteMatching: jest.fn(async () => rows),
+    };
+}
+
 function makeTableRepo(rows = []) {
     return {
         all:      jest.fn(async () => rows),
@@ -102,10 +111,11 @@ function makeRepos(tableData = {}) {
         reminders: makeReminderRepo({ rows: tableData.reminders || [] }),
         memories: makeMemoryRepo({ rows: tableData.memories || [] }),
         notes: makeNoteRepo({ rows: tableData.notes || [] }),
+        shopping: makeShoppingRepo({ rows: tableData.shopping || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeTableRepo };

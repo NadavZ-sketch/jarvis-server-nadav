@@ -1,21 +1,11 @@
-function createTasksController({ supabase }) {
+function createTasksController({ repos }) {
+  const tasks = repos.tasks;
   return {
     async list(_req, res) {
       try {
-        // Embed subtasks; fall back to a plain select if the subtasks relation
-        // isn't present yet (e.g. migration not applied on this environment).
-        let { data, error } = await supabase
-          .from('tasks')
-          .select('*, subtasks(id, content, done, created_at)')
-          .order('created_at', { ascending: false });
-        if (error) {
-          ({ data, error } = await supabase
-            .from('tasks')
-            .select('*')
-            .order('created_at', { ascending: false }));
-        }
-        if (error) throw error;
-        res.json({ tasks: data || [] });
+        // Repo embeds subtasks and falls back to a plain select internally when
+        // the relation isn't present on this environment.
+        res.json({ tasks: await tasks.listWithSubtasks() });
       } catch (err) {
         console.error('GET /tasks error:', err.message);
         res.status(500).json({ tasks: [] });
@@ -38,7 +28,7 @@ function createTasksController({ supabase }) {
         if (story_points    !== undefined) row.story_points    = story_points;
         if (task_start_date !== undefined) row.task_start_date = task_start_date;
         if (due_date        !== undefined) row.due_date        = due_date;
-        const { data, error } = await supabase.from('tasks').insert([row]).select().single();
+        const { data, error } = await tasks.create(row);
         if (error) throw error;
         res.json({ task: data });
       } catch (err) {
@@ -67,7 +57,7 @@ function createTasksController({ supabase }) {
         if (story_points    !== undefined) updates.story_points    = story_points;
         if (task_start_date !== undefined) updates.task_start_date = task_start_date;
         if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await supabase.from('tasks').update(updates).eq('id', req.params.id).select().single();
+        const { data, error } = await tasks.update(req.params.id, updates);
         if (error) throw error;
         res.json({ task: data });
       } catch (err) {
@@ -77,7 +67,7 @@ function createTasksController({ supabase }) {
     },
     async remove(req, res) {
       try {
-        const { error } = await supabase.from('tasks').delete().eq('id', req.params.id);
+        const { error } = await tasks.deleteById(req.params.id);
         if (error) throw error;
         res.json({ ok: true });
       } catch (err) {

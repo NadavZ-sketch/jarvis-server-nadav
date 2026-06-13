@@ -22,6 +22,7 @@ function makeCtx() {
   return {
     userMessage: 'שלום',
     supabase: { from: jest.fn() },
+    repos: { tasks: {}, table: jest.fn() },
     useLocal: false,
     settings: { userName: 'נדב' },
     chatHistory: [{ role: 'user', text: 'hi' }],
@@ -92,11 +93,11 @@ describe('dispatch', () => {
       .rejects.toThrow(/not sync/);
   });
 
-  test('task → runTaskAgent(userMessage, supabase, useLocal, settings)', async () => {
+  test('task → runTaskAgent(userMessage, repos, useLocal, settings)', async () => {
     const ctx = makeCtx();
     const agents = makeAgents();
     await dispatch('task', ctx, agents);
-    expect(agents.runTaskAgent).toHaveBeenCalledWith(ctx.userMessage, ctx.supabase, ctx.useLocal, ctx.settings);
+    expect(agents.runTaskAgent).toHaveBeenCalledWith(ctx.userMessage, ctx.repos, ctx.useLocal, ctx.settings);
   });
 
   test('reminder → runReminderAgent(userMessage, supabase) only', async () => {

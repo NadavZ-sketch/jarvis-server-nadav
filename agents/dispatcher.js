@@ -10,8 +10,10 @@
 // AGENTS object passed to dispatch(), add an entry below.
 //
 // `ctx` shape (built by server.js per request):
-//   { userMessage, supabase, useLocal, settings, chatHistory, longTermMemories,
-//     imageBase64, sendEmail, chatId }
+//   { userMessage, supabase, repos, useLocal, settings, chatHistory,
+//     longTermMemories, imageBase64, sendEmail, chatId }
+//   `repos` is the data-access seam bundle (services/dataAccess); agents that
+//   have been migrated receive it instead of the raw `supabase` client.
 //
 // Entry shape:
 //   {
@@ -26,7 +28,7 @@
 // handling specific to /ask-jarvis.
 
 const REGISTRY = {
-    task:       { mode:'sync', invoke:(c,a) => a.runTaskAgent(c.userMessage, c.supabase, c.useLocal, c.settings) },
+    task:       { mode:'sync', invoke:(c,a) => a.runTaskAgent(c.userMessage, c.repos, c.useLocal, c.settings) },
     reminder:   { mode:'sync', invoke:(c,a) => a.runReminderAgent(c.userMessage, c.supabase) },
     memory:     { mode:'sync', invoke:(c,a) => a.runMemoryAgent(c.userMessage, c.supabase, c.useLocal, c.settings), cacheBust: 'memories' },
     weather:    { mode:'sync', invoke:(c,a) => a.runWeatherAgent(c.userMessage, c.settings) },

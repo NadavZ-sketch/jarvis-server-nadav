@@ -1,11 +1,15 @@
 const express = require('express');
 const { createTasksController } = require('../controllers/tasksController');
+const { createRepos } = require('../services/dataAccess');
 const { callGemma4 } = require('../agents/models');
 
 function createTasksRouter(deps) {
   const { supabase } = deps;
+  // Controllers cross the data-access seam; the inline route handlers below
+  // (today / suggest / subtasks) still query Supabase directly for now.
+  const repos = deps.repos || createRepos(supabase);
   const router = express.Router();
-  const controller = createTasksController(deps);
+  const controller = createTasksController({ ...deps, repos });
 
   // ─── GET /tasks/today — tasks (overdue + due today) + reminders due today ──
   router.get('/today', async (_req, res) => {

@@ -34,6 +34,8 @@ const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_KEY
 );
+const { createRepos } = require('./services/dataAccess');
+const repos = createRepos(supabase);
 
 // Settings passed to each agent (Claude Desktop operator is implicitly admin).
 const DEFAULT_SETTINGS = {
@@ -63,7 +65,7 @@ const TOOLS = [
             },
             required: ['message'],
         },
-        handler: (message) => runTaskAgent(message, supabase, DEFAULT_SETTINGS.useLocal, DEFAULT_SETTINGS),
+        handler: (message) => runTaskAgent(message, repos, DEFAULT_SETTINGS.useLocal, DEFAULT_SETTINGS),
         actionType: 'tasks.manage',
     },
     {

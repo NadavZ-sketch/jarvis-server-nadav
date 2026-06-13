@@ -5382,16 +5382,13 @@ app.post('/dashboard/generate-prompt', async (req, res) => {
         const plan  = proposal?.plan  || description || '';
         if (!title.trim() && !plan.trim()) return res.status(400).json({ error: 'description or proposal required' });
 
-        const filesSection = proposal?.files?.length
-            ? `\n- קבצים מזוהים: ${proposal.files.join(', ')}`
-            : '';
         const criteriaSection = proposal?.acceptance_criteria?.length
             ? `\n- קריטריוני קבלה: ${proposal.acceptance_criteria.join(' | ')}`
             : '';
         const effortSection = proposal?.effort ? `\n- היקף משוער: ${proposal.effort}` : '';
         const whyNowSection = proposal?.why_now ? `\n- למה עכשיו: ${proposal.why_now}` : '';
         const answersSection = answers && Object.keys(answers).length
-            ? '\n\n==תשובות לשאלות הבהרה==\n' + Object.entries(answers).map(([q, a]) => `- ${q}: ${a}`).join('\n')
+            ? '\n\n==רקע ומוטיבציה מהמשתמש==\n' + Object.entries(answers).map(([q, a]) => `- ${q}: ${a}`).join('\n')
             : '';
 
         const prompt = `אתה מומחה בכתיבת הוראות ל-Claude Code — עוזר הקוד של Anthropic.
@@ -5407,16 +5404,16 @@ app.post('/dashboard/generate-prompt', async (req, res) => {
 ==מה לממש==
 ${title}
 
-==תוכנית טכנית==
-${plan}${filesSection}${effortSection}${criteriaSection}${whyNowSection}${answersSection}
+==תוכנית==
+${plan}${effortSection}${criteriaSection}${whyNowSection}${answersSection}
 
 כתוב פרומפט מובנה ל-Claude Code בעברית, מוכן להדבקה ישירה. השתמש בפורמט הבא בדיוק:
 
 ## מטרה
-[תיאור קצר של מה לבנות]
+[תיאור קצר של מה לבנות ולמה — כולל הערך למשתמש]
 
-## קבצים לשינוי
-- \`נתיב/קובץ.js\` — [מה לשנות שם]
+## רקע ודוגמאות
+[הבעיה שנפתרת, מתי היא קורה, ואם יש — דוגמה קונקרטית לתרחיש]
 
 ## מימוש
 [הוראות שלב-אחר-שלב — ישירות, ללא הקדמות]
@@ -5426,7 +5423,10 @@ ${plan}${filesSection}${effortSection}${criteriaSection}${whyNowSection}${answer
 - [ ] קריטריון 2
 
 ## בדיקה
-\`npm test\` + [בדיקה ספציפית לפיצ'ר זה]`;
+\`npm test\` + [בדיקה ספציפית לפיצ'ר זה]
+
+---
+**לפני שמתחילים לממש:** בדוק את הטענות בפרומפט זה מול הקוד הקיים (Grep / Read לפי הצורך), ואחרי שאימתת את ההנחות — עבור ל-Plan Mode ובנה תוכנית עבודה מפורטת.`;
 
         const result = await callGemma4(prompt, false, 1200);
         res.json({ prompt: result });
@@ -5449,16 +5449,20 @@ app.post('/dashboard/backlog/analyze', async (req, res) => {
 תיאור: "${(proposal.plan || '').slice(0, 400)}"
 סוג: ${proposal.category || 'improvement'}
 
-צור 3 שאלות פשוטות ומובנות שיעזרו להבין בדיוק מה רוצים לבנות.
-חשוב: השאלות מיועדות לכל אדם, לא רק למפתחים — אל תשתמש בז'ארגון טכני (לא "server", "Flutter", "endpoint", "schema" וכדומה).
-נסח את השאלות בשפה יומיומית וברורה.
-כל שאלה עם 2-4 אפשריות תשובה.
+צור 2-3 שאלות שיעזרו להבין **למה** רוצים לבנות את זה ומה חשוב למשתמש.
+התמקד ב:
+- הסיבה / הצורך שמאחורי ההצעה
+- מה הבעיה שזה פותר עכשיו
+- דוגמאות קונקרטיות לשימוש
+
+אל תשאל על קבצים, טכנולוגיה, או ארכיטקטורה.
+השאלות בשפה יומיומית, כל שאלה עם 2-4 אפשריות.
 
 ענה JSON בלבד:
 [
   {
-    "label": "שאלה ברורה ופשוטה",
-    "options": [{"value": "opt1", "label": "אפשרות 1"}, {"value": "other", "label": "אחר"}]
+    "label": "שאלה על הצורך / הרקע",
+    "options": [{"value": "opt1", "label": "אפשרות 1"}, {"value": "other", "label": "אחר — אפרט"}]
   }
 ]`;
 
@@ -5474,8 +5478,8 @@ app.post('/dashboard/backlog/analyze', async (req, res) => {
 
         if (!questions.length) {
             questions = [
-                { label: 'איפה השינוי הזה יורגש?', options: [{ value: 'app', label: 'באפליקציה' }, { value: 'background', label: 'ברקע (השרת)' }, { value: 'both', label: 'בשניהם' }] },
-                { label: 'האם זה משהו חדש לגמרי, או שיפור של דבר קיים?', options: [{ value: 'new', label: 'חדש לגמרי' }, { value: 'improvement', label: 'שיפור של דבר קיים' }, { value: 'other', label: 'אחר' }] },
+                { label: 'מה הבעיה הכי מרגיזה שזה פותר?', options: [{ value: 'friction', label: 'כפתורים / ניווט מסורבל' }, { value: 'missing', label: 'פיצ\'ר שחסר לי כל הזמן' }, { value: 'slow', label: 'תהליך איטי / מייגע' }, { value: 'other', label: 'אחר — אפרט' }] },
+                { label: 'מתי נרגיש הכי הרבה את השיפור?', options: [{ value: 'daily', label: 'כל יום' }, { value: 'weekly', label: 'כמה פעמים בשבוע' }, { value: 'rare', label: 'לפעמים, אבל אז זה קריטי' }, { value: 'other', label: 'אחר' }] },
             ];
         }
 

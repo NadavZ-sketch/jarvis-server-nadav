@@ -1,4 +1,3 @@
-const { sanitizeLike } = require('./utils');
 require('dotenv').config();
 
 // ── Supabase table required ────────────────────────────────────────────────────
@@ -35,21 +34,18 @@ function _parseIntent(msg) {
     return { intent: 'add', item: m };
 }
 
-async function runShoppingAgent(userMessage, supabase, useLocal = true) {
+async function runShoppingAgent(userMessage, repos, useLocal = true) {
+    const shopping = repos.shopping;
     try {
         const parsed = _parseIntent(userMessage);
 
         if (parsed.intent === 'add') {
-            await supabase.from('shopping_items').insert([{ item: parsed.item }]);
+            await shopping.add(parsed.item);
             return { answer: `הוספתי "${parsed.item}" לרשימת הקניות ✅` };
         }
 
         if (parsed.intent === 'list') {
-            const { data } = await supabase
-                .from('shopping_items')
-                .select('*')
-                .eq('done', false)
-                .order('created_at', { ascending: true });
+            const data = await shopping.listOpen();
             if (!data || data.length === 0) return { answer: 'רשימת הקניות ריקה 🛒' };
             const list = data.map((s, i) => `${i + 1}. ${s.item}`).join('\n');
             return { answer: `רשימת הקניות שלך:\n${list}` };
@@ -60,11 +56,7 @@ async function runShoppingAgent(userMessage, supabase, useLocal = true) {
                 // Delete all done items or ask for clarification
                 return { answer: 'מה תרצה להסיר מהרשימה?' };
             }
-            const { data } = await supabase
-                .from('shopping_items')
-                .delete()
-                .ilike('item', `%${sanitizeLike(parsed.item)}%`)
-                .select();
+            const data = await shopping.deleteMatching(parsed.item);
             if (data && data.length > 0) return { answer: `הסרתי "${data[0].item}" מהרשימה ✓` };
             return { answer: 'לא מצאתי את הפריט ברשימה.' };
         }

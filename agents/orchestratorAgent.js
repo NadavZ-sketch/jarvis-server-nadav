@@ -57,7 +57,8 @@ async function dispatchSubTask(intent, message, supabase, useLocal, settings, ch
             }
             case 'shopping': {
                 const { runShoppingAgent } = require('./shoppingAgent');
-                return await runShoppingAgent(message, supabase, useLocal);
+                const { createRepos } = require('../services/dataAccess');
+                return await runShoppingAgent(message, createRepos(supabase), useLocal);
             }
             case 'notes': {
                 const { runNotesAgent } = require('./notesAgent');

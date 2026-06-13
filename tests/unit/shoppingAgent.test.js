@@ -1,46 +1,36 @@
-const mockSupabase = {
-    from: jest.fn().mockReturnThis(),
-    insert: jest.fn().mockResolvedValue({ error: null }),
-    select: jest.fn().mockReturnThis(),
-    ilike: jest.fn().mockReturnThis(),
-    delete: jest.fn().mockReturnThis(),
-    order: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockResolvedValue({ data: [], error: null }),
-};
-mockSupabase.from.mockReturnValue(mockSupabase);
+'use strict';
 
 jest.mock('../../agents/models', () => ({ callGemma4: jest.fn() }));
 
-const { callGemma4 } = require('../../agents/models');
 const { runShoppingAgent } = require('../../agents/shoppingAgent');
+const { makeRepos } = require('../helpers/fakeRepos');
 
 beforeEach(() => jest.clearAllMocks());
 
 describe('runShoppingAgent', () => {
     it('adds item to shopping list', async () => {
-        callGemma4.mockResolvedValue(JSON.stringify({ intent: 'add', item: 'חלב' }));
-        mockSupabase.insert.mockResolvedValue({ error: null });
-        const result = await runShoppingAgent('הוסף חלב לרשימת הקניות', mockSupabase, false);
-        expect(result).toHaveProperty('answer');
+        const repos = makeRepos({ shopping: [] });
+        const result = await runShoppingAgent('הוסף חלב לרשימה', repos, false);
+        expect(repos.shopping.add).toHaveBeenCalledWith('חלב');
+        expect(result.answer).toContain('הוספתי');
     });
 
     it('shows shopping list', async () => {
-        callGemma4.mockResolvedValue(JSON.stringify({ intent: 'list' }));
-        mockSupabase.limit.mockResolvedValue({ data: [{ item: 'חלב' }, { item: 'לחם' }], error: null });
-        const result = await runShoppingAgent('מה ברשימת הקניות?', mockSupabase, false);
-        expect(result).toHaveProperty('answer');
+        const repos = makeRepos({ shopping: [{ item: 'חלב' }, { item: 'לחם' }] });
+        const result = await runShoppingAgent('מה יש ברשימה', repos, false);
+        expect(repos.shopping.listOpen).toHaveBeenCalled();
+        expect(result.answer).toContain('חלב');
     });
 
-    it('handles LLM parse failure gracefully', async () => {
-        callGemma4.mockResolvedValue('not valid json');
-        const result = await runShoppingAgent('הוסף ביצים', mockSupabase, false);
-        expect(result).toHaveProperty('answer');
-        expect(typeof result.answer).toBe('string');
+    it('empty list → empty message', async () => {
+        const result = await runShoppingAgent('מה יש ברשימה', makeRepos({ shopping: [] }), false);
+        expect(result.answer).toContain('ריקה');
     });
 
-    it('escapes LIKE wildcards before deleting an item', async () => {
-        callGemma4.mockResolvedValue(JSON.stringify({ intent: 'delete', item: '100%_מיץ' }));
-        await runShoppingAgent('מחק 100%_מיץ מהרשימה', mockSupabase, false);
-        expect(mockSupabase.ilike).toHaveBeenCalledWith('item', '%100\\%\\_מיץ%');
+    it('deletes a matching item', async () => {
+        const repos = makeRepos({ shopping: [{ item: '100%_מיץ' }] });
+        const result = await runShoppingAgent('מחק 100%_מיץ מהרשימה', repos, false);
+        expect(repos.shopping.deleteMatching).toHaveBeenCalledWith('100%_מיץ');
+        expect(result.answer).toContain('הסרתי');
     });
 });

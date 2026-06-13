@@ -4759,6 +4759,48 @@ ${list}
     }
 });
 
+// Architecture context per proposal category — injected into LLM prompts for grounding
+function _getArchContext(category) {
+    const base = `==מבנה הפרויקט==
+קבצים מרכזיים: server.js (Express, ~5400 שורות), agents/ (24 agents), services/, controllers/, routes/
+טסטים: tests/unit/ (Jest) | פקודות: npm test, npm run test:coverage, npx jest tests/unit/X.test.js
+Flutter: jarvis_mobile/lib/ (screens/, widgets/, services/)
+DB: Supabase (chat_history, tasks, reminders, memories, habits, projects, shopping_items, notes)`;
+    const catMap = {
+        bug_fix: `\n\nקבצים נפוצים לבאגים: agents/router.js, agents/models.js, server.js (handler ספציפי), agents/utils.js
+תבנית תיקון: זהה root cause → תקן במקום אחד → הוסף regression test ב-tests/unit/`,
+        feature: `\n\nתבנית agent חדש:
+1. agents/myAgent.js — exports runMyAgent(userMessage, supabase, useLocal, settings) → {answer, action?}
+2. agents/router.js — הוסף ל-KEYWORDS{} + VALID_INTENTS + LLM_CLASSIFY_PROMPT
+3. server.js — import + case ב-POST /ask-jarvis + POST /stream-jarvis
+4. tests/unit/myAgent.test.js — מוק Supabase עם jest.mock()`,
+        ux: `\n\nקבצים frontend: progress-map.html (HTML+JS+CSS), agent-center.html
+Flutter: jarvis_mobile/lib/screens/, jarvis_mobile/lib/widgets/
+Endpoints רלוונטיים: GET /stats, GET /user-profile, POST /user-profile`,
+        performance: `\n\nLLM stack: agents/models.js — callGemma4() עם failover Ollama→Groq→DeepSeek→Gemini
+Cache: in-process TTL (memories 5min, chat 30s)
+שיפור ביצועים: הפחת tokens, הוסף cache, קצר system prompts, עבד במקביל עם Promise.all`,
+        improvement: `\n\nלפי תחום: agents/ לשיפור agent, server.js לשיפור endpoint, services/ לשיפור service layer
+פונקציות שיתופיות ב-agents/utils.js — השתמש בהן במקום לשכפל`,
+    };
+    return base + (catMap[category] || catMap.improvement);
+}
+
+// Fetch recent e2e failures for proposal context enrichment (best-effort)
+async function _getRecentBugContext(supabaseClient) {
+    try {
+        const { data } = await supabaseClient
+            .from('e2e_reports')
+            .select('summary, created_at')
+            .eq('status', 'fail')
+            .order('created_at', { ascending: false })
+            .limit(3);
+        if (!data?.length) return '';
+        return '\n\n==תקלות אחרונות (e2e reports)==\n' +
+            data.map(r => `- ${(r.summary || '').slice(0, 120)}`).join('\n');
+    } catch (_) { return ''; }
+}
+
 // Deterministic fallback questions per category (used when LLM is unavailable)
 function _clarifyFallback(category, title) {
     const base = [
@@ -4781,18 +4823,22 @@ app.post('/dashboard/smart-proposals/clarify', async (req, res) => {
     const { title = '', description = '', category = 'improvement', rationale = '' } = req.body;
     if (!title.trim()) return res.status(400).json({ error: 'title required' });
     const catHe = { bug_fix: 'תיקון באג', ux: 'שיפור UX', performance: 'ביצועים', feature: "פיצ'ר", improvement: 'שיפור' }[category] || 'שיפור';
-    const sysPrompt = `אתה עוזר לבנות פרומפט מדויק לפיתוח עבור "ג'רביס" (Flutter + Node.js).
-ניתנת לך הצעת פיתוח. עליך לייצר 2-3 שאלות קצרות ומדויקות שיעזרו לדייק את כוונת המשתמש.
+    const archCtx = _getArchContext(category);
+    const sysPrompt = `אתה עוזר טכני בכיר שמכין פרומפט ל-Claude Code CLI עבור "ג'רביס" (Flutter + Node.js).
+${archCtx}
+
+ניתנת לך הצעת פיתוח. צור 2-3 שאלות קצרות וטכניות שיאפשרו לקלוד קוד לממש בצורה מדויקת.
+שאלות טובות: על approach טכני (באיזה קובץ, איזו פונקציה), על scope (מה כן/לא לגעת), על התנהגות קצה, על מה לא לשבור.
+שאלות גרועות: "כמה חשוב לך?", "מתי?", שאלות כלליות ללא הקשר טכני.
 לכל שאלה — ספק 3 אפשרויות תשובה קצרות בעברית (chips).
-ענה JSON בלבד, ללא markdown:
-[{"id":"q1","question":"...","chips":["...","...","..."]}]`;
+ענה JSON בלבד, ללא markdown: [{"id":"q1","question":"...","chips":["...","...","..."]}]`;
     const userMsg = `הצעה: ${title}
 קטגוריה: ${catHe}
-תיאור: ${description}
+${description ? `תיאור: ${description}` : ''}
 ${rationale ? `רציונל: ${rationale}` : ''}
-צור 2-3 שאלות אבחוניות ממוקדות.`;
+צור 2-3 שאלות טכניות-ממוקדות.`;
     try {
-        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 600);
+        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 800);
         const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
         const start = stripped.indexOf('[');
         const end   = stripped.lastIndexOf(']');
@@ -4838,20 +4884,49 @@ app.post('/dashboard/smart-proposals/refine-prompt', async (req, res) => {
     const answersBlock = answers.length
         ? answers.map(a => `- ${a.question}: ${a.answer}`).join('\n')
         : '';
-    const sysPrompt = `אתה כותב פרומפט לפיתוח ב-Claude Code עבור "ג'רביס" (Flutter + Node.js).
-כתוב פרומפט מפורט בעברית שמכיל:
-1. תיאור מדויק של מה לממש
-2. קבצים/מודולים רלוונטיים (Flutter + Node.js)
-3. סדר עבודה מומלץ
-4. נקודות קצה ומה לבדוק
-ענה בפרומפט ישירות, ללא כותרת, ללא JSON.`;
+    const archCtx = _getArchContext(category);
+    const sysPrompt = `אתה כותב פרומפט מקצועי ל-Claude Code CLI עבור "ג'רביס" (Node.js + Flutter).
+הפרומפט שתכתוב ייכנס ישירות ל-Claude Code וירוץ שינויי קוד אמיתיים — חייב להיות מדויק ומלא.
+
+${archCtx}
+
+==מבנה הפרומפט שתכתוב==
+כתוב בעברית ובמבנה הבא (בדיוק):
+
+**הקשר**
+[2-3 שורות: מה קיים היום, מה לא עובד / חסר, למה זה חשוב עכשיו]
+
+**משימה**
+[תיאור טכני מלא ומדויק של מה לממש — ללא עמימות]
+
+**קבצים לגעת בהם**
+[רשימה מפורשת: \`path/to/file.js\` — מה משנים/מוסיפים שם]
+
+**סדר ביצוע**
+1. [צעד ראשון קונקרטי]
+2. [צעד שני]
+... (כל הצעדים)
+
+**טסטים להריץ**
+\`\`\`
+npm test
+npx jest tests/unit/X.test.js --verbose
+\`\`\`
+
+**קריטריוני הצלחה**
+- [ ] [דבר ספציפי שחייב לעבוד]
+- [ ] [עוד קריטריון]
+... (3-5 בדיקות)
+
+כתוב את הפרומפט ישירות — ללא הקדמה, ללא JSON, ללא "הנה הפרומפט:".
+אסור: ניסוחים מעורפלים ("תוכל לשקול", "אולי כדאי"). כל משפט — הנחיה ספציפית.`;
     const userMsg = `הצעה: ${title}
 קטגוריה: ${catHe}
-תיאור: ${description}
+${description ? `תיאור: ${description}` : ''}
 ${rationale ? `רציונל: ${rationale}` : ''}
 ${answersBlock ? `\nפרטים שהמשתמש סיפק:\n${answersBlock}` : ''}`;
     try {
-        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 800);
+        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 1500);
         res.json({ prompt: raw.trim() });
     } catch (err) {
         console.warn('POST /dashboard/smart-proposals/refine-prompt LLM failed, using fallback:', err.message);
@@ -5139,9 +5214,10 @@ app.post('/dashboard/backlog/generate', async (req, res) => {
         const building = features.features?.building || [];
         const planned  = features.features?.planned  || [];
 
-        // ── Pull user context: memories + recent chat themes ──────────────────
+        // ── Pull user context: memories + recent chat themes + bug history ──────
         let memoriesContext = '';
         let chatThemesContext = '';
+        let bugContext = '';
         try {
             const [memResult, chatResult] = await Promise.all([
                 supabase.from('memories').select('content').order('created_at', { ascending: false }).limit(25),
@@ -5154,29 +5230,30 @@ app.post('/dashboard/backlog/generate', async (req, res) => {
                     memResult.data.map(m => `- ${m.content}`).join('\n');
             }
             if (chatResult.data?.length) {
-                // Extract distinct keywords/topics from recent chats
                 const msgs = chatResult.data.map(m => m.content || '').filter(Boolean);
                 chatThemesContext = '\n\n==הודעות אחרונות מהמשתמש (14 ימים)==\n' +
                     msgs.slice(0, 20).map(m => `• ${m.slice(0, 120)}`).join('\n');
             }
+            bugContext = await _getRecentBugContext(supabase);
         } catch (_) { /* context enrichment is best-effort */ }
 
         const prompt = `אתה מנהל פרויקט בכיר של "ג'רביס" — עוזר AI אישי ב-Flutter + Node.js.
+מבנה: server.js (Express), agents/ (24 agents), services/, controllers/, Flutter: jarvis_mobile/
 
 ==סטטוס הפרויקט==
 הושלם (${done.length}): ${done.map(f => f.name).join(', ')}
 בבנייה (${building.length}): ${building.map(f => f.name).join(', ')}
 מתוכנן (${planned.length}): ${planned.map(f => f.name).join(', ')}
-${memoriesContext}${chatThemesContext}
+${memoriesContext}${chatThemesContext}${bugContext}
 
 ==מטרה==
 הצע 6 פריטי backlog בעלי עדיפות גבוהה, ממוינים לפי דחיפות.
-התייחס ישירות לזיכרונות ולהודעות המשתמש בהצעות — הצעות גנריות פחות טובות.
+התייחס ישירות לזיכרונות, להודעות ולתקלות — הצעות גנריות פחות טובות.
 אם המשתמש ביקש פיצ'ר ספציפי בשיחות — הצע לממש אותו.
-אם יש תקלה שעלתה בשיחות — הצע לתקן אותה.
+אם יש תקלה שעלתה בשיחות או ב-e2e — הצע לתקן אותה.
 
 ענה JSON בלבד (ללא markdown):
-[{"title":"כותרת קצרה בעברית (עד 60 תווים)","plan":"תוכנית מפורטת בעברית (3-4 משפטים: מה לעשות, למה זה חשוב, איך לממש טכנית)","priority":"high","category":"improvement"},{"title":"...","plan":"...","priority":"medium","category":"feature"}]`;
+[{"title":"כותרת קצרה בעברית (עד 60 תווים)","plan":"תוכנית טכנית בעברית: (1) מה לממש בדיוק (2) קבצים מרכזיים לגעת בהם (3) איך לבדוק הצלחה","priority":"high","category":"improvement"},{"title":"...","plan":"...","priority":"medium","category":"feature"}]`;
 
         const raw = await callGemma4(prompt, false, 1000);
 

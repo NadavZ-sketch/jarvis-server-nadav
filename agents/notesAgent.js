@@ -1,4 +1,3 @@
-const { sanitizeLike } = require('./utils');
 require('dotenv').config();
 const obsidianSync    = require('../services/obsidianSync');
 
@@ -37,15 +36,16 @@ function _parseIntent(msg) {
     return { intent: 'add', content: content || m, title: '' };
 }
 
-async function runNotesAgent(userMessage, supabase, useLocal = true) {
+async function runNotesAgent(userMessage, repos, useLocal = true) {
+    const notes = repos.notes;
     try {
         const parsed = _parseIntent(userMessage);
 
         if (parsed.intent === 'add') {
-            const { data: inserted } = await supabase.from('notes').insert([{
+            const inserted = await notes.add({
                 title:   parsed.title   || '',
                 content: parsed.content || userMessage,
-            }]).select().single();
+            });
             if (inserted) obsidianSync.dbToVault('notes', inserted);
             const label = parsed.title ? ` "${parsed.title}"` : '';
             return {
@@ -55,11 +55,7 @@ async function runNotesAgent(userMessage, supabase, useLocal = true) {
         }
 
         if (parsed.intent === 'list') {
-            const { data } = await supabase
-                .from('notes')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(10);
+            const data = await notes.listRecent(10);
             if (!data || data.length === 0) return { answer: 'אין לך הערות שמורות.' };
             const list = data.map((n, i) => {
                 const preview = n.title || n.content.slice(0, 40);
@@ -70,11 +66,7 @@ async function runNotesAgent(userMessage, supabase, useLocal = true) {
 
         if (parsed.intent === 'search') {
             const q = parsed.content;
-            const { data } = await supabase
-                .from('notes')
-                .select('*')
-                .or(`title.ilike.%${sanitizeLike(q)}%,content.ilike.%${sanitizeLike(q)}%`)
-                .limit(5);
+            const data = await notes.search(q);
             if (!data || data.length === 0) return { answer: `לא מצאתי הערות עם "${q}".` };
             const found = data.map((n, i) =>
                 `${i + 1}. ${n.title || ''}: ${n.content.slice(0, 80)}`
@@ -85,11 +77,7 @@ async function runNotesAgent(userMessage, supabase, useLocal = true) {
         if (parsed.intent === 'delete') {
             const q = parsed.content || parsed.title;
             if (!q) return { answer: 'איזו הערה למחוק?' };
-            const { data } = await supabase
-                .from('notes')
-                .delete()
-                .or(`title.ilike.%${sanitizeLike(q)}%,content.ilike.%${sanitizeLike(q)}%`)
-                .select();
+            const data = await notes.deleteMatching(q);
             if (data && data.length > 0) return { answer: 'ההערה נמחקה ✓' };
             return { answer: 'לא מצאתי הערה למחוק.' };
         }

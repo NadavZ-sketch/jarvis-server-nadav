@@ -13,6 +13,7 @@ const { createMemoryRepo } = require('./memoryRepo');
 const { createNoteRepo } = require('./noteRepo');
 const { createShoppingRepo } = require('./shoppingRepo');
 const { createHabitRepo } = require('./habitRepo');
+const { createProjectRepo } = require('./projectRepo');
 const { createTableRepo } = require('./tableRepo');
 
 function createRepos(supabase) {
@@ -24,6 +25,7 @@ function createRepos(supabase) {
         notes: createNoteRepo(supabase),
         shopping: createShoppingRepo(supabase),
         habits: createHabitRepo(supabase),
+        projects: createProjectRepo(supabase),
         // Lazily-built, memoised generic repo for any other table.
         table(name) {
             return generic[name] || (generic[name] = createTableRepo(supabase, name));

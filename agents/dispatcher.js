@@ -46,7 +46,7 @@ const REGISTRY = {
     calendar:   { mode:'sync', invoke:(c,a) => a.runCalendarAgent(c.userMessage, c.supabase, c.settings) },
     prompt:     { mode:'sync', invoke:(c,a) => a.runPromptAgent(c.userMessage, c.supabase, c.useLocal, c.settings) },
     settings:   { mode:'sync', invoke:(c,a) => a.runSettingsAgent(c.userMessage, c.supabase, c.useLocal, c.settings) },
-    project:    { mode:'sync', invoke:(c,a) => a.runProjectAgent(c.userMessage, c.supabase, c.useLocal, c.settings) },
+    project:    { mode:'sync', invoke:(c,a) => a.runProjectAgent(c.userMessage, c.repos, c.useLocal, c.settings) },
 
     // 'security' is sync in /ask-jarvis but background in /stream-jarvis today.
     // Keep that parity: the dispatch caller decides which mode to use via

@@ -109,23 +109,17 @@ Return ONLY a valid JSON object (no explanation):
 
 User message: `;
 
-async function findProject(supabase, nameHint) {
-    if (!nameHint) return null;
-    const { data } = await supabase
-        .from('projects')
-        .select('*')
-        .ilike('name', `%${nameHint.trim()}%`)
-        .limit(5);
-    return data || [];
+async function findProject(projects, nameHint) {
+    return projects.searchByName(nameHint);
 }
 
-async function computeProgress(supabase, projectId) {
-    const [{ data: tasks }, { data: milestones }] = await Promise.all([
-        supabase.from('tasks').select('done').eq('project_id', projectId),
-        supabase.from('project_milestones').select('completed').eq('project_id', projectId),
+async function computeProgress(projects, projectId) {
+    const [tasks, milestones] = await Promise.all([
+        projects.taskDoneFlags(projectId),
+        projects.milestoneCompletedFlags(projectId),
     ]);
 
-    const allItems = [...(tasks || []), ...(milestones || [])];
+    const allItems = [...tasks, ...milestones];
     if (allItems.length === 0) return 0;
     const done = allItems.filter(i => i.done || i.completed).length;
     return Math.round((done / allItems.length) * 100);
@@ -134,22 +128,18 @@ async function computeProgress(supabase, projectId) {
 // Deterministic weekly briefing — builds a Hebrew summary of active projects
 // with progress bars and deadline urgency. Makes NO LLM call (zero tokens).
 // Shared by the projectAgent 'briefing' intent and the GET /projects/briefing endpoint.
-async function buildProjectsBriefing(supabase, userName = 'נדב') {
-    const { data: projects } = await supabase
-        .from('projects')
-        .select('*')
-        .in('status', ['active', 'paused'])
-        .order('priority', { ascending: false });
+async function buildProjectsBriefing(projects, userName = 'נדב') {
+    const projectList = await projects.listActiveOrPaused();
 
-    if (!projects || projects.length === 0) {
+    if (!projectList || projectList.length === 0) {
         return { answer: `אין פרויקטים פעילים כרגע ${userName}. בוא ניצור אחד!` };
     }
 
     const today = new Date(todayISO());
     let answer = `📋 *ברייפינג פרויקטים — ${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' })}*\n\n`;
 
-    for (const p of projects) {
-        const progress = await computeProgress(supabase, p.id);
+    for (const p of projectList) {
+        const progress = await computeProgress(projects, p.id);
         const bar = '█'.repeat(Math.round(progress / 10)) + '░'.repeat(10 - Math.round(progress / 10));
         const daysLeft = p.due_date ? Math.ceil((new Date(p.due_date) - today) / 86400000) : null;
         const urgency = daysLeft !== null && daysLeft <= 3 ? ' 🚨' : daysLeft !== null && daysLeft <= 7 ? ' ⚠️' : '';
@@ -167,8 +157,9 @@ async function buildProjectsBriefing(supabase, userName = 'נדב') {
     return { answer, action: { type: 'navigate', target: 'projects', label: 'פתח פרויקטים' } };
 }
 
-async function runProjectAgent(userMessage, supabase, useLocal = true, settings = {}) {
+async function runProjectAgent(userMessage, repos, useLocal = true, settings = {}) {
     const userName = settings.userName || 'נדב';
+    const projects = repos.projects;
 
     try {
         // Intent extraction returns a small fixed-shape JSON object; cap output
@@ -197,11 +188,7 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
                 due_date: parsed.dueDate || null,
                 color: parsed.color || '#6366f1',
             };
-            const { data: newProject, error } = await supabase
-                .from('projects')
-                .insert([insertData])
-                .select()
-                .single();
+            const { data: newProject, error } = await projects.create(insertData);
 
             if (error) throw error;
 
@@ -219,23 +206,19 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
 
         // ── LIST ─────────────────────────────────────────────────────────────────
         if (intent === 'list') {
-            const { data: projects } = await supabase
-                .from('projects')
-                .select('*')
-                .not('status', 'eq', 'archived')
-                .order('created_at', { ascending: false });
+            const projectList = await projects.listNonArchived();
 
-            if (!projects || projects.length === 0) {
+            if (!projectList || projectList.length === 0) {
                 return { answer: `אין לך פרויקטים פעילים ${userName}. תרצה ליצור פרויקט חדש? פשוט תגיד "צור פרויקט [שם]"` };
             }
 
             const byStatus = { active: [], paused: [], completed: [] };
-            for (const p of projects) {
+            for (const p of projectList) {
                 if (byStatus[p.status]) byStatus[p.status].push(p);
                 else byStatus.active.push(p);
             }
 
-            let answer = `📁 *הפרויקטים שלך (${projects.length}):*\n\n`;
+            let answer = `📁 *הפרויקטים שלך (${projectList.length}):*\n\n`;
 
             if (byStatus.active.length > 0) {
                 answer += `*פעילים (${byStatus.active.length}):*\n`;
@@ -259,7 +242,7 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
 
         // ── VIEW ──────────────────────────────────────────────────────────────────
         if (intent === 'view') {
-            const matches = await findProject(supabase, parsed.projectName);
+            const matches = await findProject(projects, parsed.projectName);
             if (!matches.length) {
                 return { answer: `לא מצאתי פרויקט בשם "${parsed.projectName}". תרצה לראות רשימת כל הפרויקטים?` };
             }
@@ -269,12 +252,12 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
             }
 
             const p = matches[0];
-            const [{ data: milestones }, { data: tasks }] = await Promise.all([
-                supabase.from('project_milestones').select('*').eq('project_id', p.id).order('due_date'),
-                supabase.from('tasks').select('content,done,due_date').eq('project_id', p.id).order('created_at'),
+            const [milestones, tasks] = await Promise.all([
+                projects.listMilestones(p.id),
+                projects.listTasks(p.id),
             ]);
 
-            const progress = await computeProgress(supabase, p.id);
+            const progress = await computeProgress(projects, p.id);
             const progressBar = '█'.repeat(Math.round(progress / 10)) + '░'.repeat(10 - Math.round(progress / 10));
 
             let answer = `📁 *${p.name}*\n`;
@@ -305,7 +288,7 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
 
         // ── UPDATE ────────────────────────────────────────────────────────────────
         if (intent === 'update') {
-            const matches = await findProject(supabase, parsed.projectName);
+            const matches = await findProject(projects, parsed.projectName);
             if (!matches.length) return { answer: `לא מצאתי פרויקט בשם "${parsed.projectName}".` };
             if (matches.length > 1) {
                 const list = matches.map((p, i) => `${i+1}. ${p.name}`).join('\n');
@@ -319,7 +302,7 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
             if (parsed.dueDate) updates.due_date = parsed.dueDate;
             if (parsed.description) updates.description = parsed.description;
 
-            await supabase.from('projects').update(updates).eq('id', p.id);
+            await projects.update(p.id, updates);
 
             let answer = `✅ עדכנתי את הפרויקט *${p.name}*\n`;
             if (updates.status) answer += `• סטטוס: ${STATUS_LABELS[updates.status]}\n`;
@@ -331,30 +314,30 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
 
         // ── DELETE ────────────────────────────────────────────────────────────────
         if (intent === 'delete') {
-            const matches = await findProject(supabase, parsed.projectName);
+            const matches = await findProject(projects, parsed.projectName);
             if (!matches.length) return { answer: `לא מצאתי פרויקט בשם "${parsed.projectName}".` };
             if (matches.length > 1) {
                 const list = matches.map((p, i) => `${i+1}. ${p.name}`).join('\n');
                 return { answer: `מצאתי ${matches.length} פרויקטים:\n${list}\n\nאיזה למחוק?` };
             }
 
-            await supabase.from('projects').delete().eq('id', matches[0].id);
+            await projects.remove(matches[0].id);
             return { answer: `🗑️ מחקתי את הפרויקט *${matches[0].name}* ואת כל אבני הדרך שלו.` };
         }
 
         // ── ADD TASK ──────────────────────────────────────────────────────────────
         if (intent === 'add_task') {
             if (!parsed.taskText) return { answer: 'מה המשימה שרוצה להוסיף לפרויקט?' };
-            const matches = await findProject(supabase, parsed.projectName);
+            const matches = await findProject(projects, parsed.projectName);
             if (!matches.length) return { answer: `לא מצאתי פרויקט בשם "${parsed.projectName}".` };
 
             const p = matches[0];
-            await supabase.from('tasks').insert([{
+            await projects.addTask({
                 content: parsed.taskText,
                 project_id: p.id,
                 priority: parsed.priority || 'medium',
                 due_date: parsed.dueDate || null,
-            }]);
+            });
 
             return { answer: `✅ הוספתי משימה לפרויקט *${p.name}*:\n• ${parsed.taskText}` };
         }
@@ -362,15 +345,15 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
         // ── ADD MILESTONE ─────────────────────────────────────────────────────────
         if (intent === 'add_milestone') {
             if (!parsed.milestoneText) return { answer: 'מה אבן הדרך שרוצה להוסיף?' };
-            const matches = await findProject(supabase, parsed.projectName);
+            const matches = await findProject(projects, parsed.projectName);
             if (!matches.length) return { answer: `לא מצאתי פרויקט בשם "${parsed.projectName}".` };
 
             const p = matches[0];
-            await supabase.from('project_milestones').insert([{
+            await projects.addMilestone({
                 project_id: p.id,
                 title: parsed.milestoneText,
                 due_date: parsed.milestoneDue || null,
-            }]);
+            });
 
             let answer = `🏁 הוספתי אבן דרך לפרויקט *${p.name}*:\n• ${parsed.milestoneText}`;
             if (parsed.milestoneDue) answer += `\n📅 תאריך: ${formatDate(parsed.milestoneDue)}`;
@@ -379,43 +362,33 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
 
         // ── COMPLETE MILESTONE ────────────────────────────────────────────────────
         if (intent === 'complete_milestone') {
-            const matches = await findProject(supabase, parsed.projectName);
+            const matches = await findProject(projects, parsed.projectName);
             if (!matches.length) return { answer: `לא מצאתי פרויקט בשם "${parsed.projectName}".` };
 
             const p = matches[0];
-            const { data: milestones } = await supabase
-                .from('project_milestones')
-                .select('id, title')
-                .eq('project_id', p.id)
-                .eq('completed', false)
-                .ilike('title', `%${parsed.milestoneText || ''}%`);
+            const milestones = await projects.findOpenMilestones(p.id, parsed.milestoneText);
 
             if (!milestones || milestones.length === 0) {
                 return { answer: 'לא מצאתי אבן דרך פתוחה כזו. אולי כבר הושלמה?' };
             }
 
-            await supabase.from('project_milestones')
-                .update({ completed: true, completed_at: new Date().toISOString() })
-                .eq('id', milestones[0].id);
+            await projects.completeMilestone(milestones[0].id);
 
-            const progress = await computeProgress(supabase, p.id);
+            const progress = await computeProgress(projects, p.id);
             return { answer: `🏁 סיימת את אבן הדרך *${milestones[0].title}* בפרויקט ${p.name}!\n📊 התקדמות כוללת: ${progress}%` };
         }
 
         // ── INSIGHT ───────────────────────────────────────────────────────────────
         if (intent === 'insight') {
-            const { data: projects } = await supabase
-                .from('projects')
-                .select('*')
-                .eq('status', 'active');
+            const activeProjects = await projects.listActive();
 
-            if (!projects || projects.length === 0) {
+            if (!activeProjects || activeProjects.length === 0) {
                 return { answer: 'אין פרויקטים פעילים לנתח.' };
             }
 
             const projectsWithProgress = await Promise.all(
-                projects.map(async p => {
-                    const progress = await computeProgress(supabase, p.id);
+                activeProjects.map(async p => {
+                    const progress = await computeProgress(projects, p.id);
                     return { ...p, progress };
                 })
             );
@@ -430,8 +403,8 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
             const slowProgress = projectsWithProgress.filter(p => p.progress < 30 && p.status === 'active');
 
             let answer = `💡 *תובנות על הפרויקטים שלך:*\n\n`;
-            answer += `📊 סה"כ פרויקטים פעילים: ${projects.length}\n`;
-            answer += `📈 ממוצע התקדמות: ${Math.round(projectsWithProgress.reduce((s, p) => s + p.progress, 0) / projects.length)}%\n\n`;
+            answer += `📊 סה"כ פרויקטים פעילים: ${activeProjects.length}\n`;
+            answer += `📈 ממוצע התקדמות: ${Math.round(projectsWithProgress.reduce((s, p) => s + p.progress, 0) / activeProjects.length)}%\n\n`;
 
             if (overdue.length > 0) {
                 answer += `🔴 *פרויקטים שחרגו מהתאריך:*\n`;
@@ -460,12 +433,12 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
 
         // ── BRIEFING ──────────────────────────────────────────────────────────────
         if (intent === 'briefing') {
-            return await buildProjectsBriefing(supabase, userName);
+            return await buildProjectsBriefing(projects, userName);
         }
 
         // ── LINK REMINDER ─────────────────────────────────────────────────────────
         if (intent === 'link_reminder') {
-            const matches = await findProject(supabase, parsed.projectName);
+            const matches = await findProject(projects, parsed.projectName);
             if (!matches.length) return { answer: `לא מצאתי פרויקט בשם "${parsed.projectName}".` };
 
             const p = matches[0];
@@ -475,27 +448,22 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
 
             if (!reminderTime) return { answer: 'לא מצאתי תאריך לתזכורת. ציין תאריך ספציפי.' };
 
-            await supabase.from('reminders').insert([{
+            await projects.addReminder({
                 text: `פרויקט "${p.name}" — בדוק התקדמות`,
                 scheduled_time: reminderTime,
                 project_id: p.id,
-            }]);
+            });
 
             return { answer: `⏰ הגדרתי תזכורת לפרויקט *${p.name}* ב-${formatDate(parsed.dueDate || p.due_date)} בשעה 09:00` };
         }
 
         // ── PLAN SPRINT ───────────────────────────────────────────────────────
         if (intent === 'plan_sprint') {
-            const matches = await findProject(supabase, parsed.projectName);
+            const matches = await findProject(projects, parsed.projectName);
             if (!matches.length) return { answer: `לא מצאתי פרויקט בשם "${parsed.projectName}".` };
             const p = matches[0];
 
-            const { data: backlog } = await supabase
-                .from('tasks')
-                .select('id, content, story_points, priority')
-                .eq('project_id', p.id)
-                .is('sprint_id', null)
-                .eq('done', false);
+            const backlog = await projects.sprintBacklog(p.id);
 
             if (!backlog || backlog.length === 0) {
                 return { answer: `הבאקלוג של פרויקט *${p.name}* ריק — אין משימות לספרינט.` };
@@ -525,21 +493,9 @@ async function runProjectAgent(userMessage, supabase, useLocal = true, settings 
             const twoWeeksOut = new Date(today);
             twoWeeksOut.setDate(twoWeeksOut.getDate() + 14);
 
-            const { data: upcomingTasks } = await supabase
-                .from('tasks')
-                .select('content, due_date, project_id')
-                .not('due_date', 'is', null)
-                .eq('done', false)
-                .gte('due_date', todayISO())
-                .lte('due_date', twoWeeksOut.toISOString().slice(0, 10));
-
-            const { data: upcomingMilestones } = await supabase
-                .from('project_milestones')
-                .select('title, due_date, project_id')
-                .not('due_date', 'is', null)
-                .eq('completed', false)
-                .gte('due_date', todayISO())
-                .lte('due_date', twoWeeksOut.toISOString().slice(0, 10));
+            const toISO = twoWeeksOut.toISOString().slice(0, 10);
+            const upcomingTasks = await projects.upcomingTasks(todayISO(), toISO);
+            const upcomingMilestones = await projects.upcomingMilestones(todayISO(), toISO);
 
             const byDate = {};
             for (const t of (upcomingTasks || [])) {

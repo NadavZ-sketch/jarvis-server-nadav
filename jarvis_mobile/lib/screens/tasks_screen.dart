@@ -2,23 +2,23 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
+import '../widgets/animated_list_item.dart';
+import '../widgets/delete_snackbar.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/jarvis_search_bar.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/tasks/group_mode_bar.dart';
+import '../widgets/tasks/smart_day_header.dart';
+import '../widgets/tasks/smart_task_card.dart';
+import '../widgets/tasks/task_category.dart';
 import 'tasks/tasks_controller.dart';
-import 'tasks/views/list_view.dart';
-import 'tasks/views/eisenhower_view.dart';
-import 'tasks/views/kanban_view.dart';
-import 'tasks/views/day_plan_view.dart';
 
-// View order must match _ViewSwitcher._options index order.
-const _kViewOrder = ['list', 'day_plan', 'eisenhower', 'kanban'];
+const _kGroupModes = ['time', 'priority', 'category', 'flat'];
 
-int _viewIndex(String v) => _kViewOrder.indexOf(v).clamp(0, 3);
-String _viewFromIndex(int i) => _kViewOrder[i.clamp(0, 3)];
-
-/// Modular tasks screen with swipe-between-views (PageView) and persistent
-/// filter state. All mutations stay in sync via the shared [TasksController].
+/// Single smart tasks list. One auto-organised list whose grouping the user
+/// picks (time / priority / category / flat), with a compact Smart-Day header
+/// and live filters. All mutations stay in sync via the shared
+/// [TasksController].
 class TasksScreen extends StatefulWidget {
   final AppSettings settings;
   final ValueChanged<int>? onCountUpdate;
@@ -38,15 +38,14 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   late final TasksController _c;
-  late final PageController _pageCtrl;
   late final TextEditingController _searchCtrl;
-  late String _view;
+  late String _groupMode;
+  final Set<String> _collapsed = {};
 
   @override
   void initState() {
     super.initState();
-    _view = _validView(widget.settings.tasksDefaultView);
-    _pageCtrl = PageController(initialPage: _viewIndex(_view));
+    _groupMode = _validMode(widget.settings.tasksGroupMode);
     _c = TasksController(settings: widget.settings)..start();
     _c.addListener(_pushCount);
     _searchCtrl = TextEditingController(text: _c.searchQuery);
@@ -59,7 +58,6 @@ class _TasksScreenState extends State<TasksScreen> {
     widget.addTrigger?.removeListener(_onAddTrigger);
     _c.removeListener(_pushCount);
     _c.dispose();
-    _pageCtrl.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -68,16 +66,12 @@ class _TasksScreenState extends State<TasksScreen> {
 
   void _pushCount() => widget.onCountUpdate?.call(_c.openCount);
 
-  String _validView(String v) =>
-      _kViewOrder.contains(v) ? v : 'list';
+  String _validMode(String v) => _kGroupModes.contains(v) ? v : 'time';
 
-  Future<void> _setView(String v) async {
-    if (_view == v) return;
-    final idx = _viewIndex(v);
-    _pageCtrl.animateToPage(idx,
-        duration: const Duration(milliseconds: 260), curve: Curves.easeInOut);
-    setState(() => _view = v);
-    widget.settings.tasksDefaultView = v;
+  Future<void> _setGroupMode(String v) async {
+    if (_groupMode == v) return;
+    setState(() => _groupMode = v);
+    widget.settings.tasksGroupMode = v;
     await widget.settings.save();
   }
 
@@ -105,9 +99,11 @@ class _TasksScreenState extends State<TasksScreen> {
         subtitle: _c.error!,
       );
     }
+    final sections = _c.groupedSections(_groupMode);
+    final hasOpenTasks = _c.openCount > 0 || _c.tasks.isNotEmpty;
     return Column(
       children: [
-        // ── Global search bar (filters all views via TasksController) ────────
+        // ── Global search bar (filters the list via TasksController) ─────────
         Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 16, 2),
           child: JarvisSearchBar(
@@ -115,27 +111,63 @@ class _TasksScreenState extends State<TasksScreen> {
             hint: 'חיפוש משימות...',
           ),
         ),
-        _ViewSwitcher(current: _view, onChange: _setView, controller: _c),
+        SmartDayHeader(controller: _c),
+        GroupModeBar(current: _groupMode, onChange: _setGroupMode),
+        if (hasOpenTasks)
+          _FilterBar(
+            filter: _c.filterPriority,
+            sort: _c.filterSort,
+            catFilter: _c.filterCategory,
+            showDone: _c.showDone,
+            doneCount: _c.doneCount,
+            onFilter: _c.setFilterPriority,
+            onSort: _c.setFilterSort,
+            onCatFilter: _c.setFilterCategory,
+            onToggleDone: _c.toggleShowDone,
+          ),
         Expanded(
           child: RefreshIndicator(
             color: JC.blue400,
             backgroundColor: JC.surfaceAlt,
             onRefresh: _c.refresh,
-            child: PageView(
-              controller: _pageCtrl,
-              physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics()),
-              onPageChanged: (i) {
-                final v = _viewFromIndex(i);
-                if (_view != v) setState(() => _view = v);
-              },
-              children: [
-                TasksListView(controller: _c),
-                DayPlanView(controller: _c),
-                EisenhowerView(controller: _c),
-                KanbanView(controller: _c),
-              ],
-            ),
+            child: sections.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      const SizedBox(height: 80),
+                      EmptyState(
+                        icon: Icons.check_circle_outline_rounded,
+                        title: _c.searchQuery.isEmpty &&
+                                _c.filterPriority == 'all' &&
+                                _c.filterCategory == 'all'
+                            ? 'אין משימות פתוחות'
+                            : 'לא נמצאו תוצאות',
+                        subtitle: _c.searchQuery.isEmpty &&
+                                _c.filterPriority == 'all' &&
+                                _c.filterCategory == 'all'
+                            ? 'לחץ + להוספת משימה'
+                            : '',
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    padding:
+                        const EdgeInsetsDirectional.fromSTEB(16, 6, 16, 96),
+                    itemCount: sections.length,
+                    itemBuilder: (ctx, i) {
+                      final s = sections[i];
+                      return _TaskSection(
+                        controller: _c,
+                        section: s,
+                        collapsed: _collapsed.contains(s.key),
+                        onToggle: () => setState(() {
+                          if (!_collapsed.remove(s.key)) {
+                            _collapsed.add(s.key);
+                          }
+                        }),
+                      );
+                    },
+                  ),
           ),
         ),
         if (_c.snack != null)
@@ -612,135 +644,251 @@ class _ProjectDropdown extends StatelessWidget {
   }
 }
 
-// ─── View switcher with live counts ──────────────────────────────────────────
+// ─── Collapsible task section ────────────────────────────────────────────────
 
-class _ViewSwitcher extends StatelessWidget {
-  final String current;
-  final ValueChanged<String> onChange;
+class _TaskSection extends StatelessWidget {
   final TasksController controller;
-  const _ViewSwitcher(
-      {required this.current,
-      required this.onChange,
-      required this.controller});
-
-  static const _options = [
-    ('list', 'רשימה', Icons.list_alt_rounded),
-    ('day_plan', 'יום', Icons.today_rounded),
-    ('eisenhower', 'מטריצה', Icons.grid_view_rounded),
-    ('kanban', 'קנבן', Icons.view_kanban_outlined),
-  ];
-
-  /// Returns a contextual count badge for each view.
-  int? _countFor(String viewId) {
-    switch (viewId) {
-      case 'list':
-        final n = controller.openCount;
-        return n > 0 ? n : null;
-      case 'eisenhower':
-        final n = controller.quadrants['none']?.length ?? 0;
-        return n > 0 ? n : null;
-      case 'kanban':
-        final n = controller.kanbanColumns['doing']?.length ?? 0;
-        return n > 0 ? n : null;
-      case 'day_plan':
-        final n = controller.dayPlanBuckets['now']?.length ?? 0;
-        return n > 0 ? n : null;
-      default:
-        return null;
-    }
-  }
+  final TaskSection section;
+  final bool collapsed;
+  final VoidCallback onToggle;
+  const _TaskSection({
+    required this.controller,
+    required this.section,
+    required this.collapsed,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsetsDirectional.fromSTEB(12, 10, 12, 6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final o in _options)
-            Padding(
-              padding: const EdgeInsetsDirectional.only(end: 6),
-              child: GestureDetector(
-                onTap: () => onChange(o.$1),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+    final tasks = section.tasks;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GestureDetector(
+          onTap: onToggle,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(2, 12, 2, 6),
+            child: Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                Text(section.label,
+                    style: TextStyle(
+                        color: JC.textPrimary,
+                        fontFamily: 'Heebo',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                   decoration: BoxDecoration(
-                    color: current == o.$1
-                        ? JC.blue500.withValues(alpha: 0.18)
-                        : JC.surfaceAlt,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: current == o.$1 ? JC.blue500 : JC.border,
-                      width: current == o.$1 ? 1.2 : 0.8,
-                    ),
-                    boxShadow: current == o.$1
-                        ? [
-                            BoxShadow(
-                                color: JC.blue500.withOpacity(0.15),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2))
-                          ]
-                        : null,
+                    color: JC.surfaceAlt,
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(o.$3,
-                          size: 14,
-                          color: current == o.$1
-                              ? JC.blue400
-                              : JC.textSecondary),
-                      const SizedBox(width: 5),
-                      Text(o.$2,
-                          style: TextStyle(
-                            color: current == o.$1
-                                ? JC.blue400
-                                : JC.textSecondary,
-                            fontSize: 12.5,
-                            fontFamily: 'Heebo',
-                            fontWeight: current == o.$1
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                          )),
-                      Builder(builder: (_) {
-                        final n = _countFor(o.$1);
-                        if (n == null) return const SizedBox.shrink();
-                        return Padding(
-                          padding:
-                              const EdgeInsetsDirectional.only(start: 5),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: current == o.$1
-                                  ? JC.blue500.withValues(alpha: 0.3)
-                                  : JC.border.withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              n > 99 ? '99+' : n.toString(),
-                              style: TextStyle(
-                                color: current == o.$1
-                                    ? JC.blue400
-                                    : JC.textMuted,
-                                fontSize: 10,
-                                fontFamily: 'Heebo',
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
+                  child: Text('${tasks.length}',
+                      style: TextStyle(
+                          color: JC.textMuted,
+                          fontFamily: 'Heebo',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
                 ),
+                const Spacer(),
+                AnimatedRotation(
+                  turns: collapsed ? -0.25 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: Icon(Icons.keyboard_arrow_down_rounded,
+                      size: 20, color: JC.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (!collapsed)
+          for (var i = 0; i < tasks.length; i++)
+            AnimatedListItem(
+              index: i,
+              child: Dismissible(
+                key: ValueKey(tasks[i]['id']),
+                direction: DismissDirection.endToStart,
+                background: _dismissBg(),
+                onDismissed: (_) {
+                  final task = tasks[i];
+                  final idx = controller.removeLocal(task);
+                  showDeleteSnackbar(
+                    context,
+                    message: 'המשימה הוסרה',
+                    onUndo: () => controller.restoreTask(task, idx),
+                    onClosed: (wasUndone) {
+                      if (!wasUndone) controller.commitDelete(task);
+                    },
+                  );
+                },
+                child: SmartTaskCard(controller: controller, task: tasks[i]),
               ),
             ),
-        ],
+      ],
+    );
+  }
+}
+
+Widget _dismissBg() => Container(
+      alignment: AlignmentDirectional.centerStart,
+      padding: const EdgeInsetsDirectional.only(start: 20),
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: JC.cancelRed.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
+    );
+
+// ─── Filter / sort bar ───────────────────────────────────────────────────────
+
+class _FilterBar extends StatelessWidget {
+  final String filter;
+  final String sort;
+  final String catFilter;
+  final bool showDone;
+  final int doneCount;
+  final ValueChanged<String> onFilter;
+  final ValueChanged<String> onSort;
+  final ValueChanged<String> onCatFilter;
+  final VoidCallback onToggleDone;
+  const _FilterBar({
+    required this.filter,
+    required this.sort,
+    required this.catFilter,
+    required this.showDone,
+    required this.doneCount,
+    required this.onFilter,
+    required this.onSort,
+    required this.onCatFilter,
+    required this.onToggleDone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 4, 16, 4),
+        child: Row(
+          children: [
+            _chip('הכל', filter == 'all', JC.blue400, () => onFilter('all')),
+            const SizedBox(width: 6),
+            _chip('🔴 גבוה', filter == 'high', JC.cancelRed,
+                () => onFilter('high')),
+            const SizedBox(width: 6),
+            _chip('🟡 בינוני', filter == 'medium', JC.amber400,
+                () => onFilter('medium')),
+            const SizedBox(width: 6),
+            _chip('🟢 נמוך', filter == 'low', JC.green500,
+                () => onFilter('low')),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Container(
+                width: 1, height: 16,
+                color: JC.border.withValues(alpha: 0.5),
+              ),
+            ),
+            _chip('הכל', catFilter == 'all', JC.indigo300,
+                () => onCatFilter('all')),
+            for (final c in kTaskCategories) ...[
+              const SizedBox(width: 6),
+              _chip('${c.emoji} ${c.label}', catFilter == c.id, c.color(),
+                  () => onCatFilter(c.id)),
+            ],
+            if (doneCount > 0) ...[
+              const SizedBox(width: 8),
+              _chip(showDone ? 'הסתר בוצעו' : 'בוצעו ($doneCount)',
+                  showDone, JC.green500, onToggleDone),
+            ],
+            const SizedBox(width: 8),
+            PopupMenuButton<String>(
+              onSelected: onSort,
+              color: JC.surfaceAlt,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: JC.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: JC.border, width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.sort_rounded, size: 14,
+                        color: JC.textSecondary),
+                    const SizedBox(width: 4),
+                    Text(
+                      switch (sort) {
+                        'due_date' => 'תאריך',
+                        'created'  => 'יצירה',
+                        _          => 'עדיפות'
+                      },
+                      style: TextStyle(
+                          color: JC.textSecondary,
+                          fontSize: 12,
+                          fontFamily: 'Heebo'),
+                    ),
+                  ],
+                ),
+              ),
+              itemBuilder: (_) => [
+                _menu('priority', 'לפי עדיפות', sort),
+                _menu('due_date', 'לפי תאריך', sort),
+                _menu('created', 'לפי יצירה', sort),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _chip(String label, bool active, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: active ? color.withValues(alpha: 0.15) : JC.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: active ? color : JC.border,
+              width: active ? 1.2 : 0.8),
+        ),
+        child: Text(label,
+            style: TextStyle(
+              color: active ? color : JC.textMuted,
+              fontSize: 12,
+              fontFamily: 'Heebo',
+              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+            )),
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _menu(String value, String label, String cur) =>
+      PopupMenuItem<String>(
+        value: value,
+        child: Row(
+          children: [
+            if (cur == value)
+              Icon(Icons.check_rounded, size: 14, color: JC.blue400),
+            const SizedBox(width: 6),
+            Text(label,
+                style: TextStyle(
+                    color: JC.textPrimary,
+                    fontFamily: 'Heebo',
+                    fontSize: 13)),
+          ],
+        ),
+      );
 }

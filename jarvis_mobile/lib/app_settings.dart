@@ -68,7 +68,8 @@ bool obsidianAutoSync;
   Set<String> homeCardsHidden;  // card ids the user hid
 
   // ── Tasks screen ──
-  String tasksDefaultView; // 'list' | 'eisenhower' | 'kanban' | 'day_plan'
+  String tasksDefaultView; // legacy — kept for migration safety, no longer read
+  String tasksGroupMode;   // 'time' | 'priority' | 'category' | 'flat'
 
   static const String cloudServerUrl = 'https://jarvis-server-nadav.onrender.com';
 
@@ -118,6 +119,7 @@ bool obsidianAutoSync;
     List<String>? homeCardOrder,
     Set<String>? homeCardsHidden,
     this.tasksDefaultView = 'list',
+    this.tasksGroupMode = 'time',
   })  : homeCardOrder = homeCardOrder ?? [],
         homeCardsHidden = homeCardsHidden ?? {};
 
@@ -215,6 +217,7 @@ bool obsidianAutoSync;
       homeCardOrder:    prefs.getStringList('homeCardOrder') ?? [],
       homeCardsHidden:  (prefs.getStringList('homeCardsHidden') ?? []).toSet(),
       tasksDefaultView: prefs.getString('tasksDefaultView') ?? 'list',
+      tasksGroupMode: prefs.getString('tasksGroupMode') ?? 'time',
     );
 
     // Fresh install: fill in portable preferences from the server profile, then
@@ -272,6 +275,7 @@ bool obsidianAutoSync;
     await prefs.setStringList('homeCardOrder',  homeCardOrder);
     await prefs.setStringList('homeCardsHidden', homeCardsHidden.toList());
     await prefs.setString('tasksDefaultView', tasksDefaultView);
+    await prefs.setString('tasksGroupMode', tasksGroupMode);
   }
 
   // Returns true if [hour] (0-23) falls inside the quiet window.

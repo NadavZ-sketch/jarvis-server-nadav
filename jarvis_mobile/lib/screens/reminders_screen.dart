@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
@@ -12,9 +13,15 @@ import '../widgets/loading_skeleton.dart';
 class RemindersScreen extends StatefulWidget {
   final AppSettings settings;
   final ValueChanged<int>? onCountUpdate;
+  // Incremented by ProductivityScreen to trigger the add-reminder sheet
+  final ValueListenable<int>? addTrigger;
 
-  const RemindersScreen(
-      {super.key, required this.settings, this.onCountUpdate});
+  const RemindersScreen({
+    super.key,
+    required this.settings,
+    this.onCountUpdate,
+    this.addTrigger,
+  });
 
   @override
   State<RemindersScreen> createState() => _RemindersScreenState();
@@ -32,15 +39,19 @@ class _RemindersScreenState extends State<RemindersScreen> {
     super.initState();
     _searchCtrl.addListener(
         () => setState(() => _searchQuery = _searchCtrl.text.toLowerCase()));
+    widget.addTrigger?.addListener(_onAddTrigger);
     _loadCache();
     _fetch();
   }
 
   @override
   void dispose() {
+    widget.addTrigger?.removeListener(_onAddTrigger);
     _searchCtrl.dispose();
     super.dispose();
   }
+
+  void _onAddTrigger() => _showReminderSheet();
 
   List<Map<String, dynamic>> get _filtered => _searchQuery.isEmpty
       ? _items
@@ -442,25 +453,6 @@ class _RemindersScreenState extends State<RemindersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: JC.bg,
-      floatingActionButton: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: JC.blue500.withOpacity(0.35),
-              blurRadius: 20,
-              spreadRadius: 2,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: FloatingActionButton(
-          onPressed: () => _showReminderSheet(),
-          backgroundColor: JC.blue500,
-          elevation: 0,
-          child: const Icon(Icons.add_rounded, color: Colors.white),
-        ),
-      ),
       body: _loading
           ? const LoadingSkeleton(itemCount: 6)
           : _error != null

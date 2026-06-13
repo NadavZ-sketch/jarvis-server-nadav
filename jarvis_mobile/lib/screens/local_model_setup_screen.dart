@@ -23,7 +23,7 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
 
   String get _serverUrl {
     final raw = _ipCtrl.text.trim();
-    if (raw.isEmpty) return '';
+    if (raw.isEmpty) return AppSettings.defaultLocalServerUrl;
     if (raw.startsWith('http')) return raw;
     return 'http://$raw:3000';
   }
@@ -62,10 +62,11 @@ class _LocalModelSetupScreenState extends State<LocalModelSetupScreen> {
           s.contains('ClientException') ||
           s.contains('SocketException') ||
           s.contains('Failed host lookup')) {
-        setState(() =>
-            _pingMsg = '❌ השרת לא זמין. ודא ש-node server.js רץ ושהמחשב והטלפון על אותה רשת WiFi.');
+        setState(() => _pingMsg = '❌ השרת לא זמין. באמולטור Android נסה 10.0.2.2; '
+            'בטלפון אמיתי ודא ש-node server.js רץ ושהמחשב והטלפון על אותה רשת WiFi.');
       } else if (s.contains('timeout') || s.contains('TimeoutException')) {
-        setState(() => _pingMsg = '❌ תם הזמן. בדוק שהאייפי נכון ושהטלפון על WiFi.');
+        setState(() => _pingMsg = '❌ תם הזמן. בדוק שהכתובת נכונה: '
+            '10.0.2.2 לאמולטור Android, או IP של המחשב לטלפון אמיתי.');
       } else {
         setState(() => _pingMsg = '❌ שגיאה: ${s.split('\n').first}');
       }

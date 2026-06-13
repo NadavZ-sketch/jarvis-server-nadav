@@ -29,10 +29,15 @@ class _ServerPreset {
 }
 
 const _kPresets = [
-  _ServerPreset('localhost',    'http://localhost:3000',       Icons.computer_outlined),
-  _ServerPreset('192.168.1.x',  'http://192.168.1.100:3000',  Icons.wifi_outlined),
-  _ServerPreset('10.0.0.x',     'http://10.0.0.2:3000',       Icons.router_outlined),
-  _ServerPreset('מותאם אישית', '',                             Icons.edit_outlined),
+  _ServerPreset(
+    'Android emulator',
+    AppSettings.defaultLocalServerUrl,
+    Icons.phone_android_outlined,
+  ),
+  _ServerPreset('מחשב זה / Web',     'http://localhost:3000',            Icons.computer_outlined),
+  _ServerPreset('192.168.1.x',       'http://192.168.1.100:3000',       Icons.wifi_outlined),
+  _ServerPreset('10.0.0.x',          'http://10.0.0.2:3000',            Icons.router_outlined),
+  _ServerPreset('מותאם אישית',      '',                                Icons.edit_outlined),
 ];
 
 class _SettingsScreenState extends State<SettingsScreen> {
@@ -230,7 +235,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _s.assistantName  = _assistantNameCtrl.text.trim().isEmpty ? 'Jarvis'                    : _assistantNameCtrl.text.trim();
     _s.userName       = _userNameCtrl.text.trim().isEmpty      ? 'נדב'                       : _userNameCtrl.text.trim();
     _s.userEmail      = _userEmailCtrl.text.trim();
-    _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty? 'http://192.168.1.100:3000' : _localServerUrlCtrl.text.trim();
+    _s.localServerUrl = _localServerUrlCtrl.text.trim().isEmpty
+        ? AppSettings.defaultLocalServerUrl
+        : _localServerUrlCtrl.text.trim();
     _s.localModelName = _localModelCtrl.text.trim().isEmpty    ? 'gemma4:e4b'                  : _localModelCtrl.text.trim();
     _s.todayBriefingFocus = _briefingFocusCtrl.text.trim();
     _s.city = _cityCtrl.text.trim().isEmpty ? 'תל אביב' : _cityCtrl.text.trim();
@@ -367,7 +374,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _pingServer() async {
     final url = _localServerUrlCtrl.text.trim().isEmpty
-        ? 'http://192.168.1.100:3000'
+        ? AppSettings.defaultLocalServerUrl
         : _localServerUrlCtrl.text.trim();
 
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
@@ -392,7 +399,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final hint = err.contains('timeout')
           ? 'הבקשה פגה — השרת לא מגיב.\nוודא ש-node server.js רץ.'
           : err.contains('refused') || err.contains('Failed host lookup') || err.contains('NetworkError')
-              ? 'חיבור נדחה — בדוק:\n1. node server.js רץ?\n2. ה-IP נכון?\n3. פורט 3000 פתוח?'
+              ? 'חיבור נדחה — בדוק:\n'
+                  '1. node server.js רץ?\n'
+                  '2. Android Emulator משתמש ב-10.0.2.2 ולא localhost.\n'
+                  '3. בטלפון אמיתי צריך IP של המחשב באותה רשת WiFi ופורט 3000 פתוח.'
               : ApiService.friendlyError(e is Exception ? e : Exception(err));
       setState(() => _pingResult = '❌ $hint');
     }

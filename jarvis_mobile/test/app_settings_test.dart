@@ -17,6 +17,7 @@ void main() {
       expect(s.userName, 'נדב');
       expect(s.useLocalModel, false);
       expect(s.useLocalServer, false);
+      expect(s.localServerUrl, AppSettings.defaultLocalServerUrl);
       expect(s.obsidianAutoSync, true);
     });
 

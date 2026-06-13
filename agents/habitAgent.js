@@ -1,4 +1,4 @@
-const { sanitizeLike, nowJerusalem, todayISODate, extractJSON } = require('./utils');
+const { nowJerusalem, todayISODate, extractJSON } = require('./utils');
 require('dotenv').config();
 const { callGemma4 } = require('./models');
 
@@ -44,19 +44,14 @@ function computeStreak(logDates) {
     return streak;
 }
 
-async function findHabit(supabase, nameHint) {
-    if (!nameHint) return null;
-    const { data } = await supabase
-        .from('habits')
-        .select('id, name, schedule')
-        .eq('active', true)
-        .ilike('name', `%${sanitizeLike(nameHint)}%`);
-    if (!data || data.length === 0) return null;
-    return data;
+async function findHabit(habits, nameHint) {
+    const data = await habits.findActiveByName(nameHint);
+    return (data && data.length) ? data : null;
 }
 
-async function runHabitAgent(userMessage, supabase, useLocal = true, settings = {}) {
+async function runHabitAgent(userMessage, repos, useLocal = true, settings = {}) {
     const userName = settings.userName || 'נדב';
+    const habitsRepo = repos.habits;
 
     try {
         const today = todayISODate();
@@ -71,7 +66,7 @@ async function runHabitAgent(userMessage, supabase, useLocal = true, settings = 
             const validSched = new Set(['daily', 'weekly', 'monthly']);
             const schedule = validSched.has(parsed.schedule) ? parsed.schedule : 'daily';
 
-            const { error } = await supabase.from('habits').insert([{ name, schedule }]);
+            const { error } = await habitsRepo.add({ name, schedule });
             if (error) {
                 console.error('HabitAgent insert error:', error.message);
                 return { answer: 'הייתה בעיה בשמירת ההרגל. ודא שהטבלה קיימת ונסה שוב.' };
@@ -84,7 +79,7 @@ async function runHabitAgent(userMessage, supabase, useLocal = true, settings = 
         }
 
         if (parsed.intent === 'log') {
-            const matches = await findHabit(supabase, parsed.habitName);
+            const matches = await findHabit(habitsRepo, parsed.habitName);
             if (!matches) return { answer: 'לא מצאתי הרגל כזה. תרצה שאתחיל לעקוב אחריו? אמור "תוסיף הרגל ..."' };
             if (matches.length > 1) {
                 const list = matches.map((h, i) => `${i + 1}. ${h.name}`).join('\n');
@@ -93,53 +88,32 @@ async function runHabitAgent(userMessage, supabase, useLocal = true, settings = 
             const habit = matches[0];
 
             // Upsert today's log (UNIQUE habit_id+date keeps it idempotent).
-            const { error } = await supabase
-                .from('habit_logs')
-                .upsert([{ habit_id: habit.id, date: today, done: true }], { onConflict: 'habit_id,date' });
+            const { error } = await habitsRepo.logToday(habit.id, today);
             if (error) console.error('HabitAgent log error:', error.message);
 
-            const { data: logs } = await supabase
-                .from('habit_logs')
-                .select('date')
-                .eq('habit_id', habit.id)
-                .eq('done', true);
-            const streak = computeStreak((logs || []).map(l => l.date));
+            const streak = computeStreak(await habitsRepo.doneDates(habit.id));
             const fire = streak >= 3 ? ' 🔥' : '';
             return { answer: `✅ רשמתי "${habit.name}" להיום. הרצף שלך: ${streak} ימים${fire}. כל הכבוד ${userName}!` };
         }
 
         if (parsed.intent === 'status') {
-            const matches = await findHabit(supabase, parsed.habitName);
+            const matches = await findHabit(habitsRepo, parsed.habitName);
             if (!matches) return { answer: 'לא מצאתי הרגל כזה. אמור "מה ההרגלים שלי" כדי לראות את כולם.' };
             const habit = matches[0];
-            const { data: logs } = await supabase
-                .from('habit_logs')
-                .select('date')
-                .eq('habit_id', habit.id)
-                .eq('done', true);
-            const dates = (logs || []).map(l => l.date);
+            const dates = await habitsRepo.doneDates(habit.id);
             const streak = computeStreak(dates);
             const fire = streak >= 3 ? ' 🔥' : '';
             return { answer: `📊 "${habit.name}": רצף נוכחי ${streak} ימים${fire}, סה"כ ${dates.length} ימים שתועדו.` };
         }
 
         if (parsed.intent === 'list') {
-            const { data: habits } = await supabase
-                .from('habits')
-                .select('id, name, schedule')
-                .eq('active', true)
-                .order('created_at', { ascending: true });
+            const habits = await habitsRepo.listActive();
             if (!habits || habits.length === 0) {
                 return { answer: `אין לך הרגלים במעקב כרגע ${userName}. אמור "תוסיף הרגל ..." כדי להתחיל.` };
             }
             const lines = [];
             for (const h of habits) {
-                const { data: logs } = await supabase
-                    .from('habit_logs')
-                    .select('date')
-                    .eq('habit_id', h.id)
-                    .eq('done', true);
-                const streak = computeStreak((logs || []).map(l => l.date));
+                const streak = computeStreak(await habitsRepo.doneDates(h.id));
                 const fire = streak >= 3 ? ' 🔥' : '';
                 lines.push(`• ${h.name} — רצף ${streak} ימים${fire}`);
             }
@@ -147,13 +121,13 @@ async function runHabitAgent(userMessage, supabase, useLocal = true, settings = 
         }
 
         if (parsed.intent === 'delete') {
-            const matches = await findHabit(supabase, parsed.habitName);
+            const matches = await findHabit(habitsRepo, parsed.habitName);
             if (!matches) return { answer: 'לא מצאתי הרגל כזה למחוק.' };
             if (matches.length > 1) {
                 const list = matches.map((h, i) => `${i + 1}. ${h.name}`).join('\n');
                 return { answer: `איזה הרגל להפסיק לעקוב?\n${list}` };
             }
-            await supabase.from('habits').update({ active: false }).eq('id', matches[0].id);
+            await habitsRepo.deactivate(matches[0].id);
             return { answer: `הפסקתי לעקוב אחרי ההרגל "${matches[0].name}".` };
         }
 

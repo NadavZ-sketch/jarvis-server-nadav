@@ -93,6 +93,18 @@ function makeShoppingRepo(opts = {}) {
     };
 }
 
+function makeHabitRepo(opts = {}) {
+    const { habits = [], doneDates = [], addResult, deactivateResult, logResult } = opts;
+    return {
+        findActiveByName: jest.fn(async () => habits),
+        listActive:       jest.fn(async () => habits),
+        add:              jest.fn(async () => addResult        || { error: null }),
+        deactivate:       jest.fn(async () => deactivateResult || { error: null }),
+        logToday:         jest.fn(async () => logResult        || { error: null }),
+        doneDates:        jest.fn(async () => doneDates),
+    };
+}
+
 function makeTableRepo(rows = []) {
     return {
         all:      jest.fn(async () => rows),
@@ -112,10 +124,14 @@ function makeRepos(tableData = {}) {
         memories: makeMemoryRepo({ rows: tableData.memories || [] }),
         notes: makeNoteRepo({ rows: tableData.notes || [] }),
         shopping: makeShoppingRepo({ rows: tableData.shopping || [] }),
+        habits: makeHabitRepo({
+            habits: tableData.habits || [],
+            doneDates: (tableData.habit_logs || []).map(l => l.date),
+        }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeTableRepo };

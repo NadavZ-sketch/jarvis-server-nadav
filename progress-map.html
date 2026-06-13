@@ -213,6 +213,32 @@ h1 span{color:var(--accent2)}
 .del-btn:hover{color:var(--red)}
 .empty-state{color:var(--muted);font-size:.83rem;text-align:center;padding:18px;
   display:flex;flex-direction:column;align-items:center;gap:8px}
+
+/* proposal clarifying questions */
+.proposal-questions{background:var(--surface);border:1px solid rgba(200,145,58,.3);border-radius:12px;
+  padding:14px 16px;margin-top:8px;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.pq-title{font-size:.77rem;font-weight:700;color:var(--accent);letter-spacing:.6px;margin-bottom:12px}
+.pq-question{margin-bottom:12px}
+.pq-question-label{font-size:.82rem;font-weight:600;color:var(--text);margin-bottom:5px}
+.pq-question-reason{font-size:.72rem;color:var(--muted);margin-bottom:6px}
+.pq-options{display:flex;flex-wrap:wrap;gap:6px}
+.pq-option{background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:4px 11px;font-size:.77rem;color:var(--text);cursor:pointer;font-family:inherit;
+  transition:all .12s;white-space:nowrap}
+.pq-option:hover{border-color:var(--accent);color:var(--accent)}
+.pq-option.selected{background:rgba(200,145,58,.15);border-color:var(--accent);color:var(--accent);font-weight:600}
+.pq-other-input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:5px 10px;color:var(--text);font-size:.8rem;font-family:inherit;outline:none;direction:rtl;margin-top:4px}
+.pq-other-input:focus{border-color:var(--accent)}
+.pq-submit{background:var(--accent);border:none;border-radius:8px;
+  padding:7px 18px;color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;
+  font-family:inherit;margin-top:8px;transition:opacity .15s;display:flex;align-items:center;gap:5px}
+.pq-submit:hover:not(:disabled){opacity:.85}
+.pq-submit:disabled{opacity:.5;cursor:not-allowed}
+.pq-skip{background:none;border:none;color:var(--muted);font-size:.75rem;cursor:pointer;
+  font-family:inherit;padding:0 8px;margin-top:8px;transition:color .12s}
+.pq-skip:hover{color:var(--text)}
 .empty-state span{font-size:1.6rem}
 
 
@@ -1225,18 +1251,134 @@ async function deleteProposal(id) {
   }
 }
 
-function useProposalAsPrompt(id) {
+let _activeProposal = null;
+let _proposalAnswers = {};
+
+async function useProposalAsPrompt(id) {
   const proposal = _proposalCtx.find(p => p.id === id);
-  if (!proposal) {
-    showToast('הצעה לא נמצאה', 'error');
-    return;
+  if (!proposal) { showToast('הצעה לא נמצאה', 'error'); return; }
+
+  _activeProposal = proposal;
+  _proposalAnswers = {};
+
+  // Show questions panel below the proposal
+  const proposalEl = document.getElementById(`pr-${id}`);
+  if (!proposalEl) return;
+
+  // Remove any existing questions panel
+  document.querySelectorAll('.proposal-questions').forEach(el => el.remove());
+
+  const qWrap = document.createElement('div');
+  qWrap.className = 'proposal-questions';
+  qWrap.id = `pq-${id}`;
+  qWrap.innerHTML = `<div class="pq-title">🎯 כמה שאלות כדי לדייק את הפרומפט</div>
+    <div id="pq-loading-${id}" style="color:var(--muted);font-size:.8rem">⏳ מייצר שאלות...</div>`;
+  proposalEl.after(qWrap);
+  qWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  try {
+    const d = await fetch('/dashboard/backlog/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposal }),
+    }).then(r => r.json());
+
+    renderProposalQuestions(id, d.questions || []);
+  } catch (e) {
+    document.getElementById(`pq-loading-${id}`).textContent = '⚠️ שגיאה בטעינת שאלות';
   }
-  const input = document.getElementById('promptInput');
-  input.value = `${proposal.title}: ${proposal.plan}`;
-  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  input.focus();
-  showToast('הצעה נטענה — יוצר פרומפט...', 'success');
-  generateFeaturePrompt();
+}
+
+function renderProposalQuestions(id, questions) {
+  const wrap = document.getElementById(`pq-${id}`);
+  if (!wrap) return;
+
+  const questionsHtml = questions.map((q, qi) => `
+    <div class="pq-question" data-qi="${qi}">
+      <div class="pq-question-label">${escapeHtml(q.label)}</div>
+      ${q.reason ? `<div class="pq-question-reason">${escapeHtml(q.reason)}</div>` : ''}
+      <div class="pq-options">
+        ${(q.options || []).map(opt => `
+          <button class="pq-option" data-qi="${qi}" data-val="${escapeHtml(opt.value)}"
+            onclick="selectPqOption(this,'${id}',${qi},'${escapeHtml(opt.value)}','${escapeHtml(q.label)}')"
+          >${escapeHtml(opt.label)}</button>
+        `).join('')}
+      </div>
+      <input class="pq-other-input" id="pq-other-${id}-${qi}" placeholder="פרט..." style="display:none"
+        oninput="setPqOtherAnswer('${id}',${qi},'${escapeHtml(q.label)}',this.value)" />
+    </div>
+  `).join('');
+
+  wrap.innerHTML = `
+    <div class="pq-title">🎯 כמה שאלות כדי לדייק את הפרומפט</div>
+    ${questionsHtml}
+    <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+      <button class="pq-submit" id="pq-submit-${id}" onclick="submitProposalQuestions('${id}')">
+        <div class="spinner" id="pq-spinner-${id}" style="width:12px;height:12px;border-width:2px"></div>
+        ✨ צור פרומפט
+      </button>
+      <button class="pq-skip" onclick="skipProposalQuestions('${id}')">דלג על שאלות</button>
+    </div>
+    <div id="pq-result-${id}"></div>
+  `;
+}
+
+function selectPqOption(btn, proposalId, qi, val, label) {
+  // Toggle selection in same question
+  btn.closest('.pq-options').querySelectorAll('.pq-option').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  const otherInput = document.getElementById(`pq-other-${proposalId}-${qi}`);
+  if (val === 'other') {
+    otherInput.style.display = 'block';
+    otherInput.focus();
+  } else {
+    otherInput.style.display = 'none';
+    _proposalAnswers[label] = btn.textContent.trim();
+  }
+}
+
+function setPqOtherAnswer(proposalId, qi, label, value) {
+  _proposalAnswers[label] = value;
+}
+
+async function submitProposalQuestions(id) {
+  const btn     = document.getElementById(`pq-submit-${id}`);
+  const spinner = document.getElementById(`pq-spinner-${id}`);
+  const result  = document.getElementById(`pq-result-${id}`);
+  btn.disabled = true;
+  spinner.style.display = 'block';
+  result.innerHTML = '';
+
+  try {
+    const d = await fetch('/dashboard/generate-prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposal: _activeProposal, answers: _proposalAnswers }),
+    }).then(r => r.json());
+
+    if (d.prompt) {
+      window._generatedPrompt = d.prompt;
+      result.innerHTML = `
+        <div class="prompt-result" style="margin-top:12px">
+          <div class="prompt-result-header">
+            <span>📋 פרומפט מוכן ל-Claude Code</span>
+            <button class="copy-btn" onclick="copyPrompt()">העתק</button>
+          </div>
+          <pre class="prompt-text">${escapeHtml(d.prompt)}</pre>
+        </div>`;
+    } else {
+      result.innerHTML = `<div class="empty-state" style="padding:8px"><span>⚠️</span>${escapeHtml(d.error || 'שגיאה')}</div>`;
+    }
+  } catch (e) {
+    result.innerHTML = `<div class="empty-state" style="padding:8px"><span>⚠️</span>שגיאת רשת</div>`;
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+function skipProposalQuestions(id) {
+  submitProposalQuestions(id);
 }
 
 async function generateProposals() {

@@ -5238,7 +5238,19 @@ app.post('/dashboard/backlog/generate', async (req, res) => {
         } catch (_) { /* context enrichment is best-effort */ }
 
         const prompt = `אתה מנהל פרויקט בכיר של "ג'רביס" — עוזר AI אישי ב-Flutter + Node.js.
-מבנה: server.js (Express), agents/ (24 agents), services/, controllers/, Flutter: jarvis_mobile/
+
+==ארכיטקטורה==
+- שרת: server.js (Express) + agents/ (24 agents, כל agent מייצא run*Agent(userMessage, supabase, useLocal, settings))
+- ניתוב: agents/router.js — KEYWORDS regex → LLM fallback → dispatch ב-server.js
+- DB: Supabase (chat_history, memories, tasks, reminders, notes, habits, projects...)
+- LLM stack: callGemma4() → Ollama → Groq → DeepSeek → Gemini
+- Flutter: jarvis_mobile/lib/ — RTL עברית, ORB קולי, WebSocket, SSE streaming
+- קבצים מרכזיים: server.js, agents/router.js, agents/chatAgent.js, agents/models.js, jarvis_mobile/lib/main.dart
+
+==conventions==
+- agent חדש: agents/X.js → רישום ב-router.js (KEYWORDS + VALID_INTENTS) → dispatch ב-server.js
+- test file: tests/unit/X.test.js
+- endpoint חדש: route + handler ב-server.js, מוגן ב-requirePolicy אם sensitive
 
 ==סטטוס הפרויקט==
 הושלם (${done.length}): ${done.map(f => f.name).join(', ')}
@@ -5247,13 +5259,24 @@ app.post('/dashboard/backlog/generate', async (req, res) => {
 ${memoriesContext}${chatThemesContext}${bugContext}
 
 ==מטרה==
-הצע 6 פריטי backlog בעלי עדיפות גבוהה, ממוינים לפי דחיפות.
-התייחס ישירות לזיכרונות, להודעות ולתקלות — הצעות גנריות פחות טובות.
-אם המשתמש ביקש פיצ'ר ספציפי בשיחות — הצע לממש אותו.
-אם יש תקלה שעלתה בשיחות או ב-e2e — הצע לתקן אותה.
+הצע 6 פריטי backlog ממוינים לפי דחיפות.
+כללים:
+- בסס על זיכרונות, הודעות ותקלות — הצעות גנריות ללא בסיס בנתונים = לא רלוונטיות.
+- אם המשתמש ביקש פיצ'ר ספציפי בשיחות — הצע לממש אותו.
+- אם יש תקלה שעלתה בשיחות או ב-e2e — הצע לתקן אותה.
+- ציין קבצים ספציפיים עם שורה משוערת כשידוע (למשל "agents/router.js:~120").
 
 ענה JSON בלבד (ללא markdown):
-[{"title":"כותרת קצרה בעברית (עד 60 תווים)","plan":"תוכנית טכנית בעברית: (1) מה לממש בדיוק (2) קבצים מרכזיים לגעת בהם (3) איך לבדוק הצלחה","priority":"high","category":"improvement"},{"title":"...","plan":"...","priority":"medium","category":"feature"}]`;
+[{
+  "title": "כותרת קצרה בעברית (עד 60 תווים)",
+  "plan": "תוכנית טכנית: מה לממש בדיוק ואיך",
+  "files": ["agents/X.js:~50", "server.js:~600"],
+  "effort": "XS|S|M|L|XL",
+  "why_now": "למה עכשיו — בסס על הנתונים שקיבלת",
+  "acceptance_criteria": ["קריטריון בדיקה 1", "קריטריון 2"],
+  "priority": "high|medium|low",
+  "category": "bug|improvement|feature"
+}]`;
 
         const raw = await callGemma4(prompt, false, 1000);
 
@@ -5281,6 +5304,9 @@ ${memoriesContext}${chatThemesContext}${bugContext}
             id: baseId + i,
             title:    ((p.title    || p['כותרת']   || p['כותרת:'] || '').toString()).slice(0, 80),
             plan:     ((p.plan     || p['תוכנית']  || p['תכנית']  || p['תיאור'] || '').toString()),
+            files:    Array.isArray(p.files) ? p.files.filter(f => typeof f === 'string') : [],
+            effort:   ['XS','S','M','L','XL'].includes(p.effort) ? p.effort : 'M',
+            acceptance_criteria: Array.isArray(p.acceptance_criteria) ? p.acceptance_criteria.filter(c => typeof c === 'string') : [],
             priority: ['high', 'medium', 'low'].includes(p.priority || p['עדיפות'])
                 ? (p.priority || p['עדיפות']) : 'medium',
             category: (p.category || p['קטגוריה'] || 'improvement').toString(),
@@ -5290,7 +5316,7 @@ ${memoriesContext}${chatThemesContext}${bugContext}
             scores: {
                 impact: 3, effort: 3, risk: 2, confidence: 3, weighted_score: 3.2,
             },
-            why_now: '',
+            why_now: p.why_now || '',
             };
             const scored = scoreProposalRuleBased(baseProposal);
             return {
@@ -5348,32 +5374,115 @@ ${memoriesContext}${chatThemesContext}${bugContext}
 // ─── Dashboard – Claude Code prompt generator ────────────────────────────────
 app.post('/dashboard/generate-prompt', async (req, res) => {
     try {
-        const { description } = req.body;
-        if (!description?.trim()) return res.status(400).json({ error: 'description required' });
+        const { description, proposal, answers } = req.body;
 
-        const prompt = `אתה מומחה בכתיבת הוראות מדויקות ל-Claude Code — עוזר הקוד של Anthropic.
+        // Support both legacy (description string) and new (proposal object + answers)
+        const title = proposal?.title || description || '';
+        const plan  = proposal?.plan  || description || '';
+        if (!title.trim() && !plan.trim()) return res.status(400).json({ error: 'description or proposal required' });
 
-הקשר פרויקט Jarvis:
-- אפליקציית Flutter (ממשק עברית RTL) עם ORB קולי, צ'אט, משימות, תזכורות, פתקים, קניות, לוח שנה
-- שרת Node.js (server.js) עם 17+ אייג'נטים בתיקיית agents/ (router.js, chatAgent.js, taskAgent.js וכו')
-- Supabase כ-DB, Pinecone לזיכרון סמנטי, LLMs (Groq → DeepSeek → Gemini כ-fallback)
-- קבצים מרכזיים: server.js, jarvis_mobile/lib/main.dart, agents/router.js, agents/models.js
+        const filesSection = proposal?.files?.length
+            ? `\n- קבצים מזוהים: ${proposal.files.join(', ')}`
+            : '';
+        const criteriaSection = proposal?.acceptance_criteria?.length
+            ? `\n- קריטריוני קבלה: ${proposal.acceptance_criteria.join(' | ')}`
+            : '';
+        const effortSection = proposal?.effort ? `\n- היקף משוער: ${proposal.effort}` : '';
+        const whyNowSection = proposal?.why_now ? `\n- למה עכשיו: ${proposal.why_now}` : '';
+        const answersSection = answers && Object.keys(answers).length
+            ? '\n\n==תשובות לשאלות הבהרה==\n' + Object.entries(answers).map(([q, a]) => `- ${q}: ${a}`).join('\n')
+            : '';
 
-בקשת המפתח: "${description.trim()}"
+        const prompt = `אתה מומחה בכתיבת הוראות ל-Claude Code — עוזר הקוד של Anthropic.
 
-כתוב פרומפט מפורט ל-Claude Code שהמפתח יוכל להדביק ישירות כדי לממש את הפיצ'ר. הפרומפט צריך:
-- להיות ישיר ומעשי ללא הקדמות — כאילו כותבים הוראות לעוזר קוד
-- לציין קבצים ספציפיים לשינוי (עם נתיבים)
-- לפרט שינויים בצד שרת ו/או Flutter לפי הצורך
-- לכלול endpoints חדשים, widgets, schemas — כל מה שנחוץ למימוש מלא
-- לסיים בהוראת בדיקה / וידוא
+==הקשר פרויקט Jarvis==
+- שרת Node.js (server.js, Express) עם 24 agents בתיקיית agents/
+- כל agent: run*Agent(userMessage, supabase, useLocal, settings) → { answer, action? }
+- ניתוב: agents/router.js — KEYWORDS regex → LLM fallback → dispatch ב-server.js
+- DB: Supabase | זיכרון סמנטי: Pinecone | LLM: Groq → DeepSeek → Gemini
+- Flutter: jarvis_mobile/lib/ — RTL עברית, ORB קולי, WebSocket
+- conventions: agent חדש → router.js (KEYWORDS + VALID_INTENTS) → server.js dispatch | test: tests/unit/X.test.js
 
-כתוב את הפרומפט בעברית, מוכן להדבקה ב-Claude Code:`;
+==מה לממש==
+${title}
 
-        const result = await callGemma4(prompt, false, 1000);
+==תוכנית טכנית==
+${plan}${filesSection}${effortSection}${criteriaSection}${whyNowSection}${answersSection}
+
+כתוב פרומפט מובנה ל-Claude Code בעברית, מוכן להדבקה ישירה. השתמש בפורמט הבא בדיוק:
+
+## מטרה
+[תיאור קצר של מה לבנות]
+
+## קבצים לשינוי
+- \`נתיב/קובץ.js\` — [מה לשנות שם]
+
+## מימוש
+[הוראות שלב-אחר-שלב — ישירות, ללא הקדמות]
+
+## קריטריוני קבלה
+- [ ] קריטריון 1
+- [ ] קריטריון 2
+
+## בדיקה
+\`npm test\` + [בדיקה ספציפית לפיצ'ר זה]`;
+
+        const result = await callGemma4(prompt, false, 1200);
         res.json({ prompt: result });
     } catch (e) {
         console.error('generate-prompt error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── Dashboard – Backlog proposal clarifying questions ───────────────────────
+app.post('/dashboard/backlog/analyze', async (req, res) => {
+    try {
+        const { proposal } = req.body;
+        if (!proposal?.title) return res.status(400).json({ error: 'proposal required' });
+
+        const prompt = `אתה מנהל פרויקט שמסייע למפתח לדייק פרומפט ל-Claude Code.
+
+ההצעה:
+כותרת: "${proposal.title}"
+תוכנית: "${(proposal.plan || '').slice(0, 400)}"
+קטגוריה: ${proposal.category || 'improvement'}
+עדיפות: ${proposal.priority || 'medium'}
+קבצים: ${(proposal.files || []).join(', ') || 'לא צוינו'}
+
+צור 3 שאלות הבהרה שיעזרו לייצר פרומפט מדויק יותר ל-Claude Code.
+השאלות צריכות להיות ספציפיות להצעה זו — לא שאלות גנריות.
+כל שאלה עם 2-4 אפשריות תשובה.
+
+ענה JSON בלבד:
+[
+  {
+    "label": "שאלה קצרה ומדויקת",
+    "reason": "למה שאלה זו חשובה לפרומפט",
+    "options": [{"value": "opt1", "label": "אפשרות 1"}, {"value": "other", "label": "אחר"}]
+  }
+]`;
+
+        let questions = [];
+        try {
+            const raw = await callGemma4(prompt, false, 500);
+            const match = raw.match(/\[[\s\S]*\]/);
+            if (match) {
+                const parsed = JSON.parse(match[0]);
+                if (Array.isArray(parsed)) questions = parsed.slice(0, 4);
+            }
+        } catch (_) {}
+
+        if (!questions.length) {
+            questions = [
+                { label: 'היקף השינוי — שרת, Flutter, או שניהם?', reason: 'קובע אילו קבצים לציין', options: [{ value: 'server', label: 'שרת בלבד' }, { value: 'flutter', label: 'Flutter בלבד' }, { value: 'both', label: 'שניהם' }] },
+                { label: 'האם קיים pattern דומה בקוד שאפשר לבסס עליו?', reason: 'עוזר לקלוד להבין את הסגנון', options: [{ value: 'yes', label: 'כן' }, { value: 'no', label: 'לא — מאפס' }, { value: 'other', label: 'אחר' }] },
+            ];
+        }
+
+        res.json({ questions });
+    } catch (e) {
+        console.error('backlog/analyze error:', e.message);
         res.status(500).json({ error: e.message });
     }
 });

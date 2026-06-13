@@ -1,0 +1,43 @@
+{
+  "id": 1,
+  "user_name": "נדב",
+  "assistant_name": "Jarvis",
+  "gender": "male",
+  "personality": "friendly",
+  "updated_at": "2026-06-13T15:15:51.417+00:00",
+  "auto_learned": {
+    "user_overridden": [
+      "user_name",
+      "assistant_name",
+      "gender",
+      "personality"
+    ]
+  },
+  "preferences": {
+    "city": "תל אביב",
+    "role": "admin",
+    "ttsPitch": 1,
+    "ttsSpeed": 0.7,
+    "saverMode": false,
+    "temperature": 0.7,
+    "ttsLanguage": "he-IL",
+    "ttsVoiceName": "",
+    "voiceEnabled": true,
+    "cloudProvider": "groq",
+    "quietHoursEnd": 8,
+    "selectedTheme": "navyDark",
+    "useLocalModel": true,
+    "bargeInEnabled": true,
+    "brightnessMode": "dark",
+    "localModelName": "gemma4:e4b",
+    "responseLength": "medium",
+    "openrouterModel": "meta-llama/llama-3.3-70b-instruct:free",
+    "quietHoursStart": 22,
+    "obsidianAutoSync": true,
+    "telemetryConsent": true,
+    "animationsEnabled": true,
+    "todayBriefingFocus": "",
+    "notificationsEnabled": true,
+    "todayBriefingEnabled": true
+  }
+}

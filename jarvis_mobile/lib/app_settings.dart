@@ -71,6 +71,9 @@ bool obsidianAutoSync;
   String tasksDefaultView; // 'list' | 'eisenhower' | 'kanban' | 'day_plan'
 
   static const String cloudServerUrl = 'https://jarvis-server-nadav.onrender.com';
+  // Android emulators cannot reach the host machine via localhost; 10.0.2.2
+  // is the stable alias to the development computer running node server.js.
+  static const String defaultLocalServerUrl = 'http://10.0.2.2:3000';
 
   String get serverUrl => useLocalServer ? localServerUrl : cloudServerUrl;
 
@@ -83,7 +86,7 @@ bool obsidianAutoSync;
     this.userName = 'נדב',
     this.useLocalModel = false,
     this.useLocalServer = false,
-    this.localServerUrl = 'http://192.168.1.100:3000',
+    this.localServerUrl = defaultLocalServerUrl,
     this.obsidianAutoSync = true,
     this.telemetryConsent = false,
     this.bargeInEnabled = true,
@@ -164,7 +167,7 @@ bool obsidianAutoSync;
     Map<String, dynamic>? serverProfile;
     if (isFirstLoad) {
       final useLocal = prefs.getBool('useLocalServer') ?? false;
-      final localUrl = prefs.getString('localServerUrl') ?? 'http://192.168.1.100:3000';
+      final localUrl = prefs.getString('localServerUrl') ?? defaultLocalServerUrl;
       const cloudUrl = cloudServerUrl;
       serverProfile = await _fetchServerProfile(useLocal ? localUrl : cloudUrl);
     }
@@ -180,7 +183,7 @@ bool obsidianAutoSync;
       userName:         prefs.getString('userName')         ?? _ident('user_name')      ?? 'נדב',
       useLocalModel:    prefs.getBool('useLocalModel')      ?? false,
       useLocalServer:   prefs.getBool('useLocalServer')     ?? false,
-      localServerUrl:   prefs.getString('localServerUrl')   ?? 'http://192.168.1.100:3000',
+      localServerUrl:   prefs.getString('localServerUrl')   ?? defaultLocalServerUrl,
       obsidianAutoSync: prefs.getBool('obsidianAutoSync')   ?? true,
       telemetryConsent: prefs.getBool('telemetryConsent')   ?? false,
       bargeInEnabled:   prefs.getBool('bargeInEnabled')     ?? true,

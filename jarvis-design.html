@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-void:    #08090E;
+      --bg-base:    #0D1018;
+      --bg-surface: #141926;
+      --bg-raised:  #1B2233;
+      --bg-hover:   #222C3F;
+      --brass:        #C4A472;
+      --brass-dim:    rgba(196,164,114,0.10);
+      --brass-glow:   rgba(196,164,114,0.22);
+      --brass-border: rgba(196,164,114,0.28);
+      --blue:         #7A8ED0;
+      --blue-dim:     rgba(122,142,208,0.10);
+      --sage:         #6BAE8A;
+      --sage-dim:     rgba(107,174,138,0.12);
+      --warn:         #D4966A;
+      --warn-dim:     rgba(212,150,106,0.12);
+      --red:          #C46A6A;
+      --red-dim:      rgba(196,106,106,0.12);
+      --text-hi:  #ECE7DD;
+      --text-mid: #918E88;
+      --text-lo:  #565450;
+      --border:    rgba(255,255,255,0.07);
+      --border-hi: rgba(255,255,255,0.12);
+      --font-display: 'Fraunces', Georgia, serif;
+      --font-body:    'DM Sans', system-ui, sans-serif;
+      --font-mono:    'JetBrains Mono', monospace;
+      --r-sm: 6px; --r-md: 10px; --r-lg: 16px;
+    }
+    html, body { height: 100%; background: var(--bg-void); color: var(--text-hi); font-family: var(--font-body); font-size: 13.5px; line-height: 1.55; -webkit-font-smoothing: antialiased; overflow: hidden; }
+
+    .app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* Header */
+    header { height: 52px; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--bg-base); flex-shrink: 0; gap: 16px; }
+    .logo { font-family: var(--font-display); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--brass); margin-left: auto; }
+    .logo span { font-style: italic; font-weight: 300; color: var(--text-mid); font-size: 13px; margin-right: 8px; }
+    .header-center { display: flex; align-items: center; gap: 12px; }
+    .status-dot { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-mid); }
+    .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); animation: pulse-anim 2.5s ease-in-out infinite; }
+    @keyframes pulse-anim { 0%, 100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(0.75); } }
+    .header-badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; border: 1px solid var(--border); color: var(--text-lo); cursor: pointer; transition: all 0.12s; }
+    .header-badge:hover { border-color: var(--border-hi); color: var(--text-mid); }
+    .header-badge.warn { border-color: var(--warn-dim); color: var(--warn); background: var(--warn-dim); }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--brass-dim); border: 1px solid var(--brass-border); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--brass); cursor: pointer; margin-right: auto; }
+
+    /* Main layout */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* Panel shared */
+    .panel-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .panel-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-lo); }
+    .panel-subtitle { font-family: var(--font-display); font-size: 22px; font-weight: 300; color: var(--text-hi); margin-top: 2px; letter-spacing: -0.02em; }
+    .panel-subtitle strong { color: var(--brass); font-weight: 600; }
+
+    /* ── Timeline ── */
+    .panel-timeline { width: 256px; flex-shrink: 0; background: var(--bg-base); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .timeline-scroll { flex: 1; overflow-y: auto; padding: 8px 0 24px; scrollbar-width: thin; scrollbar-color: var(--bg-raised) transparent; }
+    .timeline-scroll::-webkit-scrollbar { width: 4px; }
+    .timeline-scroll::-webkit-scrollbar-thumb { background: var(--bg-raised); border-radius: 2px; }
+
+    /* Habit streaks inside timeline header */
+    .habits-strip { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .habit-chip { display: flex; align-items: center; gap: 4px; font-size: 11px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 20px; padding: 3px 8px; color: var(--text-mid); }
+    .habit-chip .streak { font-family: var(--font-mono); font-size: 10px; color: var(--brass); font-weight: 500; }
+    .habit-chip.done { border-color: var(--sage-dim); color: var(--sage); }
+    .habit-chip.done .streak { color: var(--sage); }
+
+    .hour-block { display: flex; align-items: flex-start; gap: 10px; padding: 4px 16px; min-height: 36px; position: relative; }
+    .hour-block.past { opacity: 0.35; }
+    .hour-label { font-family: var(--font-mono); font-size: 10px; color: var(--text-lo); width: 34px; flex-shrink: 0; padding-top: 2px; text-align: left; }
+    .hour-block.now-block .hour-label { color: var(--brass); }
+    .hour-line { flex: 1; display: flex; flex-direction: column; gap: 3px; padding-top: 4px; border-right: 1px solid var(--border); padding-right: 10px; min-height: 28px; }
+    .now-indicator { position: relative; }
+    .now-indicator::before { content: ''; position: absolute; right: -5px; top: 50%; transform: translateY(-50%); width: 9px; height: 9px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 3px var(--brass-glow), 0 0 12px var(--brass-glow); animation: now-pulse 2s ease-in-out infinite; }
+    @keyframes now-pulse { 0%,100% { box-shadow: 0 0 0 3px var(--brass-glow), 0 0 12px var(--brass-glow); } 50% { box-shadow: 0 0 0 6px rgba(196,164,114,0.08), 0 0 20px var(--brass-glow); } }
+    .event-pill { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 4px 8px; font-size: 12px; color: var(--text-hi); cursor: pointer; transition: background 0.15s, border-color 0.15s; display: flex; align-items: center; gap: 6px; }
+    .event-pill:hover { background: var(--bg-hover); border-color: var(--border-hi); }
+    .event-pill.task     { border-right: 2px solid var(--blue); }
+    .event-pill.reminder { border-right: 2px solid var(--brass); }
+    .event-pill.calendar { border-right: 2px solid var(--sage); }
+    .event-pill.shopping { border-right: 2px solid var(--warn); }
+    .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .dot-blue  { background: var(--blue); }
+    .dot-brass { background: var(--brass); }
+    .dot-sage  { background: var(--sage); }
+    .dot-warn  { background: var(--warn); }
+    .event-meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-lo); margin-right: auto; }
+
+    /* ── Chat ── */
+    .panel-chat { flex: 1; display: flex; flex-direction: column; background: var(--bg-void); border-left: 1px solid var(--border); overflow: hidden; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; scrollbar-width: thin; scrollbar-color: var(--bg-raised) transparent; }
+    .chat-messages::-webkit-scrollbar { width: 4px; }
+    .chat-messages::-webkit-scrollbar-thumb { background: var(--bg-raised); border-radius: 2px; }
+
+    .msg { display: flex; flex-direction: column; gap: 4px; max-width: 80%; }
+    .msg.user   { align-self: flex-start; align-items: flex-start; }
+    .msg.jarvis { align-self: flex-end;   align-items: flex-end; }
+    .msg-meta { display: flex; align-items: center; gap: 8px; }
+    .msg-sender { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; color: var(--text-lo); }
+    .msg.jarvis .msg-sender { color: var(--brass); opacity: 0.7; }
+    .intent-tag { font-size: 10px; font-family: var(--font-mono); color: var(--text-lo); background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+    .msg-bubble { padding: 10px 14px; border-radius: var(--r-md); line-height: 1.6; font-size: 13.5px; }
+    .msg.user .msg-bubble   { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md) var(--r-md) var(--r-sm) var(--r-md); }
+    .msg.jarvis .msg-bubble { background: var(--bg-raised); border: 1px solid var(--border-hi); border-radius: var(--r-md) var(--r-md) var(--r-md) var(--r-sm); }
+    .msg-bubble em { font-family: var(--font-display); font-style: italic; color: var(--brass); }
+    .msg-time { font-family: var(--font-mono); font-size: 10px; color: var(--text-lo); }
+
+    /* Tasks/reminders embedded in chat */
+    .embed-list { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; margin-top: 8px; }
+    .embed-row { display: flex; align-items: center; gap: 8px; padding: 7px 11px; border-bottom: 1px solid var(--border); font-size: 12.5px; cursor: pointer; transition: background 0.12s; }
+    .embed-row:last-child { border-bottom: none; }
+    .embed-row:hover { background: var(--bg-raised); }
+    .check-box { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid var(--text-lo); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .check-box.done { background: var(--sage); border-color: var(--sage); }
+    .check-box.done::after { content: '✓'; font-size: 9px; color: #fff; }
+    .embed-row .priority { font-size: 10px; padding: 1px 5px; border-radius: 3px; }
+    .priority.high { background: var(--red-dim); color: var(--red); }
+    .priority.medium { background: var(--warn-dim); color: var(--warn); }
+    .priority.low { background: var(--blue-dim); color: var(--blue); }
+    .embed-due { font-family: var(--font-mono); font-size: 10px; color: var(--text-lo); margin-right: auto; }
+    .embed-due.urgent { color: var(--warn); }
+
+    .msg-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .chip { padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border-hi); font-size: 12px; color: var(--text-mid); cursor: pointer; transition: all 0.15s; background: transparent; font-family: var(--font-body); }
+    .chip:hover { background: var(--bg-hover); color: var(--text-hi); border-color: var(--brass-border); }
+    .chip.primary { border-color: var(--brass-border); color: var(--brass); background: var(--brass-dim); }
+
+    /* Chat input */
+    .chat-input-area { padding: 16px 28px 20px; border-top: 1px solid var(--border); background: var(--bg-base); }
+    .chat-input-wrap { display: flex; align-items: flex-end; gap: 10px; background: var(--bg-surface); border: 1px solid var(--border-hi); border-radius: var(--r-lg); padding: 10px 14px; transition: border-color 0.15s; }
+    .chat-input-wrap:focus-within { border-color: var(--brass-border); box-shadow: 0 0 0 3px var(--brass-dim); }
+    .chat-input { flex: 1; background: none; border: none; outline: none; color: var(--text-hi); font-family: var(--font-body); font-size: 13.5px; line-height: 1.5; resize: none; max-height: 120px; direction: rtl; }
+    .chat-input::placeholder { color: var(--text-lo); }
+    .send-btn { width: 30px; height: 30px; border-radius: 50%; background: var(--brass); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: opacity 0.15s, transform 0.1s; color: var(--bg-void); }
+    .send-btn:hover { opacity: 0.85; transform: scale(1.05); }
+    .input-hints { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .hint-pill { font-size: 11px; color: var(--text-lo); padding: 2px 8px; border-radius: 12px; border: 1px solid var(--border); cursor: pointer; transition: all 0.12s; }
+    .hint-pill:hover { color: var(--text-mid); border-color: var(--border-hi); }
+
+    /* ── Insights panel ── */
+    .panel-insights { width: 280px; flex-shrink: 0; background: var(--bg-base); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .insights-scroll { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 11px; scrollbar-width: thin; scrollbar-color: var(--bg-raised) transparent; }
+    .insights-scroll::-webkit-scrollbar { width: 4px; }
+    .insights-scroll::-webkit-scrollbar-thumb { background: var(--bg-raised); border-radius: 2px; }
+
+    /* Stats */
+    .stat-row { display: flex; gap: 8px; }
+    .stat-card { flex: 1; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 11px; display: flex; flex-direction: column; gap: 2px; }
+    .stat-num { font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+    .stat-num.brass { color: var(--brass); }
+    .stat-num.sage  { color: var(--sage); }
+    .stat-num.blue  { color: var(--blue); }
+    .stat-num.warn  { color: var(--warn); }
+    .stat-label { font-size: 10.5px; color: var(--text-lo); margin-top: 4px; }
+
+    /* Heatmap */
+    .heatmap-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px; }
+    .card-label { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-lo); margin-bottom: 10px; }
+    .heatmap { display: flex; gap: 3px; align-items: flex-end; height: 40px; }
+    .heatmap-bar { flex: 1; border-radius: 3px 3px 0 0; background: var(--bg-raised); transition: background 0.2s; cursor: pointer; position: relative; }
+    .heatmap-bar:hover::after { content: attr(data-label); position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--bg-raised); border: 1px solid var(--border-hi); border-radius: 4px; padding: 2px 6px; font-size: 10px; color: var(--text-hi); pointer-events: none; z-index: 10; }
+    .heatmap-bar.l1 { background: rgba(196,164,114,0.15); }
+    .heatmap-bar.l2 { background: rgba(196,164,114,0.30); }
+    .heatmap-bar.l3 { background: rgba(196,164,114,0.52); }
+    .heatmap-bar.l4 { background: rgba(196,164,114,0.78); }
+    .heatmap-bar.l5 { background: var(--brass); }
+    .heatmap-bar.now-bar { outline: 1px solid var(--brass); outline-offset: 1px; }
+    .heatmap-labels { display: flex; justify-content: space-between; margin-top: 4px; font-family: var(--font-mono); font-size: 9px; color: var(--text-lo); }
+
+    /* Insight card */
+    .insight-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px; }
+    .insight-icon { font-size: 15px; margin-bottom: 6px; }
+    .insight-quote { font-family: var(--font-display); font-style: italic; font-size: 13px; font-weight: 300; color: var(--text-hi); line-height: 1.55; margin-bottom: 8px; }
+    .insight-action { font-size: 11.5px; color: var(--brass); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+    .insight-action:hover { opacity: 0.75; }
+
+    /* Project card */
+    .project-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px; }
+    .project-name { font-size: 13px; font-weight: 500; color: var(--text-hi); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+    .project-status { font-size: 10px; font-family: var(--font-mono); color: var(--sage); }
+    .milestone-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-mid); padding: 4px 0; }
+    .milestone-row:not(:last-child) { border-bottom: 1px solid var(--border); }
+    .milestone-dot { width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid var(--text-lo); flex-shrink: 0; }
+    .milestone-dot.done { background: var(--sage); border-color: var(--sage); }
+    .milestone-dot.active { background: var(--brass); border-color: var(--brass); }
+    .progress-bar-wrap { height: 3px; background: var(--bg-raised); border-radius: 2px; overflow: hidden; margin-top: 10px; }
+    .progress-bar { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--sage), var(--brass)); }
+
+    /* Agent usage */
+    .usage-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 12px; }
+    .usage-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .usage-row:last-child { margin-bottom: 0; }
+    .usage-name { font-size: 11.5px; color: var(--text-mid); width: 56px; flex-shrink: 0; text-align: right; }
+    .usage-bar-wrap { flex: 1; height: 3px; background: var(--bg-raised); border-radius: 2px; overflow: hidden; }
+    .usage-bar { height: 100%; border-radius: 2px; background: var(--brass); }
+    .usage-pct { font-family: var(--font-mono); font-size: 10px; color: var(--text-lo); width: 26px; text-align: left; }
+
+    /* Divider */
+    .divider { display: flex; align-items: center; gap: 8px; color: var(--text-lo); font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* Status cards for improve section */
+    .status-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 11px; display: flex; align-items: center; gap: 10px; cursor: pointer; transition: background 0.12s; }
+    .status-card:hover { background: var(--bg-raised); }
+    .status-card.ok { border-right: 2px solid var(--sage); }
+    .status-card.warn { border-right: 2px solid var(--warn); }
+    .status-card.err { border-right: 2px solid var(--red); }
+    .status-icon { font-size: 16px; flex-shrink: 0; }
+    .status-text { flex: 1; }
+    .status-title { font-size: 12.5px; font-weight: 500; color: var(--text-hi); }
+    .status-sub { font-size: 11px; color: var(--text-lo); margin-top: 1px; }
+    .status-arrow { color: var(--text-lo); font-size: 12px; }
+
+    /* Survey */
+    .survey-card { background: var(--bg-surface); border: 1px solid var(--brass-border); border-radius: var(--r-md); padding: 14px; position: relative; overflow: hidden; }
+    .survey-card::before { content: ''; position: absolute; top: 0; right: 0; left: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--brass), transparent); }
+    .survey-source { font-size: 10px; font-family: var(--font-mono); color: var(--text-lo); margin-bottom: 8px; }
+    .survey-q { font-size: 13px; font-weight: 500; color: var(--text-hi); margin-bottom: 10px; line-height: 1.5; }
+    .survey-opts { display: flex; flex-direction: column; gap: 5px; }
+    .survey-opt { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); border: 1px solid var(--border); cursor: pointer; font-size: 12.5px; color: var(--text-mid); transition: all 0.12s; background: var(--bg-raised); }
+    .survey-opt:hover { background: var(--bg-hover); border-color: var(--border-hi); color: var(--text-hi); }
+    .survey-opt.selected { border-color: var(--brass-border); background: var(--brass-dim); color: var(--brass); }
+    .survey-opt-dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid currentColor; flex-shrink: 0; }
+    .survey-opt.selected .survey-opt-dot { background: var(--brass); border-color: var(--brass); }
+    .survey-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+    .survey-skip { font-size: 11px; color: var(--text-lo); cursor: pointer; }
+    .survey-skip:hover { color: var(--text-mid); }
+    .survey-submit { padding: 5px 14px; border-radius: 20px; background: var(--brass); border: none; color: var(--bg-void); font-family: var(--font-body); font-size: 12px; font-weight: 600; cursor: pointer; opacity: 0.35; transition: opacity 0.15s; }
+    .survey-submit.active { opacity: 1; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="logo">Jarvis<span>/ העוזר האישי</span></div>
+    <div class="header-center">
+      <div class="status-dot"><div class="pulse"></div>לומד דפוסים</div>
+      <div class="header-badge warn" title="דוח פרויקט — עד 16:00">⚠ משימה דחופה</div>
+      <div class="header-badge" onclick="void(0)">🔬 e2e: עבר</div>
+      <div class="header-badge" onclick="void(0)">🛡 אבטחה: תקין</div>
+    </div>
+    <div style="flex:1"></div>
+    <div class="avatar">נ</div>
+  </header>
+
+  <div class="main">
+
+    <!-- ══ TIMELINE ══ -->
+    <div class="panel-timeline">
+      <div class="panel-header">
+        <div class="panel-title">היום</div>
+        <div class="panel-subtitle" id="today-label">...</div>
+      </div>
+      <!-- Habit streaks (habitAgent / computeStreak) -->
+      <div class="habits-strip">
+        <div class="habit-chip done">ריצה <span class="streak">🔥12</span></div>
+        <div class="habit-chip done">קריאה <span class="streak">🔥5</span></div>
+        <div class="habit-chip">מדיטציה <span class="streak">3</span></div>
+      </div>
+      <div class="timeline-scroll" id="timeline"></div>
+    </div>
+
+    <!-- ══ CHAT ══ -->
+    <div class="panel-chat">
+      <div class="chat-messages" id="chat-messages">
+
+        <!-- Morning briefing (07:00 cron → runChatAgent) -->
+        <div class="msg jarvis">
+          <div class="msg-meta">
+            <div class="msg-sender">Jarvis</div>
+            <div class="intent-tag">briefing</div>
+          </div>
+          <div class="msg-bubble">
+            בוקר טוב נדב. הנה הסיכום של היום —
+            <div class="embed-list">
+              <div class="embed-row">
+                <div class="check-box done"></div>
+                <span>שיחת צוות שבועית</span>
+                <span class="embed-due">09:00</span>
+              </div>
+              <div class="embed-row">
+                <div class="check-box"></div>
+                <span>כתיבת דוח פרויקט</span>
+                <span class="priority high">גבוהה</span>
+                <span class="embed-due urgent">עד 16:00 ⚠</span>
+              </div>
+              <div class="embed-row">
+                <div class="check-box"></div>
+                <span>ביקור רופא</span>
+                <span class="priority medium">בינונית</span>
+                <span class="embed-due">14:00</span>
+              </div>
+              <div class="embed-row">
+                <div class="check-box"></div>
+                <span>ריצה 5 ק"מ</span>
+                <span class="priority low">נמוכה</span>
+                <span class="embed-due">16:30</span>
+              </div>
+            </div>
+            <div class="msg-actions">
+              <button class="chip primary">התחל דוח עכשיו</button>
+              <button class="chip">הוסף משימה</button>
+              <button class="chip">הצג תזכורות</button>
+            </div>
+          </div>
+          <div class="msg-time">07:00 · briefing בוקר</div>
+        </div>
+
+        <div class="msg user">
+          <div class="msg-meta"><div class="msg-sender">אתה</div></div>
+          <div class="msg-bubble">מה השעה הכי טובה לכתוב את הדוח?</div>
+          <div class="msg-time">09:11</div>
+        </div>
+
+        <div class="msg jarvis">
+          <div class="msg-meta">
+            <div class="msg-sender">Jarvis</div>
+            <div class="intent-tag">insight</div>
+          </div>
+          <div class="msg-bubble">
+            לפי הדפוסים שלך — <em>09:00–11:00</em> זו שעת הכתיבה הטובה ביותר. ריכוז גבוה, פחות הפרעות. יש לך עוד 49 דקות בחלון הזה.
+            <div class="msg-actions">
+              <button class="chip primary">חסום שעה ביומן</button>
+              <button class="chip">הצג עוד תובנות</button>
+            </div>
+          </div>
+          <div class="msg-time">09:12</div>
+        </div>
+
+        <div class="msg user">
+          <div class="msg-meta"><div class="msg-sender">אתה</div></div>
+          <div class="msg-bubble">תוסיף לרשימת הקניות: חלב, לחם, ביצים</div>
+          <div class="msg-time">10:02</div>
+        </div>
+
+        <div class="msg jarvis">
+          <div class="msg-meta">
+            <div class="msg-sender">Jarvis</div>
+            <div class="intent-tag">shopping</div>
+          </div>
+          <div class="msg-bubble">
+            הוספתי 3 פריטים לרשימת הקניות.
+            <div class="embed-list">
+              <div class="embed-row"><span>🥛 חלב</span></div>
+              <div class="embed-row"><span>🍞 לחם</span></div>
+              <div class="embed-row"><span>🥚 ביצים</span></div>
+            </div>
+          </div>
+          <div class="msg-time">10:02</div>
+        </div>
+
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-wrap">
+          <textarea class="chat-input" id="chat-input" placeholder="שאל את Jarvis..." rows="1"></textarea>
+          <button class="send-btn" onclick="sendMessage()">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M13 7L1 1l3 6-3 6 12-6z" fill="currentColor"/></svg>
+          </button>
+        </div>
+        <div class="input-hints">
+          <span class="hint-pill" onclick="fillInput('מה יש לי מחר?')">מחר?</span>
+          <span class="hint-pill" onclick="fillInput('הוסף תזכורת ל-15:00')">+ תזכורת</span>
+          <span class="hint-pill" onclick="fillInput('מה הרגלים שלי החודש?')">הרגלים</span>
+          <span class="hint-pill" onclick="fillInput('סכם את השבוע')">סיכום שבוע</span>
+          <span class="hint-pill" onclick="fillInput('כתוב טיוטת מייל ל...')">טיוטה</span>
+          <span class="hint-pill" onclick="fillInput('מה מצב הפרויקט?')">פרויקט</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ INSIGHTS + IMPROVE ══ -->
+    <div class="panel-insights">
+      <div class="panel-header">
+        <div class="panel-title">תמונת מצב</div>
+        <div class="panel-subtitle">השבוע</div>
+      </div>
+      <div class="insights-scroll">
+
+        <!-- Stats: task completion + habit streak + open reminders -->
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-num brass">73%</div>
+            <div class="stat-label">משימות הושלמו</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num sage">12</div>
+            <div class="stat-label">רצף ריצה</div>
+          </div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-num blue">3</div>
+            <div class="stat-label">תזכורות פעילות</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num warn">2</div>
+            <div class="stat-label">אבני דרך קרובות</div>
+          </div>
+        </div>
+
+        <!-- insightAgent → הפרודוקטיביות לפי שעה -->
+        <div class="heatmap-card">
+          <div class="card-label">פרודוקטיביות לפי שעה</div>
+          <div class="heatmap" id="heatmap"></div>
+          <div class="heatmap-labels"><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+        </div>
+
+        <!-- insightAgent tips (italic Fraunces = signature) -->
+        <div class="insight-card">
+          <div class="insight-icon">🎯</div>
+          <div class="insight-quote">רוב המשימות שאתה דוחה נגמרות תחת לחץ ביום האחרון.</div>
+          <span class="insight-action">הגדר אזהרה מוקדמת →</span>
+        </div>
+
+        <div class="insight-card">
+          <div class="insight-icon">📈</div>
+          <div class="insight-quote">ביצועי הכתיבה שלך עולים ב-40% כשאין שיחות לפניהם.</div>
+          <span class="insight-action">חסום זמן כתיבה ביומן →</span>
+        </div>
+
+        <!-- projectAgent → פרויקט פעיל עם milestones -->
+        <div class="project-card">
+          <div class="project-name">
+            Jarvis v2
+            <span class="project-status">sprint 3/4</span>
+          </div>
+          <div class="milestone-row"><div class="milestone-dot done"></div><span>אדריכלות agents</span></div>
+          <div class="milestone-row"><div class="milestone-dot done"></div><span>Pinecone memory</span></div>
+          <div class="milestone-row"><div class="milestone-dot active"></div><span>dashboard + telemetry</span></div>
+          <div class="milestone-row"><div class="milestone-dot"></div><span>mobile Flutter</span></div>
+          <div class="progress-bar-wrap"><div class="progress-bar" style="width:62%"></div></div>
+        </div>
+
+        <!-- Agent usage (real agent names from router.js) -->
+        <div class="usage-card">
+          <div class="card-label">שימוש בסוכנים</div>
+          <div class="usage-row"><div class="usage-name">chat</div><div class="usage-bar-wrap"><div class="usage-bar" style="width:82%"></div></div><div class="usage-pct">82%</div></div>
+          <div class="usage-row"><div class="usage-name">task</div><div class="usage-bar-wrap"><div class="usage-bar" style="width:58%"></div></div><div class="usage-pct">58%</div></div>
+          <div class="usage-row"><div class="usage-name">reminder</div><div class="usage-bar-wrap"><div class="usage-bar" style="width:44%"></div></div><div class="usage-pct">44%</div></div>
+          <div class="usage-row"><div class="usage-name">shopping</div><div class="usage-bar-wrap"><div class="usage-bar" style="width:36%"></div></div><div class="usage-pct">36%</div></div>
+          <div class="usage-row"><div class="usage-name">habit</div><div class="usage-bar-wrap"><div class="usage-bar" style="width:29%"></div></div><div class="usage-pct">29%</div></div>
+          <div class="usage-row"><div class="usage-name">insight</div><div class="usage-bar-wrap"><div class="usage-bar" style="width:18%"></div></div><div class="usage-pct">18%</div></div>
+          <div class="usage-row"><div class="usage-name">notes</div><div class="usage-bar-wrap"><div class="usage-bar" style="width:14%"></div></div><div class="usage-pct">14%</div></div>
+        </div>
+
+        <div class="divider">שפר את Jarvis</div>
+
+        <!-- e2eAgent status -->
+        <div class="status-card ok">
+          <div class="status-icon">🔬</div>
+          <div class="status-text">
+            <div class="status-title">E2E — עבר</div>
+            <div class="status-sub">הרצה אחרונה: לפני שעה · 24/24 תרחישים</div>
+          </div>
+          <div class="status-arrow">›</div>
+        </div>
+
+        <!-- securityAgent status -->
+        <div class="status-card ok">
+          <div class="status-icon">🛡</div>
+          <div class="status-text">
+            <div class="status-title">סריקת אבטחה — תקין</div>
+            <div class="status-sub">/scan/errors · אין ממצאים פעילים</div>
+          </div>
+          <div class="status-arrow">›</div>
+        </div>
+
+        <!-- codeErrorAgent -->
+        <div class="status-card warn">
+          <div class="status-icon">⚠️</div>
+          <div class="status-text">
+            <div class="status-title">שגיאות קוד — 2 ממצאים</div>
+            <div class="status-sub">codeErrorAgent · agents/custom/</div>
+          </div>
+          <div class="status-arrow">›</div>
+        </div>
+
+        <!-- agentFactoryAgent hint -->
+        <div class="status-card" style="border-right: 2px solid var(--blue);">
+          <div class="status-icon">🏭</div>
+          <div class="status-text">
+            <div class="status-title">צור agent חדש</div>
+            <div class="status-sub">agentFactory · agents/custom/</div>
+          </div>
+          <div class="status-arrow">›</div>
+        </div>
+
+        <!-- surveyAgent survey card -->
+        <div class="survey-card" id="survey-card">
+          <div class="survey-source">surveyAgent · שאלון #4</div>
+          <div class="survey-q">איך הייתה הפרודוקטיביות שלך הבוקר?</div>
+          <div class="survey-opts" id="survey-opts">
+            <div class="survey-opt" onclick="selectOpt(this)"><div class="survey-opt-dot"></div>גבוהה — הספקתי הרבה</div>
+            <div class="survey-opt" onclick="selectOpt(this)"><div class="survey-opt-dot"></div>בינונית — התקדמתי קצת</div>
+            <div class="survey-opt" onclick="selectOpt(this)"><div class="survey-opt-dot"></div>נמוכה — הרגשתי תקוע</div>
+          </div>
+          <div class="survey-footer">
+            <span class="survey-skip" onclick="skipSurvey()">דלג</span>
+            <button class="survey-submit" id="survey-submit" onclick="submitSurvey()">שלח</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const DAYS   = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+  const MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+  const pad = n => String(n).padStart(2,'0');
+
+  function initDateLabel() {
+    const d = new Date();
+    document.getElementById('today-label').innerHTML =
+      `<strong>${DAYS[d.getDay()]}</strong>, ${d.getDate()} ב${MONTHS[d.getMonth()]}`;
+  }
+
+  // Events per hour — reflecting actual agent types: task, reminder, calendar, shopping
+  const EVENTS = [
+    { hour:7,  min:0,  text:'briefing בוקר',      type:'calendar' },
+    { hour:9,  min:0,  text:'שיחת צוות',           type:'calendar', done:true },
+    { hour:11, min:30, text:'דוח פרויקט',          type:'task' },
+    { hour:13, min:0,  text:'קניות — חלב, לחם',   type:'shopping' },
+    { hour:14, min:0,  text:'ביקור רופא',          type:'reminder' },
+    { hour:16, min:30, text:'ריצה 5 ק"מ',          type:'task' },
+    { hour:20, min:0,  text:'קריאה',               type:'reminder' },
+  ];
+
+  function buildTimeline() {
+    const d = new Date();
+    const curH = d.getHours();
+    const container = document.getElementById('timeline');
+    let html = '';
+    for (let h = 7; h <= 22; h++) {
+      const isPast = h < curH, isNow = h === curH;
+      const cls = isPast ? 'hour-block past' : isNow ? 'hour-block now-block' : 'hour-block';
+      const lineExtra = isNow ? ' now-indicator' : '';
+      const id = isNow ? 'id="now-hour"' : '';
+      const eventsAtH = EVENTS.filter(e => e.hour === h);
+      const evHtml = eventsAtH.map(e => {
+        const dot = e.type === 'calendar' ? 'sage' : e.type === 'task' ? 'blue' : e.type === 'shopping' ? 'warn' : 'brass';
+        return `<div class="event-pill ${e.type}${e.done?' past':''}">
+          <div class="dot dot-${dot}"></div>
+          <span>${e.text}</span>
+          ${e.min ? `<span class="event-meta">:${pad(e.min)}</span>` : ''}
+        </div>`;
+      }).join('');
+      html += `<div class="${cls}" ${id}><div class="hour-label">${pad(h)}:00</div><div class="hour-line${lineExtra}">${evHtml}</div></div>`;
+    }
+    container.innerHTML = html;
+    const nowEl = document.getElementById('now-hour');
+    if (nowEl) setTimeout(() => nowEl.scrollIntoView({ behavior:'smooth', block:'center' }), 300);
+  }
+
+  // insightAgent productivity data by hour (index 0 = 06:00)
+  const PRODUCTIVITY = [0,1,2,4,5,5,4,3,2,2,1,1,2,3,3,2,1,1,0,0];
+
+  function buildHeatmap() {
+    const curH = new Date().getHours();
+    const container = document.getElementById('heatmap');
+    const max = Math.max(...PRODUCTIVITY);
+    container.innerHTML = PRODUCTIVITY.map((val, i) => {
+      const hour = i + 6;
+      const h = Math.max(6, Math.round((val/max)*40));
+      const lvl = val===0?'':val<=1?'l1':val<=2?'l2':val<=3?'l3':val<=4?'l4':'l5';
+      const isNow = hour === curH;
+      return `<div class="heatmap-bar ${lvl}${isNow?' now-bar':''}" style="height:${h}px" data-label="${pad(hour)}:00"></div>`;
+    }).join('');
+  }
+
+  // Survey (surveyAgent)
+  function selectOpt(el) {
+    document.querySelectorAll('.survey-opt').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('survey-submit').classList.add('active');
+  }
+  function skipSurvey() {
+    const c = document.getElementById('survey-card');
+    c.style.transition = 'opacity 0.3s'; c.style.opacity = '0';
+    setTimeout(() => c.remove(), 300);
+  }
+  function submitSurvey() {
+    if (!document.querySelector('.survey-opt.selected')) return;
+    document.getElementById('survey-card').innerHTML = `
+      <div style="text-align:center;padding:12px 0">
+        <div style="font-size:20px;margin-bottom:6px">✓</div>
+        <div style="font-size:12.5px;color:var(--text-mid)">נשמר — Jarvis למד משהו חדש עליך</div>
+        <div style="font-size:10.5px;color:var(--text-lo);margin-top:4px">surveyAgent · autoExtractMemory פועל</div>
+      </div>`;
+  }
+
+  // Chat
+  function fillInput(t) {
+    const inp = document.getElementById('chat-input');
+    inp.value = t; inp.focus(); autoResize(inp);
+  }
+  function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
+  document.getElementById('chat-input').addEventListener('input', function(){ autoResize(this); });
+  document.getElementById('chat-input').addEventListener('keydown', function(e){ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} });
+
+  // Intent → agent mapping (mirrors router.js intents)
+  const INTENT_MAP = {
+    'מחר':'reminder', 'תזכורת':'reminder', 'משימה':'task', 'קניות':'shopping',
+    'הרגל':'habit', 'פרויקט':'project', 'מזג':'weather', 'חדשות':'news',
+    'תרגם':'translate', 'מוזיקה':'music', 'מייל':'messaging', 'טיוטה':'draft',
+    'תובנות':'insight', 'סיכום':'insight',
+  };
+
+  const REPLIES = [
+    { intent:'task',    text:'נוסף לרשימת המשימות.' },
+    { intent:'reminder',text:'תזכורת נקבעה. אשלח התראה בזמן.' },
+    { intent:'shopping',text:'עודכן ב-shopping agent.' },
+    { intent:'insight', text:'מעבד דפוסים... הנה מה שמצאתי.' },
+    { intent:'chat',    text:'בוצע. יש עוד משהו?' },
+  ];
+
+  function detectIntent(text) {
+    for (const [kw, intent] of Object.entries(INTENT_MAP)) {
+      if (text.includes(kw)) return intent;
+    }
+    return 'chat';
+  }
+
+  function sendMessage() {
+    const inp = document.getElementById('chat-input');
+    const text = inp.value.trim(); if (!text) return;
+    const container = document.getElementById('chat-messages');
+    const d = new Date();
+    const t = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+    const uDiv = document.createElement('div');
+    uDiv.className = 'msg user';
+    uDiv.innerHTML = `<div class="msg-meta"><div class="msg-sender">אתה</div></div><div class="msg-bubble">${text}</div><div class="msg-time">${t}</div>`;
+    container.appendChild(uDiv);
+    inp.value = ''; inp.style.height = 'auto';
+
+    const intent = detectIntent(text);
+    setTimeout(() => {
+      const reply = REPLIES.find(r => r.intent === intent) || REPLIES[4];
+      const d2 = new Date();
+      const t2 = `${pad(d2.getHours())}:${pad(d2.getMinutes())}`;
+      const jDiv = document.createElement('div');
+      jDiv.className = 'msg jarvis';
+      jDiv.innerHTML = `
+        <div class="msg-meta"><div class="msg-sender">Jarvis</div><div class="intent-tag">${reply.intent}</div></div>
+        <div class="msg-bubble">${reply.text}</div>
+        <div class="msg-time">${t2}</div>`;
+      container.appendChild(jDiv);
+      container.scrollTop = container.scrollHeight;
+    }, 550);
+
+    container.scrollTop = container.scrollHeight;
+  }
+
+  initDateLabel();
+  buildTimeline();
+  buildHeatmap();
+</script>
+</body>
+</html>

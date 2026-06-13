@@ -276,7 +276,7 @@ app.use(helmet({
             defaultSrc: ["'self'"],
             scriptSrc:  ["'self'", 'unpkg.com', 'cdn.jsdelivr.net'],
             styleSrc:   ["'self'", 'unpkg.com', 'cdn.jsdelivr.net'],
-            connectSrc: ["'self'"],
+            connectSrc: ["'self'", "chrome-extension:", "moz-extension:"],
             imgSrc:     ["'self'", 'data:'],
         },
     },

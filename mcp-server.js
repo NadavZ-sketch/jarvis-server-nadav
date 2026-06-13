@@ -104,7 +104,7 @@ const TOOLS = [
             },
             required: ['message'],
         },
-        handler: (message) => runNotesAgent(message, supabase, DEFAULT_SETTINGS.useLocal, DEFAULT_SETTINGS),
+        handler: (message) => runNotesAgent(message, repos, DEFAULT_SETTINGS.useLocal, DEFAULT_SETTINGS),
         actionType: 'notes.manage',
     },
     {

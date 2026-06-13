@@ -1,14 +1,11 @@
-function createRemindersController({ supabase, pinecone }) {
+const { createReminderRepo } = require('../services/dataAccess/reminderRepo');
+
+function createRemindersController({ supabase, repos, pinecone }) {
+  const reminders = (repos && repos.reminders) || createReminderRepo(supabase);
   return {
     async list(_req, res) {
       try {
-        const { data, error } = await supabase
-          .from('reminders')
-          .select('id, text, scheduled_time, fired')
-          .eq('fired', false)
-          .order('scheduled_time', { ascending: true });
-        if (error) throw error;
-        res.json({ reminders: data || [] });
+        res.json({ reminders: await reminders.listUpcoming() });
       } catch (err) {
         console.error('GET /reminders error:', err.message);
         res.status(500).json({ reminders: [] });
@@ -21,7 +18,7 @@ function createRemindersController({ supabase, pinecone }) {
         const row = { text, scheduled_time, fired: false };
         if (recurrence && ['daily', 'weekly', 'monthly'].includes(recurrence)) row.recurrence = recurrence;
         if (project_id) row.project_id = project_id;
-        const { data, error } = await supabase.from('reminders').insert([row]).select().single();
+        const { data, error } = await reminders.create(row);
         if (error) throw error;
         res.json({ reminder: data });
       } catch (err) {
@@ -38,7 +35,7 @@ function createRemindersController({ supabase, pinecone }) {
         if (fired !== undefined) updates.fired = !!fired;
         if (recurrence !== undefined) updates.recurrence = recurrence;
         if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await supabase.from('reminders').update(updates).eq('id', req.params.id).select().single();
+        const { data, error } = await reminders.update(req.params.id, updates);
         if (error) throw error;
         res.json({ reminder: data });
       } catch (err) {
@@ -48,7 +45,7 @@ function createRemindersController({ supabase, pinecone }) {
     },
     async remove(req, res) {
       try {
-        const { error } = await supabase.from('reminders').delete().eq('id', req.params.id);
+        const { error } = await reminders.deleteById(req.params.id);
         if (error) throw error;
         res.json({ ok: true });
       } catch (err) {
@@ -59,12 +56,11 @@ function createRemindersController({ supabase, pinecone }) {
     async check(_req, res) {
       try {
         const now = new Date().toISOString();
-        const { data, error } = await supabase.from('reminders').select('*').eq('fired', false);
-        if (error) throw error;
+        const data = await reminders.listUnfired();
         const dueReminders = (data || []).filter((r) => !r?.scheduled_time || r.scheduled_time <= now);
         if (dueReminders.length > 0) {
           const ids = dueReminders.map(r => r.id);
-          await supabase.from('reminders').delete().in('id', ids);
+          await reminders.deleteMany(ids);
           const enriched = await Promise.all(dueReminders.map(async (r) => {
             let context = '';
             if (pinecone?.isReady?.()) {

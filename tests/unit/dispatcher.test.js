@@ -100,11 +100,11 @@ describe('dispatch', () => {
     expect(agents.runTaskAgent).toHaveBeenCalledWith(ctx.userMessage, ctx.repos, ctx.useLocal, ctx.settings);
   });
 
-  test('reminder → runReminderAgent(userMessage, supabase) only', async () => {
+  test('reminder → runReminderAgent(userMessage, repos) only', async () => {
     const ctx = makeCtx();
     const agents = makeAgents();
     await dispatch('reminder', ctx, agents);
-    expect(agents.runReminderAgent).toHaveBeenCalledWith(ctx.userMessage, ctx.supabase);
+    expect(agents.runReminderAgent).toHaveBeenCalledWith(ctx.userMessage, ctx.repos);
   });
 
   test('weather → runWeatherAgent(userMessage, settings)', async () => {

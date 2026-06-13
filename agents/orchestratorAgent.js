@@ -47,7 +47,8 @@ async function dispatchSubTask(intent, message, supabase, useLocal, settings, ch
             }
             case 'reminder': {
                 const { runReminderAgent } = require('./reminderAgent');
-                return await runReminderAgent(message, supabase);
+                const { createRepos } = require('../services/dataAccess');
+                return await runReminderAgent(message, createRepos(supabase));
             }
             case 'memory': {
                 const { runMemoryAgent } = require('./memoryAgent');

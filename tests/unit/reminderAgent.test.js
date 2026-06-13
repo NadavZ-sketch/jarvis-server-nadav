@@ -7,32 +7,7 @@ const {
     toISO,
     runReminderAgent,
 } = require('../../agents/reminderAgent');
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function makeChain(data = [], error = null) {
-    const chain = {
-        then(res) { return Promise.resolve({ data, error }).then(res); },
-        catch(rej) { return Promise.resolve({ data, error }).catch(rej); },
-        select:  jest.fn().mockReturnThis(),
-        single:  jest.fn().mockReturnThis(),
-        insert:  jest.fn().mockReturnThis(),
-        update:  jest.fn().mockReturnThis(),
-        delete:  jest.fn().mockReturnThis(),
-        eq:      jest.fn().mockReturnThis(),
-        ilike:   jest.fn().mockReturnThis(),
-        lte:     jest.fn().mockReturnThis(),
-        in:      jest.fn().mockReturnThis(),
-        order:   jest.fn().mockReturnThis(),
-        limit:   jest.fn().mockReturnThis(),
-    };
-    return chain;
-}
-
-function makeSupabase(data, error) {
-    const chain = makeChain(data, error);
-    return { from: jest.fn(() => chain), _chain: chain };
-}
+const { makeRepos, makeReminderRepo } = require('../helpers/fakeRepos');
 
 // ─── parseTime ────────────────────────────────────────────────────────────────
 
@@ -182,79 +157,72 @@ describe('runReminderAgent', () => {
     });
     afterEach(() => jest.useRealTimers());
 
-    test('הצג תזכורות → calls select and returns list', async () => {
-        const reminders = [
+    test('הצג תזכורות → lists upcoming reminders', async () => {
+        const repos = makeRepos({ reminders: [
             { id: 1, text: 'לשתות מים', scheduled_time: '2026-04-17T10:30:00+03:00' },
-        ];
-        const supabase = makeSupabase(reminders);
-        const result = await runReminderAgent('הצג תזכורות', supabase);
-        expect(supabase.from).toHaveBeenCalledWith('reminders');
+        ] });
+        const result = await runReminderAgent('הצג תזכורות', repos);
+        expect(repos.reminders.listUpcoming).toHaveBeenCalled();
         expect(result.answer).toContain('לשתות מים');
     });
 
     test('הצג תזכורות with empty list → no pending reminders message', async () => {
-        const supabase = makeSupabase([]);
-        const result = await runReminderAgent('הצג תזכורות', supabase);
+        const result = await runReminderAgent('הצג תזכורות', makeRepos({ reminders: [] }));
         expect(result.answer).toContain('אין לך תזכורות ממתינות');
     });
 
-    test('מחק תזכורת → calls delete with ilike and confirms', async () => {
-        const supabase = makeSupabase([{ id: 1, text: 'אימון' }]);
-        const result = await runReminderAgent('מחק תזכורת על אימון', supabase);
-        expect(supabase._chain.delete).toHaveBeenCalled();
-        expect(supabase._chain.ilike).toHaveBeenCalledWith('text', '%אימון%');
+    test('מחק תזכורת → deletes by text and confirms', async () => {
+        const repos = makeRepos({ reminders: [{ id: 1, text: 'אימון' }] });
+        const result = await runReminderAgent('מחק תזכורת על אימון', repos);
+        expect(repos.reminders.deleteByText).toHaveBeenCalledWith('אימון');
         expect(result.answer).toContain('מחקתי');
     });
 
     test('מחק תזכורת with empty delete result → not found message', async () => {
-        const supabase = makeSupabase([]);
-        const result = await runReminderAgent('מחק תזכורת על אימון', supabase);
+        const result = await runReminderAgent('מחק תזכורת על אימון', makeRepos({ reminders: [] }));
         expect(result.answer).toContain('לא מצאתי');
     });
 
-    test('add reminder → calls insert with correct scheduled_time', async () => {
-        const supabase = makeSupabase([], null);
-        const result = await runReminderAgent('תזכיר לי בעוד 30 דקות לשתות מים', supabase);
-        expect(supabase._chain.insert).toHaveBeenCalled();
-        const insertArg = supabase._chain.insert.mock.calls[0][0][0];
-        expect(insertArg.text).toBe('לשתות מים');
-        expect(insertArg.scheduled_time).toMatch(/10:30:00/);
-        expect(insertArg.recurrence).toBeUndefined();
+    test('add reminder → calls add with correct scheduled_time', async () => {
+        const repos = makeRepos({ reminders: [] });
+        const result = await runReminderAgent('תזכיר לי בעוד 30 דקות לשתות מים', repos);
+        expect(repos.reminders.add).toHaveBeenCalled();
+        const addArg = repos.reminders.add.mock.calls[0][0];
+        expect(addArg.text).toBe('לשתות מים');
+        expect(addArg.scheduled_time).toMatch(/10:30:00/);
+        expect(addArg.recurrence).toBeUndefined();
         expect(result.answer).toContain('אזכיר לך');
     });
 
-    test('recurring daily reminder → inserts with recurrence=daily', async () => {
-        const supabase = makeSupabase([], null);
-        const result = await runReminderAgent('תזכיר לי כל יום ב-8:00 לשתות מים', supabase);
-        expect(supabase._chain.insert).toHaveBeenCalled();
-        const insertArg = supabase._chain.insert.mock.calls[0][0][0];
-        expect(insertArg.recurrence).toBe('daily');
-        expect(insertArg.text).toContain('לשתות מים');
+    test('recurring daily reminder → adds with recurrence=daily', async () => {
+        const repos = makeRepos({ reminders: [] });
+        const result = await runReminderAgent('תזכיר לי כל יום ב-8:00 לשתות מים', repos);
+        const addArg = repos.reminders.add.mock.calls[0][0];
+        expect(addArg.recurrence).toBe('daily');
+        expect(addArg.text).toContain('לשתות מים');
         expect(result.answer).toContain('יומי');
     });
 
-    test('recurring weekly reminder → inserts with recurrence=weekly', async () => {
-        const supabase = makeSupabase([], null);
-        await runReminderAgent('כל שבוע ב-10:00 פגישה', supabase);
-        const insertArg = supabase._chain.insert.mock.calls[0][0][0];
-        expect(insertArg.recurrence).toBe('weekly');
+    test('recurring weekly reminder → adds with recurrence=weekly', async () => {
+        const repos = makeRepos({ reminders: [] });
+        await runReminderAgent('כל שבוע ב-10:00 פגישה', repos);
+        const addArg = repos.reminders.add.mock.calls[0][0];
+        expect(addArg.recurrence).toBe('weekly');
     });
 
     test('recurring monthly reminder → answer contains חודשי', async () => {
-        const supabase = makeSupabase([], null);
-        const result = await runReminderAgent('כל חודש ב-9:00 לשלם ארנונה', supabase);
+        const result = await runReminderAgent('כל חודש ב-9:00 לשלם ארנונה', makeRepos({ reminders: [] }));
         expect(result.answer).toContain('חודשי');
     });
 
     test('add reminder with unparseable time → returns clarification question', async () => {
-        const supabase = makeSupabase();
-        const result = await runReminderAgent('ספר לי על הפרויקט', supabase);
+        const result = await runReminderAgent('ספר לי על הפרויקט', makeRepos());
         expect(result.answer).toContain('מתי תרצה שאזכיר לך');
     });
 
-    test('supabase insert error → returns error message', async () => {
-        const supabase = makeSupabase([], { message: 'db error' });
-        const result = await runReminderAgent('תזכיר לי בעוד שעה לשתות', supabase);
+    test('insert error → returns error message', async () => {
+        const repos = { reminders: makeReminderRepo({ addResult: { error: { message: 'db error' } } }) };
+        const result = await runReminderAgent('תזכיר לי בעוד שעה לשתות', repos);
         expect(result.answer).toContain('לא הצלחתי להבין');
     });
 });

@@ -78,7 +78,7 @@ const TOOLS = [
             },
             required: ['message'],
         },
-        handler: (message) => runReminderAgent(message, supabase),
+        handler: (message) => runReminderAgent(message, repos),
         actionType: 'reminders.manage',
     },
     {

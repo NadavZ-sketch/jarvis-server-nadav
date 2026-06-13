@@ -1,0 +1,81 @@
+'use strict';
+
+// Reminder repository — deep head of the data-access seam for the `reminders`
+// table. Absorbs the queries spread across agents/reminderAgent.js and
+// controllers/remindersController.js.
+//
+// Read methods throw on a Supabase error (the reminder agent and controller
+// both rely on that to surface "DB unavailable" rather than "no reminders").
+// Write methods return the raw Supabase result so callers branch on .error.
+
+const { sanitizeLike } = require('../../agents/utils');
+
+const R = 'reminders';
+
+function createReminderRepo(supabase) {
+    return {
+        // ── reads ──────────────────────────────────────────────────────────
+        async listUpcoming() {
+            const { data, error } = await supabase.from(R)
+                .select('*')
+                .eq('fired', false)
+                .order('scheduled_time', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        },
+
+        async nextUpcoming() {
+            const { data, error } = await supabase.from(R)
+                .select('id, text, scheduled_time')
+                .eq('fired', false)
+                .order('scheduled_time', { ascending: true })
+                .limit(1);
+            if (error) throw error;
+            return data || [];
+        },
+
+        async listUnfired() {
+            const { data, error } = await supabase.from(R).select('*').eq('fired', false);
+            if (error) throw error;
+            return data || [];
+        },
+
+        // ── writes ─────────────────────────────────────────────────────────
+        async add(row) {
+            return supabase.from(R).insert([row]);
+        },
+
+        async create(row) {
+            return supabase.from(R).insert([row]).select().single();
+        },
+
+        async update(id, fields) {
+            return supabase.from(R).update(fields).eq('id', id).select().single();
+        },
+
+        async reschedule(id, iso) {
+            return supabase.from(R).update({ scheduled_time: iso }).eq('id', id);
+        },
+
+        async deleteById(id) {
+            return supabase.from(R).delete().eq('id', id);
+        },
+
+        async deleteMany(ids) {
+            return supabase.from(R).delete().in('id', ids);
+        },
+
+        // Delete unfired reminders whose text matches; returns the deleted rows.
+        async deleteByText(text) {
+            const { data, error } = await supabase.from(R)
+                .delete()
+                .eq('fired', false)
+                .ilike('text', `%${sanitizeLike(text)}%`)
+                .select();
+            if (error) throw error;
+            return data || [];
+        },
+    };
+}
+
+module.exports = { createReminderRepo };

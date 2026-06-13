@@ -29,7 +29,7 @@
 
 const REGISTRY = {
     task:       { mode:'sync', invoke:(c,a) => a.runTaskAgent(c.userMessage, c.repos, c.useLocal, c.settings) },
-    reminder:   { mode:'sync', invoke:(c,a) => a.runReminderAgent(c.userMessage, c.supabase) },
+    reminder:   { mode:'sync', invoke:(c,a) => a.runReminderAgent(c.userMessage, c.repos) },
     memory:     { mode:'sync', invoke:(c,a) => a.runMemoryAgent(c.userMessage, c.supabase, c.useLocal, c.settings), cacheBust: 'memories' },
     weather:    { mode:'sync', invoke:(c,a) => a.runWeatherAgent(c.userMessage, c.settings) },
     news:       { mode:'sync', invoke:(c,a) => a.runNewsAgent(c.userMessage, c.settings) },

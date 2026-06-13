@@ -22,6 +22,9 @@ function createWsHandler(deps) {
         generateSpeech,
         supabase,
     } = deps;
+    // Data-access seam: autoExtractMemory crosses repos.memories.
+    const { createRepos } = require('../services/dataAccess');
+    const repos = deps.repos || createRepos(supabase);
 
     return function handleWsConnection(ws /* , req */) {
         const session = {
@@ -149,7 +152,7 @@ function createWsHandler(deps) {
                 cacheInvalidate(`chatHistory:${chatId}`);
 
                 setImmediate(() => {
-                    autoExtractMemory(userMessage, fullAnswer, supabase, settings).catch(() => {});
+                    autoExtractMemory(userMessage, fullAnswer, repos, settings).catch(() => {});
                     loadChatHistory(chatId).then(fresh => {
                         conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(() => {});
                     }).catch(() => {});

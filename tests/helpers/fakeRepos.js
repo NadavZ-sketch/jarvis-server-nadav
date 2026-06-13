@@ -63,6 +63,17 @@ function makeReminderRepo(opts = {}) {
     };
 }
 
+function makeMemoryRepo(opts = {}) {
+    const { rows = [], insertResult, updateResult } = opts;
+    return {
+        findByContent:   jest.fn(async () => rows),
+        allContents:     jest.fn(async () => rows.map(r => r.content)),
+        insert:          jest.fn(async () => insertResult || rows),
+        update:          jest.fn(async () => updateResult || { error: null }),
+        deleteByContent: jest.fn(async () => rows),
+    };
+}
+
 function makeTableRepo(rows = []) {
     return {
         all:      jest.fn(async () => rows),
@@ -79,10 +90,11 @@ function makeRepos(tableData = {}) {
     return {
         tasks: makeTaskRepo({ rows: tableData.tasks || [] }),
         reminders: makeReminderRepo({ rows: tableData.reminders || [] }),
+        memories: makeMemoryRepo({ rows: tableData.memories || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeTableRepo };

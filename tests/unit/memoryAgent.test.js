@@ -17,30 +17,7 @@ jest.mock('../../services/pineconeMemory', () => ({
 const { callGemma4 }      = require('../../agents/models');
 const pinecone             = require('../../services/pineconeMemory');
 const { runMemoryAgent, autoExtractMemory, checkDuplicate } = require('../../agents/memoryAgent');
-
-// ─── Supabase mock helpers ────────────────────────────────────────────────────
-
-function makeChain(data = [], error = null) {
-    const chain = {
-        then(res) { return Promise.resolve({ data, error }).then(res); },
-        catch(rej) { return Promise.resolve({ data, error }).catch(rej); },
-        select:  jest.fn().mockReturnThis(),
-        single:  jest.fn().mockReturnThis(),
-        insert:  jest.fn().mockReturnThis(),
-        update:  jest.fn().mockReturnThis(),
-        delete:  jest.fn().mockReturnThis(),
-        eq:      jest.fn().mockReturnThis(),
-        ilike:   jest.fn().mockReturnThis(),
-        order:   jest.fn().mockReturnThis(),
-        limit:   jest.fn().mockReturnThis(),
-    };
-    return chain;
-}
-
-function makeSupabase(data, error) {
-    const chain = makeChain(data, error);
-    return { from: jest.fn(() => chain), _chain: chain };
-}
+const { makeRepos, makeMemoryRepo } = require('../helpers/fakeRepos');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -52,67 +29,57 @@ beforeEach(() => {
 // ─── runMemoryAgent: save ─────────────────────────────────────────────────────
 
 describe('runMemoryAgent — save', () => {
-    // All save tests need Pinecone to be "ready" so checkDuplicate trusts
-    // findSimilarMemory(null) and does NOT fall back to the ilike path that
-    // would falsely match the test data already in the mock chain.
+    // All save tests need Pinecone "ready" so checkDuplicate trusts
+    // findSimilarMemory(null) and does NOT fall back to the ilike path.
     beforeEach(() => pinecone.isReady.mockReturnValue(true));
 
     test('saves memory with long_term scope when explicit save keyword used', async () => {
         callGemma4.mockResolvedValue('{"memoryContent":"[hobby] אני אוהב פיצה"}');
-        const supabase = makeSupabase([{ id: 1, content: '[hobby] אני אוהב פיצה' }]);
-        const result = await runMemoryAgent('זכור ש אני אוהב פיצה', supabase);
-        expect(supabase.from).toHaveBeenCalledWith('memories');
-        expect(supabase._chain.insert).toHaveBeenCalledWith([
-            { content: '[hobby] אני אוהב פיצה', scope: 'long_term' }
-        ]);
+        const repos = makeRepos({ memories: [{ id: 1, content: '[hobby] אני אוהב פיצה' }] });
+        const result = await runMemoryAgent('זכור ש אני אוהב פיצה', repos);
+        expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[hobby] אני אוהב פיצה', scope: 'long_term' });
         expect(result.answer).toContain('שמרתי');
     });
 
     test('upserts to Pinecone after saving', async () => {
         callGemma4.mockResolvedValue('{"memoryContent":"[hobby] ריצה"}');
-        const supabase = makeSupabase([{ id: 42 }]);
-        await runMemoryAgent('זכור ש אני אוהב ריצה', supabase);
+        const repos = makeRepos({ memories: [{ id: 42 }] });
+        await runMemoryAgent('זכור ש אני אוהב ריצה', repos);
         expect(pinecone.upsertMemory).toHaveBeenCalledWith(42, '[hobby] ריצה');
     });
 
     test('LLM returns no JSON → error message', async () => {
         callGemma4.mockResolvedValue('I cannot do that.');
-        const supabase = makeSupabase();
-        const result = await runMemoryAgent('זכור ש כל מיני', supabase);
+        const result = await runMemoryAgent('זכור ש כל מיני', makeRepos());
         expect(result.answer).toContain('הייתה בעיה בשמירת הזיכרון');
     });
 
     test('JSON with braces inside content value is parsed correctly', async () => {
         callGemma4.mockResolvedValue('{"memoryContent":"[health] אלרגי ל{בוטנים} ול{שקדים}"}');
-        const supabase = makeSupabase([{ id: 1 }]);
-        await runMemoryAgent('זכור ש אני אלרגי לבוטנים', supabase);
-        expect(supabase._chain.insert).toHaveBeenCalledWith([
-            { content: '[health] אלרגי ל{בוטנים} ול{שקדים}', scope: 'long_term' }
-        ]);
+        const repos = makeRepos({ memories: [{ id: 1 }] });
+        await runMemoryAgent('זכור ש אני אלרגי לבוטנים', repos);
+        expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[health] אלרגי ל{בוטנים} ול{שקדים}', scope: 'long_term' });
     });
 
     test('LLM preamble before JSON is skipped correctly', async () => {
         callGemma4.mockResolvedValue('הנה הזיכרון שלך: {"memoryContent":"[hobby] אוהב ריצה"}');
-        const supabase = makeSupabase([{ id: 1 }]);
-        await runMemoryAgent('זכור ש אני אוהב ריצה', supabase);
-        expect(supabase._chain.insert).toHaveBeenCalledWith([
-            { content: '[hobby] אוהב ריצה', scope: 'long_term' }
-        ]);
+        const repos = makeRepos({ memories: [{ id: 1 }] });
+        await runMemoryAgent('זכור ש אני אוהב ריצה', repos);
+        expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[hobby] אוהב ריצה', scope: 'long_term' });
     });
 
     test('duplicate detected (Pinecone) → suggests update instead of save', async () => {
         callGemma4.mockResolvedValue('{"memoryContent":"[hobby] אני אוהב פיצה"}');
         pinecone.findSimilarMemory.mockResolvedValue({ id: '5', content: '[hobby] אני אוהב פיצה', score: 0.97 });
-        const supabase = makeSupabase([]);
-        const result = await runMemoryAgent('זכור ש אני אוהב פיצה', supabase);
-        expect(supabase._chain.insert).not.toHaveBeenCalled();
+        const repos = makeRepos({ memories: [] });
+        const result = await runMemoryAgent('זכור ש אני אוהב פיצה', repos);
+        expect(repos.memories.insert).not.toHaveBeenCalled();
         expect(result.answer).toContain('עדכן זיכרון');
     });
 
     test('callGemma4 throws → error message', async () => {
         callGemma4.mockRejectedValue(new Error('API error'));
-        const supabase = makeSupabase();
-        const result = await runMemoryAgent('זכור ש חמש', supabase);
+        const result = await runMemoryAgent('זכור ש חמש', makeRepos());
         expect(result.answer).toContain('הייתה בעיה בשמירת הזיכרון');
     });
 });
@@ -126,10 +93,9 @@ describe('runMemoryAgent — recall', () => {
             { content: '[location] גר בתל אביב' },
         ];
         callGemma4.mockResolvedValue('יש לי זיכרונות עליך: אוהב פיצה וגר בתל אביב.');
-        const supabase = makeSupabase(memories);
-        const result = await runMemoryAgent('מה אתה יודע עליי', supabase);
-        expect(supabase._chain.select).toHaveBeenCalledWith('content');
-        expect(callGemma4).toHaveBeenCalled();
+        const repos = makeRepos({ memories });
+        const result = await runMemoryAgent('מה אתה יודע עליי', repos);
+        expect(repos.memories.allContents).toHaveBeenCalled();
         const prompt = callGemma4.mock.calls[0][0];
         expect(prompt).toContain('[hobby] אני אוהב פיצה');
         expect(result.answer).toContain('פיצה');
@@ -139,16 +105,15 @@ describe('runMemoryAgent — recall', () => {
         pinecone.isReady.mockReturnValue(true);
         pinecone.searchMemories.mockResolvedValue(['[hobby] פיצה', '[location] תל אביב']);
         callGemma4.mockResolvedValue('אתה אוהב פיצה וגר בתל אביב.');
-        const supabase = makeSupabase([]);
-        const result = await runMemoryAgent('מה אני אוהב', supabase);
+        const repos = makeRepos({ memories: [] });
+        const result = await runMemoryAgent('מה אני אוהב', repos);
         expect(pinecone.searchMemories).toHaveBeenCalled();
-        expect(supabase.from).not.toHaveBeenCalled();
+        expect(repos.memories.allContents).not.toHaveBeenCalled();
         expect(result.answer).toContain('פיצה');
     });
 
     test('no memories → no memories message without calling LLM', async () => {
-        const supabase = makeSupabase([]);
-        const result = await runMemoryAgent('מה אתה יודע עליי', supabase);
+        const result = await runMemoryAgent('מה אתה יודע עליי', makeRepos({ memories: [] }));
         expect(callGemma4).not.toHaveBeenCalled();
         expect(result.answer).toContain('אין לי עדיין זיכרונות');
     });
@@ -157,23 +122,21 @@ describe('runMemoryAgent — recall', () => {
 // ─── runMemoryAgent: delete ───────────────────────────────────────────────────
 
 describe('runMemoryAgent — delete', () => {
-    test('deletes memory by ilike and confirms', async () => {
-        const supabase = makeSupabase([{ id: 3, content: '[hobby] אני אוהב פיצה' }]);
-        const result = await runMemoryAgent('מחק זיכרון על פיצה', supabase);
-        expect(supabase._chain.delete).toHaveBeenCalled();
-        expect(supabase._chain.ilike).toHaveBeenCalledWith('content', '%פיצה%');
+    test('deletes memory by content and confirms', async () => {
+        const repos = makeRepos({ memories: [{ id: 3, content: '[hobby] אני אוהב פיצה' }] });
+        const result = await runMemoryAgent('מחק זיכרון על פיצה', repos);
+        expect(repos.memories.deleteByContent).toHaveBeenCalledWith('פיצה');
         expect(result.answer).toContain('מחקתי');
     });
 
     test('deletes corresponding Pinecone vector', async () => {
-        const supabase = makeSupabase([{ id: 7, content: '[hobby] פיצה' }]);
-        await runMemoryAgent('מחק זיכרון על פיצה', supabase);
+        const repos = makeRepos({ memories: [{ id: 7, content: '[hobby] פיצה' }] });
+        await runMemoryAgent('מחק זיכרון על פיצה', repos);
         expect(pinecone.deleteMemory).toHaveBeenCalledWith(7);
     });
 
     test('no match → not found message', async () => {
-        const supabase = makeSupabase([]);
-        const result = await runMemoryAgent('מחק זיכרון על פיצה', supabase);
+        const result = await runMemoryAgent('מחק זיכרון על פיצה', makeRepos({ memories: [] }));
         expect(result.answer).toContain('לא מצאתי');
     });
 });
@@ -183,25 +146,15 @@ describe('runMemoryAgent — delete', () => {
 describe('runMemoryAgent — update', () => {
     test('updates memory in Supabase and re-upserts in Pinecone', async () => {
         callGemma4.mockResolvedValue('{"newContent":"[location] גר בירושלים"}');
-        const findChain = makeChain([{ id: 9, content: '[location] גר בתל אביב' }]);
-        const updateChain = makeChain([{ id: 9, content: '[location] גר בירושלים' }]);
-        let callCount = 0;
-        const supabase = {
-            from: jest.fn(() => {
-                callCount++;
-                return callCount === 1 ? findChain : updateChain;
-            }),
-        };
-        const result = await runMemoryAgent('עדכן זיכרון על מיקום גר בירושלים', supabase);
-        expect(supabase.from).toHaveBeenCalledWith('memories');
-        expect(updateChain.update).toHaveBeenCalledWith({ content: '[location] גר בירושלים' });
+        const repos = makeRepos({ memories: [{ id: 9, content: '[location] גר בתל אביב' }] });
+        const result = await runMemoryAgent('עדכן זיכרון על מיקום גר בירושלים', repos);
+        expect(repos.memories.update).toHaveBeenCalledWith(9, '[location] גר בירושלים');
         expect(pinecone.upsertMemory).toHaveBeenCalledWith(9, '[location] גר בירושלים');
         expect(result.answer).toContain('עדכנתי');
     });
 
     test('memory not found during update → not found message', async () => {
-        const supabase = makeSupabase([]);
-        const result = await runMemoryAgent('עדכן זיכרון על מיקום', supabase);
+        const result = await runMemoryAgent('עדכן זיכרון על מיקום', makeRepos({ memories: [] }));
         expect(result.answer).toContain('לא מצאתי');
     });
 });
@@ -211,8 +164,7 @@ describe('runMemoryAgent — update', () => {
 describe('checkDuplicate', () => {
     test('returns duplicate=true when Pinecone finds similar', async () => {
         pinecone.findSimilarMemory.mockResolvedValue({ id: '5', content: '[hobby] פיצה', score: 0.95 });
-        const supabase = makeSupabase([]);
-        const result = await checkDuplicate('[hobby] אני אוהב פיצה', supabase);
+        const result = await checkDuplicate('[hobby] אני אוהב פיצה', makeMemoryRepo());
         expect(result.duplicate).toBe(true);
         expect(result.existingId).toBe('5');
     });
@@ -220,31 +172,28 @@ describe('checkDuplicate', () => {
     test('returns duplicate=false when Pinecone finds no similar', async () => {
         pinecone.findSimilarMemory.mockResolvedValue(null);
         pinecone.isReady.mockReturnValue(true);
-        const supabase = makeSupabase([]);
-        const result = await checkDuplicate('[hobby] אני אוהב ריצה', supabase);
+        const result = await checkDuplicate('[hobby] אני אוהב ריצה', makeMemoryRepo());
         expect(result.duplicate).toBe(false);
     });
 
-    test('falls back to ilike when Pinecone is not ready', async () => {
+    test('falls back to findByContent when Pinecone is not ready', async () => {
         pinecone.findSimilarMemory.mockResolvedValue(null);
         pinecone.isReady.mockReturnValue(false);
-        const supabase = makeSupabase([{ id: '2' }]);
-        const result = await checkDuplicate('[hobby] אני אוהב פיצה', supabase);
-        expect(supabase.from).toHaveBeenCalledWith('memories');
+        const memories = makeMemoryRepo({ rows: [{ id: '2' }] });
+        const result = await checkDuplicate('[hobby] אני אוהב פיצה', memories);
+        expect(memories.findByContent).toHaveBeenCalled();
         expect(result.duplicate).toBe(true);
     });
 
-    test('no duplicate in ilike fallback returns false', async () => {
+    test('no duplicate in fallback returns false', async () => {
         pinecone.findSimilarMemory.mockResolvedValue(null);
         pinecone.isReady.mockReturnValue(false);
-        const supabase = makeSupabase([]);
-        const result = await checkDuplicate('[hobby] אני אוהב ריצה', supabase);
+        const result = await checkDuplicate('[hobby] אני אוהב ריצה', makeMemoryRepo({ rows: [] }));
         expect(result.duplicate).toBe(false);
     });
 
     test('empty content returns duplicate=false immediately', async () => {
-        const supabase = makeSupabase([]);
-        const result = await checkDuplicate('', supabase);
+        const result = await checkDuplicate('', makeMemoryRepo());
         expect(result.duplicate).toBe(false);
         expect(pinecone.findSimilarMemory).not.toHaveBeenCalled();
     });
@@ -253,43 +202,38 @@ describe('checkDuplicate', () => {
 // ─── autoExtractMemory ────────────────────────────────────────────────────────
 
 describe('autoExtractMemory', () => {
-    // Need isReady=true so checkDuplicate trusts Pinecone's "no match" and
-    // doesn't fall back to ilike on the test chain.
     beforeEach(() => pinecone.isReady.mockReturnValue(true));
 
     test('extracts and saves a long_term fact', async () => {
         callGemma4.mockResolvedValue('{"items":[{"content":"[location] גר בתל אביב","scope":"long_term"}]}');
-        const supabase = makeSupabase([{ id: 10, content: '[location] גר בתל אביב' }]);
-        await autoExtractMemory('אני גר בתל אביב כבר שלוש שנים ונהנה מהעיר מאוד', 'מעולה, שמרתי!', supabase, {});
-        expect(supabase.from).toHaveBeenCalledWith('memories');
-        expect(supabase._chain.insert).toHaveBeenCalledWith([
-            { content: '[location] גר בתל אביב', scope: 'long_term' }
-        ]);
+        const repos = makeRepos({ memories: [{ id: 10, content: '[location] גר בתל אביב' }] });
+        await autoExtractMemory('אני גר בתל אביב כבר שלוש שנים ונהנה מהעיר מאוד', 'מעולה, שמרתי!', repos, {});
+        expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[location] גר בתל אביב', scope: 'long_term' });
     });
 
     test('skips extraction for weather queries', async () => {
-        await autoExtractMemory('מה מזג האוויר בתל אביב', 'חם ושמשי', makeSupabase([]), {});
+        await autoExtractMemory('מה מזג האוויר בתל אביב', 'חם ושמשי', makeRepos(), {});
         expect(callGemma4).not.toHaveBeenCalled();
     });
 
     test('skips very short messages', async () => {
-        await autoExtractMemory('כן', 'אוקיי', makeSupabase([]), {});
+        await autoExtractMemory('כן', 'אוקיי', makeRepos(), {});
         expect(callGemma4).not.toHaveBeenCalled();
     });
 
     test('does not save when LLM returns empty items', async () => {
         callGemma4.mockResolvedValue('{"items":[]}');
-        const supabase = makeSupabase([]);
-        await autoExtractMemory('מה שלומך היום?', 'בסדר גמור!', supabase, {});
-        expect(supabase._chain.insert).not.toHaveBeenCalled();
+        const repos = makeRepos({ memories: [] });
+        await autoExtractMemory('מה שלומך היום?', 'בסדר גמור!', repos, {});
+        expect(repos.memories.insert).not.toHaveBeenCalled();
     });
 
     test('skips duplicate detected by Pinecone', async () => {
         callGemma4.mockResolvedValue('{"items":[{"content":"[hobby] פיצה","scope":"long_term"}]}');
         pinecone.findSimilarMemory.mockResolvedValue({ id: '1', content: '[hobby] פיצה', score: 0.97 });
-        const supabase = makeSupabase([]);
-        await autoExtractMemory('אני אוהב פיצה ומעדיף אותה על פני כל מאכל אחר', 'שמרתי', supabase, {});
-        expect(supabase._chain.insert).not.toHaveBeenCalled();
+        const repos = makeRepos({ memories: [] });
+        await autoExtractMemory('אני אוהב פיצה ומעדיף אותה על פני כל מאכל אחר', 'שמרתי', repos, {});
+        expect(repos.memories.insert).not.toHaveBeenCalled();
     });
 
     test('saves up to 3 items max', async () => {
@@ -299,14 +243,13 @@ describe('autoExtractMemory', () => {
             { content: '[c] ג', scope: 'long_term' },
             { content: '[d] ד', scope: 'long_term' }, // 4th — should be ignored
         ]}));
-        const supabase = makeSupabase([{ id: 1 }, { id: 2 }, { id: 3 }]);
-        await autoExtractMemory('יש לי הרבה מידע חשוב לשמור היום לגבי הפרויקט החדש', 'כן', supabase, {});
-        expect(supabase._chain.insert).toHaveBeenCalledTimes(3);
+        const repos = makeRepos({ memories: [{ id: 1 }] });
+        await autoExtractMemory('יש לי הרבה מידע חשוב לשמור היום לגבי הפרויקט החדש', 'כן', repos, {});
+        expect(repos.memories.insert).toHaveBeenCalledTimes(3);
     });
 
     test('does not throw when LLM returns invalid JSON', async () => {
         callGemma4.mockResolvedValue('not valid json at all');
-        const supabase = makeSupabase([]);
-        await expect(autoExtractMemory('נתון כלשהו', 'תשובה', supabase, {})).resolves.toBeNull();
+        await expect(autoExtractMemory('נתון כלשהו', 'תשובה', makeRepos(), {})).resolves.toBeNull();
     });
 });

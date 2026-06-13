@@ -91,7 +91,7 @@ const TOOLS = [
             },
             required: ['message'],
         },
-        handler: (message) => runMemoryAgent(message, supabase, DEFAULT_SETTINGS.useLocal, DEFAULT_SETTINGS),
+        handler: (message) => runMemoryAgent(message, repos, DEFAULT_SETTINGS.useLocal, DEFAULT_SETTINGS),
         actionType: 'memory.manage',
     },
     {

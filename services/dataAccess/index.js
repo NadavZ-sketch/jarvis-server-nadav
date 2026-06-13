@@ -9,6 +9,7 @@
 
 const { createTaskRepo } = require('./taskRepo');
 const { createReminderRepo } = require('./reminderRepo');
+const { createMemoryRepo } = require('./memoryRepo');
 const { createTableRepo } = require('./tableRepo');
 
 function createRepos(supabase) {
@@ -16,6 +17,7 @@ function createRepos(supabase) {
     return {
         tasks: createTaskRepo(supabase),
         reminders: createReminderRepo(supabase),
+        memories: createMemoryRepo(supabase),
         // Lazily-built, memoised generic repo for any other table.
         table(name) {
             return generic[name] || (generic[name] = createTableRepo(supabase, name));

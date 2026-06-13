@@ -1184,7 +1184,7 @@ function renderProposals(proposals) {
   el.innerHTML = proposals.map(p => {
     let statusBtn = '';
     if (p.status === 'proposal') {
-      statusBtn = `<button class="btn-activate" title="שלח הצעה לתכנון מפורט" onclick="patchProposal(${p.id},'draft_plan')">🧭 שלח לתכנון</button>`;
+      statusBtn = `<button class="btn-activate" title="שלח הצעה לתכנון מפורט" onclick="sendToDraftPlan(${p.id})">🧭 שלח לתכנון</button>`;
     } else if (p.status === 'draft_plan') {
       statusBtn = `<button class="btn-activate" title="התחל ביצוע של הצעה זו" onclick="patchProposal(${p.id},'active')">⚡ התחל ביצוע</button>`;
     } else if (p.status === 'active') {
@@ -1253,6 +1253,12 @@ async function deleteProposal(id) {
 
 let _activeProposal = null;
 let _proposalAnswers = {};
+let _proposalMode = 'prompt'; // 'prompt' | 'draft_plan'
+
+async function sendToDraftPlan(id) {
+  _proposalMode = 'draft_plan';
+  await useProposalAsPrompt(id);
+}
 
 async function useProposalAsPrompt(id) {
   const proposal = _proposalCtx.find(p => p.id === id);
@@ -1260,6 +1266,7 @@ async function useProposalAsPrompt(id) {
 
   _activeProposal = proposal;
   _proposalAnswers = {};
+  if (_proposalMode !== 'draft_plan') _proposalMode = 'prompt';
 
   // Show questions panel below the proposal
   const proposalEl = document.getElementById(`pr-${id}`);
@@ -1309,15 +1316,16 @@ function renderProposalQuestions(id, questions) {
     </div>
   `).join('');
 
+  const submitLabel = _proposalMode === 'draft_plan' ? '🧭 צור פרומפט ושלח לתכנון' : '✨ צור פרומפט';
   wrap.innerHTML = `
-    <div class="pq-title">🎯 כמה שאלות כדי לדייק את הפרומפט</div>
+    <div class="pq-title">כמה שאלות קטנות כדי שנבין בדיוק מה צריך ✍️</div>
     ${questionsHtml}
     <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
       <button class="pq-submit" id="pq-submit-${id}" onclick="submitProposalQuestions('${id}')">
         <div class="spinner" id="pq-spinner-${id}" style="width:12px;height:12px;border-width:2px"></div>
-        ✨ צור פרומפט
+        ${submitLabel}
       </button>
-      <button class="pq-skip" onclick="skipProposalQuestions('${id}')">דלג על שאלות</button>
+      <button class="pq-skip" onclick="skipProposalQuestions('${id}')">דלג</button>
     </div>
     <div id="pq-result-${id}"></div>
   `;
@@ -1358,6 +1366,21 @@ async function submitProposalQuestions(id) {
 
     if (d.prompt) {
       window._generatedPrompt = d.prompt;
+
+      // If mode is draft_plan — also advance the status and save the prompt
+      if (_proposalMode === 'draft_plan' && _activeProposal?.id != null) {
+        await fetch(`/dashboard/backlog/proposals/${_activeProposal.id}/draft-plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ claudePrompt: d.prompt, actor: 'user' }),
+        }).catch(() => {});
+        // Update local state
+        const p = _proposalCtx.find(p => p.id === _activeProposal.id);
+        if (p) { p.status = 'draft_plan'; p.claudePrompt = d.prompt; }
+        renderProposals(_proposalCtx);
+        showToast('ההצעה עברה לתכנון 🧭', 'success');
+      }
+
       result.innerHTML = `
         <div class="prompt-result" style="margin-top:12px">
           <div class="prompt-result-header">
@@ -1374,6 +1397,7 @@ async function submitProposalQuestions(id) {
   } finally {
     btn.disabled = false;
     spinner.style.display = 'none';
+    _proposalMode = 'prompt';
   }
 }
 

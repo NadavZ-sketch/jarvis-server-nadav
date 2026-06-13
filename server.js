@@ -5097,6 +5097,7 @@ app.post('/dashboard/backlog/proposals/:id/draft-plan', (req, res) => {
             at: new Date().toISOString(),
         });
         item.auditTrail = item.auditTrail.slice(0, 20);
+        if (body.claudePrompt) item.claudePrompt = body.claudePrompt.slice(0, 5000);
 
         writeBacklog(data);
         res.json({ item });
@@ -5441,24 +5442,22 @@ app.post('/dashboard/backlog/analyze', async (req, res) => {
         const { proposal } = req.body;
         if (!proposal?.title) return res.status(400).json({ error: 'proposal required' });
 
-        const prompt = `אתה מנהל פרויקט שמסייע למפתח לדייק פרומפט ל-Claude Code.
+        const prompt = `אתה עוזר שמסייע לדייק בקשות פיתוח.
 
 ההצעה:
 כותרת: "${proposal.title}"
-תוכנית: "${(proposal.plan || '').slice(0, 400)}"
-קטגוריה: ${proposal.category || 'improvement'}
-עדיפות: ${proposal.priority || 'medium'}
-קבצים: ${(proposal.files || []).join(', ') || 'לא צוינו'}
+תיאור: "${(proposal.plan || '').slice(0, 400)}"
+סוג: ${proposal.category || 'improvement'}
 
-צור 3 שאלות הבהרה שיעזרו לייצר פרומפט מדויק יותר ל-Claude Code.
-השאלות צריכות להיות ספציפיות להצעה זו — לא שאלות גנריות.
+צור 3 שאלות פשוטות ומובנות שיעזרו להבין בדיוק מה רוצים לבנות.
+חשוב: השאלות מיועדות לכל אדם, לא רק למפתחים — אל תשתמש בז'ארגון טכני (לא "server", "Flutter", "endpoint", "schema" וכדומה).
+נסח את השאלות בשפה יומיומית וברורה.
 כל שאלה עם 2-4 אפשריות תשובה.
 
 ענה JSON בלבד:
 [
   {
-    "label": "שאלה קצרה ומדויקת",
-    "reason": "למה שאלה זו חשובה לפרומפט",
+    "label": "שאלה ברורה ופשוטה",
     "options": [{"value": "opt1", "label": "אפשרות 1"}, {"value": "other", "label": "אחר"}]
   }
 ]`;
@@ -5475,8 +5474,8 @@ app.post('/dashboard/backlog/analyze', async (req, res) => {
 
         if (!questions.length) {
             questions = [
-                { label: 'היקף השינוי — שרת, Flutter, או שניהם?', reason: 'קובע אילו קבצים לציין', options: [{ value: 'server', label: 'שרת בלבד' }, { value: 'flutter', label: 'Flutter בלבד' }, { value: 'both', label: 'שניהם' }] },
-                { label: 'האם קיים pattern דומה בקוד שאפשר לבסס עליו?', reason: 'עוזר לקלוד להבין את הסגנון', options: [{ value: 'yes', label: 'כן' }, { value: 'no', label: 'לא — מאפס' }, { value: 'other', label: 'אחר' }] },
+                { label: 'איפה השינוי הזה יורגש?', options: [{ value: 'app', label: 'באפליקציה' }, { value: 'background', label: 'ברקע (השרת)' }, { value: 'both', label: 'בשניהם' }] },
+                { label: 'האם זה משהו חדש לגמרי, או שיפור של דבר קיים?', options: [{ value: 'new', label: 'חדש לגמרי' }, { value: 'improvement', label: 'שיפור של דבר קיים' }, { value: 'other', label: 'אחר' }] },
             ];
         }
 

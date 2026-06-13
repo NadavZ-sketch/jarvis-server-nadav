@@ -8,12 +8,14 @@
 // adapter (see tests/helpers/fakeRepos.js).
 
 const { createTaskRepo } = require('./taskRepo');
+const { createReminderRepo } = require('./reminderRepo');
 const { createTableRepo } = require('./tableRepo');
 
 function createRepos(supabase) {
     const generic = {};
     return {
         tasks: createTaskRepo(supabase),
+        reminders: createReminderRepo(supabase),
         // Lazily-built, memoised generic repo for any other table.
         table(name) {
             return generic[name] || (generic[name] = createTableRepo(supabase, name));

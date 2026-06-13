@@ -42,6 +42,27 @@ function makeTaskRepo(opts = {}) {
     };
 }
 
+function makeReminderRepo(opts = {}) {
+    const {
+        rows = [],
+        addResult, createResult, updateResult, removeResult,
+        rescheduleResult, deleteManyResult,
+    } = opts;
+    const firstRow = rows[0] || { id: 1 };
+    return {
+        listUpcoming: jest.fn(async () => rows),
+        nextUpcoming: jest.fn(async () => rows),
+        listUnfired:  jest.fn(async () => rows),
+        deleteByText: jest.fn(async () => rows),
+        add:          jest.fn(async () => addResult        || { error: null }),
+        create:       jest.fn(async () => createResult     || { data: firstRow, error: null }),
+        update:       jest.fn(async () => updateResult     || { data: firstRow, error: null }),
+        reschedule:   jest.fn(async () => rescheduleResult || { error: null }),
+        deleteById:   jest.fn(async () => removeResult     || { error: null }),
+        deleteMany:   jest.fn(async () => deleteManyResult || { error: null }),
+    };
+}
+
 function makeTableRepo(rows = []) {
     return {
         all:      jest.fn(async () => rows),
@@ -57,10 +78,11 @@ function makeRepos(tableData = {}) {
     const generic = {};
     return {
         tasks: makeTaskRepo({ rows: tableData.tasks || [] }),
+        reminders: makeReminderRepo({ rows: tableData.reminders || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeTableRepo };

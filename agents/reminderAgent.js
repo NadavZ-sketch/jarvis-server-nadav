@@ -1,4 +1,4 @@
-const { sanitizeLike, nowJerusalem, toISO } = require('./utils');
+const { nowJerusalem, toISO } = require('./utils');
 require('dotenv').config();
 const obsidianSync = require('../services/obsidianSync');
 
@@ -126,14 +126,8 @@ function timeUntil(isoDate) {
     return m > 0 ? `בעוד ${h}ש ${m}ד` : `בעוד ${h} שעות`;
 }
 
-async function listReminders(supabase) {
-    const { data, error } = await supabase
-        .from('reminders')
-        .select('id, text, scheduled_time, recurrence')
-        .eq('fired', false)
-        .order('scheduled_time', { ascending: true });
-
-    if (error) throw error;
+async function listReminders(reminders) {
+    const data = await reminders.listUpcoming();
     if (!data || data.length === 0) return { answer: 'אין לך תזכורות ממתינות.' };
 
     const list = data.map((r, i) => {
@@ -145,7 +139,7 @@ async function listReminders(supabase) {
     return { answer: `הנה התזכורות שלך:\n${list}` };
 }
 
-async function snoozeReminder(userMessage, supabase) {
+async function snoozeReminder(userMessage, reminders) {
     // Parse snooze duration
     const minsMatch = userMessage.match(/(\d+)\s*דקות?/);
     const hoursMatch = userMessage.match(/(\d+)\s*שעות?|שעה/);
@@ -154,27 +148,20 @@ async function snoozeReminder(userMessage, supabase) {
     else if (hoursMatch) snoozeMs = parseInt(hoursMatch[1] || '1') * 3600 * 1000;
 
     // Find the most recent upcoming reminder
-    const { data, error } = await supabase
-        .from('reminders')
-        .select('id, text, scheduled_time')
-        .eq('fired', false)
-        .order('scheduled_time', { ascending: true })
-        .limit(1);
-
-    if (error) throw error;
+    const data = await reminders.nextUpcoming();
     if (!data || data.length === 0) return { answer: 'אין תזכורות לדחות.' };
 
     const reminder = data[0];
     const newTime = new Date(new Date(reminder.scheduled_time).getTime() + snoozeMs);
     const newISO = toISO(newTime);
 
-    await supabase.from('reminders').update({ scheduled_time: newISO }).eq('id', reminder.id);
+    await reminders.reschedule(reminder.id, newISO);
 
     const snoozeMins = Math.round(snoozeMs / 60000);
     return { answer: `⏰ דחיתי את התזכורת "${reminder.text}" ב-${snoozeMins} דקות — תצא ב${formatReminderTime(newTime)}.` };
 }
 
-async function deleteReminder(userMessage, supabase) {
+async function deleteReminder(userMessage, reminders) {
     const textToDelete = userMessage
         .replace(/מחק תזכורת|הסר תזכורת|בטל תזכורת/g, '')
         .replace(/(?<!\S)(על|את)(?!\S)/g, '')
@@ -184,14 +171,7 @@ async function deleteReminder(userMessage, supabase) {
         return { answer: 'איזו תזכורת למחוק? נסה: "מחק תזכורת על [נושא]"' };
     }
 
-    const { data, error } = await supabase
-        .from('reminders')
-        .delete()
-        .eq('fired', false)
-        .ilike('text', `%${textToDelete}%`)
-        .select();
-
-    if (error) throw error;
+    const data = await reminders.deleteByText(textToDelete);
     if (!data || data.length === 0) return { answer: `לא מצאתי תזכורת על "${textToDelete}".` };
     return { answer: `בסדר, מחקתי את התזכורת: "${data[0].text}"` };
 }
@@ -200,21 +180,22 @@ function hasTimeSignal(msg) {
     return /בעוד|מחר|מחרתיים|ב-\d|בשעה|ביום\s+(ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)|כל\s+(יום|שבוע|חודש)|עוד\s+\d/i.test(msg);
 }
 
-async function runReminderAgent(userMessage, supabase) {
+async function runReminderAgent(userMessage, repos) {
+    const reminders = repos.reminders;
     try {
         // List reminders
         if (/הצג תזכורות|רשימת תזכורות|אילו תזכורות|מה התזכורות|כל התזכורות/i.test(userMessage)) {
-            return listReminders(supabase);
+            return listReminders(reminders);
         }
 
         // Snooze reminder (must contain explicit snooze verb before checking)
         if (/^(דחה|סנוז|snooze)\b|דחה.*תזכורת|תזכורת.*דחה/i.test(userMessage)) {
-            return snoozeReminder(userMessage, supabase);
+            return snoozeReminder(userMessage, reminders);
         }
 
         // Delete reminder
         if (/מחק תזכורת|הסר תזכורת|בטל תזכורת/i.test(userMessage)) {
-            return deleteReminder(userMessage, supabase);
+            return deleteReminder(userMessage, reminders);
         }
 
         // Add reminder
@@ -235,7 +216,7 @@ async function runReminderAgent(userMessage, supabase) {
         const row = { text: reminderText, scheduled_time: scheduledTime };
         if (recurrence) row.recurrence = recurrence;
 
-        const { error } = await supabase.from('reminders').insert([row]);
+        const { error } = await reminders.add(row);
 
         if (error) throw error;
         obsidianSync.dbToVault('reminders', { text: reminderText, scheduled_time: scheduledTime, title: reminderText, remind_at: scheduledTime });

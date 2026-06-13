@@ -5411,18 +5411,122 @@ class _ProposalClarifySheetState extends State<_ProposalClarifySheet> {
   }
 
   List<Map<String, dynamic>> _localQuestions(String category) {
-    final base = [
-      {'id': 'q1', 'question': 'מה הסדר עדיפויות של הפיתוח הזה?', 'chips': ['דחוף — נדרש עכשיו', 'בינוני — בשבועות הקרובים', 'נמוך — יום אחד']},
-      {'id': 'q2', 'question': 'באיזה חלק של המערכת מתמקד השינוי?', 'chips': ['Flutter (אפליקציה)', 'Node.js (שרת)', 'שניהם']},
+    final title = (widget.proposal['title'] ?? '').toString().toLowerCase();
+    final desc  = (widget.proposal['description'] ?? '').toString().toLowerCase();
+    final text  = '$title $desc';
+
+    // ── keyword → question bank (matches first winning topic) ───────────────
+    final topics = <_TopicQs>[
+      _TopicQs(
+        keys: ['llm', 'מודל', 'model', 'ai', 'כוונות', 'intent', 'זיהוי', 'router', 'classification'],
+        qs: [
+          {'id': 'q1', 'question': 'איזה סוג קלטים קשה לזהות כרגע?', 'chips': ['שאלות אמביגואליות', 'מעבר בין נושאים', 'פקודות מקוצרות']},
+          {'id': 'q2', 'question': 'מה הגישה המועדפת לשיפור?', 'chips': ['Fine-tuning / Few-shot', 'כללי keyword חדשים', 'שינוי ה-prompt הראשי']},
+          {'id': 'q3', 'question': 'מה מדד ההצלחה?', 'chips': ['דיוק >90%', 'פחות fallback ל-LLM', 'זמן סיווג קצר יותר']},
+        ],
+      ),
+      _TopicQs(
+        keys: ['agent', 'סוכן', 'אייג׳נט', 'אייג\'נט', 'worker'],
+        qs: [
+          {'id': 'q1', 'question': 'מה הסוכן הזה אמור לעשות?', 'chips': ['ניהול מידע/נתונים', 'שאילתות חיצוניות', 'אוטומציה של פעולות']},
+          {'id': 'q2', 'question': 'כיצד הסוכן יגיע לנתונים?', 'chips': ['Supabase', 'API חיצוני', 'זיכרון/Pinecone']},
+          {'id': 'q3', 'question': 'האם נדרשת שמירת state בין שיחות?', 'chips': ['כן — זיכרון ארוך טווח', 'רק בשיחה', 'לא נדרש']},
+        ],
+      ),
+      _TopicQs(
+        keys: ['ui', 'ux', 'עיצוב', 'מסך', 'תצוגה', 'כפתור', 'widget', 'flutter', 'interface', 'צ\'אט', 'chat'],
+        qs: [
+          {'id': 'q1', 'question': 'באיזה מסך/רכיב השינוי?', 'chips': ["מסך הצ'אט הראשי", 'לוח הניהול (Control Center)', 'מסך הגדרות']},
+          {'id': 'q2', 'question': 'מה ה-friction שמפריע למשתמש?', 'chips': ['לא ברור לשימוש', 'איטי/לא ספונטני', 'ויזואלית מבולגן']},
+          {'id': 'q3', 'question': 'האם נדרש שינוי גם בשרת?', 'chips': ['Flutter בלבד', 'גם API חדש בשרת', 'שינוי לוגיקה עסקית']},
+        ],
+      ),
+      _TopicQs(
+        keys: ['reminder', 'תזכורת', 'task', 'משימה', 'calendar', 'לוח שנה', 'scheduling', 'recurring'],
+        qs: [
+          {'id': 'q1', 'question': 'איזה סוג ניהול זמן מדובר?', 'chips': ['תזכורות חד פעמיות', 'משימות חוזרות', 'שילוב לוח שנה']},
+          {'id': 'q2', 'question': 'איך המשתמש יוצר/מנהל?', 'chips': ['דרך הצ\'אט בטבעי', 'ממסך ייעודי', 'שניהם']},
+          {'id': 'q3', 'question': 'מה חסר ביכולת הנוכחית?', 'chips': ['התראות אמינות יותר', 'חיפוש וסינון', 'תצוגה ויזואלית']},
+        ],
+      ),
+      _TopicQs(
+        keys: ['memory', 'זיכרון', 'pinecone', 'embedding', 'vector', 'knowledge', 'ידע'],
+        qs: [
+          {'id': 'q1', 'question': 'מה סוג המידע לשמור/לאחזר?', 'chips': ['עובדות אישיות', 'העדפות והרגלים', 'היסטוריית שיחות']},
+          {'id': 'q2', 'question': 'מה הבעיה בזיכרון הנוכחי?', 'chips': ['חיפוש לא מדויק', 'מידע ישן/לא רלוונטי', 'איטי מדי']},
+          {'id': 'q3', 'question': 'מה אמצעי האחסון המועדף?', 'chips': ['Pinecone (סמנטי)', 'Supabase (מובנה)', 'שניהם']},
+        ],
+      ),
+      _TopicQs(
+        keys: ['performance', 'מהירות', 'speed', 'latency', 'cache', 'optimize', 'slow', 'איטי', 'ביצועים'],
+        qs: [
+          {'id': 'q1', 'question': 'איפה צוואר הבקבוק?', 'chips': ['קריאות LLM', 'שאילתות DB', 'עיבוד תשובה ב-Flutter']},
+          {'id': 'q2', 'question': 'מה היעד לזמן תגובה?', 'chips': ['<500ms', '<1 שניה', 'שיפור יחסי 50%']},
+          {'id': 'q3', 'question': 'מה הגישה העדיפה?', 'chips': ['Cache חכם', 'Streaming תשובות', 'קיצור ה-prompt']},
+        ],
+      ),
+      _TopicQs(
+        keys: ['notification', 'התראה', 'push', 'alert', 'נוטיפיקציה'],
+        qs: [
+          {'id': 'q1', 'question': 'מה סוג ההתראות?', 'chips': ['תזכורות מתוזמנות', 'אירועים בזמן אמת', 'עדכוני מצב']},
+          {'id': 'q2', 'question': 'איפה ההתראה מוצגת?', 'chips': ['Push notification', 'בתוך האפליקציה', 'שניהם']},
+          {'id': 'q3', 'question': 'מה הבעיה הנוכחית?', 'chips': ['לא מגיעות בזמן', 'תוכן לא מספיק', 'יותר מדי רעש']},
+        ],
+      ),
+      _TopicQs(
+        keys: ['survey', 'סקר', 'feedback', 'פידבק', 'rating', 'דירוג'],
+        qs: [
+          {'id': 'q1', 'question': 'מה מטרת הסקר?', 'chips': ['הבנת צרכים', 'מדידת שביעות רצון', 'איתור בעיות']},
+          {'id': 'q2', 'question': 'מתי הסקר מוצג?', 'chips': ['לאחר שיחה', 'אחת לשבוע', 'לפי trigger ספציפי']},
+          {'id': 'q3', 'question': 'מה עושים עם התוצאות?', 'chips': ['מזינים להצעות חכמות', 'מציגים כגרף', 'שניהם']},
+        ],
+      ),
+      _TopicQs(
+        keys: ['api', 'endpoint', 'route', 'rest', 'server', 'backend', 'שרת', 'integration'],
+        qs: [
+          {'id': 'q1', 'question': 'מה הendpoint עושה?', 'chips': ['קריאה/שאילתה', 'כתיבה/עדכון', 'אוטומציה/webhook']},
+          {'id': 'q2', 'question': 'מי קורא ל-endpoint הזה?', 'chips': ['אפליקציית Flutter', 'cron job', 'webhook חיצוני']},
+          {'id': 'q3', 'question': 'מה שיקולי אבטחה?', 'chips': ['אימות נדרש', 'rate limiting', 'ולידציה של קלט']},
+        ],
+      ),
     ];
+
+    // Find matching topic
+    for (final topic in topics) {
+      if (topic.keys.any((k) => text.contains(k))) {
+        return topic.qs;
+      }
+    }
+
+    // Generic fallback by category
     final byCategory = {
-      'feature':     {'id': 'q3', 'question': "מי המשתמש העיקרי של הפיצ'ר?", 'chips': ['המשתמש היומיומי', 'מנהל/אדמין', 'שניהם']},
-      'bug_fix':     {'id': 'q3', 'question': 'כמה דחוף תיקון הבאג?', 'chips': ['קריטי — חוסם שימוש', 'מציק אך לא חוסם', 'קוסמטי בלבד']},
-      'ux':          {'id': 'q3', 'question': 'מה ה-friction העיקרי לפתרון?', 'chips': ['יותר מהיר', 'יותר ברור', 'יותר אינטואיטיבי']},
-      'performance': {'id': 'q3', 'question': 'מה מדד ההצלחה?', 'chips': ['טעינה <1 שניה', 'פחות קריאות API', 'פחות סוללה/זיכרון']},
-      'improvement': {'id': 'q3', 'question': 'מה ההשפעה הצפויה?', 'chips': ['חוויה טובה יותר', 'פחות שגיאות', 'יותר תובנות']},
+      'feature':     [
+        {'id': 'q1', 'question': "מה הפיצ'ר הזה פותר?", 'chips': ['חסר כרגע לחלוטין', 'קיים אבל לא מספיק', 'שיפור חוויה']},
+        {'id': 'q2', 'question': 'מי ישתמש בו הכי הרבה?', 'chips': ['המשתמש היומיומי', 'מנהל/אדמין', 'כולם']},
+        {'id': 'q3', 'question': 'מה הסדר עדיפויות?', 'chips': ['גבוה — נדרש עכשיו', 'בינוני', 'נמוך — nice to have']},
+      ],
+      'bug_fix':     [
+        {'id': 'q1', 'question': 'מה גורם לבאג?', 'chips': ['edge case לא מטופל', 'race condition', 'נתון שגוי מהשרת']},
+        {'id': 'q2', 'question': 'כמה משתמשים נפגעים?', 'chips': ['כולם', 'חלק — תלוי בהגדרות', 'מדי פעם']},
+        {'id': 'q3', 'question': 'מה צעד הtriage הראשון?', 'chips': ['לוג ב-server', 'בדיקה ב-Flutter', 'בשניהם']},
+      ],
+      'ux':          [
+        {'id': 'q1', 'question': 'מה המשתמש לא מצליח לעשות?', 'chips': ['לא מוצא את הפיצ\'ר', 'לא מבין מה לעשות', 'זורם מסובך מדי']},
+        {'id': 'q2', 'question': 'מה השיפור הרצוי?', 'chips': ['פחות צעדים', 'יותר ויזואלי', 'פידבק מיידי']},
+        {'id': 'q3', 'question': 'מה הפלטפורמה?', 'chips': ['Android', 'iOS', 'שניהם']},
+      ],
+      'performance': [
+        {'id': 'q1', 'question': 'מה איטי?', 'chips': ['קריאת API', 'רינדור UI', 'חישוב/עיבוד']},
+        {'id': 'q2', 'question': 'מה היעד?', 'chips': ['<500ms', '<1 שניה', 'שיפור 50%']},
+        {'id': 'q3', 'question': 'מה הגישה?', 'chips': ['cache', 'streaming', 'קיצור prompt']},
+      ],
+      'improvement': [
+        {'id': 'q1', 'question': 'מה השיפור פותר?', 'chips': ['בעיה קיימת', 'חוויה לא מספיקה', 'צורך חדש']},
+        {'id': 'q2', 'question': 'באיזה חלק?', 'chips': ['Flutter', 'Node.js', 'שניהם']},
+        {'id': 'q3', 'question': 'מה ההגדרת הצלחה?', 'chips': ['מדד כמותי', 'פידבק חיובי', 'ירידה בשגיאות']},
+      ],
     };
-    return [...base, byCategory[category] ?? byCategory['improvement']!];
+    return List<Map<String, dynamic>>.from(byCategory[category] ?? byCategory['improvement']!);
   }
 
   Future<void> _generatePrompt({bool skipQuestions = false}) async {
@@ -6188,4 +6292,11 @@ class _FeatureDetailSheetState extends State<_FeatureDetailSheet> {
       ),
     );
   }
+}
+
+// Helper for keyword-based question matching
+class _TopicQs {
+  final List<String> keys;
+  final List<Map<String, dynamic>> qs;
+  const _TopicQs({required this.keys, required this.qs});
 }

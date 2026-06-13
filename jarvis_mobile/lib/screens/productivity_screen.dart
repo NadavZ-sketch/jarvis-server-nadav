@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
+import '../widgets/productivity/productivity_fab.dart';
 import 'today_tab.dart';
 import 'tasks_screen.dart';
 import 'reminders_screen.dart';
@@ -32,11 +33,18 @@ class _ProductivityScreenState extends State<ProductivityScreen>
   late TabController _tabController;
   int _currentTab = 0;
 
+  // Notifiers that child screens listen to for triggering their add sheets
+  final ValueNotifier<int> _addTaskNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> _addReminderNotifier = ValueNotifier<int>(0);
+
   static const _tabs = [
-    _TabDef('היום',   Icons.wb_sunny_rounded,       Icons.wb_sunny_outlined),
-    _TabDef('משימות', Icons.check_circle_rounded,    Icons.check_circle_outline_rounded),
-    _TabDef('תזכורות', Icons.notifications_rounded,  Icons.notifications_outlined),
-    _TabDef('לוח שנה', Icons.calendar_month_rounded, Icons.calendar_month_outlined),
+    _TabDef('היום', Icons.wb_sunny_rounded, Icons.wb_sunny_outlined),
+    _TabDef('משימות', Icons.check_circle_rounded,
+        Icons.check_circle_outline_rounded),
+    _TabDef('תזכורות', Icons.notifications_rounded,
+        Icons.notifications_outlined),
+    _TabDef('לוח שנה', Icons.calendar_month_rounded,
+        Icons.calendar_month_outlined),
   ];
 
   @override
@@ -44,7 +52,8 @@ class _ProductivityScreenState extends State<ProductivityScreen>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
-      if (_tabController.indexIsChanging || _tabController.index != _currentTab) {
+      if (_tabController.indexIsChanging ||
+          _tabController.index != _currentTab) {
         setState(() => _currentTab = _tabController.index);
       }
     });
@@ -60,13 +69,35 @@ class _ProductivityScreenState extends State<ProductivityScreen>
   void dispose() {
     widget.jumpToTab?.removeListener(_onJumpToTab);
     _tabController.dispose();
+    _addTaskNotifier.dispose();
+    _addReminderNotifier.dispose();
     super.dispose();
   }
+
+  // ─── FAB actions ──────────────────────────────────────────────────────────
+
+  void _showAddTask() => _addTaskNotifier.value++;
+
+  void _showAddReminder() => _addReminderNotifier.value++;
+
+  void _showAddEvent() {
+    // Navigate to Calendar tab — it owns event creation via its own FAB
+    _tabController.animateTo(3);
+  }
+
+  // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: JC.bg,
+      floatingActionButton: ProductivityFAB(
+        currentTab: _currentTab,
+        onAddTask: _showAddTask,
+        onAddReminder: _showAddReminder,
+        onAddEvent: _showAddEvent,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       appBar: AppBar(
         backgroundColor: JC.surface.withOpacity(0.95),
         surfaceTintColor: Colors.transparent,
@@ -107,15 +138,15 @@ class _ProductivityScreenState extends State<ProductivityScreen>
               unselectedLabelColor: JC.textMuted,
               indicator: _PillIndicator(color: JC.blue500),
               indicatorSize: TabBarIndicatorSize.tab,
-              indicatorPadding: const EdgeInsets.symmetric(
-                  horizontal: 4, vertical: 6),
+              indicatorPadding:
+                  const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               dividerColor: Colors.transparent,
               labelStyle: const TextStyle(
                   fontFamily: 'Heebo',
                   fontWeight: FontWeight.w700,
                   fontSize: 11.5),
-              unselectedLabelStyle: const TextStyle(
-                  fontFamily: 'Heebo', fontSize: 11.5),
+              unselectedLabelStyle:
+                  const TextStyle(fontFamily: 'Heebo', fontSize: 11.5),
               tabs: List.generate(_tabs.length, (i) {
                 final tab = _tabs[i];
                 final active = _currentTab == i;
@@ -140,7 +171,9 @@ class _ProductivityScreenState extends State<ProductivityScreen>
                           color: active ? JC.blue400 : JC.textMuted,
                           fontFamily: 'Heebo',
                           fontSize: 11,
-                          fontWeight: active ? FontWeight.w700 : FontWeight.normal,
+                          fontWeight: active
+                              ? FontWeight.w700
+                              : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -158,14 +191,17 @@ class _ProductivityScreenState extends State<ProductivityScreen>
             settings: widget.settings,
             onGoToTasks: () => _tabController.animateTo(1),
             onGoToReminders: () => _tabController.animateTo(2),
+            onGoToCalendar: () => _tabController.animateTo(3),
           ),
           TasksScreen(
             settings: widget.settings,
             onCountUpdate: widget.onTasksCountUpdate,
+            addTrigger: _addTaskNotifier,
           ),
           RemindersScreen(
             settings: widget.settings,
             onCountUpdate: widget.onRemindersCountUpdate,
+            addTrigger: _addReminderNotifier,
           ),
           CalendarScreen(settings: widget.settings),
         ],
@@ -208,7 +244,6 @@ class _PillPainter extends BoxPainter {
     const radius = Radius.circular(10);
     canvas.drawRRect(RRect.fromRectAndRadius(rect, radius), paint);
 
-    // Bottom accent line
     final linePaint = Paint()
       ..color = color.withOpacity(0.7)
       ..strokeWidth = 2.5

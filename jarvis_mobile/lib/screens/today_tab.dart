@@ -7,16 +7,21 @@ import '../services/cache_service.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
 import '../widgets/markdown_lite.dart';
+import '../widgets/productivity/week_strip.dart';
+import '../widgets/productivity/unified_item_card.dart';
 
 class TodayTab extends StatefulWidget {
   final AppSettings settings;
   final VoidCallback? onGoToTasks;
   final VoidCallback? onGoToReminders;
+  final VoidCallback? onGoToCalendar;
+
   const TodayTab({
     super.key,
     required this.settings,
     this.onGoToTasks,
     this.onGoToReminders,
+    this.onGoToCalendar,
   });
 
   @override
@@ -34,12 +39,83 @@ class _TodayTabState extends State<TodayTab> {
   bool _briefingLoading = false;
   bool _briefingExpanded = true;
 
+  // Week strip state
+  Map<DateTime, DayMeta> _weekData = {};
+  DateTime _selectedWeekDay = DateTime.now();
+
   @override
   void initState() {
     super.initState();
     _loadCache();
     _fetch();
+    _loadWeekData();
   }
+
+  // ─── Week strip data ───────────────────────────────────────────────────────
+
+  Future<void> _loadWeekData() async {
+    try {
+      final events = await ApiService(widget.settings).getCalendarEvents();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final startOfWeek = today.subtract(Duration(days: today.weekday % 7));
+      final endOfWeek = startOfWeek.add(const Duration(days: 6));
+
+      final Map<DateTime, _DayAccum> accum = {};
+
+      for (final e in events) {
+        DateTime? dt;
+        final type = e['type']?.toString();
+        try {
+          if (type == 'task') {
+            dt = DateTime.tryParse(e['due_date']?.toString() ?? '')?.toLocal();
+          } else if (type == 'reminder') {
+            dt =
+                DateTime.tryParse(e['scheduled_time']?.toString() ?? '')?.toLocal();
+          } else {
+            final dateStr = e['start']?['dateTime']?.toString() ??
+                e['start']?['date']?.toString() ??
+                e['date']?.toString();
+            if (dateStr != null) dt = DateTime.tryParse(dateStr)?.toLocal();
+          }
+        } catch (_) {}
+
+        if (dt == null) continue;
+        final key = DateTime(dt.year, dt.month, dt.day);
+        if (key.isBefore(startOfWeek) || key.isAfter(endOfWeek)) continue;
+
+        final a = accum[key] ??= _DayAccum();
+        if (type == 'task') {
+          final isOver = dt.isBefore(now) && e['done'] != true;
+          if (isOver) {
+            a.overdue++;
+          } else {
+            a.tasks++;
+          }
+        } else if (type == 'reminder') {
+          a.reminders++;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _weekData = accum.map(
+            (k, v) => MapEntry(
+              k,
+              DayMeta(
+                  tasks: v.tasks,
+                  reminders: v.reminders,
+                  overdue: v.overdue),
+            ),
+          );
+        });
+      }
+    } catch (_) {
+      // Non-critical: week strip just stays empty on failure
+    }
+  }
+
+  // ─── Briefing ──────────────────────────────────────────────────────────────
 
   String get _briefingCacheKey =>
       'today_briefing_v2::${widget.settings.todayBriefingFocus.trim()}';
@@ -51,7 +127,6 @@ class _TodayTabState extends State<TodayTab> {
       final tsStr = prefs.getString('${_briefingCacheKey}_ts');
       if (text != null && tsStr != null) {
         final ts = DateTime.tryParse(tsStr);
-        // Daily refresh — if older than 20 hours, regenerate
         if (ts != null && DateTime.now().difference(ts).inHours < 20) {
           if (mounted) setState(() => _briefing = text);
           return;
@@ -120,10 +195,15 @@ class _TodayTabState extends State<TodayTab> {
     return lines.join('\n');
   }
 
+  // ─── Data loading ──────────────────────────────────────────────────────────
+
   Future<void> _loadCache() async {
     final cached = await CacheService.loadList('today_items');
     if (cached != null && mounted && _items.isEmpty) {
-      setState(() { _items = cached; _loading = false; });
+      setState(() {
+        _items = cached;
+        _loading = false;
+      });
     }
   }
 
@@ -138,22 +218,29 @@ class _TodayTabState extends State<TodayTab> {
         _items.removeWhere((i) => i['id']?.toString() == id);
         _completing.remove(id);
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('משימה הושלמה ✓',
-            textDirection: TextDirection.rtl,
-            style: TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
-        backgroundColor: JC.surfaceAlt,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('משימה הושלמה ✓',
+              textDirection: TextDirection.rtl,
+              style:
+                  TextStyle(fontFamily: 'Heebo', color: JC.textPrimary)),
+          backgroundColor: JC.surfaceAlt,
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ));
+      }
     } catch (_) {
       if (mounted) setState(() => _completing.remove(id));
     }
   }
 
   Future<void> _fetch() async {
-    if (_items.isEmpty) setState(() { _loading = true; _error = null; });
+    if (_items.isEmpty) setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final api = ApiService(widget.settings);
       final results = await Future.wait([
@@ -186,6 +273,8 @@ class _TodayTabState extends State<TodayTab> {
   List<Map<String, dynamic>> _section(String s) =>
       _items.where((i) => i['section'] == s).toList();
 
+  // ─── Build ────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const LoadingSkeleton(itemCount: 5);
@@ -197,133 +286,170 @@ class _TodayTabState extends State<TodayTab> {
       );
     }
 
-    final overdue   = _section('overdue');
-    final today     = _section('today');
+    final overdue = _section('overdue');
+    final today = _section('today');
     final reminders = _section('reminder');
-    final allItems  = [...overdue, ...today];
-    final focusTasks = allItems
-        .where((i) => i['type'] != 'reminder')
-        .take(3)
-        .toList();
-    final remainingTasks = allItems
-        .where((i) => i['type'] != 'reminder')
-        .skip(3)
-        .toList();
-    final isEmpty = overdue.isEmpty && today.isEmpty && reminders.isEmpty;
+    final allItems = [...overdue, ...today];
+    final focusTasks =
+        allItems.where((i) => i['type'] != 'reminder').take(3).toList();
+    final remainingTasks =
+        allItems.where((i) => i['type'] != 'reminder').skip(3).toList();
+    final isEmpty =
+        overdue.isEmpty && today.isEmpty && reminders.isEmpty;
 
-    return RefreshIndicator(
-      color: JC.blue400,
-      backgroundColor: JC.surfaceAlt,
-      onRefresh: _fetch,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 96),
-        children: [
-          _TodayHeroHeader(stats: _stats),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      children: [
+        // ── Week strip ──────────────────────────────────────────────────────
+        WeekStripWidget(
+          selected: _selectedWeekDay,
+          dayData: _weekData,
+          onDayTapped: (day) {
+            setState(() => _selectedWeekDay = day);
+            final now = DateTime.now();
+            final isToday = day.year == now.year &&
+                day.month == now.month &&
+                day.day == now.day;
+            if (!isToday) widget.onGoToCalendar?.call();
+          },
+        ),
+        Divider(
+            height: 0.6,
+            thickness: 0.6,
+            color: JC.border.withOpacity(0.4)),
+        // ── Main content ────────────────────────────────────────────────────
+        Expanded(
+          child: RefreshIndicator(
+            color: JC.blue400,
+            backgroundColor: JC.surfaceAlt,
+            onRefresh: _fetch,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(0, 0, 0, 96),
               children: [
-                // AI Briefing — first content block
-                if (widget.settings.todayBriefingEnabled) ...[
-                  const SizedBox(height: 14),
-                  _BriefingCard(
-                    text: _briefing,
-                    loading: _briefingLoading,
-                    expanded: _briefingExpanded,
-                    onToggle: () =>
-                        setState(() => _briefingExpanded = !_briefingExpanded),
-                    onRefresh: () {
-                      setState(() => _briefing = null);
-                      _fetchBriefing();
-                    },
+                _TodayHeroHeader(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ── Quick stats row ─────────────────────────────────
+                      const SizedBox(height: 8),
+                      _QuickStatsRow(
+                        stats: _stats,
+                        onGoToTasks: widget.onGoToTasks,
+                        onGoToReminders: widget.onGoToReminders,
+                      ),
+                      // ── AI Briefing ─────────────────────────────────────
+                      if (widget.settings.todayBriefingEnabled) ...[
+                        const SizedBox(height: 14),
+                        _BriefingCard(
+                          text: _briefing,
+                          loading: _briefingLoading,
+                          expanded: _briefingExpanded,
+                          onToggle: () => setState(
+                              () => _briefingExpanded = !_briefingExpanded),
+                          onRefresh: () {
+                            setState(() => _briefing = null);
+                            _fetchBriefing();
+                          },
+                        ),
+                      ],
+                      // ── Focus tasks ─────────────────────────────────────
+                      if (focusTasks.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _SectionLabel(
+                          label: 'פוקוס',
+                          count: focusTasks.length,
+                          icon: Icons.bolt_rounded,
+                          color: JC.amber400,
+                        ),
+                        const SizedBox(height: 8),
+                        ...focusTasks.map((item) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _FocusTaskCard(
+                                item: item,
+                                isCompleting: _completing
+                                    .contains(item['id']?.toString() ?? ''),
+                                onComplete: () => _completeTask(item),
+                              ),
+                            )),
+                      ],
+                      // ── Remaining tasks ─────────────────────────────────
+                      if (remainingTasks.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _SectionLabel(
+                          label: 'יתר המשימות',
+                          count: remainingTasks.length,
+                          icon: Icons.list_alt_rounded,
+                          color: JC.blue400,
+                          onTap: widget.onGoToTasks,
+                        ),
+                        const SizedBox(height: 8),
+                        ...remainingTasks.map((item) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _TodayItemTile(
+                                item: item,
+                                isCompleting: _completing
+                                    .contains(item['id']?.toString() ?? ''),
+                                onComplete: () => _completeTask(item),
+                              ),
+                            )),
+                      ],
+                      // ── Reminders (UnifiedItemCard) ─────────────────────
+                      if (reminders.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _SectionLabel(
+                          label: 'תזכורות',
+                          count: reminders.length,
+                          icon: Icons.notifications_outlined,
+                          color: JC.amber400,
+                          onTap: widget.onGoToReminders,
+                        ),
+                        const SizedBox(height: 8),
+                        ...reminders.map((item) => UnifiedItemCard(
+                              item: item,
+                              itemType: 'reminder',
+                            )),
+                      ],
+                      if (isEmpty) ...[
+                        const SizedBox(height: 32),
+                        EmptyState(
+                          icon: Icons.check_circle_outline_rounded,
+                          title: 'הכל נקי להיום! 🌟',
+                          subtitle: 'אין משימות פתוחות — כל הכבוד!',
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-                // Focus tasks — top 3 as prominent cards
-                if (focusTasks.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  _SectionLabel(
-                    label: 'פוקוס',
-                    count: focusTasks.length,
-                    icon: Icons.bolt_rounded,
-                    color: JC.amber400,
-                  ),
-                  const SizedBox(height: 8),
-                  ...focusTasks.map((item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _FocusTaskCard(
-                      item: item,
-                      isCompleting: _completing.contains(item['id']?.toString() ?? ''),
-                      onComplete: () => _completeTask(item),
-                    ),
-                  )),
-                ],
-                // Remaining tasks
-                if (remainingTasks.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  _SectionLabel(
-                    label: 'יתר המשימות',
-                    count: remainingTasks.length,
-                    icon: Icons.list_alt_rounded,
-                    color: JC.blue400,
-                    onTap: widget.onGoToTasks,
-                  ),
-                  const SizedBox(height: 8),
-                  ...remainingTasks.map((item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _TodayItemTile(
-                      item: item,
-                      isCompleting: _completing.contains(item['id']?.toString() ?? ''),
-                      onComplete: () => _completeTask(item),
-                    ),
-                  )),
-                ],
-                // Reminders
-                if (reminders.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  _SectionLabel(
-                    label: 'תזכורות',
-                    count: reminders.length,
-                    icon: Icons.notifications_outlined,
-                    color: JC.amber400,
-                    onTap: widget.onGoToReminders,
-                  ),
-                  const SizedBox(height: 8),
-                  ...reminders.map((item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _TodayItemTile(
-                      item: item,
-                      isCompleting: false,
-                      onComplete: null,
-                    ),
-                  )),
-                ],
-                if (isEmpty) ...[
-                  const SizedBox(height: 32),
-                  EmptyState(
-                    icon: Icons.check_circle_outline_rounded,
-                    title: 'הכל נקי להיום! 🌟',
-                    subtitle: 'אין משימות פתוחות — כל הכבוד!',
-                  ),
-                ],
+                ),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-// ─── Hero header ──────────────────────────────────────────────────────────────
+// ─── Mutable day accumulator (private, for _loadWeekData) ────────────────────
+
+class _DayAccum {
+  int tasks = 0;
+  int reminders = 0;
+  int overdue = 0;
+}
+
+// ─── Hero header (greeting + date only, no stats) ────────────────────────────
 
 class _TodayHeroHeader extends StatelessWidget {
-  final Map<String, dynamic>? stats;
-  const _TodayHeroHeader({required this.stats});
+  const _TodayHeroHeader();
 
-  static const _days    = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-  static const _months  = ['', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
-      'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+  static const _days = [
+    'ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'
+  ];
+  static const _months = [
+    '', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+    'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
+  ];
 
   String get _greeting {
     final hour = DateTime.now().hour;
@@ -335,19 +461,13 @@ class _TodayHeroHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final tasks = stats?['tasks'] as Map<String, dynamic>? ?? {};
-    final pending = (tasks['pending'] as num?)?.toInt() ?? 0;
-    final done    = (tasks['done']    as num?)?.toInt() ?? 0;
-    final remindersData = stats?['reminders'] as Map<String, dynamic>? ?? {};
-    final active  = (remindersData['active'] as num?)?.toInt() ?? 0;
-
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            JC.blue500.withOpacity(0.18),
-            JC.indigo500.withOpacity(0.10),
+            JC.blue500.withOpacity(0.14),
+            JC.indigo500.withOpacity(0.08),
             JC.bg,
           ],
           begin: Alignment.topRight,
@@ -363,7 +483,7 @@ class _TodayHeroHeader extends StatelessWidget {
             textDirection: TextDirection.rtl,
             style: TextStyle(
               color: JC.textSecondary,
-              fontSize: 14,
+              fontSize: 13,
               fontFamily: 'Heebo',
               fontWeight: FontWeight.w500,
             ),
@@ -374,47 +494,79 @@ class _TodayHeroHeader extends StatelessWidget {
             textDirection: TextDirection.rtl,
             style: TextStyle(
               color: JC.textPrimary,
-              fontSize: 22,
+              fontSize: 20,
               fontFamily: 'Heebo',
               fontWeight: FontWeight.w800,
             ),
           ),
-          if (stats != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                _StatChip(
-                  value: '$pending',
-                  label: 'משימות',
-                  color: pending > 0 ? JC.blue400 : JC.textMuted,
-                ),
-                const SizedBox(width: 8),
-                _StatChip(
-                  value: '$done',
-                  label: 'הושלמו',
-                  color: done > 0 ? JC.green500 : JC.textMuted,
-                ),
-                const SizedBox(width: 8),
-                _StatChip(
-                  value: '$active',
-                  label: 'תזכורות',
-                  color: active > 0 ? JC.amber400 : JC.textMuted,
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
   }
 }
 
+// ─── Quick stats row (tappable chips replacing the header stats) ──────────────
+
+class _QuickStatsRow extends StatelessWidget {
+  final Map<String, dynamic>? stats;
+  final VoidCallback? onGoToTasks;
+  final VoidCallback? onGoToReminders;
+
+  const _QuickStatsRow({
+    required this.stats,
+    this.onGoToTasks,
+    this.onGoToReminders,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (stats == null) return const SizedBox.shrink();
+
+    final tasks = stats!['tasks'] as Map<String, dynamic>? ?? {};
+    final pending = (tasks['pending'] as num?)?.toInt() ?? 0;
+    final done = (tasks['done'] as num?)?.toInt() ?? 0;
+    final remindersData = stats!['reminders'] as Map<String, dynamic>? ?? {};
+    final active = (remindersData['active'] as num?)?.toInt() ?? 0;
+
+    return Row(
+      textDirection: TextDirection.rtl,
+      children: [
+        GestureDetector(
+          onTap: onGoToTasks,
+          child: _StatChip(
+            value: '$pending',
+            label: 'משימות',
+            color: pending > 0 ? JC.blue400 : JC.textMuted,
+          ),
+        ),
+        const SizedBox(width: 8),
+        _StatChip(
+          value: '$done',
+          label: 'הושלמו',
+          color: done > 0 ? JC.green500 : JC.textMuted,
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: onGoToReminders,
+          child: _StatChip(
+            value: '$active',
+            label: 'תזכורות',
+            color: active > 0 ? JC.amber400 : JC.textMuted,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Stat chip ────────────────────────────────────────────────────────────────
+
 class _StatChip extends StatelessWidget {
   final String value;
   final String label;
   final Color color;
-  const _StatChip({required this.value, required this.label, required this.color});
+  const _StatChip(
+      {required this.value, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -428,12 +580,18 @@ class _StatChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(value, style: TextStyle(
-              color: color, fontFamily: 'Heebo',
-              fontSize: 13, fontWeight: FontWeight.w700)),
+          Text(value,
+              style: TextStyle(
+                  color: color,
+                  fontFamily: 'Heebo',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700)),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(
-              color: color.withOpacity(0.8), fontFamily: 'Heebo', fontSize: 11)),
+          Text(label,
+              style: TextStyle(
+                  color: color.withOpacity(0.8),
+                  fontFamily: 'Heebo',
+                  fontSize: 11)),
         ],
       ),
     );
@@ -465,10 +623,13 @@ class _SectionLabel extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: color),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(
-              color: JC.textSecondary, fontFamily: 'Heebo',
-              fontSize: 12, fontWeight: FontWeight.w700,
-              letterSpacing: 0.4)),
+          Text(label,
+              style: TextStyle(
+                  color: JC.textSecondary,
+                  fontFamily: 'Heebo',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4)),
           const SizedBox(width: 6),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
@@ -476,13 +637,17 @@ class _SectionLabel extends StatelessWidget {
               color: color.withOpacity(0.12),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Text('$count', style: TextStyle(
-                color: color, fontSize: 10,
-                fontFamily: 'Heebo', fontWeight: FontWeight.w700)),
+            child: Text('$count',
+                style: TextStyle(
+                    color: color,
+                    fontSize: 10,
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w700)),
           ),
           if (onTap != null) ...[
             const Spacer(),
-            Icon(Icons.chevron_left_rounded, size: 16, color: JC.textMuted),
+            Icon(Icons.chevron_left_rounded,
+                size: 16, color: JC.textMuted),
           ],
         ],
       ),
@@ -518,7 +683,8 @@ class _BriefingCard extends StatelessWidget {
             right: BorderSide(color: JC.blue500, width: 3),
             top: BorderSide(color: JC.border.withOpacity(0.5), width: 0.8),
             left: BorderSide(color: JC.border.withOpacity(0.5), width: 0.8),
-            bottom: BorderSide(color: JC.border.withOpacity(0.5), width: 0.8),
+            bottom:
+                BorderSide(color: JC.border.withOpacity(0.5), width: 0.8),
           ),
         ),
         child: Material(
@@ -534,7 +700,8 @@ class _BriefingCard extends StatelessWidget {
                   Row(
                     textDirection: TextDirection.rtl,
                     children: [
-                      Icon(Icons.auto_awesome_rounded, size: 16, color: JC.blue400),
+                      Icon(Icons.auto_awesome_rounded,
+                          size: 16, color: JC.blue400),
                       const SizedBox(width: 7),
                       Text(
                         'סיכום יומי',
@@ -548,20 +715,23 @@ class _BriefingCard extends StatelessWidget {
                       const Spacer(),
                       if (loading)
                         SizedBox(
-                          width: 14, height: 14,
+                          width: 14,
+                          height: 14,
                           child: CircularProgressIndicator(
                               strokeWidth: 1.8, color: JC.blue400),
                         )
                       else
                         GestureDetector(
                           onTap: onRefresh,
-                          child: Icon(Icons.refresh_rounded, size: 16, color: JC.textMuted),
+                          child: Icon(Icons.refresh_rounded,
+                              size: 16, color: JC.textMuted),
                         ),
                       const SizedBox(width: 8),
                       AnimatedRotation(
                         turns: expanded ? 0 : 0.5,
                         duration: const Duration(milliseconds: 200),
-                        child: Icon(Icons.expand_less_rounded, size: 18, color: JC.textMuted),
+                        child: Icon(Icons.expand_less_rounded,
+                            size: 18, color: JC.textMuted),
                       ),
                     ],
                   ),
@@ -584,7 +754,9 @@ class _BriefingCard extends StatelessWidget {
                           )
                         else
                           Text(
-                            loading ? 'מכין סיכום יומי...' : 'לחץ ריענון לטעינת הסיכום',
+                            loading
+                                ? 'מכין סיכום יומי...'
+                                : 'לחץ ריענון לטעינת הסיכום',
                             textDirection: TextDirection.rtl,
                             style: TextStyle(
                               color: JC.textSecondary,
@@ -609,7 +781,7 @@ class _BriefingCard extends StatelessWidget {
   }
 }
 
-// ─── Focus task card (prominent) ─────────────────────────────────────────────
+// ─── Focus task card (prominent top-3) ───────────────────────────────────────
 
 class _FocusTaskCard extends StatelessWidget {
   final Map<String, dynamic> item;
@@ -622,29 +794,15 @@ class _FocusTaskCard extends StatelessWidget {
   });
 
   Color get _priorityColor => switch (item['priority']?.toString()) {
-    'high' => JC.cancelRed,
-    'low'  => JC.green500,
-    _      => JC.amber400,
-  };
-
-  String _formatTime(dynamic iso) {
-    if (iso == null) return '';
-    try {
-      final dt = DateTime.parse(iso.toString()).toLocal();
-      final now = DateTime.now();
-      final day = DateTime(dt.year, dt.month, dt.day);
-      final today = DateTime(now.year, now.month, now.day);
-      final hhmm = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-      if (day == today) return 'היום $hhmm';
-      if (day == today.subtract(const Duration(days: 1))) return 'אתמול';
-      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
-    } catch (_) { return ''; }
-  }
+        'high' => JC.cancelRed,
+        'low' => JC.green500,
+        _ => JC.amber400,
+      };
 
   @override
   Widget build(BuildContext context) {
     final isOverdue = item['section'] == 'overdue';
-    final timeLabel = _formatTime(item['time']);
+    final timeLabel = UnifiedItemCard.formatTime(item['time']);
     final pColor = isOverdue ? JC.cancelRed : _priorityColor;
 
     return Container(
@@ -670,7 +828,8 @@ class _FocusTaskCard extends StatelessWidget {
               width: 26,
               height: 26,
               child: isCompleting
-                  ? CircularProgressIndicator(strokeWidth: 2.5, color: JC.green500)
+                  ? CircularProgressIndicator(
+                      strokeWidth: 2.5, color: JC.green500)
                   : Icon(Icons.radio_button_unchecked_rounded,
                       color: pColor, size: 24),
             ),
@@ -692,18 +851,22 @@ class _FocusTaskCard extends StatelessWidget {
                 ),
                 if (timeLabel.isNotEmpty) ...[
                   const SizedBox(height: 3),
-                  Text(timeLabel, style: TextStyle(
-                    color: isOverdue ? JC.cancelRed : JC.textMuted,
-                    fontSize: 11, fontFamily: 'Heebo',
-                    fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
-                  )),
+                  Text(timeLabel,
+                      style: TextStyle(
+                        color: isOverdue ? JC.cancelRed : JC.textMuted,
+                        fontSize: 11,
+                        fontFamily: 'Heebo',
+                        fontWeight:
+                            isOverdue ? FontWeight.w600 : FontWeight.normal,
+                      )),
                 ],
               ],
             ),
           ),
           const SizedBox(width: 8),
           Container(
-            width: 10, height: 10,
+            width: 10,
+            height: 10,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: pColor,
@@ -728,30 +891,17 @@ class _TodayItemTile extends StatelessWidget {
   });
 
   Color get _priorityColor => switch (item['priority']?.toString()) {
-    'high' => JC.cancelRed,
-    'low'  => JC.green500,
-    _      => JC.amber400,
-  };
-
-  String _formatTime(dynamic iso) {
-    if (iso == null) return '';
-    try {
-      final dt = DateTime.parse(iso.toString()).toLocal();
-      final now = DateTime.now();
-      final day = DateTime(dt.year, dt.month, dt.day);
-      final today = DateTime(now.year, now.month, now.day);
-      final hhmm = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-      if (day == today) return 'היום $hhmm';
-      if (day == today.subtract(const Duration(days: 1))) return 'אתמול';
-      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
-    } catch (_) { return ''; }
-  }
+        'high' => JC.cancelRed,
+        'low' => JC.green500,
+        _ => JC.amber400,
+      };
 
   @override
   Widget build(BuildContext context) {
     final isReminder = item['type'] == 'reminder';
-    final canComplete = !isReminder && item['id'] != null && onComplete != null;
-    final timeLabel = _formatTime(item['time']);
+    final canComplete =
+        !isReminder && item['id'] != null && onComplete != null;
+    final timeLabel = UnifiedItemCard.formatTime(item['time']);
     final isOverdue = item['section'] == 'overdue';
 
     return Container(
@@ -760,7 +910,8 @@ class _TodayItemTile extends StatelessWidget {
         color: JC.surfaceAlt,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isOverdue ? JC.cancelRed.withOpacity(0.3) : JC.border,
+          color:
+              isOverdue ? JC.cancelRed.withOpacity(0.3) : JC.border,
           width: 0.8,
         ),
       ),
@@ -771,15 +922,18 @@ class _TodayItemTile extends StatelessWidget {
             GestureDetector(
               onTap: isCompleting ? null : onComplete,
               child: SizedBox(
-                width: 22, height: 22,
+                width: 22,
+                height: 22,
                 child: isCompleting
-                    ? CircularProgressIndicator(strokeWidth: 2.2, color: JC.green500)
+                    ? CircularProgressIndicator(
+                        strokeWidth: 2.2, color: JC.green500)
                     : Icon(Icons.radio_button_unchecked_rounded,
                         color: _priorityColor, size: 20),
               ),
             )
           else
-            Icon(Icons.notifications_outlined, color: JC.amber400, size: 18),
+            Icon(Icons.notifications_outlined,
+                color: JC.amber400, size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -789,21 +943,28 @@ class _TodayItemTile extends StatelessWidget {
                   item['title']?.toString() ?? '',
                   textDirection: TextDirection.rtl,
                   style: TextStyle(
-                    color: JC.textPrimary, fontSize: 14, fontFamily: 'Heebo'),
+                      color: JC.textPrimary,
+                      fontSize: 14,
+                      fontFamily: 'Heebo'),
                 ),
                 if (timeLabel.isNotEmpty)
-                  Text(timeLabel, style: TextStyle(
-                    color: isOverdue ? JC.cancelRed : JC.textMuted,
-                    fontSize: 11, fontFamily: 'Heebo',
-                    fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
-                  )),
+                  Text(timeLabel,
+                      style: TextStyle(
+                        color: isOverdue ? JC.cancelRed : JC.textMuted,
+                        fontSize: 11,
+                        fontFamily: 'Heebo',
+                        fontWeight: isOverdue
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      )),
               ],
             ),
           ),
           if (canComplete) ...[
             const SizedBox(width: 6),
             Container(
-              width: 7, height: 7,
+              width: 7,
+              height: 7,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _priorityColor,

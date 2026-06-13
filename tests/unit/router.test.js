@@ -42,6 +42,10 @@ describe('classifyIntent — keyword routing', () => {
         ['נסח לי הודעה לבוס', 'draft'],
         ['תכתוב לי מייל', 'draft'],
         ['עזור לי לנסח', 'draft'],
+        // weather keywords (definite-article form must also match)
+        ['מזג אוויר', 'weather'],
+        ['מה מזג האוויר היום', 'weather'],
+        ['תחזית למחר', 'weather'],
         // e2e keywords
         ['בצע בדיקות קצה', 'e2e'],
         ['בדיקות קצה לקצה', 'e2e'],

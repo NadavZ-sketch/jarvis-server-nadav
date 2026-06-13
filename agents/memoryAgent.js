@@ -1,4 +1,3 @@
-const { sanitizeLike } = require('./utils');
 require('dotenv').config();
 const { callGemma4 }   = require('./models');
 const obsidianSync     = require('../services/obsidianSync');
@@ -29,7 +28,7 @@ function setMemoryCacheInvalidator(fn) {
  *   - { duplicate: true,  existingId?: string } if a near-duplicate exists
  *   - { duplicate: false } otherwise
  */
-async function checkDuplicate(rawContent, supabase) {
+async function checkDuplicate(rawContent, memories) {
     const core = rawContent.replace(/^\[[^\]]+\]\s*/, '').trim();
     if (!core) return { duplicate: false };
 
@@ -45,11 +44,7 @@ async function checkDuplicate(rawContent, supabase) {
     // with the same prefix (e.g. "[location] גר ב..." × N cities).
     if (pinecone.isReady()) return { duplicate: false };
 
-    const { data } = await supabase
-        .from('memories')
-        .select('id')
-        .ilike('content', `%${sanitizeLike(core.slice(0, 40))}%`)
-        .limit(1);
+    const data = await memories.findByContent(core.slice(0, 40), { columns: 'id', limit: 1 });
     if (data && data.length > 0) {
         return { duplicate: true, existingId: String(data[0].id) };
     }
@@ -91,7 +86,8 @@ Scope: "long_term" for stable facts, "session" for current goals/tasks/decisions
 
 User message: `;
 
-async function autoExtractMemory(userMessage, assistantAnswer, supabase, settings = {}) {
+async function autoExtractMemory(userMessage, assistantAnswer, repos, settings = {}) {
+    const memories = repos.memories;
     try {
         // Skip extraction on short/filler messages — nothing memorable in "תודה" or "יאלה".
         if (!userMessage || userMessage.trim().length < 30) return null;
@@ -123,14 +119,13 @@ async function autoExtractMemory(userMessage, assistantAnswer, supabase, setting
             const scope   = item.scope === 'session' ? 'session' : 'long_term';
             if (!content) continue;
 
-            const dup = await checkDuplicate(content, supabase);
+            const dup = await checkDuplicate(content, memories);
             if (dup.duplicate) {
                 console.log('🧠 AutoExtract: duplicate skipped:', content);
                 continue;
             }
 
-            const { data: inserted } = await supabase
-                .from('memories').insert([{ content, scope }]).select('id').limit(1);
+            const inserted = await memories.insert({ content, scope });
             obsidianSync.dbToVault('memories', { content, scope });
             if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
             if (!firstSaved) firstSaved = content;
@@ -156,7 +151,7 @@ Extract the new fact to store. Return ONLY JSON: {"newContent": "[context tag] t
 
 User message: `;
 
-async function deleteMemory(userMessage, supabase) {
+async function deleteMemory(userMessage, memories) {
     const textToDelete = userMessage
         .replace(/מחק\s+(?:את\s+)?(?:ה)?זיכרון|הסר\s+(?:את\s+)?(?:ה)?זיכרון|שכח\s+ש|שכח|תמחק|תסיר/gi, '')
         .replace(/(?<!\S)(?:לגבי|בנוגע\s+ל|על|את|של|ה|ו|ב|מ|ל|ש|כ)(?!\S)/g, ' ')
@@ -167,13 +162,7 @@ async function deleteMemory(userMessage, supabase) {
         return { answer: 'מה למחוק? נסה: "מחק זיכרון על [נושא]"' };
     }
 
-    const { data, error } = await supabase
-        .from('memories')
-        .delete()
-        .ilike('content', `%${sanitizeLike(textToDelete)}%`)
-        .select('id, content');
-
-    if (error) throw error;
+    const data = await memories.deleteByContent(textToDelete);
     if (!data || data.length === 0) return { answer: `לא מצאתי זיכרון על "${textToDelete}".` };
     await Promise.allSettled(data.map(m => pinecone.deleteMemory(m.id)));
     data.forEach(m => obsidianSync.removeFromVault('memories', m));
@@ -181,7 +170,7 @@ async function deleteMemory(userMessage, supabase) {
     return { answer: `בסדר, מחקתי את הזיכרון: "${data[0].content}"` };
 }
 
-async function updateMemory(userMessage, supabase, useLocal, settings = {}) {
+async function updateMemory(userMessage, memories, useLocal, settings = {}) {
     const userName = settings.userName || 'נדב';
 
     // Extract the keyword used and the search term from the message
@@ -196,13 +185,8 @@ async function updateMemory(userMessage, supabase, useLocal, settings = {}) {
     }
 
     // Find the existing memory row to update
-    const { data: existing, error: findErr } = await supabase
-        .from('memories')
-        .select('id, content')
-        .ilike('content', `%${sanitizeLike(searchText.slice(0, 50))}%`)
-        .limit(1);
+    const existing = await memories.findByContent(searchText.slice(0, 50), { columns: 'id, content', limit: 1 });
 
-    if (findErr) throw findErr;
     if (!existing || existing.length === 0) {
         return { answer: `לא מצאתי זיכרון תואם ל"${searchText}". נסה לנסח אחרת.` };
     }
@@ -227,10 +211,7 @@ async function updateMemory(userMessage, supabase, useLocal, settings = {}) {
     const newContent = (parsed.newContent || '').trim();
     if (!newContent) return { answer: 'לא הצלחתי לחלץ את הזיכרון המעודכן.' };
 
-    const { error: updateErr } = await supabase
-        .from('memories')
-        .update({ content: newContent })
-        .eq('id', row.id);
+    const { error: updateErr } = await memories.update(row.id, newContent);
 
     if (updateErr) throw updateErr;
 
@@ -242,19 +223,20 @@ async function updateMemory(userMessage, supabase, useLocal, settings = {}) {
     return { answer: `עדכנתי את הזיכרון:\nלפני: "${row.content}"\nאחרי: "${newContent}"` };
 }
 
-async function runMemoryAgent(userMessage, supabase, useLocal = true, settings = {}) {
+async function runMemoryAgent(userMessage, repos, useLocal = true, settings = {}) {
     const userName = settings.userName || 'נדב';
+    const memories = repos.memories;
 
     try {
         // Update memory
         if (/עדכן|שנה|תעדכן/i.test(userMessage) && /זיכרון|זכור|זכרון/i.test(userMessage)) {
-            return updateMemory(userMessage, supabase, useLocal, settings);
+            return updateMemory(userMessage, memories, useLocal, settings);
         }
 
         // Delete memory
         if (/מחק|הסר|שכח|תמחק|תסיר/i.test(userMessage) && /זיכרון|זכור|זכרון|שכח/i.test(userMessage) ||
             /מחק\s+(?:את\s+)?(?:ה)?זיכרון|הסר\s+(?:את\s+)?(?:ה)?זיכרון|שכח\s+ש|שכח/i.test(userMessage)) {
-            return deleteMemory(userMessage, supabase);
+            return deleteMemory(userMessage, memories);
         }
 
         // Explicit save keywords — everything else in memoryAgent is a recall
@@ -264,8 +246,7 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
             // Try Pinecone semantic search first; fall back to fetching all
             let memContents = await pinecone.searchMemories(userMessage, 15);
             if (!memContents) {
-                const { data: memoriesData } = await supabase.from('memories').select('content');
-                memContents = (memoriesData || []).map(m => m.content);
+                memContents = await memories.allContents();
             }
             if (memContents.length === 0) {
                 return { answer: `אין לי עדיין זיכרונות שמורים עליך ${userName}.` };
@@ -292,15 +273,14 @@ async function runMemoryAgent(userMessage, supabase, useLocal = true, settings =
         } catch {
             return { answer: 'לא הצלחתי לעבד את הבקשה, נסה לנסח אחרת.' };
         }
-        const dup = await checkDuplicate(parsed.memoryContent, supabase);
+        const dup = await checkDuplicate(parsed.memoryContent, memories);
         if (dup.duplicate) {
             console.log('🧠 MemoryAgent: duplicate skipped:', parsed.memoryContent);
             return { answer: `כבר יש לי זיכרון דומה. אם תרצה לעדכן אותו אמור: "עדכן זיכרון על ${parsed.memoryContent}"` };
         }
 
         console.log('🧠 MemoryAgent saving:', parsed.memoryContent);
-        const { data: saved } = await supabase
-            .from('memories').insert([{ content: parsed.memoryContent, scope: 'long_term' }]).select('id').limit(1);
+        const saved = await memories.insert({ content: parsed.memoryContent, scope: 'long_term' });
         obsidianSync.dbToVault('memories', { content: parsed.memoryContent, scope: 'long_term' });
         if (saved?.[0]?.id) pinecone.upsertMemory(saved[0].id, parsed.memoryContent).catch(() => {});
         _invalidateMemoryCache();

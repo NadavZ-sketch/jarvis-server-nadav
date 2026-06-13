@@ -1123,7 +1123,7 @@ async function askJarvisHandler(req, res) {
             saveChatMessage('jarvis', answer, chatId),
             ttsEnabled ? generateSpeech(answer) : Promise.resolve(null),
             shouldExtract
-                ? autoExtractMemory(originalMessage, answer, supabase, settings).catch(e => { systemLog.logError('autoExtractMemory', e).catch(() => {}); return null; })
+                ? autoExtractMemory(originalMessage, answer, repos, settings).catch(e => { systemLog.logError('autoExtractMemory', e).catch(() => {}); return null; })
                 : Promise.resolve(null),
         ]);
         cacheInvalidate(`chatHistory:${chatId}`); // history just updated
@@ -3973,7 +3973,7 @@ async function streamJarvisHandler(req, res) {
 
         // Update rolling summary + passive memory extraction (fire-and-forget)
         setImmediate(() => {
-            autoExtractMemory(originalMessage, fullAnswer, supabase, settings).catch(e => systemLog.logError('autoExtractMemory:stream', e).catch(() => {}));
+            autoExtractMemory(originalMessage, fullAnswer, repos, settings).catch(e => systemLog.logError('autoExtractMemory:stream', e).catch(() => {}));
             loadChatHistory(chatId).then(fresh => {
                 conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(e => systemLog.logError('updateSummaryIfNeeded:stream', e).catch(() => {}));
             }).catch(e => systemLog.logError('loadChatHistory:stream', e).catch(() => {}));

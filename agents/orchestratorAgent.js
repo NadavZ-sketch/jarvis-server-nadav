@@ -52,7 +52,8 @@ async function dispatchSubTask(intent, message, supabase, useLocal, settings, ch
             }
             case 'memory': {
                 const { runMemoryAgent } = require('./memoryAgent');
-                return await runMemoryAgent(message, supabase, useLocal, settings);
+                const { createRepos } = require('../services/dataAccess');
+                return await runMemoryAgent(message, createRepos(supabase), useLocal, settings);
             }
             case 'shopping': {
                 const { runShoppingAgent } = require('./shoppingAgent');

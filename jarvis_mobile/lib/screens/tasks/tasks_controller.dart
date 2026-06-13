@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import '../../app_settings.dart';
 import '../../services/api_service.dart';
 import '../../services/cache_service.dart';
+import '../../widgets/tasks/task_category.dart';
+
+/// A labelled group of tasks rendered as one collapsible section.
+typedef TaskSection = ({String key, String label, List<Map<String, dynamic>> tasks});
 
 /// State + actions for the redesigned tasks screen.
 ///
 /// Loads tasks plus the Smart Day Engine context (`/day-plan`) and exposes
-/// optimistic mutations so every task surface (list, eisenhower, kanban,
-/// day-plan) can share the same data and stay live.
+/// optimistic mutations plus [groupedSections] so the single smart list can
+/// regroup by time / priority / category while staying live.
 class TasksController extends ChangeNotifier with WidgetsBindingObserver {
   TasksController({required this.settings}) : api = ApiService(settings);
 
@@ -246,34 +250,6 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {/* ignore — best effort */}
   }
 
-  Future<void> setQuadrant(Map<String, dynamic> task, String? quad) async {
-    final id = task['id'].toString();
-    final prev = task['eisenhower_quad'];
-    task['eisenhower_quad'] = quad;
-    notifyListeners();
-    try {
-      await api.updateTask(id, eisenhowerQuad: quad ?? '');
-    } catch (_) {
-      task['eisenhower_quad'] = prev;
-      notifyListeners();
-    }
-  }
-
-  Future<void> setKanbanColumn(
-      Map<String, dynamic> task, String column) async {
-    final id = task['id'].toString();
-    final prev = task['kanban_column'];
-    task['kanban_column'] = column;
-    if (column == 'done') task['done'] = true;
-    notifyListeners();
-    try {
-      await api.updateTaskKanban(id, column);
-    } catch (_) {
-      task['kanban_column'] = prev;
-      notifyListeners();
-    }
-  }
-
   Future<void> setDueDate(Map<String, dynamic> task, DateTime when) async {
     final id = task['id'].toString();
     final prev = task['due_date'];
@@ -389,81 +365,85 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
   int get openCount => tasks.where((t) => t['done'] != true).length;
   int get doneCount => tasks.where((t) => t['done'] == true).length;
 
-  /// Eisenhower quadrant buckets. The fifth ("none") holds tasks without
-  /// classification so users can drag them in.
-  Map<String, List<Map<String, dynamic>>> get quadrants {
-    final out = <String, List<Map<String, dynamic>>>{
-      'q1': [], 'q2': [], 'q3': [], 'q4': [], 'none': [],
-    };
-    for (final t in tasks) {
-      if (t['done'] == true) continue;
-      final q = (t['eisenhower_quad'] ?? '').toString();
-      (out[q] ?? out['none']!).add(t);
+  /// Groups [filteredTasks] into ordered, labelled sections for the single
+  /// smart list. [mode] is one of 'time' | 'priority' | 'category' | 'flat'.
+  /// Empty sections are omitted (except 'flat', which always returns one).
+  List<TaskSection> groupedSections(String mode) {
+    final src = filteredTasks;
+    switch (mode) {
+      case 'priority':
+        return _sectionsByOrder(src, const [
+          ('high', 'גבוה'),
+          ('medium', 'בינוני'),
+          ('low', 'נמוך'),
+        ], (t) {
+          final p = (t['priority'] ?? 'medium').toString();
+          return p == 'high' || p == 'low' ? p : 'medium';
+        });
+      case 'category':
+        final order = [
+          for (final c in kTaskCategories) (c.id, c.label),
+        ];
+        return _sectionsByOrder(src, order, (t) {
+          final c = (t['category'] ?? '').toString();
+          return c.isEmpty ? 'general' : c;
+        });
+      case 'flat':
+        return [(key: 'all', label: 'כל המשימות', tasks: src)];
+      case 'time':
+      default:
+        return _sectionsByTime(src);
     }
-    return out;
   }
 
-  /// Kanban column buckets, including any custom columns the server returns.
-  Map<String, List<Map<String, dynamic>>> get kanbanColumns {
-    final out = <String, List<Map<String, dynamic>>>{
-      'todo': [], 'doing': [], 'done': [],
-    };
-    for (final t in tasks) {
-      var col = (t['kanban_column'] ?? '').toString();
-      if (col.isEmpty) col = t['done'] == true ? 'done' : 'todo';
-      out.putIfAbsent(col, () => []).add(t);
+  /// Builds sections following a fixed key/label order, dropping empties.
+  List<TaskSection> _sectionsByOrder(
+    List<Map<String, dynamic>> src,
+    List<(String, String)> order,
+    String Function(Map<String, dynamic>) keyOf,
+  ) {
+    final buckets = {for (final o in order) o.$1: <Map<String, dynamic>>[]};
+    for (final t in src) {
+      (buckets[keyOf(t)] ?? buckets[order.last.$1]!).add(t);
     }
-    return out;
+    return [
+      for (final o in order)
+        if (buckets[o.$1]!.isNotEmpty)
+          (key: o.$1, label: o.$2, tasks: buckets[o.$1]!),
+    ];
   }
 
-  /// Smart Day Engine buckets — returns server quadrants when present, else
-  /// falls back to a simple split by due-date / priority so the view always
-  /// shows something useful.
-  Map<String, List<Map<String, dynamic>>> get dayPlanBuckets {
-    final src = dayPlan?['quadrants'] as Map<String, dynamic>?;
-    if (src != null) {
-      List<Map<String, dynamic>> _idsToTasks(dynamic raw) {
-        if (raw is! List) return const [];
-        final ids = raw.map((e) {
-          if (e is Map) return (e['id'] ?? e['task_id'])?.toString();
-          return e?.toString();
-        }).whereType<String>().toSet();
-        return tasks
-            .where((t) => ids.contains(t['id'].toString()) && t['done'] != true)
-            .toList();
-      }
-
-      return {
-        'now':   _idsToTasks(src['now']),
-        'plan':  _idsToTasks(src['plan']),
-        'quick': _idsToTasks(src['quick']),
-        'later': _idsToTasks(src['later']),
-      };
-    }
-    return _fallbackDayBuckets();
-  }
-
-  Map<String, List<Map<String, dynamic>>> _fallbackDayBuckets() {
+  List<TaskSection> _sectionsByTime(List<Map<String, dynamic>> src) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final out = <String, List<Map<String, dynamic>>>{
-      'now': [], 'plan': [], 'quick': [], 'later': [],
-    };
-    for (final t in tasks) {
-      if (t['done'] == true) continue;
+    final weekEnd = today.add(const Duration(days: 7));
+    final overdue = <Map<String, dynamic>>[];
+    final todayB = <Map<String, dynamic>>[];
+    final week = <Map<String, dynamic>>[];
+    final later = <Map<String, dynamic>>[];
+    final noDate = <Map<String, dynamic>>[];
+    for (final t in src) {
       final due = _parseDate(t['due_date']);
-      final p = (t['priority'] ?? '').toString();
-      if (due != null && !due.isAfter(today) && p == 'high') {
-        out['now']!.add(t);
-      } else if (p == 'low') {
-        out['quick']!.add(t);
-      } else if (due != null && due.isAfter(today.add(const Duration(days: 7)))) {
-        out['later']!.add(t);
+      if (due == null) {
+        noDate.add(t);
+      } else if (due.isBefore(today)) {
+        overdue.add(t);
+      } else if (due == today) {
+        todayB.add(t);
+      } else if (!due.isAfter(weekEnd)) {
+        week.add(t);
       } else {
-        out['plan']!.add(t);
+        later.add(t);
       }
     }
-    return out;
+    return [
+      if (overdue.isNotEmpty) (key: 'overdue', label: 'באיחור', tasks: overdue),
+      if (todayB.isNotEmpty) (key: 'today', label: 'היום', tasks: todayB),
+      if (week.isNotEmpty) (key: 'week', label: 'השבוע', tasks: week),
+      if (later.isNotEmpty) (key: 'later', label: 'מאוחר יותר', tasks: later),
+      if (noDate.isNotEmpty)
+        (key: 'no_date', label: 'ללא תאריך', tasks: noDate),
+    ];
   }
 
   List<Map<String, dynamic>> get conflicts {

@@ -3,7 +3,6 @@ import '../../../main.dart' show JC;
 import '../../../widgets/animated_list_item.dart';
 import '../../../widgets/delete_snackbar.dart';
 import '../../../widgets/empty_state.dart';
-import '../../../widgets/jarvis_search_bar.dart';
 import '../../../widgets/tasks/smart_task_card.dart';
 import '../../../widgets/tasks/task_category.dart';
 import '../tasks_controller.dart';
@@ -17,25 +16,6 @@ class TasksListView extends StatefulWidget {
 }
 
 class _TasksListViewState extends State<TasksListView> {
-  late final TextEditingController _searchCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    // Seed the search field from the controller so state persists across tab
-    // switches. The listener pushes changes back to the controller.
-    _searchCtrl =
-        TextEditingController(text: widget.controller.searchQuery);
-    _searchCtrl.addListener(
-        () => widget.controller.setSearchQuery(_searchCtrl.text));
-  }
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = widget.controller;
@@ -45,12 +25,6 @@ class _TasksListViewState extends State<TasksListView> {
 
     return Column(
       children: [
-        if (tasks.isNotEmpty)
-          Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 16, 4),
-            child:
-                JarvisSearchBar(controller: _searchCtrl, hint: 'חיפוש במשימות...'),
-          ),
         if (tasks.isNotEmpty)
           _FilterBar(
             filter: c.filterPriority,

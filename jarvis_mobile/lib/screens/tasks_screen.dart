@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/jarvis_search_bar.dart';
 import '../widgets/loading_skeleton.dart';
 import 'tasks/tasks_controller.dart';
 import 'tasks/views/list_view.dart';
@@ -20,8 +22,15 @@ String _viewFromIndex(int i) => _kViewOrder[i.clamp(0, 3)];
 class TasksScreen extends StatefulWidget {
   final AppSettings settings;
   final ValueChanged<int>? onCountUpdate;
+  // Incremented by ProductivityScreen to trigger the add-task sheet
+  final ValueListenable<int>? addTrigger;
 
-  const TasksScreen({super.key, required this.settings, this.onCountUpdate});
+  const TasksScreen({
+    super.key,
+    required this.settings,
+    this.onCountUpdate,
+    this.addTrigger,
+  });
 
   @override
   State<TasksScreen> createState() => _TasksScreenState();
@@ -30,6 +39,7 @@ class TasksScreen extends StatefulWidget {
 class _TasksScreenState extends State<TasksScreen> {
   late final TasksController _c;
   late final PageController _pageCtrl;
+  late final TextEditingController _searchCtrl;
   late String _view;
 
   @override
@@ -39,15 +49,22 @@ class _TasksScreenState extends State<TasksScreen> {
     _pageCtrl = PageController(initialPage: _viewIndex(_view));
     _c = TasksController(settings: widget.settings)..start();
     _c.addListener(_pushCount);
+    _searchCtrl = TextEditingController(text: _c.searchQuery);
+    _searchCtrl.addListener(() => _c.setSearchQuery(_searchCtrl.text));
+    widget.addTrigger?.addListener(_onAddTrigger);
   }
 
   @override
   void dispose() {
+    widget.addTrigger?.removeListener(_onAddTrigger);
     _c.removeListener(_pushCount);
     _c.dispose();
     _pageCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
+
+  void _onAddTrigger() => _showAddSheet();
 
   void _pushCount() => widget.onCountUpdate?.call(_c.openCount);
 
@@ -68,25 +85,6 @@ class _TasksScreenState extends State<TasksScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: JC.bg,
-      floatingActionButton: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: JC.blue500.withOpacity(0.35),
-              blurRadius: 20,
-              spreadRadius: 2,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: FloatingActionButton(
-          onPressed: _showAddSheet,
-          backgroundColor: JC.blue500,
-          elevation: 0,
-          child: const Icon(Icons.add_rounded, color: Colors.white),
-        ),
-      ),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: _c,
@@ -109,6 +107,14 @@ class _TasksScreenState extends State<TasksScreen> {
     }
     return Column(
       children: [
+        // ── Global search bar (filters all views via TasksController) ────────
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 16, 2),
+          child: JarvisSearchBar(
+            controller: _searchCtrl,
+            hint: 'חיפוש משימות...',
+          ),
+        ),
         _ViewSwitcher(current: _view, onChange: _setView, controller: _c),
         Expanded(
           child: RefreshIndicator(

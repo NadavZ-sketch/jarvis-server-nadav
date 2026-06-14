@@ -40,10 +40,10 @@ class TasksCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: const Color(0xFF3B82F6).withOpacity(0.12),
+            color: const Color(0xFF3B82F6).withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-                color: const Color(0xFF3B82F6).withOpacity(0.3), width: 0.8),
+                color: const Color(0xFF3B82F6).withValues(alpha: 0.3), width: 0.8),
           ),
           child: const Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.add_rounded, color: Color(0xFF3B82F6), size: 14),
@@ -63,10 +63,10 @@ class TasksCard extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: Stack(children: [
-                Container(height: 5, color: const Color(0xFF1A2E4A)),
+                Container(height: 5, color: JC.border),
                 FractionallySizedBox(
                   widthFactor: progress,
-                  child: Container(height: 5, color: const Color(0xFF22C55E)),
+                  child: Container(height: 5, color: JC.green500),
                 ),
               ]),
             ),
@@ -84,7 +84,7 @@ class TasksCard extends StatelessWidget {
           if (highTasks.isNotEmpty)
             _group(context, 'דחוף', const Color(0xFFEF4444), highTasks),
           if (starredTasks.isNotEmpty)
-            _group(context, 'מסומן חשוב ⭐', const Color(0xFFF59E0B), starredTasks),
+            _group(context, 'מסומן חשוב', const Color(0xFFF59E0B), starredTasks),
           if (queueTasks.isNotEmpty)
             _group(context, 'בתור', const Color(0xFF3B82F6), queueTasks),
         ],
@@ -160,32 +160,41 @@ class TasksCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFF0B1929),
+          color: JC.jarvisBubble,
           borderRadius: BorderRadius.circular(10),
           border: BorderDirectional(start: BorderSide(color: accent, width: 3)),
         ),
         child: Row(children: [
-          GestureDetector(
-            onTap: () => tryCompleteTask(context, c, task),
-            child: Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: c.completing.contains(id)
-                      ? const Color(0xFF22C55E)
-                      : accent,
-                  width: 1.5,
+          Semantics(
+            button: true,
+            label: 'סיים משימה: $content',
+            child: GestureDetector(
+              onTap: () => tryCompleteTask(context, c, task),
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: c.completing.contains(id)
+                            ? JC.green500
+                            : accent,
+                        width: 1.5,
+                      ),
+                      color: c.completing.contains(id)
+                          ? JC.green500.withValues(alpha: 0.15)
+                          : Colors.transparent,
+                    ),
+                    child: c.completing.contains(id)
+                        ? Icon(Icons.check_rounded, size: 13, color: JC.green500)
+                        : null,
+                  ),
                 ),
-                color: c.completing.contains(id)
-                    ? const Color(0xFF22C55E).withOpacity(0.15)
-                    : Colors.transparent,
               ),
-              child: c.completing.contains(id)
-                  ? const Icon(Icons.check_rounded,
-                      size: 13, color: Color(0xFF22C55E))
-                  : null,
             ),
           ),
           const SizedBox(width: 10),
@@ -220,14 +229,21 @@ class TasksCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           PriorityBadge(priority),
-          GestureDetector(
-            onTap: isImportant ? null : () => c.markImportant(task),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.only(end: 4, start: 2),
-              child: Icon(
-                isImportant ? Icons.star_rounded : Icons.star_outline_rounded,
-                color: isImportant ? const Color(0xFFF59E0B) : JC.textMuted,
-                size: 16,
+          Semantics(
+            button: true,
+            label: isImportant ? 'מסומן חשוב' : 'סמן כחשוב',
+            child: GestureDetector(
+              onTap: isImportant ? null : () => c.markImportant(task),
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                  child: Icon(
+                    isImportant ? Icons.star_rounded : Icons.star_outline_rounded,
+                    color: isImportant ? JC.amber400 : JC.textMuted,
+                    size: 16,
+                  ),
+                ),
               ),
             ),
           ),
@@ -248,7 +264,7 @@ class TasksCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       alignment: align,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.18),
+        color: color.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [

@@ -12,7 +12,7 @@ class JarvisCard extends StatelessWidget {
   final HomeController c;
   const JarvisCard(this.c, {super.key});
 
-  static const _accent = Color(0xFF6366F1);
+  Color get _accent => JC.indigo500;
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +45,9 @@ class JarvisCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(JD.rSm),
-        border: Border.all(color: color.withOpacity(0.35), width: 0.8),
+        border: Border.all(color: color.withValues(alpha: 0.35), width: 0.8),
       ),
       child: Text(label,
           style: TextStyle(
@@ -146,7 +146,7 @@ class JarvisCard extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(JD.md),
           decoration: BoxDecoration(
-            color: const Color(0xFF0B1929),
+            color: JC.jarvisBubble,
             borderRadius: BorderRadius.circular(JD.rMd),
             border:
                 BorderDirectional(start: BorderSide(color: accent, width: 3)),
@@ -185,25 +185,35 @@ class JarvisCard extends StatelessWidget {
     required Color color,
     required Future<void> Function() onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.14),
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(JD.rSm),
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(JD.rSm),
-          border: Border.all(color: color.withOpacity(0.4), width: 0.8),
+          splashColor: color.withValues(alpha: 0.2),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(JD.rSm),
+              border: Border.all(color: color.withValues(alpha: 0.4), width: 0.8),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, color: color, size: 15),
+              const SizedBox(width: 4),
+              Text(label,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: JD.label,
+                      fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w700)),
+            ]),
+          ),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: color, size: 15),
-          const SizedBox(width: 4),
-          Text(label,
-              style: TextStyle(
-                  color: color,
-                  fontSize: JD.label,
-                  fontFamily: 'Heebo',
-                  fontWeight: FontWeight.w700)),
-        ]),
       ),
     );
   }
@@ -218,10 +228,10 @@ class JarvisCard extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: Stack(children: [
-            Container(height: 5, color: const Color(0xFF1A2E4A)),
+            Container(height: 5, color: JC.border),
             FractionallySizedBox(
               widthFactor: fraction.clamp(0.0, 1.0),
-              child: Container(height: 5, color: const Color(0xFF22C55E)),
+              child: Container(height: 5, color: JC.green500),
             ),
           ]),
         ),

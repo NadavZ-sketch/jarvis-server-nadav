@@ -30,7 +30,8 @@ class _AnimatedIndexedStackState extends State<AnimatedIndexedStack>
   @override
   void didUpdateWidget(covariant AnimatedIndexedStack old) {
     super.didUpdateWidget(old);
-    if (old.index != widget.index && widget.enabled) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    if (old.index != widget.index && widget.enabled && !reduceMotion) {
       _controller
         ..reset()
         ..forward();
@@ -45,7 +46,8 @@ class _AnimatedIndexedStackState extends State<AnimatedIndexedStack>
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.enabled) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    if (!widget.enabled || reduceMotion) {
       return IndexedStack(index: widget.index, children: widget.children);
     }
     return FadeTransition(

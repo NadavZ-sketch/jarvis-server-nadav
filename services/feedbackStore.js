@@ -21,17 +21,15 @@ const SIGNAL_VALUE = { up: 1, down: -1 };
  * @param {object} supabase Supabase client
  * @param {{userId?:string, eventName:string, value?:number, metadata?:object}} evt
  */
-async function recordEvent(supabase, { userId = 'default', eventName, value = 1, metadata = {} } = {}) {
+async function recordEvent(repos, { userId = 'default', eventName, value = 1, metadata = {} } = {}) {
     if (!eventName) return { ok: false, reason: 'missing_event_name' };
     try {
-        const { error } = await supabase
-            .from('smart_telemetry_events')
-            .insert([{
-                user_id: String(userId || 'default'),
-                event_name: String(eventName),
-                event_value: Number.isFinite(value) ? value : 0,
-                metadata: metadata && typeof metadata === 'object' ? metadata : {},
-            }]);
+        const { error } = await repos.telemetry.record({
+            user_id: String(userId || 'default'),
+            event_name: String(eventName),
+            event_value: Number.isFinite(value) ? value : 0,
+            metadata: metadata && typeof metadata === 'object' ? metadata : {},
+        });
         if (error) throw error;
         return { ok: true };
     } catch (err) {
@@ -45,19 +43,10 @@ async function recordEvent(supabase, { userId = 'default', eventName, value = 1,
  * event_value) per event_name. No LLM. Used by the dashboard endpoint and, in a
  * later phase, by the profile learner.
  */
-async function aggregateEvents(supabase, { userId = 'default', sinceDays = 30, limit = 1000 } = {}) {
+async function aggregateEvents(repos, { userId = 'default', sinceDays = 30, limit = 1000 } = {}) {
     try {
         const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-        let q = supabase
-            .from('smart_telemetry_events')
-            .select('event_name,event_value,metadata,created_at')
-            .gte('created_at', since)
-            .order('created_at', { ascending: false })
-            .limit(limit);
-        if (userId) q = q.eq('user_id', String(userId));
-        const { data, error } = await q;
-        if (error) throw error;
-        const rows = data || [];
+        const rows = await repos.telemetry.recentEvents(userId, since, limit);
         const counts = {};
         for (const r of rows) counts[r.event_name] = (counts[r.event_name] || 0) + (r.event_value || 0);
         return { ok: true, counts, total: rows.length, events: rows };

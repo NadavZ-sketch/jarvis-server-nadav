@@ -1,10 +1,11 @@
 'use strict';
 
 const { recordEvent, aggregateEvents, SIGNAL_VALUE } = require('../../services/feedbackStore');
-const { makeChain } = require('../helpers/supabaseMock');
+const { makeTelemetryRepo } = require('../helpers/fakeRepos');
 
-function makeSupabase(chain) {
-  return { from: jest.fn(() => chain) };
+// repos whose telemetry repo records/reads as configured.
+function reposWith({ rows = [], recordError = null } = {}) {
+  return { telemetry: makeTelemetryRepo({ rows, recordError }) };
 }
 
 describe('SIGNAL_VALUE', () => {
@@ -16,46 +17,42 @@ describe('SIGNAL_VALUE', () => {
 
 describe('recordEvent', () => {
   test('rejects a missing event name without touching the db', async () => {
-    const supabase = makeSupabase(makeChain());
-    const res = await recordEvent(supabase, { eventName: '' });
+    const repos = reposWith();
+    const res = await recordEvent(repos, { eventName: '' });
     expect(res).toEqual({ ok: false, reason: 'missing_event_name' });
-    expect(supabase.from).not.toHaveBeenCalled();
+    expect(repos.telemetry.record).not.toHaveBeenCalled();
   });
 
   test('inserts a well-formed row and returns ok', async () => {
-    const chain = makeChain([], null);
-    const supabase = makeSupabase(chain);
-    const res = await recordEvent(supabase, {
+    const repos = reposWith();
+    const res = await recordEvent(repos, {
       userId: 'u1', eventName: 'feedback', value: -1, metadata: { reason: 'wrong' },
     });
     expect(res).toEqual({ ok: true });
-    expect(supabase.from).toHaveBeenCalledWith('smart_telemetry_events');
-    expect(chain.insert).toHaveBeenCalledWith([{
+    expect(repos.telemetry.record).toHaveBeenCalledWith({
       user_id: 'u1', event_name: 'feedback', event_value: -1, metadata: { reason: 'wrong' },
-    }]);
+    });
   });
 
   test('coerces a non-finite value to 0 and a non-object metadata to {}', async () => {
-    const chain = makeChain([], null);
-    const supabase = makeSupabase(chain);
-    await recordEvent(supabase, { eventName: 'x', value: NaN, metadata: 'nope' });
-    expect(chain.insert).toHaveBeenCalledWith([
+    const repos = reposWith();
+    await recordEvent(repos, { eventName: 'x', value: NaN, metadata: 'nope' });
+    expect(repos.telemetry.record).toHaveBeenCalledWith(
       expect.objectContaining({ event_value: 0, metadata: {} }),
-    ]);
+    );
   });
 
   test('defaults userId to "default"', async () => {
-    const chain = makeChain([], null);
-    const supabase = makeSupabase(chain);
-    await recordEvent(supabase, { eventName: 'x' });
-    expect(chain.insert).toHaveBeenCalledWith([
+    const repos = reposWith();
+    await recordEvent(repos, { eventName: 'x' });
+    expect(repos.telemetry.record).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: 'default', event_value: 1 }),
-    ]);
+    );
   });
 
   test('suppresses db errors and never throws', async () => {
-    const supabase = makeSupabase(makeChain(null, { message: 'db down' }));
-    const res = await recordEvent(supabase, { eventName: 'x' });
+    const repos = reposWith({ recordError: { message: 'db down' } });
+    const res = await recordEvent(repos, { eventName: 'x' });
     expect(res).toEqual({ ok: false, reason: 'db down' });
   });
 });
@@ -68,27 +65,24 @@ describe('aggregateEvents', () => {
       { event_name: 'feedback', event_value: 1 },
       { event_name: 'open_app', event_value: 1 },
     ];
-    const supabase = makeSupabase(makeChain(rows));
-    const res = await aggregateEvents(supabase, { userId: 'u1' });
+    const res = await aggregateEvents(reposWith({ rows }), { userId: 'u1' });
     expect(res.ok).toBe(true);
     expect(res.counts).toEqual({ feedback: 1, open_app: 1 });
     expect(res.total).toBe(4);
   });
 
-  test('filters by the sinceDays window (gte on created_at)', async () => {
-    const chain = makeChain([]);
-    const supabase = makeSupabase(chain);
-    await aggregateEvents(supabase, { userId: 'u1', sinceDays: 7 });
-    expect(chain.gte).toHaveBeenCalledWith('created_at', expect.any(String));
-    const sinceArg = chain.gte.mock.calls[0][1];
+  test('passes the user + sinceDays window to the repo', async () => {
+    const repos = reposWith({ rows: [] });
+    await aggregateEvents(repos, { userId: 'u1', sinceDays: 7 });
+    const [userId, sinceArg] = repos.telemetry.recentEvents.mock.calls[0];
+    expect(userId).toBe('u1');
     const ageDays = (Date.now() - new Date(sinceArg).getTime()) / 86400000;
     expect(ageDays).toBeCloseTo(7, 0);
-    expect(chain.eq).toHaveBeenCalledWith('user_id', 'u1');
   });
 
   test('returns a safe empty shape on db error', async () => {
-    const supabase = makeSupabase(makeChain(null, { message: 'boom' }));
-    const res = await aggregateEvents(supabase, {});
+    const repos = { telemetry: { recentEvents: jest.fn(async () => { throw new Error('boom'); }) } };
+    const res = await aggregateEvents(repos, {});
     expect(res).toEqual({ ok: false, reason: 'boom', counts: {}, total: 0, events: [] });
   });
 });

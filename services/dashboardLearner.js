@@ -28,13 +28,13 @@ const MIN_SIGNAL = 5;
  * @param {{userId?:string, sinceDays?:number}} opts
  * @returns {Promise<{order:string[], spotlight:string|null, counts:object, learned:boolean}>}
  */
-async function getDashboardLayout(supabase, { userId = 'default', sinceDays = 30 } = {}) {
+async function getDashboardLayout(repos, { userId = 'default', sinceDays = 30 } = {}) {
     const fallback = { order: [...DEFAULT_ORDER], spotlight: null, counts: {}, learned: false };
-    if (!supabase) return fallback;
+    if (!repos) return fallback;
 
     let agg;
     try {
-        agg = await feedbackStore.aggregateEvents(supabase, { userId, sinceDays, limit: 2000 });
+        agg = await feedbackStore.aggregateEvents(repos, { userId, sinceDays, limit: 2000 });
     } catch (err) {
         console.error('⚠️ dashboardLearner aggregate failed (suppressed):', err.message);
         return fallback;

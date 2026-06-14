@@ -1,11 +1,10 @@
 'use strict';
 
 const { getDashboardLayout, DEFAULT_ORDER, MIN_SIGNAL } = require('../../services/dashboardLearner');
-const { makeChain } = require('../helpers/supabaseMock');
 
-// Build a supabase stub whose telemetry query resolves with the given event rows.
+// Build a repos stub whose telemetry.recentEvents resolves with the given rows.
 function makeSupabase(rows) {
-  return { from: jest.fn(() => makeChain(rows, null)) };
+  return { telemetry: { recentEvents: jest.fn(async () => rows) } };
 }
 
 // Convenience: N tab-view events for a given tab.

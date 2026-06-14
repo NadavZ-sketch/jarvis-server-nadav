@@ -3899,17 +3899,11 @@ function scheduledJob(name, expr, fn, cronOpts = {}) {
 
         if (jobErr) {
             systemLog.logError(`cron:${name}`, jobErr).catch(() => {});
-            // Use .then(ok, err) instead of .catch() — Supabase v2 builder is
-            // thenable but doesn't expose .catch() as a standalone method.
-            supabase.from('cron_runs').upsert(
-                { job_name: name, last_err_at: new Date().toISOString(), last_error: jobErr.message?.slice(0, 500) },
-                { onConflict: 'job_name' }
-            ).then(null, () => {});
+            // Fire-and-forget — .then(null, …) because the Supabase v2 builder is
+            // thenable but doesn't expose a standalone .catch().
+            repos.cron.markError(name, jobErr.message).then(null, () => {});
         } else {
-            supabase.from('cron_runs').upsert(
-                { job_name: name, last_ok_at: new Date().toISOString() },
-                { onConflict: 'job_name' }
-            ).then(null, () => {});
+            repos.cron.markOk(name).then(null, () => {});
         }
     }, cronOpts);
 }
@@ -3984,20 +3978,13 @@ if (!isTestEnv) {
             const hour = nowJer.getHours();
             if (hour < 7 || hour >= 12) return; // outside catch-up window
             const today = nowJer.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
-            const { data } = await supabase.from('cron_runs')
-                .select('last_ok_at')
-                .eq('job_name', 'morning_briefing')
-                .maybeSingle().catch(() => ({ data: null }));
-            const lastOk = data?.last_ok_at;
+            const lastOk = await repos.cron.lastOkAt('morning_briefing').catch(() => null);
             if (lastOk && lastOk.startsWith(today)) return; // already ran today
             console.log('🌅 [boot] Running missed morning briefing catch-up');
             const profile = await getUserProfile().catch(() => null);
             const briefingText = await buildMorningBriefing(profile?.city || '');
             await enqueueNotification(briefingText, { title: '🌅 תדריך בוקר', category: 'briefing' });
-            await supabase.from('cron_runs').upsert(
-                { job_name: 'morning_briefing', last_ok_at: new Date().toISOString() },
-                { onConflict: 'job_name' }
-            ).catch(() => {});
+            await repos.cron.markOk('morning_briefing').then(null, () => {});
         } catch (err) {
             systemLog.logError('boot:morning_briefing_catchup', err).catch(() => {});
         }

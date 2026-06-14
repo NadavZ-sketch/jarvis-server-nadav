@@ -33,6 +33,19 @@ function createNoteRepo(supabase) {
             return data || [];
         },
 
+        // ── REST endpoint variants (GET/PUT/DELETE /notes) ─────────────────────
+        async listAll() {
+            const { data, error } = await supabase.from(N).select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        },
+        async updateById(id, updates) {
+            return supabase.from(N).update(updates).eq('id', id).select().single();
+        },
+        async removeById(id) {
+            return supabase.from(N).delete().eq('id', id);
+        },
+
         async search(q, limit = 5) {
             const { data } = await supabase.from(N).select('*').or(orFilter(q)).limit(limit);
             return data || [];

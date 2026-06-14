@@ -24,6 +24,22 @@ function createShoppingRepo(supabase) {
             return data || [];
         },
 
+        // ── REST endpoint variants (GET/POST/PATCH/DELETE /shopping) ───────────
+        async listAll() {
+            const { data, error } = await supabase.from(S).select('*').order('created_at', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        },
+        async create(item) {
+            return supabase.from(S).insert([{ item }]).select().single();
+        },
+        async updateById(id, updates) {
+            return supabase.from(S).update(updates).eq('id', id).select().single();
+        },
+        async removeById(id) {
+            return supabase.from(S).delete().eq('id', id);
+        },
+
         async deleteMatching(item) {
             const { data } = await supabase.from(S)
                 .delete()

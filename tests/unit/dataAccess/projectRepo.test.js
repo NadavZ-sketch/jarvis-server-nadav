@@ -42,4 +42,27 @@ describe('projectRepo', () => {
         expect(chain.is).toHaveBeenCalledWith('sprint_id', null);
         expect(chain.eq).toHaveBeenCalledWith('done', false);
     });
+
+    test('countsForProjects fetches task + milestone flags by id set', async () => {
+        const tasksChain = makeChain([{ project_id: 'p1', done: true }]);
+        const msChain = makeChain([{ project_id: 'p1', completed: false }]);
+        const supabase = { from: jest.fn().mockReturnValueOnce(tasksChain).mockReturnValueOnce(msChain) };
+        const { tasks, milestones } = await createProjectRepo(supabase).countsForProjects(['p1']);
+        expect(tasksChain.in).toHaveBeenCalledWith('project_id', ['p1']);
+        expect(tasks).toEqual([{ project_id: 'p1', done: true }]);
+        expect(milestones).toEqual([{ project_id: 'p1', completed: false }]);
+    });
+
+    test('updateMilestoneScoped constrains by milestone id + project', async () => {
+        const chain = makeChain({ id: 'm1' });
+        await createProjectRepo({ from: () => chain }).updateMilestoneScoped('m1', 'p1', { completed: true });
+        expect(chain.update).toHaveBeenCalledWith({ completed: true });
+        expect(chain.eq).toHaveBeenCalledWith('id', 'm1');
+        expect(chain.eq).toHaveBeenCalledWith('project_id', 'p1');
+    });
+
+    test('getById returns a single row or null', async () => {
+        expect(await createProjectRepo({ from: () => makeChain({ id: 'p1' }) }).getById('p1')).toEqual({ id: 'p1' });
+        expect(await createProjectRepo({ from: () => makeChain(null) }).getById('x')).toBeNull();
+    });
 });

@@ -2106,12 +2106,8 @@ app.get('/auth/google/callback', async (req, res) => {
 
 app.get('/contacts', requirePolicy('contacts.read', {}), async (_req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('contacts')
-            .select('*')
-            .order('name', { ascending: true });
-        if (error) throw error;
-        res.json({ contacts: data || [] });
+        const contacts = await repos.contacts.listByName();
+        res.json({ contacts });
     } catch (err) {
         console.error('GET /contacts error:', err.message);
         res.status(500).json({ contacts: [] });
@@ -2120,7 +2116,7 @@ app.get('/contacts', requirePolicy('contacts.read', {}), async (_req, res) => {
 
 app.delete('/contacts/:id', requirePolicy('contacts.delete', { sensitive: true, irreversible: true }), async (req, res) => {
     try {
-        const { error } = await supabase.from('contacts').delete().eq('id', req.params.id);
+        const { error } = await repos.contacts.removeById(req.params.id);
         if (error) throw error;
         res.json({ ok: true });
     } catch (err) {
@@ -3644,8 +3640,7 @@ app.post('/contacts', requirePolicy('contacts.create', {}), async (req, res) => 
         const row = { name };
         if (phone) row.phone = phone;
         if (email) row.email = email;
-        const { data, error } = await supabase
-            .from('contacts').insert([row]).select().single();
+        const { data, error } = await repos.contacts.create(row);
         if (error) throw error;
         res.json({ contact: data });
     } catch (err) {
@@ -3664,8 +3659,7 @@ app.put('/contacts/:id', requirePolicy('contacts.update', {}), async (req, res) 
         if (email !== undefined) updates.email = email;
         if (Object.keys(updates).length === 0)
             return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await supabase
-            .from('contacts').update(updates).eq('id', req.params.id).select().single();
+        const { data, error } = await repos.contacts.updateById(req.params.id, updates);
         if (error) throw error;
         res.json({ contact: data });
     } catch (err) {

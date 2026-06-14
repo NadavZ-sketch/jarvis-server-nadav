@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../main.dart' show JC;
 import '../app_settings.dart';
 import '../widgets/productivity/productivity_fab.dart';
-import 'today_tab.dart';
 import 'tasks_screen.dart';
 import 'reminders_screen.dart';
 import 'calendar_screen.dart';
@@ -38,7 +37,6 @@ class _ProductivityScreenState extends State<ProductivityScreen>
   final ValueNotifier<int> _addReminderNotifier = ValueNotifier<int>(0);
 
   static const _tabs = [
-    _TabDef('היום', Icons.wb_sunny_rounded, Icons.wb_sunny_outlined),
     _TabDef('משימות', Icons.check_circle_rounded,
         Icons.check_circle_outline_rounded),
     _TabDef('תזכורות', Icons.notifications_rounded,
@@ -50,7 +48,7 @@ class _ProductivityScreenState extends State<ProductivityScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging ||
           _tabController.index != _currentTab) {
@@ -82,7 +80,7 @@ class _ProductivityScreenState extends State<ProductivityScreen>
 
   void _showAddEvent() {
     // Navigate to Calendar tab — it owns event creation via its own FAB
-    _tabController.animateTo(3);
+    _tabController.animateTo(2);
   }
 
   // ─── Build ────────────────────────────────────────────────────────────────
@@ -187,12 +185,6 @@ class _ProductivityScreenState extends State<ProductivityScreen>
       body: TabBarView(
         controller: _tabController,
         children: [
-          TodayTab(
-            settings: widget.settings,
-            onGoToTasks: () => _tabController.animateTo(1),
-            onGoToReminders: () => _tabController.animateTo(2),
-            onGoToCalendar: () => _tabController.animateTo(3),
-          ),
           TasksScreen(
             settings: widget.settings,
             onCountUpdate: widget.onTasksCountUpdate,

@@ -100,7 +100,7 @@ class _MainShellState extends State<MainShell> {
       return;
     }
     // tasks/reminders live inside the Productivity tab (index 2).
-    final subTab = target == 'reminders' ? 2 : 1;
+    final subTab = target == 'reminders' ? 1 : 0;
     _productivityTab.value = subTab;
     HapticFeedback.selectionClick();
     setState(() => _selectedIndex = 2);

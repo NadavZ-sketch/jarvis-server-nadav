@@ -5351,7 +5351,7 @@ if (require.main === module) {
         pinecone.ensureInit().then(() => pinecone.syncFromSupabase(supabase)).catch(() => {});
         // Init Obsidian bidirectional sync if vault path is configured
         if (process.env.OBSIDIAN_VAULT_PATH) {
-            obsidianSync.initSync({ vaultPath: process.env.OBSIDIAN_VAULT_PATH, supabase })
+            obsidianSync.initSync({ vaultPath: process.env.OBSIDIAN_VAULT_PATH, repos })
                 .then(() => obsidianSync.fullSyncFromDb())
                 .catch(err => console.warn('[ObsidianSync] startup init failed:', err.message));
         }

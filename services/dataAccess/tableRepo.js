@@ -22,6 +22,13 @@ function createTableRepo(supabase, table) {
             const { data } = await supabase.from(table).select('*').ilike(column, `%${sanitizeLike(q)}%`);
             return data || [];
         },
+        // Arbitrary column selection with optional ascending order (swallows errors).
+        async select(columns = '*', order = null) {
+            let q = supabase.from(table).select(columns);
+            if (order) q = q.order(order, { ascending: true });
+            const { data } = await q;
+            return data || [];
+        },
         async insert(row) {
             return supabase.from(table).insert([row]).select().single();
         },

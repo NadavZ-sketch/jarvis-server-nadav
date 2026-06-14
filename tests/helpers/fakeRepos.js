@@ -150,6 +150,7 @@ function makeContactRepo(opts = {}) {
     const firstRow = rows[0] || { id: 1 };
     return {
         listByName:  jest.fn(async () => rows),
+        searchByName: jest.fn(async () => rows),
         create:      jest.fn(async () => createResult || { data: firstRow, error: null }),
         updateById:  jest.fn(async () => updateResult || { data: firstRow, error: null }),
         removeById:  jest.fn(async () => removeResult || { error: null }),

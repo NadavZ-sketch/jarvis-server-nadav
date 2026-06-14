@@ -95,7 +95,8 @@ async function dispatchSubTask(intent, message, supabase, useLocal, settings, ch
             }
             case 'messaging': {
                 const { runMessagingAgent } = require('./messagingAgent');
-                return await runMessagingAgent(message, supabase, useLocal);
+                const { createRepos } = require('../services/dataAccess');
+                return await runMessagingAgent(message, createRepos(supabase), useLocal);
             }
             default:
                 return null;

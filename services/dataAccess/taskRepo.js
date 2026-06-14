@@ -99,6 +99,16 @@ function createTaskRepo(supabase) {
             return data || [];
         },
 
+        // Open tasks (oldest first) for the proactive-nudge engine.
+        async openForNudge(limit = 50) {
+            const { data } = await supabase.from(T)
+                .select('content, priority, due_date, created_at')
+                .eq('done', false)
+                .order('created_at', { ascending: true })
+                .limit(limit);
+            return data || [];
+        },
+
         // ── writes ─────────────────────────────────────────────────────────
         // Insert that tolerates optional columns missing from the schema: on a
         // category/recurrence column error it retries with those dropped.

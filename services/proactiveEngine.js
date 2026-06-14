@@ -54,17 +54,12 @@ function markNudged(chatId) {
     if (chatId) _lastNudgeAt.set(chatId, Date.now());
 }
 
-async function computeProactiveSuggestion(supabase, userMessage) {
+async function computeProactiveSuggestion(repos, userMessage) {
     // Don't interrupt rest/leisure conversations with task reminders.
     if (isNonWorkContext(userMessage)) return null;
 
     try {
-        const { data } = await supabase
-            .from('tasks')
-            .select('content, priority, due_date, created_at')
-            .eq('done', false)
-            .order('created_at', { ascending: true })
-            .limit(50);
+        const data = await repos.tasks.openForNudge(50);
 
         const open = Array.isArray(data) ? data : [];
         if (open.length === 0) return null;

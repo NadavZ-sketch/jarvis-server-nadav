@@ -68,6 +68,21 @@ function createMemoryRepo(supabase) {
             return data || [];
         },
 
+        // Expired memories of a scope (older than cutoff); throws on error.
+        async expiredByScope(scope, cutoffISO, limit = 500) {
+            const { data, error } = await supabase.from(M)
+                .select('id, content')
+                .eq('scope', scope)
+                .lt('created_at', cutoffISO)
+                .limit(limit);
+            if (error) throw error;
+            return data || [];
+        },
+
+        async deleteMany(ids) {
+            return supabase.from(M).delete().in('id', ids);
+        },
+
         // Insert one memory, returning [{ id }] so the caller can embed it.
         async insert(row) {
             const { data } = await supabase.from(M).insert([row]).select('id').limit(1);

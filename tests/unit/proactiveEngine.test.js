@@ -1,14 +1,9 @@
 'use strict';
 const { computeProactiveSuggestion, shouldNudgeInline, markNudged } = require('../../services/proactiveEngine');
 
-function mockSupabase(tasks) {
-    const chain = {
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockResolvedValue({ data: tasks, error: null }),
-    };
-    return { from: jest.fn().mockReturnValue(chain) };
+// repos whose tasks.openForNudge yields the given open tasks.
+function reposWith(tasks) {
+    return { tasks: { openForNudge: jest.fn().mockResolvedValue(tasks) } };
 }
 
 function isoDaysAgo(n) {
@@ -21,11 +16,11 @@ function dateOffset(days) {
 
 describe('computeProactiveSuggestion', () => {
     test('returns null when there are no open tasks', async () => {
-        expect(await computeProactiveSuggestion(mockSupabase([]))).toBeNull();
+        expect(await computeProactiveSuggestion(reposWith([]))).toBeNull();
     });
 
     test('overdue task yields an overdue suggestion', async () => {
-        const r = await computeProactiveSuggestion(mockSupabase([
+        const r = await computeProactiveSuggestion(reposWith([
             { content: 'להגיש דוח', priority: 'medium', due_date: dateOffset(-3), created_at: isoDaysAgo(5) },
         ]));
         expect(r.type).toBe('overdue');
@@ -33,7 +28,7 @@ describe('computeProactiveSuggestion', () => {
     });
 
     test('stale high-priority task yields stale_high', async () => {
-        const r = await computeProactiveSuggestion(mockSupabase([
+        const r = await computeProactiveSuggestion(reposWith([
             { content: 'משימה דחופה', priority: 'high', due_date: null, created_at: isoDaysAgo(5) },
         ]));
         expect(r.type).toBe('stale_high');
@@ -43,34 +38,34 @@ describe('computeProactiveSuggestion', () => {
         const tasks = Array.from({ length: 6 }, (_, i) => ({
             content: `t${i}`, priority: 'low', due_date: null, created_at: isoDaysAgo(0),
         }));
-        const r = await computeProactiveSuggestion(mockSupabase(tasks));
+        const r = await computeProactiveSuggestion(reposWith(tasks));
         expect(r).toBeNull();
     });
 
     test('returns null on query error', async () => {
-        const bad = { from: () => ({ select: () => { throw new Error('db'); } }) };
+        const bad = { tasks: { openForNudge: () => { throw new Error('db'); } } };
         expect(await computeProactiveSuggestion(bad)).toBeNull();
     });
 
     test('returns null when user message is about going to sleep', async () => {
-        const supabase = mockSupabase([
+        const repos = reposWith([
             { content: 'משימה דחופה', priority: 'high', due_date: null, created_at: isoDaysAgo(5) },
         ]);
-        expect(await computeProactiveSuggestion(supabase, 'להתארגן לקראת שינה')).toBeNull();
+        expect(await computeProactiveSuggestion(repos, 'להתארגן לקראת שינה')).toBeNull();
     });
 
     test('returns null when user message is about resting', async () => {
-        const supabase = mockSupabase([
+        const repos = reposWith([
             { content: 'משימה', priority: 'medium', due_date: dateOffset(-1), created_at: isoDaysAgo(2) },
         ]);
-        expect(await computeProactiveSuggestion(supabase, 'אני רוצה לנוח קצת הערב')).toBeNull();
+        expect(await computeProactiveSuggestion(repos, 'אני רוצה לנוח קצת הערב')).toBeNull();
     });
 
     test('still suggests overdue when message is work-related', async () => {
-        const supabase = mockSupabase([
+        const repos = reposWith([
             { content: 'להגיש דוח', priority: 'medium', due_date: dateOffset(-1), created_at: isoDaysAgo(3) },
         ]);
-        const r = await computeProactiveSuggestion(supabase, 'מה יש לי לעשות היום?');
+        const r = await computeProactiveSuggestion(repos, 'מה יש לי לעשות היום?');
         expect(r.type).toBe('overdue');
     });
 });

@@ -3,35 +3,22 @@ jest.mock('../../services/pineconeMemory', () => ({ deleteMemory: jest.fn().mock
 
 const { cleanupExpiredMemories, SESSION_TTL_MS, RECENT_TTL_MS } = require('../../services/memoryCleanup');
 
-function makeSupabaseMock(rowsByScope, deleteError = null) {
+// repos whose memories.expiredByScope yields per-scope rows and deleteMany
+// captures the deleted id sets.
+function makeReposMock(rowsByScope, deleteError = null) {
     const calls = [];
-    const supabase = {
-        from: jest.fn(() => {
-            const chain = {
-                _scope: null,
-                _isDelete: false,
-                select() { return chain; },
-                eq(field, value) { if (field === 'scope') chain._scope = value; return chain; },
-                lt() { return chain; },
-                delete() { chain._isDelete = true; return chain; },
-                in(_field, ids) {
-                    calls.push({ scope: chain._scope, ids });
-                    return Promise.resolve({ error: deleteError });
-                },
-                // The select() chain awaits on .limit(); return the row data here.
-                limit() {
-                    return Promise.resolve({ data: rowsByScope[chain._scope] || [], error: null });
-                },
-            };
-            return chain;
-        }),
+    const repos = {
+        memories: {
+            expiredByScope: jest.fn(async (scope) => rowsByScope[scope] || []),
+            deleteMany: jest.fn(async (ids) => { calls.push({ ids }); return { error: deleteError }; }),
+        },
     };
-    supabase._calls = calls;
-    return supabase;
+    repos._calls = calls;
+    return repos;
 }
 
 describe('cleanupExpiredMemories', () => {
-    test('returns 0 deleted when no supabase client', async () => {
+    test('returns 0 deleted when no repos', async () => {
         const res = await cleanupExpiredMemories(null);
         expect(res.deleted).toBe(0);
     });
@@ -42,30 +29,26 @@ describe('cleanupExpiredMemories', () => {
     });
 
     test('deletes expired session + recent rows and returns count', async () => {
-        const supabase = makeSupabaseMock({
+        const repos = makeReposMock({
             session: [{ id: 1 }, { id: 2 }],
             recent:  [{ id: 3 }],
         });
-        const res = await cleanupExpiredMemories(supabase);
+        const res = await cleanupExpiredMemories(repos);
         expect(res.deleted).toBe(3);
-        // Two delete calls were issued (one per non-empty scope) with the right ids.
-        const allDeletedIds = supabase._calls.flatMap(c => c.ids).sort();
+        const allDeletedIds = repos._calls.flatMap(c => c.ids).sort();
         expect(allDeletedIds).toEqual([1, 2, 3]);
     });
 
     test('no rows → no delete attempted', async () => {
-        const supabase = makeSupabaseMock({ session: [], recent: [] });
-        const res = await cleanupExpiredMemories(supabase);
+        const repos = makeReposMock({ session: [], recent: [] });
+        const res = await cleanupExpiredMemories(repos);
         expect(res.deleted).toBe(0);
-        expect(supabase._calls.length).toBe(0);
+        expect(repos._calls.length).toBe(0);
     });
 
     test('delete error is captured in errors[] without throwing', async () => {
-        const supabase = makeSupabaseMock(
-            { session: [{ id: 9 }], recent: [] },
-            { message: 'permission denied' },
-        );
-        const res = await cleanupExpiredMemories(supabase);
+        const repos = makeReposMock({ session: [{ id: 9 }], recent: [] }, { message: 'permission denied' });
+        const res = await cleanupExpiredMemories(repos);
         expect(res.deleted).toBe(0);
         expect(res.errors.some(e => /permission denied/.test(e))).toBe(true);
     });

@@ -40,6 +40,28 @@ function createReminderRepo(supabase) {
             return data || [];
         },
 
+        // Unfired reminders inside a day window [startISO, endISO) (briefing).
+        async inWindow(startISO, endISO) {
+            const { data } = await supabase.from(R)
+                .select('text, scheduled_time')
+                .eq('fired', false)
+                .gte('scheduled_time', startISO)
+                .lt('scheduled_time', endISO)
+                .order('scheduled_time', { ascending: true });
+            return data || [];
+        },
+
+        // Unfired reminders due before toISO (nudge); newest-first, limited.
+        async dueBefore(toISO, limit) {
+            const { data } = await supabase.from(R)
+                .select('id, text, scheduled_time')
+                .eq('fired', false)
+                .lte('scheduled_time', toISO)
+                .order('scheduled_time', { ascending: true })
+                .limit(limit);
+            return data || [];
+        },
+
         // Unfired reminders inside [startISO, endISO) — used by GET /tasks/today,
         // which ignores query errors (returns []), so this read swallows too.
         async dueWindow(startISO, endISO) {

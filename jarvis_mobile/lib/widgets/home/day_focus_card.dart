@@ -155,7 +155,7 @@ class _DayTimeline extends StatelessWidget {
 
   static const int _startHour = 6;
   static const int _endHour = 23;
-  static const double _totalHours = _endHour - _startHour;
+  static const double _totalHours = _endHour - _startHour + 0.0;
 
   List<_TimelineItem> _items() {
     final result = <_TimelineItem>[];

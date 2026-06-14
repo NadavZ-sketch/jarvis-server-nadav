@@ -50,6 +50,15 @@ function createTaskRepo(supabase) {
             return data || [];
         },
 
+        // done + created_at for tasks since a cutoff (analytics series).
+        async doneCreatedSince(sinceISO, limit) {
+            const { data } = await supabase.from(T)
+                .select('done, created_at')
+                .gte('created_at', sinceISO)
+                .limit(limit);
+            return data || [];
+        },
+
         // Top open tasks by priority (briefing / nudge).
         async topByPriority(limit) {
             const { data } = await supabase.from(T)

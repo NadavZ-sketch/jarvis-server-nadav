@@ -47,6 +47,22 @@ function createStatsRepo(supabase) {
                 shopping:  { total: getCount(shoppingTotal),  checked: getCount(shoppingChecked) },
             };
         },
+
+        // Counts for GET /today-message (pending / yesterday completion / active reminders).
+        async todayMessageCounts(yesterdayStartISO, todayStartISO) {
+            const [pending, doneY, totalY, reminders] = await Promise.all([
+                supabase.from('tasks').select('id', HEAD).eq('done', false),
+                supabase.from('tasks').select('id', HEAD).eq('done', true).gte('created_at', yesterdayStartISO).lt('created_at', todayStartISO),
+                supabase.from('tasks').select('id', HEAD).gte('created_at', yesterdayStartISO).lt('created_at', todayStartISO),
+                supabase.from('reminders').select('id', HEAD).eq('fired', false),
+            ]);
+            return {
+                pending:        pending.count        ?? 0,
+                doneYesterday:  doneY.count          ?? 0,
+                totalYesterday: totalY.count         ?? 0,
+                reminders:      reminders.count      ?? 0,
+            };
+        },
     };
 }
 

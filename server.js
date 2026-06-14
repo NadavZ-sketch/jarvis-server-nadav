@@ -1550,13 +1550,13 @@ async function computeAnalytics(days) {
     const zero = () => Object.fromEntries(axis.map(k => [k, 0]));
 
     const [chatRes, tasksRes, remindersRes, metricsRes, eventsAgg] = await Promise.allSettled([
-        supabase.from('chat_history').select('role, created_at').gte('created_at', sinceISO).limit(20000),
-        supabase.from('tasks').select('done, created_at').gte('created_at', sinceISO).limit(20000),
-        supabase.from('reminders').select('created_at').gte('created_at', sinceISO).limit(20000),
-        supabase.from('agent_metrics').select('agent, ms, intent_mode, created_at').gte('created_at', sinceISO).limit(20000),
+        repos.chat.rolesSince(sinceISO, 20000),
+        repos.tasks.doneCreatedSince(sinceISO, 20000),
+        repos.reminders.createdSince(sinceISO, 20000),
+        repos.metrics.recentSince(sinceISO, 20000),
         feedbackStore.aggregateEvents(repos, { sinceDays: days, limit: 5000 }),
     ]);
-    const rows = (r) => (r.status === 'fulfilled' && r.value && !r.value.error && Array.isArray(r.value.data)) ? r.value.data : [];
+    const rows = (r) => (r.status === 'fulfilled' && Array.isArray(r.value)) ? r.value : [];
     const seriesFrom = (obj) => axis.map(k => obj[k] || 0);
 
     // ── Personal: chat volume per day + active-hour histogram (Jerusalem) ──
@@ -1741,22 +1741,8 @@ app.get('/today-message', async (_req, res) => {
         const todayStart     = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
         const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
 
-        const [pendingRes, doneYesterdayRes, totalYesterdayRes, remindersRes] = await Promise.all([
-            supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', false),
-            supabase.from('tasks').select('id', { count: 'exact', head: true })
-                .eq('done', true)
-                .gte('created_at', yesterdayStart.toISOString())
-                .lt('created_at', todayStart.toISOString()),
-            supabase.from('tasks').select('id', { count: 'exact', head: true })
-                .gte('created_at', yesterdayStart.toISOString())
-                .lt('created_at', todayStart.toISOString()),
-            supabase.from('reminders').select('id', { count: 'exact', head: true }).eq('fired', false),
-        ]);
-
-        const pending        = pendingRes.count       ?? 0;
-        const doneYesterday  = doneYesterdayRes.count ?? 0;
-        const totalYesterday = totalYesterdayRes.count ?? 0;
-        const reminders      = remindersRes.count     ?? 0;
+        const { pending, doneYesterday, totalYesterday, reminders } =
+            await repos.stats.todayMessageCounts(yesterdayStart.toISOString(), todayStart.toISOString());
         const yesterdayPct   = totalYesterday > 0 ? Math.round(doneYesterday / totalYesterday * 100) : null;
 
         const hour = (now.getUTCHours() + 3) % 24; // Jerusalem time
@@ -3890,7 +3876,7 @@ if (!isTestEnv) scheduledJob('morning_briefing', '0 7 * * *', async () => {
 
 // Evening nudge — 21:00 Jerusalem (only when tasks remain open)
 if (!isTestEnv) scheduledJob('evening_nudge', '0 21 * * *', async () => {
-    const { data: tasks } = await supabase.from('tasks').select('id').eq('done', false);
+    const tasks = await repos.tasks.listOpenByCreated();
     if (!tasks || tasks.length === 0) return;
     await enqueueNotification(`יש לך ${tasks.length} משימות פתוחות. לילה טוב ✨`, { title: '🌙 ג׳רביס', category: 'proactive' });
     console.log('🌙 Evening nudge queued');
@@ -3920,15 +3906,14 @@ if (!isTestEnv) scheduledJob('inactive_agent_check', '0 9 * * *', async () => {
     if (inactive.length === 0) return;
     const names = inactive.map(r => r.agent).join(', ');
     console.log(`⚠️ Inactive agents (7+ days): ${names}`);
-    await supabase.from('agent_metrics_alerts').upsert(
+    await repos.metrics.upsertAlerts(
         inactive.map(r => ({
             agent: r.agent,
             alert_type: 'inactive',
             last_called_at: r.lastCalledAt,
             checked_at: new Date().toISOString(),
         })),
-        { onConflict: 'agent' }
-    ).catch(() => {}); // table may not exist; best-effort
+    ).then(null, () => {}); // table may not exist; best-effort
 }, { timezone: 'Asia/Jerusalem' });
 
 // Daily deep-clean at 03:30 — re-run the same cleanupExpiredMemories that runs

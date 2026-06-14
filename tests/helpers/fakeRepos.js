@@ -27,6 +27,7 @@ function makeTaskRepo(opts = {}) {
     return {
         listAll:          jest.fn(async () => rows),
         allBasic:         jest.fn(async () => rows),
+        doneCreatedSince: jest.fn(async () => rows),
         topByPriority:    jest.fn(async () => rows),
         datedAll:         jest.fn(async () => rows),
         upcomingDated:    jest.fn(async () => rows),
@@ -62,6 +63,7 @@ function makeReminderRepo(opts = {}) {
         dueBefore:    jest.fn(async () => rows),
         allOrdered:   jest.fn(async () => rows),
         upcomingUnfired: jest.fn(async () => rows),
+        createdSince: jest.fn(async () => rows),
         dueNow:       jest.fn(async () => rows),
         rescheduleRecurring: jest.fn(async () => ({ error: null })),
         markFired:    jest.fn(async () => ({ error: null })),
@@ -232,6 +234,7 @@ function makeMetricsRepo(opts = {}) {
     const { rows = [] } = opts;
     return {
         insertBatch: jest.fn(async () => ({ error: null })),
+        upsertAlerts: jest.fn(async () => ({ error: null })),
         recentSince: jest.fn(async () => rows),
     };
 }
@@ -265,6 +268,7 @@ function makeChatRepo(opts = {}) {
         countUserSince:  jest.fn(async () => count),
         countSinceTimestamp: jest.fn(async () => count),
         recentUserContent: jest.fn(async () => rows),
+        rolesSince:      jest.fn(async () => rows),
     };
 }
 
@@ -321,7 +325,7 @@ function makeRepos(tableData = {}) {
             recentScores: jest.fn(async () => tableData.e2e_reports || []),
             recentFailures: jest.fn(async () => tableData.e2e_reports || []),
         },
-        stats: { dashboardCounts: jest.fn(async () => ({
+        stats: { todayMessageCounts: jest.fn(async () => ({ pending: 0, doneYesterday: 0, totalYesterday: 0, reminders: 0 })), dashboardCounts: jest.fn(async () => ({
             chat: { total: 0, today: 0 },
             tasks: { total: 0, done: 0, pending: 0, byCategory: {} },
             reminders: { total: 0, active: 0 },

@@ -40,6 +40,15 @@ function createReminderRepo(supabase) {
             return data || [];
         },
 
+        // created_at for reminders since a cutoff (analytics series).
+        async createdSince(sinceISO, limit) {
+            const { data } = await supabase.from(R)
+                .select('created_at')
+                .gte('created_at', sinceISO)
+                .limit(limit);
+            return data || [];
+        },
+
         // All reminders, soonest first (calendar view — includes fired).
         async allOrdered() {
             const { data } = await supabase.from(R)

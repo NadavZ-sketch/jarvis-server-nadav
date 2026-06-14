@@ -1,44 +1,18 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../main.dart' show JC;
 import '../../screens/home/home_controller.dart';
 import '../../screens/home/home_helpers.dart';
+import '../markdown_lite.dart';
 
-/// Time-aware greeting hero with a live clock + Hebrew date. Prefers the
-/// server's per-slot [heroCard] text from /dashboard-context, falling back to a
-/// local greeting + /today-message.
-class HeroCard extends StatefulWidget {
+/// Greeting hero card. Shows: greeting + date line + optional briefing section.
+/// Briefing is expanded when content is available, collapsed when empty.
+/// Clock removed — no Timer.periodic, pure StatelessWidget.
+class HeroCard extends StatelessWidget {
   final HomeController c;
   const HeroCard(this.c, {super.key});
 
   @override
-  State<HeroCard> createState() => _HeroCardState();
-}
-
-class _HeroCardState extends State<HeroCard> {
-  Timer? _clock;
-  DateTime _now = DateTime.now();
-
-  @override
-  void initState() {
-    super.initState();
-    _clock = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
-    });
-  }
-
-  @override
-  void dispose() {
-    _clock?.cancel();
-    super.dispose();
-  }
-
-  String get _clockStr =>
-      '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}:${_now.second.toString().padLeft(2, '0')}';
-
-  @override
   Widget build(BuildContext context) {
-    final c = widget.c;
     final greeting = dynamicGreeting(c.settings.userName);
     final hero = c.dashboardContext?['heroCard'] as Map<String, dynamic>?;
     final heroText = (hero?['text'] as String?)?.trim();
@@ -47,8 +21,9 @@ class _HeroCardState extends State<HeroCard> {
         : (c.todayMessage.isNotEmpty ? c.todayMessage : todayDateLine());
 
     final todayRemCount = c.remindersForOffset(0).length;
-
+    final hasBriefing = c.briefing != null && c.briefing!.trim().isNotEmpty;
     final accent = JC.blue500;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -80,6 +55,7 @@ class _HeroCardState extends State<HeroCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Greeting row ──────────────────────────────────────────────────
           Row(
             children: [
               Text(greetingEmoji(), style: const TextStyle(fontSize: 28)),
@@ -96,7 +72,7 @@ class _HeroCardState extends State<HeroCard> {
                           fontFamily: 'Heebo',
                         )),
                     const SizedBox(height: 2),
-                    Text(subtitle,
+                    Text(todayDateLine(),
                         style: TextStyle(
                           color: JC.textSecondary,
                           fontSize: 12.5,
@@ -108,49 +84,30 @@ class _HeroCardState extends State<HeroCard> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.22),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: JC.blue500.withValues(alpha: 0.15),
-                width: 0.6,
-              ),
-            ),
-            child: Row(children: [
-              Icon(Icons.schedule_rounded, color: JC.blue400, size: 16),
-              const SizedBox(width: 8),
-              Text(_clockStr,
-                  style: TextStyle(
-                    color: JC.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    fontFamily: 'Heebo',
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  )),
-              const Spacer(),
-              Text(todayDateLine(),
-                  style: TextStyle(
-                    color: JC.textSecondary,
-                    fontSize: 12.5,
-                    fontFamily: 'Heebo',
-                    fontWeight: FontWeight.w600,
-                  )),
-            ]),
-          ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
+          // ── Stats chips ───────────────────────────────────────────────────
           Wrap(
             spacing: 8,
             runSpacing: 6,
             children: [
-              _chip('${c.openTasks} משימות פתוחות', JC.blue400),
+              _chip(subtitle, JC.blue400),
               if (c.highPriorityCount > 0)
                 _chip('${c.highPriorityCount} דחופות', const Color(0xFFEF4444)),
               if (todayRemCount > 0)
                 _chip('$todayRemCount תזכורות היום', const Color(0xFFF59E0B)),
             ],
+          ),
+          // ── Briefing section (AnimatedSize) ───────────────────────────────
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            child: hasBriefing || c.briefingLoading
+                ? _BriefingSection(
+                    text: c.briefing,
+                    loading: c.briefingLoading,
+                    onRefresh: () => c.refreshBriefing(),
+                  )
+                : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -180,6 +137,63 @@ class _HeroCardState extends State<HeroCard> {
               fontWeight: FontWeight.w600,
             )),
       ]),
+    );
+  }
+}
+
+class _BriefingSection extends StatelessWidget {
+  final String? text;
+  final bool loading;
+  final VoidCallback onRefresh;
+  const _BriefingSection({required this.text, required this.loading, required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.18),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: JC.blue500.withValues(alpha: 0.15),
+            width: 0.6,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: loading
+                  ? Text('מכין סיכום יומי...',
+                      textDirection: TextDirection.rtl,
+                      style: TextStyle(
+                          color: JC.textMuted,
+                          fontSize: 12,
+                          fontFamily: 'Heebo'))
+                  : MarkdownLite(
+                      text: text ?? '',
+                      textDirection: TextDirection.rtl,
+                      baseStyle: TextStyle(
+                        color: JC.textSecondary,
+                        fontSize: 12,
+                        height: 1.6,
+                        fontFamily: 'Heebo',
+                      ),
+                    ),
+            ),
+            if (!loading)
+              GestureDetector(
+                onTap: onRefresh,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Icon(Icons.refresh_rounded, size: 14, color: JC.textMuted),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -13,11 +13,11 @@
 const CRITICAL_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const _lastCriticalPushAt = new Map(); // fingerprint → timestamp
 
-let _supabase = null;
+let _repos = null;
 let _pushService = null;
 
-function init(supabaseClient, pushService) {
-    _supabase = supabaseClient;
+function init(repos, pushService) {
+    _repos = repos;
     _pushService = pushService;
 }
 
@@ -46,16 +46,16 @@ async function logEvent(level, source, message, meta = {}) {
     consoleFn(`[${level.toUpperCase()}] [${source}] ${message}`, meta && Object.keys(meta).length ? meta : '');
 
     // Persist to Supabase (best-effort)
-    if (_supabase) {
+    if (_repos) {
         try {
-            await _supabase.from('system_events').insert([{
+            await _repos.table('system_events').insert({
                 level,
                 source,
                 message: String(message).slice(0, 2000),
                 meta: meta && Object.keys(meta).length ? meta : null,
                 fingerprint: fp,
                 acked: false,
-            }]);
+            });
         } catch (_) { /* never block on logging */ }
     }
 

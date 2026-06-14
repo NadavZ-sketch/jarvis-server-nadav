@@ -1,11 +1,10 @@
 'use strict';
 
+// repos whose table('system_events').insert is a recorded spy.
 function makeMockSupabase() {
-    const chain = {
-        insert: jest.fn().mockResolvedValue({ data: null, error: null }),
-        then(fn) { return Promise.resolve({ data: null, error: null }).then(fn); },
-    };
-    return { from: jest.fn(() => chain), _chain: chain };
+    const insert = jest.fn().mockResolvedValue({ data: null, error: null });
+    const tableRepo = { insert };
+    return { table: jest.fn(() => tableRepo), _chain: { insert } };
 }
 
 describe('systemLog', () => {
@@ -23,23 +22,23 @@ describe('systemLog', () => {
 
     test('logEvent inserts into system_events', async () => {
         await systemLog.logEvent('error', 'test:source', 'something broke', { detail: 'x' });
-        expect(mockSupabase.from).toHaveBeenCalledWith('system_events');
-        expect(mockSupabase._chain.insert).toHaveBeenCalledWith([
+        expect(mockSupabase.table).toHaveBeenCalledWith('system_events');
+        expect(mockSupabase._chain.insert).toHaveBeenCalledWith(
             expect.objectContaining({
                 level: 'error',
                 source: 'test:source',
                 message: 'something broke',
                 acked: false,
             }),
-        ]);
+        );
     });
 
     test('logError extracts message and stack from Error', async () => {
         const err = new Error('oops');
         await systemLog.logError('agent:chatAgent', err);
-        expect(mockSupabase._chain.insert).toHaveBeenCalledWith([
+        expect(mockSupabase._chain.insert).toHaveBeenCalledWith(
             expect.objectContaining({ level: 'error', message: 'oops' }),
-        ]);
+        );
     });
 
     test('critical level triggers push notification', async () => {

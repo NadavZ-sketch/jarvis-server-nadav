@@ -134,6 +134,17 @@ function makeProjectRepo(opts = {}) {
     };
 }
 
+function makeSubtaskRepo(opts = {}) {
+    const { rows = [], addResult, updateResult, removeResult } = opts;
+    const firstRow = rows[0] || { id: 1 };
+    return {
+        listForParent: jest.fn(async () => rows),
+        add:           jest.fn(async () => addResult    || { data: firstRow, error: null }),
+        updateScoped:  jest.fn(async () => updateResult || { data: firstRow, error: null }),
+        removeScoped:  jest.fn(async () => removeResult || { error: null }),
+    };
+}
+
 function makeTableRepo(rows = []) {
     return {
         all:      jest.fn(async () => rows),
@@ -158,10 +169,11 @@ function makeRepos(tableData = {}) {
             doneDates: (tableData.habit_logs || []).map(l => l.date),
         }),
         projects: makeProjectRepo({ projects: tableData.projects || [] }),
+        subtasks: makeSubtaskRepo({ rows: tableData.subtasks || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeTableRepo };

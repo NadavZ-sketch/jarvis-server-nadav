@@ -5,8 +5,8 @@ const { callGemma4 } = require('../agents/models');
 
 function createTasksRouter(deps) {
   const { supabase } = deps;
-  // Controllers cross the data-access seam; the inline route handlers below
-  // (today / suggest / subtasks) still query Supabase directly for now.
+  // Everything crosses the data-access seam; the router builds the repos bundle
+  // from the injected client when one isn't passed in.
   const repos = deps.repos || createRepos(supabase);
   const router = express.Router();
   const controller = createTasksController({ ...deps, repos });
@@ -18,22 +18,12 @@ function createTasksRouter(deps) {
       const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
       const todayEnd   = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
-      const [tasksRes, remindersRes] = await Promise.all([
-        supabase
-          .from('tasks')
-          .select('id, content, done, due_date, priority, created_at')
-          .eq('done', false)
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('reminders')
-          .select('id, text, scheduled_time, fired, recurrence')
-          .eq('fired', false)
-          .gte('scheduled_time', todayStart.toISOString())
-          .lt('scheduled_time',  todayEnd.toISOString())
-          .order('scheduled_time', { ascending: true }),
+      const [taskRows, reminderRows] = await Promise.all([
+        repos.tasks.listOpenByCreated(),
+        repos.reminders.dueWindow(todayStart.toISOString(), todayEnd.toISOString()),
       ]);
 
-      const taskItems = (tasksRes.data || []).map(t => {
+      const taskItems = (taskRows || []).map(t => {
         let section = 'no_due_date';
         if (t.due_date) {
           const due = new Date(t.due_date);
@@ -52,7 +42,7 @@ function createTasksRouter(deps) {
         };
       }).filter(Boolean);
 
-      const reminderItems = (remindersRes.data || []).map(r => ({
+      const reminderItems = (reminderRows || []).map(r => ({
         id:         `reminder-${r.id}`,
         sourceId:   r.id,
         type:       'reminder',
@@ -73,15 +63,14 @@ function createTasksRouter(deps) {
   // ─── POST /tasks/:id/suggest — AI sub-task suggestions ────────────────────
   router.post('/:id/suggest', async (req, res) => {
     try {
-      const [taskRes, otherRes] = await Promise.all([
-        supabase.from('tasks').select('content, priority').eq('id', req.params.id).single(),
-        supabase.from('tasks').select('content').eq('done', false).neq('id', req.params.id).limit(8),
+      const [task, others] = await Promise.all([
+        repos.tasks.getBasic(req.params.id),
+        repos.tasks.openExcluding(req.params.id, 8),
       ]);
 
-      if (!taskRes.data) return res.status(404).json({ suggestions: [] });
+      if (!task) return res.status(404).json({ suggestions: [] });
 
-      const task       = taskRes.data;
-      const otherTasks = (otherRes.data || []).map(t => `- ${t.content}`).join('\n');
+      const otherTasks = (others || []).map(t => `- ${t.content}`).join('\n');
 
       const prompt = `אתה עוזר ניהול משימות. קיבלת משימה ועליך להציע תת-משימות קונקרטיות שיעזרו להשלים אותה.
 
@@ -114,13 +103,7 @@ ${otherTasks || 'אין'}
   // ─── Subtasks — a one-level checklist under a parent task ─────────────────
   router.get('/:id/subtasks', async (req, res) => {
     try {
-      const { data, error } = await supabase
-        .from('subtasks')
-        .select('*')
-        .eq('parent_task_id', req.params.id)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      res.json({ subtasks: data || [] });
+      res.json({ subtasks: await repos.subtasks.listForParent(req.params.id) });
     } catch (err) {
       console.error('GET /tasks/:id/subtasks error:', err.message);
       res.status(500).json({ subtasks: [] });
@@ -131,11 +114,7 @@ ${otherTasks || 'אין'}
     try {
       const { content } = req.body;
       if (!content) return res.status(400).json({ error: 'content required' });
-      const { data, error } = await supabase
-        .from('subtasks')
-        .insert([{ parent_task_id: req.params.id, content }])
-        .select()
-        .single();
+      const { data, error } = await repos.subtasks.add(req.params.id, content);
       if (error) throw error;
       res.json({ subtask: data });
     } catch (err) {
@@ -151,13 +130,7 @@ ${otherTasks || 'אין'}
       if (content !== undefined) updates.content = content;
       if (done    !== undefined) updates.done    = done;
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'no fields to update' });
-      const { data, error } = await supabase
-        .from('subtasks')
-        .update(updates)
-        .eq('id', req.params.subId)
-        .eq('parent_task_id', req.params.id)
-        .select()
-        .single();
+      const { data, error } = await repos.subtasks.updateScoped(req.params.subId, req.params.id, updates);
       if (error) throw error;
       res.json({ subtask: data });
     } catch (err) {
@@ -168,11 +141,7 @@ ${otherTasks || 'אין'}
 
   router.delete('/:id/subtasks/:subId', async (req, res) => {
     try {
-      const { error } = await supabase
-        .from('subtasks')
-        .delete()
-        .eq('id', req.params.subId)
-        .eq('parent_task_id', req.params.id);
+      const { error } = await repos.subtasks.removeScoped(req.params.subId, req.params.id);
       if (error) throw error;
       res.json({ ok: true });
     } catch (err) {

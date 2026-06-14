@@ -76,6 +76,29 @@ function createTaskRepo(supabase) {
             return data || [];
         },
 
+        // ── route-view reads (GET /tasks/today, POST /tasks/:id/suggest) ───────
+        async listOpenByCreated() {
+            const { data } = await supabase.from(T)
+                .select('id, content, done, due_date, priority, created_at')
+                .eq('done', false)
+                .order('created_at', { ascending: false });
+            return data || [];
+        },
+
+        async getBasic(id) {
+            const { data } = await supabase.from(T).select('content, priority').eq('id', id).single();
+            return data || null;
+        },
+
+        async openExcluding(id, limit) {
+            const { data } = await supabase.from(T)
+                .select('content')
+                .eq('done', false)
+                .neq('id', id)
+                .limit(limit);
+            return data || [];
+        },
+
         // ── writes ─────────────────────────────────────────────────────────
         // Insert that tolerates optional columns missing from the schema: on a
         // category/recurrence column error it retries with those dropped.

@@ -171,6 +171,18 @@ function makeSurveyRepo(opts = {}) {
     };
 }
 
+function makeProfileRepo(opts = {}) {
+    const { rows = [], updateResult, createResult, removeResult, latestError } = opts;
+    const firstRow = rows[0] || { id: 'default' };
+    return {
+        latest:            jest.fn(async () => { if (latestError) throw latestError; return rows; }),
+        update:            jest.fn(async () => updateResult || { data: firstRow, error: null }),
+        create:            jest.fn(async () => createResult || { data: firstRow, error: null }),
+        removeById:        jest.fn(async () => removeResult || { error: null }),
+        saveCalendarToken: jest.fn(async () => ({ error: null })),
+    };
+}
+
 function makeChatRepo(opts = {}) {
     const { rows = [], addResult } = opts;
     return {
@@ -208,10 +220,11 @@ function makeRepos(tableData = {}) {
         contacts: makeContactRepo({ rows: tableData.contacts || [] }),
         chat: makeChatRepo({ rows: tableData.chat_history || [] }),
         surveys: makeSurveyRepo({ rows: tableData.user_surveys || [] }),
+        profile: makeProfileRepo({ rows: tableData.user_profiles || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSurveyRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSurveyRepo, makeProfileRepo, makeTableRepo };

@@ -27,6 +27,7 @@ function makeTaskRepo(opts = {}) {
     return {
         listAll:          jest.fn(async () => rows),
         allBasic:         jest.fn(async () => rows),
+        topByPriority:    jest.fn(async () => rows),
         listWithSubtasks: jest.fn(async () => rows),
         listDueUpTo:      jest.fn(async () => rows),
         listOverdue:      jest.fn(async () => rows),
@@ -55,6 +56,8 @@ function makeReminderRepo(opts = {}) {
         listUpcoming: jest.fn(async () => rows),
         nextUpcoming: jest.fn(async () => rows),
         listUnfired:  jest.fn(async () => rows),
+        inWindow:     jest.fn(async () => rows),
+        dueBefore:    jest.fn(async () => rows),
         dueNow:       jest.fn(async () => rows),
         rescheduleRecurring: jest.fn(async () => ({ error: null })),
         markFired:    jest.fn(async () => ({ error: null })),

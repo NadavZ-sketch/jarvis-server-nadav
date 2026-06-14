@@ -28,6 +28,16 @@ function createTaskRepo(supabase) {
             return data || [];
         },
 
+        // Top open tasks by priority (briefing / nudge).
+        async topByPriority(limit) {
+            const { data } = await supabase.from(T)
+                .select('id, content, priority')
+                .eq('done', false)
+                .order('priority', { ascending: false })
+                .limit(limit);
+            return data || [];
+        },
+
         // tasks + embedded subtasks; falls back to a plain select when the
         // subtasks relation isn't present on this environment.
         async listWithSubtasks() {

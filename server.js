@@ -1906,12 +1906,9 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
         // ── Parallel data fetch ──────────────────────────────────────────────
         const threeHoursLater = new Date(nowJer.getTime() + 3 * 60 * 60 * 1000).toISOString();
 
-        const [tasksRes, remindersRes, weatherData, newsData] = await Promise.all([
-            supabase.from('tasks').select('id,content,priority').eq('done', false)
-                .order('priority', { ascending: false }).limit(6),
-            supabase.from('reminders').select('id,text,scheduled_time').eq('fired', false)
-                .lte('scheduled_time', threeHoursLater)
-                .order('scheduled_time', { ascending: true }).limit(6),
+        const [tasks, reminders, weatherData, newsData] = await Promise.all([
+            repos.tasks.topByPriority(6),
+            repos.reminders.dueBefore(threeHoursLater, 6),
             (async () => {
                 const city = req.query.city || settings.userProfile?.city || '';
                 const cacheKey = `dashboard:weather:${city || 'default'}`;
@@ -1936,9 +1933,6 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
                 } catch { return null; }
             })(),
         ]);
-
-        const tasks     = tasksRes.data     || [];
-        const reminders = remindersRes.data  || [];
 
         // ── Hero card (built locally each request — cheap, reflects live state) ─
         const { text: heroText, confidence } = _buildHeroCard(slot, tasks, reminders, settings);
@@ -3826,13 +3820,9 @@ async function buildMorningBriefing(city = '') {
     const dayStart = new Date(nowJer); dayStart.setHours(0, 0, 0, 0);
     const dayEnd   = new Date(nowJer); dayEnd.setHours(23, 59, 59, 999);
 
-    const [{ data: pendingTasks }, { data: todayReminders }, weatherData, newsData] = await Promise.all([
-        supabase.from('tasks').select('id, content, priority').eq('done', false)
-            .order('priority', { ascending: false }).limit(10),
-        supabase.from('reminders').select('text, scheduled_time').eq('fired', false)
-            .gte('scheduled_time', dayStart.toISOString())
-            .lt('scheduled_time', dayEnd.toISOString())
-            .order('scheduled_time', { ascending: true }),
+    const [pendingTasks, todayReminders, weatherData, newsData] = await Promise.all([
+        repos.tasks.topByPriority(10),
+        repos.reminders.inWindow(dayStart.toISOString(), dayEnd.toISOString()),
         (async () => { try { const { getWeatherSummary } = require('./services/weatherSource'); return await getWeatherSummary(city); } catch { return null; } })(),
         (async () => { try { const { getNewsSummary }    = require('./services/newsSource');    return await getNewsSummary();         } catch { return null; } })(),
     ]);

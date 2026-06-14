@@ -793,7 +793,7 @@ async function askJarvisHandler(req, res) {
                 const ask = userMessage.trim() || 'סכם את המסמך בנקודות עיקריות.';
                 userMessage = `המשתמש צירף מסמך PDF${truncNote}. תוכן המסמך:\n"""\n${doc.text}\n"""\n\nבהתבסס על המסמך בלבד, ${ask}`;
                 console.log(`📄 PDF attached: ${doc.pages || '?'} pages, ${doc.text.length} chars${truncNote}`);
-                feedbackStore.recordEvent(supabase, {
+                feedbackStore.recordEvent(repos, {
                     eventName: 'document_query',
                     value: 1,
                     metadata: { chatId: String(chatId), chars: doc.text.length, pages: doc.pages },
@@ -863,7 +863,7 @@ async function askJarvisHandler(req, res) {
                 intentMode = 'llm';
 
                 // Telemetry: record only ambiguous routing decisions.
-                feedbackStore.recordEvent(supabase, {
+                feedbackStore.recordEvent(repos, {
                     eventName: 'route_ambiguous',
                     value: 1,
                     metadata: {
@@ -1518,7 +1518,7 @@ app.post('/feedback', _rl(30), async (req, res) => {
         const lastRoute = routeTracker.getLastRoute(chatId);
         if (lastRoute && lastRoute.intent) metadata.routedIntent = lastRoute.intent;
 
-        feedbackStore.recordEvent(supabase, {
+        feedbackStore.recordEvent(repos, {
             userId: userId || 'default',
             eventName: signal === 'up' ? 'feedback_up' : 'feedback_down',
             value: feedbackStore.SIGNAL_VALUE[signal],
@@ -1526,7 +1526,7 @@ app.post('/feedback', _rl(30), async (req, res) => {
         }).catch(() => {});
         // A correction is a strong learning signal — log it separately too.
         if (metadata.correction) {
-            feedbackStore.recordEvent(supabase, {
+            feedbackStore.recordEvent(repos, {
                 userId: userId || 'default',
                 eventName: 'feedback_correction',
                 value: -1,
@@ -1547,7 +1547,7 @@ app.post('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
         const { event_type, event_name, payload, value, user_id } = req.body || {};
         const name = event_name || event_type;
         if (!name) return res.status(400).json({ error: 'event_type required' });
-        const r = await feedbackStore.recordEvent(supabase, {
+        const r = await feedbackStore.recordEvent(repos, {
             userId: user_id || 'default',
             eventName: name,
             value: Number.isFinite(value) ? value : 1,
@@ -1561,7 +1561,7 @@ app.post('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
 });
 
 app.get('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
-    const r = await feedbackStore.aggregateEvents(supabase, {
+    const r = await feedbackStore.aggregateEvents(repos, {
         userId: req.query.user_id || 'default',
         sinceDays: Math.min(Number(req.query.days) || 30, 90),
     });
@@ -1572,7 +1572,7 @@ app.get('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
 // "most-used first" tab order + the tab to spotlight. Deterministic, never fails.
 app.get('/control-center/layout', _rl(60), async (req, res) => {
     try {
-        const layout = await dashboardLearner.getDashboardLayout(supabase, {
+        const layout = await dashboardLearner.getDashboardLayout(repos, {
             userId: req.query.user_id || 'default',
             sinceDays: Math.min(Number(req.query.days) || 30, 90),
         });
@@ -1610,7 +1610,7 @@ async function computeAnalytics(days) {
         supabase.from('tasks').select('done, created_at').gte('created_at', sinceISO).limit(20000),
         supabase.from('reminders').select('created_at').gte('created_at', sinceISO).limit(20000),
         supabase.from('agent_metrics').select('agent, ms, intent_mode, created_at').gte('created_at', sinceISO).limit(20000),
-        feedbackStore.aggregateEvents(supabase, { sinceDays: days, limit: 5000 }),
+        feedbackStore.aggregateEvents(repos, { sinceDays: days, limit: 5000 }),
     ]);
     const rows = (r) => (r.status === 'fulfilled' && r.value && !r.value.error && Array.isArray(r.value.data)) ? r.value.data : [];
     const seriesFrom = (obj) => axis.map(k => obj[k] || 0);
@@ -3579,7 +3579,7 @@ async function streamJarvisHandler(req, res) {
             // one of the matched candidates; otherwise keep the best keyword guess.
             const _llmIntent = await classifyIntentWithLLM(userMessage);
             if (_routed.matches.includes(_llmIntent)) agentName = _llmIntent;
-            feedbackStore.recordEvent(supabase, {
+            feedbackStore.recordEvent(repos, {
                 eventName: 'route_ambiguous',
                 value: 1,
                 metadata: {
@@ -3753,7 +3753,7 @@ async function streamJarvisHandler(req, res) {
 
         // Voice telemetry: record session activity (fire-and-forget, never throws).
         if (voiceMode) {
-            feedbackStore.recordEvent(supabase, {
+            feedbackStore.recordEvent(repos, {
                 eventName: 'voice_turn',
                 value: 1,
                 metadata: { chatId: String(chatId), chars: fullAnswer.length },
@@ -4062,7 +4062,7 @@ if (!isTestEnv) scheduledJob('profile_learning', '45 3 * * *', async () => {
     const r = await profileLearner.learnUserProfile(repos, { getProfile: getUserProfile });
     if (r.updated) console.log('🧠 User profile auto-learned from behaviour');
     if (r.updated) cacheInvalidate('userProfile');
-    const s = await styleLearner.learnStyle(supabase, {
+    const s = await styleLearner.learnStyle(repos, {
         getProfile: getUserProfile,
         onUpdate: () => cacheInvalidate('userProfile'),
     });

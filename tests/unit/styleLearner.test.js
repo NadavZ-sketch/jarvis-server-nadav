@@ -86,13 +86,11 @@ describe('renderStyleHint', () => {
 });
 
 describe('learnStyle', () => {
-    function makeSupabase(existing) {
+    // repos whose profile.update/create capture the written payload.
+    function makeSupabase(_existing) {
         const update = jest.fn().mockResolvedValue({ error: null });
-        const insert = jest.fn().mockResolvedValue({ error: null });
-        const client = {
-            from: jest.fn(() => ({ update: (p) => ({ eq: () => update(p) }), insert })),
-        };
-        return { client, update, insert };
+        const create = jest.fn().mockResolvedValue({ error: null });
+        return { client: { profile: { update, create } }, update, insert: create };
     }
     const aggregateWith = (events) => async () => ({ ok: true, events });
 
@@ -115,7 +113,7 @@ describe('learnStyle', () => {
         });
 
         expect(res.updated).toBe(true);
-        const payload = update.mock.calls[0][0];
+        const payload = update.mock.calls[0][1];
         expect(payload.auto_learned.interests).toEqual(['ספורט']); // preserved
         expect(payload.auto_learned.style_prefs.response_length).toBe('shorter');
     });

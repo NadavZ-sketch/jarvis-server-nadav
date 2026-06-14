@@ -209,6 +209,14 @@ function makeProfileRepo(opts = {}) {
     };
 }
 
+function makeTelemetryRepo(opts = {}) {
+    const { rows = [], recordError = null } = opts;
+    return {
+        record:       jest.fn(async () => ({ error: recordError })),
+        recentEvents: jest.fn(async () => rows),
+    };
+}
+
 function makeCronRepo(opts = {}) {
     const { lastOk = null } = opts;
     return {
@@ -269,10 +277,11 @@ function makeRepos(tableData = {}) {
         profile: makeProfileRepo({ rows: tableData.user_profiles || [] }),
         sprints: makeSprintRepo({ rows: tableData.project_sprints || [] }),
         cron: makeCronRepo({ lastOk: tableData._cronLastOk || null }),
+        telemetry: makeTelemetryRepo({ rows: tableData.smart_telemetry_events || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTelemetryRepo, makeTableRepo };

@@ -106,10 +106,10 @@ function renderStyleHint(prefs) {
  * @param {object} supabase
  * @param {{getProfile?:Function, aggregate?:Function, onUpdate?:Function, sinceDays?:number}} [opts]
  */
-async function learnStyle(supabase, opts = {}) {
+async function learnStyle(repos, opts = {}) {
     try {
         const aggregate = opts.aggregate || require('./feedbackStore').aggregateEvents;
-        const agg = await aggregate(supabase, { sinceDays: opts.sinceDays ?? 30, limit: 1000 });
+        const agg = await aggregate(repos, { sinceDays: opts.sinceDays ?? 30, limit: 1000 });
         const events = (agg && agg.events) || [];
         if (events.length === 0) return { updated: false, reason: 'no_events' };
 
@@ -132,10 +132,10 @@ async function learnStyle(supabase, opts = {}) {
         const payload = { auto_learned, updated_at: new Date().toISOString() };
 
         if (existing?.id && existing.id !== 'local-fallback') {
-            const { error } = await supabase.from('user_profiles').update(payload).eq('id', existing.id);
+            const { error } = await repos.profile.update(existing.id, payload);
             if (error) return { updated: false, reason: error.message };
         } else {
-            const { error } = await supabase.from('user_profiles').insert([payload]);
+            const { error } = await repos.profile.create(payload);
             if (error) return { updated: false, reason: error.message };
         }
 

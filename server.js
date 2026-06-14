@@ -351,7 +351,7 @@ agentMetrics.init(repos);
 
 // Init push notification service and system logger with the Supabase client.
 pushService.init(repos);
-systemLog.init(supabase, pushService);
+systemLog.init(repos, pushService);
 
 // Intent → registry agent id (e.g. 'task' → 'taskAgent'). Core agents are never
 // disablable, so they are exempt from the disabled check below.

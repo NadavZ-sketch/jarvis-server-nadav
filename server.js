@@ -2887,24 +2887,14 @@ app.get('/survey-check', async (req, res) => {
 
                 // 1) Cooldown: any completed survey since cutoff blocks new prompts.
                 if (!forced) {
-                    const { data: recent } = await supabase
-                        .from('user_surveys')
-                        .select('id, completed_at')
-                        .eq('user_name', userName)
-                        .gte('completed_at', cooldownCutoff)
-                        .limit(1);
+                    const recent = await repos.surveys.recentCompleted(userName, cooldownCutoff);
                     if (recent && recent.length > 0) {
                         return res.json({ showSurvey: false, cooldown: true });
                     }
                 }
 
                 // 2) Build exclude list from question_ids of surveys in the last 7 days.
-                const { data: recentWeek } = await supabase
-                    .from('user_surveys')
-                    .select('question_ids')
-                    .eq('user_name', userName)
-                    .gte('completed_at', excludeCutoff)
-                    .limit(20);
+                const recentWeek = await repos.surveys.recentQuestionIds(userName, excludeCutoff);
                 for (const row of (recentWeek || [])) {
                     for (const qid of (row.question_ids || [])) excludeIds.push(qid);
                 }
@@ -2955,15 +2945,7 @@ app.post('/survey-submit', async (req, res) => {
             completed_at: nowIso,
             question_ids: surveyQIds,
         };
-        let { error } = await supabase.from('user_surveys').insert([insertRow]);
-
-        // If the migration hasn't been applied yet, retry without the new columns
-        // so old deployments don't break on submit.
-        if (error && /completed_at|question_ids/i.test(error.message || '')) {
-            delete insertRow.completed_at;
-            delete insertRow.question_ids;
-            ({ error } = await supabase.from('user_surveys').insert([insertRow]));
-        }
+        const { error } = await repos.surveys.insertGraceful(insertRow);
         if (error) throw error;
 
         res.json({ success: true, summary, breakdown });
@@ -2979,14 +2961,7 @@ app.get('/survey-history', async (req, res) => {
         const { userName } = req.query;
         if (!userName) return res.status(400).json({ error: 'userName required' });
 
-        const { data, error } = await supabase
-            .from('user_surveys')
-            .select('id, created_at, summary, responses')
-            .eq('user_name', userName)
-            .order('created_at', { ascending: false })
-            .limit(50);
-
-        if (error) throw error;
+        const data = await repos.surveys.historyForUser(userName);
 
         const surveys = (data || []).map(s => {
             let parsed = s.responses;
@@ -3011,13 +2986,7 @@ app.get('/survey-insights', async (req, res) => {
         const { userName } = req.query;
         if (!userName) return res.status(400).json({ error: 'userName required' });
 
-        const { data, error } = await supabase
-            .from('user_surveys')
-            .select('responses, created_at')
-            .eq('user_name', userName)
-            .order('created_at', { ascending: false })
-            .limit(50);
-        if (error) throw error;
+        const data = await repos.surveys.responsesForUser(userName);
 
         const agg = aggregateSurveys(data || []);
         if (agg.surveyCount < SURVEY_MIN_FOR_INSIGHTS) {
@@ -3058,12 +3027,7 @@ app.get('/survey-smart-check', async (req, res) => {
 
         let pastConcerns = [];
         if (userName) {
-            const { data: surveyRows } = await supabase
-                .from('user_surveys')
-                .select('responses')
-                .eq('user_id', userName)
-                .order('created_at', { ascending: false })
-                .limit(5);
+            const surveyRows = await repos.surveys.recentResponsesById(userName, 5);
             for (const s of surveyRows || []) {
                 let resp = s.responses;
                 if (typeof resp === 'string') { try { resp = JSON.parse(resp); } catch (_) { resp = {}; } }
@@ -3088,12 +3052,7 @@ app.get('/survey-smart-check', async (req, res) => {
 app.get('/survey-impact', async (req, res) => {
     const { userName = '' } = req.query;
     try {
-        const { data: surveyRows } = await supabase
-            .from('user_surveys')
-            .select('responses, created_at')
-            .eq('user_id', userName)
-            .order('created_at', { ascending: false })
-            .limit(20);
+        const surveyRows = await repos.surveys.recentResponsesWithDateById(userName, 20);
 
         const concerns = [];
         for (const s of surveyRows || []) {
@@ -3152,12 +3111,7 @@ app.post('/dashboard/smart-proposals/generate', async (req, res) => {
     if (cached) return res.json(cached);
     try {
         // 1. Collect survey concerns (negative answers only)
-        const { data: surveyRows } = await supabase
-            .from('user_surveys')
-            .select('responses, created_at')
-            .eq('user_id', userName)
-            .order('created_at', { ascending: false })
-            .limit(15);
+        const surveyRows = await repos.surveys.recentResponsesWithDateById(userName, 15);
 
         const concerns = [];
         for (const s of surveyRows || []) {
@@ -3574,12 +3528,7 @@ app.get('/control-center/events', async (req, res) => {
         // 4) Survey reminder — last survey > 7 days ago.
         try {
             if (userName) {
-                const { data } = await supabase
-                    .from('user_surveys')
-                    .select('created_at')
-                    .eq('user_name', userName)
-                    .order('created_at', { ascending: false })
-                    .limit(1);
+                const data = await repos.surveys.lastForUser(userName);
                 const lastSurvey = data && data.length ? new Date(data[0].created_at).getTime() : 0;
                 const weekMs = 7 * 24 * 60 * 60 * 1000;
                 if (lastSurvey === 0 || Date.now() - lastSurvey > weekMs) {

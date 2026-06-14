@@ -17,6 +17,7 @@ const { createProjectRepo } = require('./projectRepo');
 const { createSubtaskRepo } = require('./subtaskRepo');
 const { createContactRepo } = require('./contactRepo');
 const { createChatRepo } = require('./chatRepo');
+const { createSurveyRepo } = require('./surveyRepo');
 const { createTableRepo } = require('./tableRepo');
 
 function createRepos(supabase) {
@@ -32,6 +33,7 @@ function createRepos(supabase) {
         subtasks: createSubtaskRepo(supabase),
         contacts: createContactRepo(supabase),
         chat: createChatRepo(supabase),
+        surveys: createSurveyRepo(supabase),
         // Lazily-built, memoised generic repo for any other table.
         table(name) {
             return generic[name] || (generic[name] = createTableRepo(supabase, name));

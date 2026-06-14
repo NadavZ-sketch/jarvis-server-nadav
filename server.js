@@ -2427,7 +2427,7 @@ app.post('/projects', async (req, res) => {
 app.get('/projects/briefing', async (req, res) => {
     try {
         const userName = req.query.userName || 'נדב';
-        const result = await buildProjectsBriefing(supabase, userName);
+        const result = await buildProjectsBriefing(repos.projects, userName);
         res.json(result);
     } catch (err) {
         console.error('GET /projects/briefing error:', err.message);

@@ -105,6 +105,35 @@ function makeHabitRepo(opts = {}) {
     };
 }
 
+function makeProjectRepo(opts = {}) {
+    const {
+        projects = [], milestones = [], tasks = [], openMilestones = [],
+        backlog = [], upcomingTasks = [], upcomingMilestones = [],
+        taskDone = [], milestoneCompleted = [], createResult,
+    } = opts;
+    return {
+        searchByName:            jest.fn(async () => projects),
+        create:                  jest.fn(async () => createResult || { data: projects[0] || { id: 'p1' }, error: null }),
+        listNonArchived:         jest.fn(async () => projects),
+        listActive:              jest.fn(async () => projects),
+        listActiveOrPaused:      jest.fn(async () => projects),
+        update:                  jest.fn(async () => ({ error: null })),
+        remove:                  jest.fn(async () => ({ error: null })),
+        taskDoneFlags:           jest.fn(async () => taskDone),
+        milestoneCompletedFlags: jest.fn(async () => milestoneCompleted),
+        listMilestones:          jest.fn(async () => milestones),
+        addMilestone:            jest.fn(async () => ({ error: null })),
+        findOpenMilestones:      jest.fn(async () => openMilestones),
+        completeMilestone:       jest.fn(async () => ({ error: null })),
+        upcomingMilestones:      jest.fn(async () => upcomingMilestones),
+        listTasks:               jest.fn(async () => tasks),
+        addTask:                 jest.fn(async () => ({ error: null })),
+        sprintBacklog:           jest.fn(async () => backlog),
+        upcomingTasks:           jest.fn(async () => upcomingTasks),
+        addReminder:             jest.fn(async () => ({ error: null })),
+    };
+}
+
 function makeTableRepo(rows = []) {
     return {
         all:      jest.fn(async () => rows),
@@ -128,10 +157,11 @@ function makeRepos(tableData = {}) {
             habits: tableData.habits || [],
             doneDates: (tableData.habit_logs || []).map(l => l.date),
         }),
+        projects: makeProjectRepo({ projects: tableData.projects || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeTableRepo };

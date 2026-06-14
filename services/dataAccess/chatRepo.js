@@ -24,6 +24,10 @@ function createChatRepo(supabase) {
             return supabase.from(H).insert([{ role, text, chat_id: chatId }]);
         },
 
+        deleteForChat(chatId) {
+            return supabase.from(H).delete().eq('chat_id', chatId);
+        },
+
         // True total message count for a chat; throws on error.
         async countForChat(chatId) {
             const { count, error } = await supabase.from(H)

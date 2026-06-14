@@ -24,6 +24,15 @@ function createChatRepo(supabase) {
             return supabase.from(H).insert([{ role, text, chat_id: chatId }]);
         },
 
+        // True total message count for a chat; throws on error.
+        async countForChat(chatId) {
+            const { count, error } = await supabase.from(H)
+                .select('id', { count: 'exact', head: true })
+                .eq('chat_id', chatId);
+            if (error) throw error;
+            return typeof count === 'number' ? count : null;
+        },
+
         // Recent messages across all chats for full-history keyword search.
         async recentForSearch(limit = 200) {
             const { data } = await supabase.from(H)

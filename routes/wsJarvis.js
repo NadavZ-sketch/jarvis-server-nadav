@@ -89,7 +89,7 @@ function createWsHandler(deps) {
                 if (contextResolver && contextResolver.shouldResolve(userMessage)) {
                     const [h, s] = await Promise.all([
                         loadChatHistory(chatId),
-                        conversationSummary.getSummary(chatId, supabase),
+                        conversationSummary.getSummary(chatId, repos),
                     ]);
                     const { resolved, didResolve } = await contextResolver.resolveReferences(userMessage, h, s);
                     if (didResolve) dispatchMessage = resolved;
@@ -104,7 +104,7 @@ function createWsHandler(deps) {
                     const [chatHistory, longTermMemories, chatSummary] = await Promise.all([
                         loadChatHistory(chatId),
                         fetchLongTermMemories(dispatchMessage),
-                        conversationSummary.getSummary(chatId, supabase),
+                        conversationSummary.getSummary(chatId, repos),
                     ]);
                     settings.chatSummary = chatSummary;
                     const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, null, dispatchMessage);
@@ -154,7 +154,7 @@ function createWsHandler(deps) {
                 setImmediate(() => {
                     autoExtractMemory(userMessage, fullAnswer, repos, settings).catch(() => {});
                     loadChatHistory(chatId).then(fresh => {
-                        conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(() => {});
+                        conversationSummary.updateSummaryIfNeeded(chatId, fresh, repos, settings).catch(() => {});
                     }).catch(() => {});
                 });
             } catch (err) {

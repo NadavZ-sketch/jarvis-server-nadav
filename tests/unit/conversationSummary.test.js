@@ -8,26 +8,19 @@ jest.mock('../../agents/models', () => ({
 const { updateSummaryIfNeeded } = require('../../services/conversationSummary');
 const { callGemma4 } = require('../../agents/models');
 
-// Builds a Supabase mock that reports `totalCount` via a head count, returns
-// `existing` for the chat_summaries row, and records any upsert.
+// Builds a repos bundle whose chat.countForChat reports `totalCount` and
+// summaries.getMeta returns `existing`; records any summaries.upsert.
 function makeSupabase({ totalCount, existing = null }) {
-    const upsert = jest.fn().mockResolvedValue({ data: null, error: null });
-    const from = jest.fn((table) => {
-        if (table === 'chat_history') {
-            return {
-                select: jest.fn().mockReturnThis(),
-                eq: jest.fn().mockResolvedValue({ count: totalCount, error: null }),
-            };
-        }
-        // chat_summaries
-        return {
-            select: jest.fn().mockReturnThis(),
-            eq: jest.fn().mockReturnThis(),
-            maybeSingle: jest.fn().mockResolvedValue({ data: existing, error: null }),
+    const upsert = jest.fn().mockResolvedValue({ error: null });
+    const client = {
+        chat: { countForChat: jest.fn().mockResolvedValue(totalCount) },
+        summaries: {
+            get: jest.fn().mockResolvedValue(existing?.summary || ''),
+            getMeta: jest.fn().mockResolvedValue(existing || {}),
             upsert,
-        };
-    });
-    return { client: { from }, upsert };
+        },
+    };
+    return { client, upsert };
 }
 
 const history = (n) => Array.from({ length: n }, (_, i) => ({
@@ -48,10 +41,7 @@ describe('updateSummaryIfNeeded', () => {
         const { client, upsert } = makeSupabase({ totalCount: 14, existing: null });
         await updateSummaryIfNeeded('c2', history(14), client);
         expect(callGemma4).toHaveBeenCalled();
-        expect(upsert).toHaveBeenCalledWith(
-            expect.objectContaining({ chat_id: 'c2', turns_covered: 14 }),
-            expect.anything(),
-        );
+        expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ chat_id: "c2", turns_covered: 14 }));
     });
 
     it('re-summarizes after only 4 new turns (lowered threshold)', async () => {
@@ -80,9 +70,6 @@ describe('updateSummaryIfNeeded', () => {
         });
         await updateSummaryIfNeeded('c5', history(40), client);
         expect(callGemma4).toHaveBeenCalled();
-        expect(upsert).toHaveBeenCalledWith(
-            expect.objectContaining({ turns_covered: 100 }),
-            expect.anything(),
-        );
+        expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ turns_covered: 100 }));
     });
 });

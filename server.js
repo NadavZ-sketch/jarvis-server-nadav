@@ -827,7 +827,7 @@ async function askJarvisHandler(req, res) {
         if (!imageBase64 && !documentContext && contextResolver.shouldResolve(userMessage)) {
             const [resHistory, resSummary] = await Promise.all([
                 loadChatHistory(chatId),
-                conversationSummary.getSummary(chatId, supabase),
+                conversationSummary.getSummary(chatId, repos),
             ]);
             const { resolved, didResolve } = await contextResolver.resolveReferences(userMessage, resHistory, resSummary);
             if (didResolve) {
@@ -950,7 +950,7 @@ async function askJarvisHandler(req, res) {
             // Inject rolling conversation summary so agent remembers context beyond 20 msgs.
             // Cap at 1500 chars (~500 tokens) so a long summary can't flood the context.
             if (agentName === 'chat') {
-                const raw = await conversationSummary.getSummary(chatId, supabase);
+                const raw = await conversationSummary.getSummary(chatId, repos);
                 settings.chatSummary = raw && raw.length > 600 ? raw.slice(0, 600) + '…' : raw;
             }
         } else {
@@ -1119,7 +1119,7 @@ async function askJarvisHandler(req, res) {
         if (shouldExtract) {
             setImmediate(() => {
                 loadChatHistory(chatId).then(freshHistory => {
-                    conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, supabase, settings).catch(e => systemLog.logError('updateSummaryIfNeeded', e).catch(() => {}));
+                    conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, repos, settings).catch(e => systemLog.logError('updateSummaryIfNeeded', e).catch(() => {}));
                 }).catch(e => systemLog.logError('loadChatHistory:postChat', e).catch(() => {}));
             });
         }
@@ -3550,7 +3550,7 @@ async function streamJarvisHandler(req, res) {
         if (contextResolver.shouldResolve(userMessage)) {
             const [resHistory, resSummary] = await Promise.all([
                 loadChatHistory(chatId),
-                conversationSummary.getSummary(chatId, supabase),
+                conversationSummary.getSummary(chatId, repos),
             ]);
             const { resolved, didResolve } = await contextResolver.resolveReferences(userMessage, resHistory, resSummary);
             if (didResolve) userMessage = resolved;
@@ -3677,7 +3677,7 @@ async function streamJarvisHandler(req, res) {
         const [chatHistory, longTermMemories, chatSummary] = await Promise.all([
             loadChatHistory(chatId),
             fetchLongTermMemories(userMessage),
-            conversationSummary.getSummary(chatId, supabase),
+            conversationSummary.getSummary(chatId, repos),
         ]);
 
         settings.chatSummary = chatSummary && chatSummary.length > 600
@@ -3764,7 +3764,7 @@ async function streamJarvisHandler(req, res) {
         setImmediate(() => {
             autoExtractMemory(originalMessage, fullAnswer, repos, settings).catch(e => systemLog.logError('autoExtractMemory:stream', e).catch(() => {}));
             loadChatHistory(chatId).then(fresh => {
-                conversationSummary.updateSummaryIfNeeded(chatId, fresh, supabase, settings).catch(e => systemLog.logError('updateSummaryIfNeeded:stream', e).catch(() => {}));
+                conversationSummary.updateSummaryIfNeeded(chatId, fresh, repos, settings).catch(e => systemLog.logError('updateSummaryIfNeeded:stream', e).catch(() => {}));
             }).catch(e => systemLog.logError('loadChatHistory:stream', e).catch(() => {}));
         });
         }); // end providerContext.run

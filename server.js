@@ -2280,24 +2280,13 @@ app.delete('/notes/:id', async (req, res) => {
 
 app.get('/projects', async (_req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('projects')
-            .select('*')
-            .order('created_at', { ascending: false });
-        if (error) {
-            console.error('GET /projects DB error:', error.message);
-            return res.json({ projects: [] });
-        }
-        const projects = data || [];
+        const projects = await repos.projects.listAll();
 
         // Enrich each project with aggregate task/milestone counts + progress.
         // Single-user app: 3 queries total (projects + tasks + milestones), no N+1.
         const ids = projects.map(p => p.id);
         if (ids.length > 0) {
-            const [{ data: tasks }, { data: milestones }] = await Promise.all([
-                supabase.from('tasks').select('project_id, done').in('project_id', ids),
-                supabase.from('project_milestones').select('project_id, completed').in('project_id', ids),
-            ]);
+            const { tasks, milestones } = await repos.projects.countsForProjects(ids);
 
             const stats = {}; // projectId -> { open, total, done, mTotal, mDone }
             for (const id of ids) stats[id] = { open: 0, total: 0, done: 0, mTotal: 0, mDone: 0 };
@@ -2339,19 +2328,15 @@ app.post('/projects', async (req, res) => {
         if (!name) return res.status(400).json({ error: 'name is required' });
         const validStatuses = ['active', 'planning', 'paused', 'completed', 'archived'];
         const safeStatus = validStatuses.includes(status) ? status : 'active';
-        const { data, error } = await supabase
-            .from('projects')
-            .insert([{
-                name, description,
-                status: safeStatus,
-                priority: priority || 'medium',
-                start_date, due_date,
-                color: color || '#6366f1',
-                methodology: methodology || 'kanban',
-                method_config: method_config || {},
-            }])
-            .select()
-            .single();
+        const { data, error } = await repos.projects.create({
+            name, description,
+            status: safeStatus,
+            priority: priority || 'medium',
+            start_date, due_date,
+            color: color || '#6366f1',
+            methodology: methodology || 'kanban',
+            method_config: method_config || {},
+        });
         if (error) throw error;
         res.json({ project: data });
     } catch (err) {
@@ -2375,26 +2360,12 @@ app.get('/projects/briefing', async (req, res) => {
 
 app.get('/projects/:id', async (req, res) => {
     try {
-        const { data: project, error } = await supabase
-            .from('projects')
-            .select('*')
-            .eq('id', req.params.id)
-            .single();
-        if (error || !project) return res.status(404).json({ error: 'Not found' });
+        const project = await repos.projects.getById(req.params.id);
+        if (!project) return res.status(404).json({ error: 'Not found' });
 
-        const [{ data: milestones }, { data: tasks }, { data: reminders }, { data: notes }, { data: sprints }] = await Promise.all([
-            supabase.from('project_milestones').select('*').eq('project_id', project.id).order('due_date'),
-            (async () => {
-                let r = await supabase.from('tasks').select('*, subtasks(id, content, done, created_at)').eq('project_id', project.id).order('created_at');
-                if (r.error) r = await supabase.from('tasks').select('*').eq('project_id', project.id).order('created_at');
-                return r;
-            })(),
-            supabase.from('reminders').select('*').eq('project_id', project.id).order('scheduled_time'),
-            supabase.from('notes').select('*').eq('project_id', project.id).order('created_at'),
-            supabase.from('project_sprints').select('*').eq('project_id', project.id).order('start_date', { ascending: false }),
-        ]);
+        const { milestones, tasks, reminders, notes, sprints } = await repos.projects.detail(project.id);
 
-        res.json({ project, milestones: milestones || [], tasks: tasks || [], reminders: reminders || [], notes: notes || [], sprints: sprints || [] });
+        res.json({ project, milestones, tasks, reminders, notes, sprints });
     } catch (err) {
         console.error('GET /projects/:id error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
@@ -2405,12 +2376,7 @@ app.put('/projects/:id', async (req, res) => {
     try {
         const updates = { ...req.body, updated_at: new Date().toISOString() };
         delete updates.id;
-        const { data, error } = await supabase
-            .from('projects')
-            .update(updates)
-            .eq('id', req.params.id)
-            .select()
-            .single();
+        const { data, error } = await repos.projects.update(req.params.id, updates);
         if (error) throw error;
         res.json({ project: data });
     } catch (err) {
@@ -2421,7 +2387,7 @@ app.put('/projects/:id', async (req, res) => {
 
 app.delete('/projects/:id', async (req, res) => {
     try {
-        const { error } = await supabase.from('projects').delete().eq('id', req.params.id);
+        const { error } = await repos.projects.remove(req.params.id);
         if (error) throw error;
         res.json({ ok: true });
     } catch (err) {
@@ -2432,13 +2398,8 @@ app.delete('/projects/:id', async (req, res) => {
 
 app.get('/projects/:id/milestones', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('project_milestones')
-            .select('*')
-            .eq('project_id', req.params.id)
-            .order('due_date');
-        if (error) throw error;
-        res.json({ milestones: data || [] });
+        const data = await repos.projects.listMilestones(req.params.id);
+        res.json({ milestones: data });
     } catch (err) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -2448,11 +2409,7 @@ app.post('/projects/:id/milestones', async (req, res) => {
     try {
         const { title, due_date } = req.body;
         if (!title) return res.status(400).json({ error: 'title is required' });
-        const { data, error } = await supabase
-            .from('project_milestones')
-            .insert([{ project_id: req.params.id, title, due_date: due_date || null }])
-            .select()
-            .single();
+        const { data, error } = await repos.projects.createMilestone({ project_id: req.params.id, title, due_date: due_date || null });
         if (error) throw error;
         res.json({ milestone: data });
     } catch (err) {
@@ -2465,13 +2422,7 @@ app.put('/projects/:id/milestones/:mId', async (req, res) => {
         const updates = { ...req.body };
         if (updates.completed && !updates.completed_at) updates.completed_at = new Date().toISOString();
         if (!updates.completed) updates.completed_at = null;
-        const { data, error } = await supabase
-            .from('project_milestones')
-            .update(updates)
-            .eq('id', req.params.mId)
-            .eq('project_id', req.params.id)
-            .select()
-            .single();
+        const { data, error } = await repos.projects.updateMilestoneScoped(req.params.mId, req.params.id, updates);
         if (error) throw error;
         res.json({ milestone: data });
     } catch (err) {
@@ -2481,11 +2432,7 @@ app.put('/projects/:id/milestones/:mId', async (req, res) => {
 
 app.delete('/projects/:id/milestones/:mId', async (req, res) => {
     try {
-        const { error } = await supabase
-            .from('project_milestones')
-            .delete()
-            .eq('id', req.params.mId)
-            .eq('project_id', req.params.id);
+        const { error } = await repos.projects.removeMilestoneScoped(req.params.mId, req.params.id);
         if (error) throw error;
         res.json({ ok: true });
     } catch (err) {
@@ -2621,14 +2568,10 @@ app.post('/projects/:id/ai-insights', async (req, res) => {
             return res.json({ insights: cached.text, cached: true });
         }
 
-        const { data: project } = await supabase.from('projects').select('*').eq('id', req.params.id).single();
+        const project = await repos.projects.getById(req.params.id);
         if (!project) return res.status(404).json({ error: 'פרויקט לא נמצא' });
 
-        const [{ data: tasks }, { data: milestones }, { data: sprints }] = await Promise.all([
-            supabase.from('tasks').select('content,done,story_points,kanban_column,eisenhower_quad,sprint_id').eq('project_id', req.params.id),
-            supabase.from('project_milestones').select('title,completed').eq('project_id', req.params.id),
-            supabase.from('project_sprints').select('*').eq('project_id', req.params.id),
-        ]);
+        const { tasks, milestones, sprints } = await repos.projects.insightsData(req.params.id);
 
         const openTasks = (tasks || []).filter(t => !t.done).length;
         const doneTasks = (tasks || []).filter(t => t.done).length;

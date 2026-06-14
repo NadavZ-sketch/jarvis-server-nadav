@@ -9,6 +9,8 @@ const P = 'projects';
 const M = 'project_milestones';
 const T = 'tasks';
 const R = 'reminders';
+const SP = 'project_sprints';
+const N = 'notes';
 
 function createProjectRepo(supabase) {
     return {
@@ -17,6 +19,63 @@ function createProjectRepo(supabase) {
             if (!nameHint) return [];
             const { data } = await supabase.from(P).select('*').ilike('name', `%${nameHint.trim()}%`).limit(5);
             return data || [];
+        },
+
+        // ── REST endpoint variants ─────────────────────────────────────────────
+        async listAll() {
+            const { data } = await supabase.from(P).select('*').order('created_at', { ascending: false });
+            return data || [];
+        },
+        async getById(id) {
+            const { data } = await supabase.from(P).select('*').eq('id', id).single();
+            return data || null;
+        },
+        // Aggregate task/milestone flags for a set of projects (GET /projects).
+        async countsForProjects(ids) {
+            const [{ data: tasks }, { data: milestones }] = await Promise.all([
+                supabase.from(T).select('project_id, done').in('project_id', ids),
+                supabase.from(M).select('project_id, completed').in('project_id', ids),
+            ]);
+            return { tasks: tasks || [], milestones: milestones || [] };
+        },
+        // Full project detail (GET /projects/:id): milestones, tasks (+subtasks
+        // fallback), reminders, notes, sprints.
+        async detail(projectId) {
+            const [{ data: milestones }, { data: tasks }, { data: reminders }, { data: notes }, { data: sprints }] =
+                await Promise.all([
+                    supabase.from(M).select('*').eq('project_id', projectId).order('due_date'),
+                    (async () => {
+                        let r = await supabase.from(T).select('*, subtasks(id, content, done, created_at)').eq('project_id', projectId).order('created_at');
+                        if (r.error) r = await supabase.from(T).select('*').eq('project_id', projectId).order('created_at');
+                        return r;
+                    })(),
+                    supabase.from(R).select('*').eq('project_id', projectId).order('scheduled_time'),
+                    supabase.from(N).select('*').eq('project_id', projectId).order('created_at'),
+                    supabase.from(SP).select('*').eq('project_id', projectId).order('start_date', { ascending: false }),
+                ]);
+            return {
+                milestones: milestones || [], tasks: tasks || [], reminders: reminders || [],
+                notes: notes || [], sprints: sprints || [],
+            };
+        },
+        // Data for the AI-insights endpoint (specific task columns).
+        async insightsData(projectId) {
+            const [{ data: tasks }, { data: milestones }, { data: sprints }] = await Promise.all([
+                supabase.from(T).select('content,done,story_points,kanban_column,eisenhower_quad,sprint_id').eq('project_id', projectId),
+                supabase.from(M).select('title,completed').eq('project_id', projectId),
+                supabase.from(SP).select('*').eq('project_id', projectId),
+            ]);
+            return { tasks: tasks || [], milestones: milestones || [], sprints: sprints || [] };
+        },
+        // Milestone REST writes (return the row / scoped to parent).
+        async createMilestone(row) {
+            return supabase.from(M).insert([row]).select().single();
+        },
+        async updateMilestoneScoped(milestoneId, projectId, updates) {
+            return supabase.from(M).update(updates).eq('id', milestoneId).eq('project_id', projectId).select().single();
+        },
+        async removeMilestoneScoped(milestoneId, projectId) {
+            return supabase.from(M).delete().eq('id', milestoneId).eq('project_id', projectId);
         },
         async create(row) {
             return supabase.from(P).insert([row]).select().single();
@@ -38,7 +97,7 @@ function createProjectRepo(supabase) {
             return data || [];
         },
         async update(id, updates) {
-            return supabase.from(P).update(updates).eq('id', id);
+            return supabase.from(P).update(updates).eq('id', id).select().single();
         },
         async remove(id) {
             return supabase.from(P).delete().eq('id', id);

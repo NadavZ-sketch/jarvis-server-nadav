@@ -18,6 +18,7 @@ const { createSubtaskRepo } = require('./subtaskRepo');
 const { createContactRepo } = require('./contactRepo');
 const { createChatRepo } = require('./chatRepo');
 const { createSurveyRepo } = require('./surveyRepo');
+const { createSummaryRepo } = require('./summaryRepo');
 const { createProfileRepo } = require('./profileRepo');
 const { createSprintRepo } = require('./sprintRepo');
 const { createCronRepo } = require('./cronRepo');
@@ -37,6 +38,7 @@ function createRepos(supabase) {
         contacts: createContactRepo(supabase),
         chat: createChatRepo(supabase),
         surveys: createSurveyRepo(supabase),
+        summaries: createSummaryRepo(supabase),
         profile: createProfileRepo(supabase),
         sprints: createSprintRepo(supabase),
         cron: createCronRepo(supabase),

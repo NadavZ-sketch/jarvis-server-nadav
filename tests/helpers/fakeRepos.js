@@ -218,11 +218,21 @@ function makeCronRepo(opts = {}) {
 }
 
 function makeChatRepo(opts = {}) {
-    const { rows = [], addResult } = opts;
+    const { rows = [], addResult, count = 0 } = opts;
     return {
         recentTail:      jest.fn(async () => rows),
         add:             jest.fn(async () => addResult || { error: null }),
         recentForSearch: jest.fn(async () => rows),
+        countForChat:    jest.fn(async () => count),
+    };
+}
+
+function makeSummaryRepo(opts = {}) {
+    const { summary = '', meta = {} } = opts;
+    return {
+        get:     jest.fn(async () => summary),
+        getMeta: jest.fn(async () => meta),
+        upsert:  jest.fn(async () => ({ error: null })),
     };
 }
 
@@ -253,6 +263,7 @@ function makeRepos(tableData = {}) {
         subtasks: makeSubtaskRepo({ rows: tableData.subtasks || [] }),
         contacts: makeContactRepo({ rows: tableData.contacts || [] }),
         chat: makeChatRepo({ rows: tableData.chat_history || [] }),
+        summaries: makeSummaryRepo({}),
         surveys: makeSurveyRepo({ rows: tableData.user_surveys || [] }),
         profile: makeProfileRepo({ rows: tableData.user_profiles || [] }),
         sprints: makeSprintRepo({ rows: tableData.project_sprints || [] }),
@@ -263,4 +274,4 @@ function makeRepos(tableData = {}) {
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTableRepo };

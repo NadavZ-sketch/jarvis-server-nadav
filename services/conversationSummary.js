@@ -33,13 +33,9 @@ const MIN_TOTAL_TURNS = 12;
 // Returns the true total message count for a chat, independent of the
 // (capped) context window. Falls back to the window length if the count query
 // fails, so the summary still advances rather than stalling.
-async function _countTurns(chatId, supabase, windowLength) {
+async function _countTurns(chatId, repos, windowLength) {
     try {
-        const { count, error } = await supabase
-            .from('chat_history')
-            .select('id', { count: 'exact', head: true })
-            .eq('chat_id', chatId);
-        if (error) throw error;
+        const count = await repos.chat.countForChat(chatId);
         if (typeof count === 'number') return count;
     } catch { /* fall through */ }
     return windowLength;
@@ -58,22 +54,13 @@ const SUMMARY_PROMPT = `אתה מנגנון זיכרון של עוזר אישי 
  * @param {object} supabase - Supabase client
  * @returns {Promise<string>}
  */
-async function getSummary(chatId, supabase) {
+async function getSummary(chatId, repos) {
     const cached = _cacheGet(chatId);
     if (cached !== undefined) return cached;
 
-    try {
-        const { data } = await supabase
-            .from('chat_summaries')
-            .select('summary')
-            .eq('chat_id', chatId)
-            .maybeSingle();
-        const summary = data?.summary ?? '';
-        _cacheSet(chatId, summary);
-        return summary;
-    } catch {
-        return '';
-    }
+    const summary = await repos.summaries.get(chatId);
+    _cacheSet(chatId, summary);
+    return summary;
 }
 
 /**
@@ -83,21 +70,17 @@ async function getSummary(chatId, supabase) {
  * @param {object} supabase
  * @param {object} [settings]
  */
-async function updateSummaryIfNeeded(chatId, chatHistory, supabase, settings = {}) {
+async function updateSummaryIfNeeded(chatId, chatHistory, repos, settings = {}) {
     try {
         if (!chatHistory || chatHistory.length < MIN_TOTAL_TURNS) return;
 
         // Use the true conversation length (not the capped window) so summaries
         // keep advancing once the chat grows past the context window.
-        const totalTurns = await _countTurns(chatId, supabase, chatHistory.length);
+        const totalTurns = await _countTurns(chatId, repos, chatHistory.length);
         if (totalTurns < MIN_TOTAL_TURNS) return;
 
         // Check how many turns the existing summary already covers.
-        const { data: existing } = await supabase
-            .from('chat_summaries')
-            .select('turns_covered, summary')
-            .eq('chat_id', chatId)
-            .maybeSingle();
+        const existing = await repos.summaries.getMeta(chatId);
 
         const covered = existing?.turns_covered ?? 0;
         if (totalTurns - covered < MIN_NEW_TURNS) return;
@@ -121,13 +104,13 @@ async function updateSummaryIfNeeded(chatId, chatHistory, supabase, settings = {
         const summary = (raw || '').trim().slice(0, 600);
         if (!summary) return;
 
-        await supabase.from('chat_summaries').upsert({
+        await repos.summaries.upsert({
             chat_id:       chatId,
             summary,
             topics:        [],
             turns_covered: totalTurns,
             updated_at:    new Date().toISOString(),
-        }, { onConflict: 'chat_id' });
+        });
 
         _cacheSet(chatId, summary);
         console.log(`📝 ConvSummary updated for ${chatId.slice(0, 20)} (${totalTurns} turns)`);

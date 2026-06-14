@@ -29,4 +29,12 @@ describe('chatRepo', () => {
         const bad = createChatRepo({ from: () => makeChain(null, { message: 'x' }) });
         expect(await bad.recentForSearch()).toEqual([]);
     });
+
+    test('countForChat scopes by chat_id; throws on error', async () => {
+        const chain = makeChain([], null);
+        chain.eq = jest.fn(() => Promise.resolve({ count: 7, error: null }));
+        const repo = createChatRepo({ from: () => chain });
+        expect(await repo.countForChat('c1')).toBe(7);
+        expect(chain.eq).toHaveBeenCalledWith('chat_id', 'c1');
+    });
 });

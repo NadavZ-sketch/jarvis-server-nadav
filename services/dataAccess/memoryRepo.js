@@ -30,6 +30,44 @@ function createMemoryRepo(supabase) {
             return (data || []).map(m => m.content);
         },
 
+        // Full rows for the /memories CRUD endpoints.
+        async listAll() {
+            const { data, error } = await supabase.from(M)
+                .select('id, content, scope, created_at')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        },
+
+        // Insert returning the full row (endpoints want it echoed back).
+        async create(row) {
+            const { data, error } = await supabase.from(M)
+                .insert([row])
+                .select('id, content, scope, created_at')
+                .limit(1);
+            if (error) throw error;
+            return data || [];
+        },
+
+        async updateById(id, patch) {
+            const { data, error } = await supabase.from(M)
+                .update(patch)
+                .eq('id', id)
+                .select('id, content, scope, created_at')
+                .limit(1);
+            if (error) throw error;
+            return data || [];
+        },
+
+        async removeById(id) {
+            const { data, error } = await supabase.from(M)
+                .delete()
+                .eq('id', id)
+                .select('id, content');
+            if (error) throw error;
+            return data || [];
+        },
+
         // Insert one memory, returning [{ id }] so the caller can embed it.
         async insert(row) {
             const { data } = await supabase.from(M).insert([row]).select('id').limit(1);

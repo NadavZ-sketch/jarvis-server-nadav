@@ -34,4 +34,36 @@ describe('memoryRepo', () => {
         expect(chain.insert).toHaveBeenCalledWith([{ content: 'c', scope: 'long_term' }]);
         expect(rows).toEqual([{ id: 99 }]);
     });
+
+    test('listAll returns full rows newest-first; throws on error', async () => {
+        const chain = makeChain([{ id: 1, content: 'a', scope: 'long_term' }]);
+        const repo = createMemoryRepo({ from: () => chain });
+        const rows = await repo.listAll();
+        expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
+        expect(rows).toEqual([{ id: 1, content: 'a', scope: 'long_term' }]);
+
+        const bad = createMemoryRepo({ from: () => makeChain(null, { message: 'boom' }) });
+        await expect(bad.listAll()).rejects.toEqual({ message: 'boom' });
+    });
+
+    test('create echoes the inserted row', async () => {
+        const chain = makeChain([{ id: 5, content: 'x', scope: 'session' }]);
+        const repo = createMemoryRepo({ from: () => chain });
+        const rows = await repo.create({ content: 'x', scope: 'session' });
+        expect(chain.insert).toHaveBeenCalledWith([{ content: 'x', scope: 'session' }]);
+        expect(rows[0].id).toBe(5);
+    });
+
+    test('updateById patches by id; removeById deletes by id', async () => {
+        const upd = makeChain([{ id: 7, content: 'new' }]);
+        await createMemoryRepo({ from: () => upd }).updateById('7', { content: 'new' });
+        expect(upd.update).toHaveBeenCalledWith({ content: 'new' });
+        expect(upd.eq).toHaveBeenCalledWith('id', '7');
+
+        const del = makeChain([{ id: 7, content: 'new' }]);
+        const rows = await createMemoryRepo({ from: () => del }).removeById('7');
+        expect(del.delete).toHaveBeenCalled();
+        expect(del.eq).toHaveBeenCalledWith('id', '7');
+        expect(rows).toEqual([{ id: 7, content: 'new' }]);
+    });
 });

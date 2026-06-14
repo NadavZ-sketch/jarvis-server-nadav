@@ -507,10 +507,10 @@ async function fetchLongTermMemories(query = null) {
     const cached = cacheGet('memories');
     if (cached) return cached;
 
-    const { data } = await supabase.from('memories').select('content');
-    const result = (!data || data.length === 0)
+    const contents = await repos.memories.allContents();
+    const result = contents.length === 0
         ? 'אין עדיין זיכרונות שמורים.'
-        : data.map(m => `- ${m.content}`).join('\n');
+        : contents.map(c => `- ${c}`).join('\n');
     cacheSet('memories', result, TTL_MEMORIES);
     return result;
 }
@@ -2212,12 +2212,8 @@ app.get('/memories', async (req, res) => {
             const hits = await pinecone.searchMemories(q, 20);
             if (hits) return res.json({ memories: hits.map(content => ({ content })) });
         }
-        const { data, error } = await supabase
-            .from('memories')
-            .select('id, content, scope, created_at')
-            .order('created_at', { ascending: false });
-        if (error) throw error;
-        res.json({ memories: data || [] });
+        const data = await repos.memories.listAll();
+        res.json({ memories: data });
     } catch (err) {
         console.error('GET /memories error:', err.message);
         res.status(500).json({ memories: [] });
@@ -2230,12 +2226,7 @@ app.post('/memories', async (req, res) => {
         if (!content || typeof content !== 'string' || !content.trim()) {
             return res.status(400).json({ error: 'content is required' });
         }
-        const { data, error } = await supabase
-            .from('memories')
-            .insert([{ content: content.trim(), scope }])
-            .select('id, content, scope, created_at')
-            .limit(1);
-        if (error) throw error;
+        const data = await repos.memories.create({ content: content.trim(), scope });
         const row = data?.[0];
         if (row?.id) {
             pinecone.upsertMemory(row.id, row.content).catch(() => {});
@@ -2258,13 +2249,7 @@ app.put('/memories/:id', async (req, res) => {
         }
         const patch = { content: content.trim() };
         if (scope) patch.scope = scope;
-        const { data, error } = await supabase
-            .from('memories')
-            .update(patch)
-            .eq('id', id)
-            .select('id, content, scope, created_at')
-            .limit(1);
-        if (error) throw error;
+        const data = await repos.memories.updateById(id, patch);
         if (!data || data.length === 0) return res.status(404).json({ error: 'Memory not found' });
         pinecone.upsertMemory(data[0].id, data[0].content).catch(() => {});
         obsidianSync.dbToVault('memories', data[0]);
@@ -2279,12 +2264,7 @@ app.put('/memories/:id', async (req, res) => {
 app.delete('/memories/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { data, error } = await supabase
-            .from('memories')
-            .delete()
-            .eq('id', id)
-            .select('id, content');
-        if (error) throw error;
+        const data = await repos.memories.removeById(id);
         if (!data || data.length === 0) return res.status(404).json({ error: 'Memory not found' });
         await pinecone.deleteMemory(id);
         obsidianSync.removeFromVault('memories', data[0]);

@@ -250,6 +250,7 @@ function makeChatRepo(opts = {}) {
         add:             jest.fn(async () => addResult || { error: null }),
         recentForSearch: jest.fn(async () => rows),
         countForChat:    jest.fn(async () => count),
+        deleteForChat:   jest.fn(async () => ({ error: null })),
     };
 }
 

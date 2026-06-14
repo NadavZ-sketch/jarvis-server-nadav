@@ -1185,10 +1185,7 @@ app.delete('/chat-history/:chatId', async (req, res) => {
         const { chatId } = req.params;
         if (!chatId) return res.status(400).json({ error: 'chatId required' });
 
-        const { error } = await supabase
-            .from('chat_history')
-            .delete()
-            .eq('chat_id', chatId);
+        const { error } = await repos.chat.deleteForChat(chatId);
 
         if (error) throw error;
         cacheInvalidate(`chatHistory:${chatId}`);
@@ -1370,26 +1367,19 @@ app.get('/day-plan', async (req, res) => {
 
         // 1. Fetch pending tasks (all, so undated backlog is scored too),
         //    active reminders, and recent chat timestamps for peak detection.
-        const [tasksRes, remindersRes, chatsRes] = await Promise.all([
-            supabase.from('tasks')
-                .select('id, content, done, due_date, priority, created_at')
-                .eq('done', false),
-            supabase.from('reminders')
-                .select('id, text, scheduled_time, fired, recurrence')
-                .eq('fired', false),
-            supabase.from('chat_history')
-                .select('role, text, created_at')
-                .order('created_at', { ascending: false })
-                .limit(200),
+        const [tasks, reminders, chats] = await Promise.all([
+            repos.tasks.listOpenByCreated(),
+            repos.reminders.listUpcoming(),
+            repos.chat.recentForSearch(200),
         ]);
 
         // 2. Normalize into engine items.
-        const taskItems = (tasksRes.data || []).map(t => ({
+        const taskItems = (tasks || []).map(t => ({
             id: `task-${t.id}`, sourceId: t.id, type: 'task',
             title: t.content, priority: t.priority || 'medium',
             due_date: t.due_date, created_at: t.created_at,
         }));
-        const reminderItems = (remindersRes.data || []).map(r => ({
+        const reminderItems = (reminders || []).map(r => ({
             id: `reminder-${r.id}`, sourceId: r.id, type: 'reminder',
             title: r.text, scheduled_time: r.scheduled_time, recurrence: r.recurrence,
         }));
@@ -1400,10 +1390,10 @@ app.get('/day-plan', async (req, res) => {
 
         // 4. On-the-fly pattern analysis → AI narrative (graceful degrade).
         const patterns = analyzePatterns({
-            chats:     chatsRes.data || [],
-            tasks:     tasksRes.data || [],
+            chats:     chats || [],
+            tasks:     tasks || [],
             memories:  [],
-            reminders: remindersRes.data || [],
+            reminders: reminders || [],
             contacts:  [],
         });
         // Cache only the LLM narrative (costly); deterministic plan data is always fresh.
@@ -2080,7 +2070,7 @@ app.post('/tasks', async (req, res) => {
     try {
         const { content } = req.body;
         if (!content) return res.status(400).json({ error: 'content required' });
-        const { data, error } = await supabase.from('tasks').insert([{ content }]).select().single();
+        const { data, error } = await repos.tasks.create({ content });
         if (error) throw error;
         res.json({ task: data });
     } catch (err) {

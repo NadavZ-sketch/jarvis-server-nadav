@@ -1359,53 +1359,7 @@ app.delete('/user-profile', async (_req, res) => {
 app.get('/stats', async (_req, res) => {
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
-    const todayISO = todayStart.toISOString();
-
-    const [
-        chatTotal, chatToday,
-        tasksTotal, tasksDone,
-        remindersTotal, remindersActive,
-        memoriesTotal,
-        notesTotal,
-        shoppingTotal, shoppingChecked,
-        pendingCategories,
-    ] = await Promise.allSettled([
-        supabase.from('chat_history').select('id', { count: 'exact', head: true }),
-        supabase.from('chat_history').select('id', { count: 'exact', head: true }).gte('created_at', todayISO),
-        supabase.from('tasks').select('id', { count: 'exact', head: true }),
-        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('done', true),
-        supabase.from('reminders').select('id', { count: 'exact', head: true }),
-        supabase.from('reminders').select('id', { count: 'exact', head: true }).eq('fired', false),
-        supabase.from('memories').select('id', { count: 'exact', head: true }),
-        supabase.from('notes').select('id', { count: 'exact', head: true }),
-        supabase.from('shopping_items').select('id', { count: 'exact', head: true }),
-        supabase.from('shopping_items').select('id', { count: 'exact', head: true }).eq('checked', true),
-        supabase.from('tasks').select('category').eq('done', false),
-    ]);
-
-    const getCount = (result) => {
-        if (result.status === 'fulfilled' && !result.value.error) return result.value.count ?? 0;
-        return 0;
-    };
-
-    // Pending-task breakdown by category (counted in JS; gracefully empty if the
-    // `category` column doesn't exist or the query failed).
-    const byCategory = { work: 0, personal: 0, financial: 0, project: 0, general: 0 };
-    if (pendingCategories.status === 'fulfilled' && !pendingCategories.value.error) {
-        for (const row of pendingCategories.value.data || []) {
-            const c = byCategory[row.category] !== undefined ? row.category : 'general';
-            byCategory[c]++;
-        }
-    }
-
-    res.json({
-        chat:      { total: getCount(chatTotal),      today:   getCount(chatToday) },
-        tasks:     { total: getCount(tasksTotal),     done:    getCount(tasksDone),    pending: getCount(tasksTotal) - getCount(tasksDone), byCategory },
-        reminders: { total: getCount(remindersTotal), active:  getCount(remindersActive) },
-        memories:  { total: getCount(memoriesTotal) },
-        notes:     { total: getCount(notesTotal) },
-        shopping:  { total: getCount(shoppingTotal),  checked: getCount(shoppingChecked) },
-    });
+    res.json(await repos.stats.dashboardCounts(todayStart.toISOString()));
 });
 
 // ─── GET /day-plan — Smart Day Engine: scored, prioritized, load-aware plan ──

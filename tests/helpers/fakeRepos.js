@@ -297,6 +297,12 @@ function makeRepos(tableData = {}) {
         telemetry: makeTelemetryRepo({ rows: tableData.smart_telemetry_events || [] }),
         metrics: makeMetricsRepo({ rows: tableData.agent_metrics || [] }),
         devices: makeDeviceRepo({ rows: tableData.device_tokens || [] }),
+        stats: { dashboardCounts: jest.fn(async () => ({
+            chat: { total: 0, today: 0 },
+            tasks: { total: 0, done: 0, pending: 0, byCategory: {} },
+            reminders: { total: 0, active: 0 },
+            memories: { total: 0 }, notes: { total: 0 }, shopping: { total: 0, checked: 0 },
+        })) },
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },

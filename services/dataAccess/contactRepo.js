@@ -4,6 +4,8 @@
 // policy-gated /contacts endpoints). Reads throw on error so the route returns
 // 500; writes return the raw Supabase result.
 
+const { sanitizeLike } = require('../../agents/utils');
+
 const C = 'contacts';
 
 function createContactRepo(supabase) {
@@ -11,6 +13,12 @@ function createContactRepo(supabase) {
         async listByName() {
             const { data, error } = await supabase.from(C).select('*').order('name', { ascending: true });
             if (error) throw error;
+            return data || [];
+        },
+
+        // Name substring match (caller does finer alias filtering in JS).
+        async searchByName(name) {
+            const { data } = await supabase.from(C).select('*').ilike('name', `%${sanitizeLike(name)}%`);
             return data || [];
         },
         async create(row) {

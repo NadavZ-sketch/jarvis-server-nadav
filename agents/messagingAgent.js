@@ -1,14 +1,9 @@
-const { sanitizeLike } = require('./utils');
 require('dotenv').config();
 const { callGemma4 } = require('./models');
 
-async function findContact(name, supabase) {
+async function findContact(name, contacts) {
     const nameLower = name.trim().toLowerCase();
-    // Use .ilike() directly — safer than .or() string interpolation
-    const { data } = await supabase
-        .from('contacts')
-        .select('*')
-        .ilike('name', `%${sanitizeLike(nameLower)}%`);
+    const data = await contacts.searchByName(nameLower);
     if (!data || data.length === 0) return null;
     return data.find(c =>
         c.name.toLowerCase().includes(nameLower) ||
@@ -16,7 +11,8 @@ async function findContact(name, supabase) {
     ) || null;
 }
 
-async function runMessagingAgent(userMessage, supabase, useLocal = true, settings = {}) {
+async function runMessagingAgent(userMessage, repos, useLocal = true, settings = {}) {
+    const contacts = repos.contacts;
     try {
         const parsePrompt = `Parse this Hebrew message and return valid JSON only (no markdown, no explanation):
 {
@@ -47,20 +43,19 @@ Message: "${userMessage}"`;
             if (!parsed.recipient_name) {
                 return { answer: 'לא הצלחתי לזהות שם. נסה: "שמור רון — 0501234567"', action: null };
             }
-            const existing = await findContact(parsed.recipient_name, supabase);
+            const existing = await findContact(parsed.recipient_name, contacts);
             if (existing) {
-                // Update existing contact
-                await supabase.from('contacts').update({
+                await contacts.updateById(existing.id, {
                     phone: parsed.recipient_phone || existing.phone,
                     email: parsed.recipient_email || existing.email,
-                }).eq('id', existing.id);
+                });
                 return { answer: `✅ איש הקשר "${parsed.recipient_name}" עודכן.`, action: null };
             }
-            const { error } = await supabase.from('contacts').insert([{
+            const { error } = await contacts.create({
                 name:  parsed.recipient_name,
                 phone: parsed.recipient_phone || null,
                 email: parsed.recipient_email || null,
-            }]);
+            });
             if (error) throw error;
             return { answer: `✅ "${parsed.recipient_name}" נשמר באנשי הקשר.`, action: null };
         }
@@ -92,7 +87,7 @@ Message: "${userMessage}"`;
         }
 
         // ── Send message ───────────────────────────────────────────────────────
-        const contact = await findContact(parsed.recipient_name, supabase);
+        const contact = await findContact(parsed.recipient_name, contacts);
         if (!contact) {
             return {
                 answer: `לא מצאתי איש קשר בשם "${parsed.recipient_name}".\nתוכל לשמור אותו: "שמור ${parsed.recipient_name} — [מספר/מייל]"`,

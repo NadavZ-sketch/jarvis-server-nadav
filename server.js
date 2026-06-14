@@ -2890,11 +2890,7 @@ app.get('/dashboard/conversation-insights', async (req, res) => {
             .map(r => ({ agent: r.agent, count: r.count, avgMs: r.avgMs || 0 }));
 
         const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const { count: recentChats } = await supabase
-            .from('chat_history')
-            .select('id', { count: 'exact', head: true })
-            .gte('created_at', since7)
-            .eq('role', 'user');
+        const recentChats = await repos.chat.countUserSince(since7);
 
         res.json({
             topAgents,
@@ -2942,11 +2938,7 @@ app.post('/dashboard/smart-proposals/generate', async (req, res) => {
 
         // 3. Recent chat volume
         const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const { count: recentChats } = await supabase
-            .from('chat_history')
-            .select('id', { count: 'exact', head: true })
-            .gte('created_at', since7)
-            .eq('role', 'user');
+        const recentChats = await repos.chat.countUserSince(since7);
 
         // 4. Build personalised prompt
         const concernsText = concerns.length > 0
@@ -3307,10 +3299,7 @@ app.get('/control-center/events', async (req, res) => {
             const hourJlm = (now.getUTCHours() + 2) % 24; // rough JLM offset
             const todayStart = new Date();
             todayStart.setUTCHours(0, 0, 0, 0);
-            const { count } = await supabase
-                .from('chat_history')
-                .select('id', { count: 'exact', head: true })
-                .gte('timestamp', todayStart.toISOString());
+            const count = await repos.chat.countSinceTimestamp(todayStart.toISOString());
             if ((count || 0) === 0 && hourJlm >= 12) {
                 badges.agents += 1;
                 alerts.push({
@@ -4876,18 +4865,16 @@ app.post('/dashboard/backlog/generate', async (req, res) => {
         let chatThemesContext = '';
         let bugContext = '';
         try {
-            const [memResult, chatResult] = await Promise.all([
-                supabase.from('memories').select('content').order('created_at', { ascending: false }).limit(25),
-                supabase.from('chat_history').select('content').eq('role', 'user')
-                    .gte('created_at', new Date(Date.now() - 14 * 86400000).toISOString())
-                    .order('created_at', { ascending: false }).limit(40),
+            const [memRows, chatRows] = await Promise.all([
+                repos.memories.recentByCreated(25),
+                repos.chat.recentUserContent(new Date(Date.now() - 14 * 86400000).toISOString(), 40),
             ]);
-            if (memResult.data?.length) {
+            if (memRows?.length) {
                 memoriesContext = '\n\n==זיכרונות המשתמש (העדפות, הרגלים)==\n' +
-                    memResult.data.map(m => `- ${m.content}`).join('\n');
+                    memRows.map(m => `- ${m.content}`).join('\n');
             }
-            if (chatResult.data?.length) {
-                const msgs = chatResult.data.map(m => m.content || '').filter(Boolean);
+            if (chatRows?.length) {
+                const msgs = chatRows.map(m => m.content || '').filter(Boolean);
                 chatThemesContext = '\n\n==הודעות אחרונות מהמשתמש (14 ימים)==\n' +
                     msgs.slice(0, 20).map(m => `• ${m.slice(0, 120)}`).join('\n');
             }

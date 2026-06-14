@@ -80,6 +80,7 @@ function makeMemoryRepo(opts = {}) {
     return {
         findByContent:   jest.fn(async () => rows),
         allContents:     jest.fn(async () => rows.map(r => r.content)),
+        recentByCreated: jest.fn(async () => rows),
         insert:          jest.fn(async () => insertResult || rows),
         update:          jest.fn(async () => updateResult || { error: null }),
         deleteByContent: jest.fn(async () => rows),
@@ -261,6 +262,9 @@ function makeChatRepo(opts = {}) {
         recentForSearch: jest.fn(async () => rows),
         countForChat:    jest.fn(async () => count),
         deleteForChat:   jest.fn(async () => ({ error: null })),
+        countUserSince:  jest.fn(async () => count),
+        countSinceTimestamp: jest.fn(async () => count),
+        recentUserContent: jest.fn(async () => rows),
     };
 }
 

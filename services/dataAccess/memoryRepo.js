@@ -30,6 +30,15 @@ function createMemoryRepo(supabase) {
             return (data || []).map(m => m.content);
         },
 
+        // Recent memory rows, newest first (proposal/context builder).
+        async recentByCreated(limit) {
+            const { data } = await supabase.from(M)
+                .select('content')
+                .order('created_at', { ascending: false })
+                .limit(limit);
+            return data || [];
+        },
+
         // Full rows for the /memories CRUD endpoints.
         async listAll() {
             const { data, error } = await supabase.from(M)

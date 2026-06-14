@@ -28,6 +28,28 @@ function createTaskRepo(supabase) {
             return data || [];
         },
 
+        // All dated tasks, soonest first (calendar view).
+        async datedAll() {
+            const { data } = await supabase.from(T)
+                .select('id, content, due_date, done')
+                .not('due_date', 'is', null)
+                .order('due_date', { ascending: true });
+            return data || [];
+        },
+
+        // Open dated tasks within [fromISO, toISO], soonest first, limited.
+        async upcomingDated(fromISO, toISO, limit) {
+            const { data } = await supabase.from(T)
+                .select('id, content, due_date, done')
+                .not('due_date', 'is', null)
+                .eq('done', false)
+                .lte('due_date', toISO)
+                .gte('due_date', fromISO)
+                .order('due_date', { ascending: true })
+                .limit(limit);
+            return data || [];
+        },
+
         // Top open tasks by priority (briefing / nudge).
         async topByPriority(limit) {
             const { data } = await supabase.from(T)

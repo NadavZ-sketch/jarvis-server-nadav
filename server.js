@@ -2497,13 +2497,8 @@ app.delete('/projects/:id/milestones/:mId', async (req, res) => {
 
 app.get('/projects/:id/sprints', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('project_sprints')
-            .select('*')
-            .eq('project_id', req.params.id)
-            .order('start_date', { ascending: false });
-        if (error) throw error;
-        res.json({ sprints: data || [] });
+        const data = await repos.sprints.listForProject(req.params.id);
+        res.json({ sprints: data });
     } catch (err) {
         console.error('GET /projects/:id/sprints error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
@@ -2516,11 +2511,9 @@ app.post('/projects/:id/sprints', async (req, res) => {
         if (!name || !start_date || !end_date) {
             return res.status(400).json({ error: 'name, start_date ו-end_date נדרשים' });
         }
-        const { data, error } = await supabase
-            .from('project_sprints')
-            .insert([{ project_id: req.params.id, name, goal, start_date, end_date, capacity_points: capacity_points || 0 }])
-            .select()
-            .single();
+        const { data, error } = await repos.sprints.create({
+            project_id: req.params.id, name, goal, start_date, end_date, capacity_points: capacity_points || 0,
+        });
         if (error) throw error;
         res.json({ sprint: data });
     } catch (err) {
@@ -2534,13 +2527,7 @@ app.put('/projects/:id/sprints/:sId', async (req, res) => {
         const updates = { ...req.body, updated_at: new Date().toISOString() };
         delete updates.id;
         delete updates.project_id;
-        const { data, error } = await supabase
-            .from('project_sprints')
-            .update(updates)
-            .eq('id', req.params.sId)
-            .eq('project_id', req.params.id)
-            .select()
-            .single();
+        const { data, error } = await repos.sprints.updateScoped(req.params.sId, req.params.id, updates);
         if (error) throw error;
         res.json({ sprint: data });
     } catch (err) {
@@ -2551,11 +2538,7 @@ app.put('/projects/:id/sprints/:sId', async (req, res) => {
 
 app.delete('/projects/:id/sprints/:sId', async (req, res) => {
     try {
-        const { error } = await supabase
-            .from('project_sprints')
-            .delete()
-            .eq('id', req.params.sId)
-            .eq('project_id', req.params.id);
+        const { error } = await repos.sprints.removeScoped(req.params.sId, req.params.id);
         if (error) throw error;
         res.json({ ok: true });
     } catch (err) {
@@ -2566,22 +2549,11 @@ app.delete('/projects/:id/sprints/:sId', async (req, res) => {
 
 app.post('/projects/:id/sprints/:sId/start', async (req, res) => {
     try {
-        const { data: existing } = await supabase
-            .from('project_sprints')
-            .select('id')
-            .eq('project_id', req.params.id)
-            .eq('status', 'active')
-            .neq('id', req.params.sId);
+        const existing = await repos.sprints.activeOthers(req.params.id, req.params.sId);
         if (existing && existing.length > 0) {
             return res.status(409).json({ error: 'כבר קיים ספרינט פעיל לפרויקט זה' });
         }
-        const { data, error } = await supabase
-            .from('project_sprints')
-            .update({ status: 'active', updated_at: new Date().toISOString() })
-            .eq('id', req.params.sId)
-            .eq('project_id', req.params.id)
-            .select()
-            .single();
+        const { data, error } = await repos.sprints.updateScoped(req.params.sId, req.params.id, { status: 'active', updated_at: new Date().toISOString() });
         if (error) throw error;
         res.json({ sprint: data });
     } catch (err) {
@@ -2593,18 +2565,8 @@ app.post('/projects/:id/sprints/:sId/start', async (req, res) => {
 
 app.post('/projects/:id/sprints/:sId/complete', async (req, res) => {
     try {
-        await supabase
-            .from('tasks')
-            .update({ sprint_id: null })
-            .eq('sprint_id', req.params.sId)
-            .eq('done', false);
-        const { data, error } = await supabase
-            .from('project_sprints')
-            .update({ status: 'completed', updated_at: new Date().toISOString() })
-            .eq('id', req.params.sId)
-            .eq('project_id', req.params.id)
-            .select()
-            .single();
+        await repos.sprints.releaseTasks(req.params.sId);
+        const { data, error } = await repos.sprints.updateScoped(req.params.sId, req.params.id, { status: 'completed', updated_at: new Date().toISOString() });
         if (error) throw error;
         res.json({ sprint: data });
     } catch (err) {

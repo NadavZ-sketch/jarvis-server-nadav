@@ -19,6 +19,7 @@ const { createContactRepo } = require('./contactRepo');
 const { createChatRepo } = require('./chatRepo');
 const { createSurveyRepo } = require('./surveyRepo');
 const { createProfileRepo } = require('./profileRepo');
+const { createSprintRepo } = require('./sprintRepo');
 const { createTableRepo } = require('./tableRepo');
 
 function createRepos(supabase) {
@@ -36,6 +37,7 @@ function createRepos(supabase) {
         chat: createChatRepo(supabase),
         surveys: createSurveyRepo(supabase),
         profile: createProfileRepo(supabase),
+        sprints: createSprintRepo(supabase),
         // Lazily-built, memoised generic repo for any other table.
         table(name) {
             return generic[name] || (generic[name] = createTableRepo(supabase, name));

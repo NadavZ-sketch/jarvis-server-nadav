@@ -171,6 +171,19 @@ function makeSurveyRepo(opts = {}) {
     };
 }
 
+function makeSprintRepo(opts = {}) {
+    const { rows = [], createResult, updateResult, removeResult, activeOthers = [] } = opts;
+    const firstRow = rows[0] || { id: 'sp1' };
+    return {
+        listForProject: jest.fn(async () => rows),
+        create:         jest.fn(async () => createResult || { data: firstRow, error: null }),
+        updateScoped:   jest.fn(async () => updateResult || { data: firstRow, error: null }),
+        removeScoped:   jest.fn(async () => removeResult || { error: null }),
+        activeOthers:   jest.fn(async () => activeOthers),
+        releaseTasks:   jest.fn(async () => ({ error: null })),
+    };
+}
+
 function makeProfileRepo(opts = {}) {
     const { rows = [], updateResult, createResult, removeResult, latestError } = opts;
     const firstRow = rows[0] || { id: 'default' };
@@ -221,10 +234,11 @@ function makeRepos(tableData = {}) {
         chat: makeChatRepo({ rows: tableData.chat_history || [] }),
         surveys: makeSurveyRepo({ rows: tableData.user_surveys || [] }),
         profile: makeProfileRepo({ rows: tableData.user_profiles || [] }),
+        sprints: makeSprintRepo({ rows: tableData.project_sprints || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSurveyRepo, makeProfileRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeTableRepo };

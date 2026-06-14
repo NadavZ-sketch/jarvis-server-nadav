@@ -277,6 +277,13 @@ class _SmartHomeScreenState extends State<SmartHomeScreen>
         _buildHeroCard(),
         const SizedBox(height: 16),
 
+        // ── Trust + memory strip ──────────────────────────────────────────
+        _PrivacyMemoryStrip(
+          memoryCount: _data.tasksBadge + _data.remindersBadge,
+          onOpenPrivacy: () => widget.onNavigate?.call(3),
+        ),
+        const SizedBox(height: 16),
+
         // ── Secondary row: Tasks + Reminders ──────────────────────────────
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -386,6 +393,210 @@ class _SmartHomeScreenState extends State<SmartHomeScreen>
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Trust + Memory Strip ────────────────────────────────────────────────────
+
+class _PrivacyMemoryStrip extends StatelessWidget {
+  final int memoryCount;
+  final VoidCallback onOpenPrivacy;
+
+  const _PrivacyMemoryStrip({
+    required this.memoryCount,
+    required this.onOpenPrivacy,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final signalCount = memoryCount.clamp(0, 9);
+
+    return SurfaceCard(
+      padding: const EdgeInsets.all(16),
+      radius: 18,
+      color: JC.surfaceAlt.withValues(alpha: 0.92),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Row(
+            textDirection: TextDirection.rtl,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: JC.green500.withValues(alpha: 0.12),
+                  border: Border.all(
+                    color: JC.green500.withValues(alpha: 0.32),
+                    width: 0.8,
+                  ),
+                ),
+                child: Icon(Icons.verified_user_outlined,
+                    color: JC.green500, size: 19),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'מרכז אמון וזיכרון',
+                      textDirection: TextDirection.rtl,
+                      style: TextStyle(
+                        color: JC.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Heebo',
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'ג׳רביס מציג מה הוא זוכר ומה דורש הרשאה לפני פעולה.',
+                      textDirection: TextDirection.rtl,
+                      style: TextStyle(
+                        color: JC.textSecondary,
+                        fontSize: 11.5,
+                        height: 1.35,
+                        fontFamily: 'Heebo',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _TrustAction(onTap: onOpenPrivacy),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            textDirection: TextDirection.rtl,
+            children: [
+              _MemoryNode(
+                label: 'זיכרון אישי',
+                value: signalCount == 0 ? 'נקי' : '$signalCount אותות',
+                color: JC.blue400,
+              ),
+              const SizedBox(width: 8),
+              _MemoryNode(
+                label: 'הרשאות',
+                value: 'בשליטה',
+                color: JC.green500,
+              ),
+              const SizedBox(width: 8),
+              _MemoryNode(
+                label: 'פעולות',
+                value: 'דורשות אישור',
+                color: JC.amber400,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrustAction extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _TrustAction({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: JC.blue500.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: JC.blue500.withValues(alpha: 0.28)),
+        ),
+        child: Text(
+          'נהל',
+          style: TextStyle(
+            color: JC.blue300,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Heebo',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MemoryNode extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MemoryNode({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  label,
+                  textDirection: TextDirection.rtl,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: JC.textMuted,
+                    fontSize: 10,
+                    fontFamily: 'Heebo',
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              textDirection: TextDirection.rtl,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: JC.textPrimary,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Heebo',
+              ),
+            ),
+          ],
         ),
       ),
     );

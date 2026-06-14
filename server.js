@@ -170,7 +170,7 @@ async function handleTaskReminderConfirmation(userMessage) {
         const isoReminder = `${reminderDate.getFullYear()}-${pad(reminderDate.getMonth()+1)}-${pad(reminderDate.getDate())}T${pad(reminderDate.getHours())}:${pad(reminderDate.getMinutes())}:00+03:00`;
 
         try {
-            await supabase.from('reminders').insert([{ text: `לסיים משימה: ${taskContent}`, scheduled_time: isoReminder }]);
+            await repos.reminders.add({ text: `לסיים משימה: ${taskContent}`, scheduled_time: isoReminder });
         } catch { /* ignore */ }
 
         await clearTaskReminderPending();
@@ -3721,15 +3721,11 @@ function computeNextOccurrence(scheduledTimeISO, recurrence) {
 // Fire due reminders: mark one-time reminders fired, reschedule recurring ones
 // to their next occurrence. Extracted from the per-minute cron so the logic is
 // unit-testable independent of node-cron and the test-env guard.
-async function fireDueReminders(db = supabase, nowIso = new Date().toISOString()) {
+async function fireDueReminders(reminders = repos.reminders, nowIso = new Date().toISOString()) {
     try {
-        const { data: due, error } = await db
-            .from('reminders')
-            .select('id, text, scheduled_time, recurrence')
-            .eq('fired', false)
-            .lte('scheduled_time', nowIso);
-
-        if (error) { console.error('⏰ Cron error:', error.message); return { fired: 0, rescheduled: 0 }; }
+        let due;
+        try { due = await reminders.dueNow(nowIso); }
+        catch (error) { console.error('⏰ Cron error:', error.message); return { fired: 0, rescheduled: 0 }; }
         if (!due || due.length === 0) return { fired: 0, rescheduled: 0 };
 
         due.forEach(r => console.log(`🔔 REMINDER: ${r.text} [${r.scheduled_time}]${r.recurrence ? ` 🔁 ${r.recurrence}` : ''}`));
@@ -3739,9 +3735,7 @@ async function fireDueReminders(db = supabase, nowIso = new Date().toISOString()
             const next = r.recurrence ? computeNextOccurrence(r.scheduled_time, r.recurrence) : null;
             if (next) {
                 // Recurring: reschedule to next occurrence
-                await db.from('reminders')
-                    .update({ scheduled_time: next.toISOString(), fired: false })
-                    .eq('id', r.id);
+                await reminders.rescheduleRecurring(r.id, next.toISOString());
                 console.log(`🔁 Rescheduled "${r.text}" → ${next.toISOString()}`);
                 // Push recurring reminders — app won't have pre-scheduled them for future occurrences
                 pushService.sendPush({
@@ -3753,7 +3747,7 @@ async function fireDueReminders(db = supabase, nowIso = new Date().toISOString()
                 rescheduled++;
             } else {
                 // One-time: mark as fired
-                await db.from('reminders').update({ fired: true }).eq('id', r.id);
+                await reminders.markFired(r.id);
                 // Push only if the reminder was created very recently (app couldn't pre-schedule it)
                 const createdRecently = r.created_at
                     ? (Date.now() - new Date(r.created_at).getTime()) < 2 * 60 * 1000
@@ -3796,11 +3790,11 @@ if (!isTestEnv) scheduledJob('memory_cleanup_hourly', '17 * * * *', async () => 
 async function enqueueNotification(text, opts = {}) {
     const { title = 'ג׳רביס 🤖', category = 'proactive' } = opts;
     // Always write to the reminders feed (in-app polling)
-    await supabase.from('reminders').insert([{
+    await repos.reminders.add({
         text,
         scheduled_time: new Date().toISOString(),
         fired: true,
-    }]);
+    });
     // Also push to the device when a driver is configured
     pushService.sendPush({ title, body: text, category }).catch(() => {});
 }

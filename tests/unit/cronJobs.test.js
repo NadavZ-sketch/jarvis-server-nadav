@@ -20,50 +20,51 @@ jest.mock('../../services/obsidianSync', () => ({
 }));
 
 const { fireDueReminders } = require('../../server');
-const { makeChain } = require('../helpers/supabaseMock');
 
 const NOW = '2026-06-05T12:00:00.000Z';
 
+// A reminder repo fake whose dueNow yields `due` (or throws `error`).
+function makeReminders(due = [], error = null) {
+    return {
+        dueNow: error ? jest.fn(async () => { throw error; }) : jest.fn(async () => due),
+        rescheduleRecurring: jest.fn(async () => ({ error: null })),
+        markFired: jest.fn(async () => ({ error: null })),
+    };
+}
+
 describe('fireDueReminders', () => {
     test('no due reminders → zero counts', async () => {
-        const db = { from: jest.fn(() => makeChain([])) };
-        const res = await fireDueReminders(db, NOW);
+        const res = await fireDueReminders(makeReminders([]), NOW);
         expect(res).toEqual({ fired: 0, rescheduled: 0 });
     });
 
     test('db error is swallowed and reported as zero counts', async () => {
-        const db = { from: jest.fn(() => makeChain(null, { message: 'db down' })) };
-        const res = await fireDueReminders(db, NOW);
+        const res = await fireDueReminders(makeReminders([], new Error('db down')), NOW);
         expect(res).toEqual({ fired: 0, rescheduled: 0 });
     });
 
     test('marks a one-time due reminder as fired', async () => {
-        const chain = makeChain([{ id: 1, text: 'תרופה', scheduled_time: '2026-06-05T11:00:00.000Z', recurrence: null }]);
-        const db = { from: jest.fn(() => chain) };
-        const res = await fireDueReminders(db, NOW);
+        const reminders = makeReminders([{ id: 1, text: 'תרופה', scheduled_time: '2026-06-05T11:00:00.000Z', recurrence: null }]);
+        const res = await fireDueReminders(reminders, NOW);
         expect(res).toEqual({ fired: 1, rescheduled: 0 });
-        expect(chain.update).toHaveBeenCalledWith({ fired: true });
-        expect(chain.eq).toHaveBeenCalledWith('id', 1);
+        expect(reminders.markFired).toHaveBeenCalledWith(1);
     });
 
     test('reschedules a recurring reminder to its next occurrence', async () => {
-        const chain = makeChain([{ id: 2, text: 'אימון', scheduled_time: '2026-06-05T11:00:00.000Z', recurrence: 'daily' }]);
-        const db = { from: jest.fn(() => chain) };
-        const res = await fireDueReminders(db, NOW);
+        const reminders = makeReminders([{ id: 2, text: 'אימון', scheduled_time: '2026-06-05T11:00:00.000Z', recurrence: 'daily' }]);
+        const res = await fireDueReminders(reminders, NOW);
         expect(res).toEqual({ fired: 0, rescheduled: 1 });
-        const updateArg = chain.update.mock.calls.find(c => c[0].fired === false)[0];
-        expect(updateArg).toMatchObject({ fired: false });
-        expect(typeof updateArg.scheduled_time).toBe('string');
-        expect(new Date(updateArg.scheduled_time).getTime()).toBeGreaterThan(new Date('2026-06-05T11:00:00.000Z').getTime());
+        const [id, iso] = reminders.rescheduleRecurring.mock.calls[0];
+        expect(id).toBe(2);
+        expect(new Date(iso).getTime()).toBeGreaterThan(new Date('2026-06-05T11:00:00.000Z').getTime());
     });
 
     test('handles a mixed batch of one-time and recurring reminders', async () => {
-        const chain = makeChain([
+        const reminders = makeReminders([
             { id: 1, text: 'a', scheduled_time: '2026-06-05T11:00:00.000Z', recurrence: null },
             { id: 2, text: 'b', scheduled_time: '2026-06-05T11:00:00.000Z', recurrence: 'weekly' },
         ]);
-        const db = { from: jest.fn(() => chain) };
-        const res = await fireDueReminders(db, NOW);
+        const res = await fireDueReminders(reminders, NOW);
         expect(res).toEqual({ fired: 1, rescheduled: 1 });
     });
 });

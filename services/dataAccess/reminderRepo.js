@@ -53,6 +53,25 @@ function createReminderRepo(supabase) {
         },
 
         // ── writes ─────────────────────────────────────────────────────────
+        // Unfired reminders due at/before nowISO (cron firing); throws on error.
+        async dueNow(nowISO) {
+            const { data, error } = await supabase.from(R)
+                .select('id, text, scheduled_time, recurrence')
+                .eq('fired', false)
+                .lte('scheduled_time', nowISO);
+            if (error) throw error;
+            return data || [];
+        },
+
+        // Recurring reminder → advance to its next occurrence, un-fired.
+        async rescheduleRecurring(id, iso) {
+            return supabase.from(R).update({ scheduled_time: iso, fired: false }).eq('id', id);
+        },
+
+        async markFired(id) {
+            return supabase.from(R).update({ fired: true }).eq('id', id);
+        },
+
         async add(row) {
             return supabase.from(R).insert([row]);
         },

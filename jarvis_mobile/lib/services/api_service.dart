@@ -253,12 +253,6 @@ class ApiService {
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
-  Future<List<Map<String, dynamic>>> getTodayItems() async {
-    final res = await _client.get(_uri('/tasks/today'), headers: _baseHeaders).timeout(_timeout);
-    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
-    return List<Map<String, dynamic>>.from(data['items'] ?? []);
-  }
-
   // Smart Day Engine: scored, prioritized, load-aware day plan.
   Future<Map<String, dynamic>> getDashboardContext() async {
     // Send the user's city so the server fetches weather for the right place.

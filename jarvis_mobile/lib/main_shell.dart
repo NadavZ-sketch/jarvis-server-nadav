@@ -30,7 +30,7 @@ class _MainShellState extends State<MainShell> {
   Timer? _notifPollTimer;
   String? _pendingChatCommand;
 
-  // Drives the Productivity tab's inner sub-tab (1=tasks, 2=reminders) when the
+  // Drives the Productivity tab's inner sub-tab (0=tasks, 1=reminders, 2=calendar) when the
   // chat sends the user there via an inline navigate button.
   final ValueNotifier<int> _productivityTab = ValueNotifier<int>(0);
 

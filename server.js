@@ -2574,12 +2574,7 @@ app.post('/projects/:id/ai-insights', async (req, res) => {
 
 app.get('/e2e-reports', async (_req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('e2e_reports')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(2000);
-        if (error) throw error;
+        const data = await repos.e2e.listRecent(2000);
 
         // Group by run_id and compute summary per run
         const byRun = new Map();
@@ -2621,13 +2616,7 @@ app.get('/e2e-reports', async (_req, res) => {
 
 app.get('/e2e-reports/:runId', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('e2e_reports')
-            .select('*')
-            .eq('run_id', req.params.runId)
-            .order('severity', { ascending: true });
-        if (error) throw error;
-        const findings = data || [];
+        const findings = await repos.e2e.byRun(req.params.runId);
 
         const counts = countsBySeverity(findings);
         const score  = computeScore(findings);
@@ -2648,10 +2637,7 @@ app.get('/e2e-reports/:runId', async (req, res) => {
 
 app.delete('/e2e-reports/:runId', async (req, res) => {
     try {
-        const { error } = await supabase
-            .from('e2e_reports')
-            .delete()
-            .eq('run_id', req.params.runId);
+        const { error } = await repos.e2e.deleteRun(req.params.runId);
         if (error) throw error;
         cacheInvalidate('chatHistory'); // not strictly needed but cheap
         res.json({ ok: true });
@@ -2668,13 +2654,7 @@ app.post('/e2e-reports/:runId/prompt', async (req, res) => {
         if (!Array.isArray(fingerprints) || !fingerprints.length) {
             return res.status(400).json({ error: 'fingerprints array required' });
         }
-        const { data, error } = await supabase
-            .from('e2e_reports')
-            .select('*')
-            .eq('run_id', req.params.runId)
-            .in('fingerprint', fingerprints);
-        if (error) throw error;
-        const findings = data || [];
+        const findings = await repos.e2e.byRunAndFingerprints(req.params.runId, fingerprints);
         const counts   = countsBySeverity(findings);
         const score    = computeScore(findings);
         const claudePrompt = buildClaudePrompt({ runId: req.params.runId, findings, score, counts });
@@ -2692,11 +2672,7 @@ app.post('/e2e-reports/:runId/mark-done', async (req, res) => {
         if (!Array.isArray(fingerprints) || !fingerprints.length) {
             return res.status(400).json({ error: 'fingerprints array required' });
         }
-        const { error } = await supabase
-            .from('e2e_reports')
-            .update({ status: 'done' })
-            .eq('run_id', req.params.runId)
-            .in('fingerprint', fingerprints);
+        const { error } = await repos.e2e.markDone(req.params.runId, fingerprints);
         if (error) throw error;
         res.json({ ok: true, updated: fingerprints.length });
     } catch (err) {
@@ -3265,12 +3241,7 @@ app.get('/control-center/events', async (req, res) => {
 
         // 1) New e2e reports → insights tab badge + alert on score drop.
         try {
-            const { data: reports } = await supabase
-                .from('e2e_reports')
-                .select('run_id, score, critical, high, created_at')
-                .order('created_at', { ascending: false })
-                .limit(5);
-            const rows = reports || [];
+            const rows = await repos.e2e.recentScores(5);
             if (rows.length > 0) {
                 const latest = rows[0];
                 const latestTs = new Date(latest.created_at).getTime();
@@ -4521,14 +4492,9 @@ Cache: in-process TTL (memories 5min, chat 30s)
 }
 
 // Fetch recent e2e failures for proposal context enrichment (best-effort)
-async function _getRecentBugContext(supabaseClient) {
+async function _getRecentBugContext(repos) {
     try {
-        const { data } = await supabaseClient
-            .from('e2e_reports')
-            .select('summary, created_at')
-            .eq('status', 'fail')
-            .order('created_at', { ascending: false })
-            .limit(3);
+        const data = await repos.e2e.recentFailures(3);
         if (!data?.length) return '';
         return '\n\n==תקלות אחרונות (e2e reports)==\n' +
             data.map(r => `- ${(r.summary || '').slice(0, 120)}`).join('\n');
@@ -4969,7 +4935,7 @@ app.post('/dashboard/backlog/generate', async (req, res) => {
                 chatThemesContext = '\n\n==הודעות אחרונות מהמשתמש (14 ימים)==\n' +
                     msgs.slice(0, 20).map(m => `• ${m.slice(0, 120)}`).join('\n');
             }
-            bugContext = await _getRecentBugContext(supabase);
+            bugContext = await _getRecentBugContext(repos);
         } catch (_) { /* context enrichment is best-effort */ }
 
         const prompt = `אתה מנהל פרויקט בכיר של "ג'רביס" — עוזר AI אישי ב-Flutter + Node.js.

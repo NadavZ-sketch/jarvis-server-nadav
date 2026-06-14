@@ -34,7 +34,7 @@ class RemindersCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.25),
+              color: Colors.black.withValues(alpha: 0.25),
               blurRadius: 8,
               offset: const Offset(0, 2))
         ],
@@ -74,64 +74,69 @@ class RemindersCard extends StatelessWidget {
                   final isSelected = offset == c.selectedDayOffset;
                   final remCount = c.reminderCountForDay(day);
 
-                  return GestureDetector(
-                    onTap: () => c.selectDay(offset),
-                    child: Container(
-                      width: 44,
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? JC.blue500
-                            : isToday
-                                ? JC.blue500.withOpacity(0.15)
-                                : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                        border: isToday && !isSelected
-                            ? Border.all(
-                                color: JC.blue500.withOpacity(0.5), width: 1)
-                            : null,
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(hebrewDays[day.weekday % 7],
-                              style: TextStyle(
-                                color: isSelected ? JC.onAccent : JC.textMuted,
-                                fontSize: 10,
-                                fontFamily: 'Heebo',
-                              )),
-                          const SizedBox(height: 3),
-                          Text('${day.day}',
-                              style: TextStyle(
-                                color: isSelected ? JC.onAccent : JC.textPrimary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                fontFamily: 'Heebo',
-                              )),
-                          const SizedBox(height: 3),
-                          if (remCount > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? JC.onAccent.withValues(alpha: 0.3)
-                                    : const Color(0xFFF59E0B).withOpacity(0.18),
-                                borderRadius: BorderRadius.circular(5),
-                              ),
-                              child: Text('$remCount',
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? JC.onAccent
-                                        : const Color(0xFFF59E0B),
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w700,
-                                    fontFamily: 'Heebo',
-                                  )),
-                            )
-                          else
-                            const SizedBox(height: 12),
-                        ],
+                  return Semantics(
+                    button: true,
+                    label: '${hebrewDays[day.weekday % 7]} ${day.day}, $remCount תזכורות',
+                    selected: isSelected,
+                    child: GestureDetector(
+                      onTap: () => c.selectDay(offset),
+                      child: Container(
+                        width: 44,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? JC.blue500
+                              : isToday
+                                  ? JC.blue500.withValues(alpha: 0.15)
+                                  : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          border: isToday && !isSelected
+                              ? Border.all(
+                                  color: JC.blue500.withValues(alpha: 0.5), width: 1)
+                              : null,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(hebrewDays[day.weekday % 7],
+                                style: TextStyle(
+                                  color: isSelected ? JC.onAccent : JC.textMuted,
+                                  fontSize: 10,
+                                  fontFamily: 'Heebo',
+                                )),
+                            const SizedBox(height: 3),
+                            Text('${day.day}',
+                                style: TextStyle(
+                                  color: isSelected ? JC.onAccent : JC.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  fontFamily: 'Heebo',
+                                )),
+                            const SizedBox(height: 3),
+                            if (remCount > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? JC.onAccent.withValues(alpha: 0.3)
+                                      : const Color(0xFFF59E0B).withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Text('$remCount',
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? JC.onAccent
+                                          : const Color(0xFFF59E0B),
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w700,
+                                      fontFamily: 'Heebo',
+                                    )),
+                              )
+                            else
+                              const SizedBox(height: 12),
+                          ],
+                        ),
                       ),
                     ),
                   );
@@ -198,13 +203,14 @@ class RemindersCard extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
-            color: const Color(0xFFEF4444).withOpacity(0.1),
+            color: const Color(0xFFEF4444).withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-                color: const Color(0xFFEF4444).withOpacity(0.3), width: 0.8),
+                color: const Color(0xFFEF4444).withValues(alpha: 0.3), width: 0.8),
           ),
           child: Row(children: [
-            const Text('🔔', style: TextStyle(fontSize: 13)),
+            const Icon(Icons.notifications_active_rounded,
+                color: Color(0xFFEF4444), size: 14),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
@@ -293,7 +299,7 @@ class RemindersCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.07),
+        color: accent.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(10),
         border: BorderDirectional(start: BorderSide(color: accent, width: 2)),
       ),
@@ -302,7 +308,7 @@ class RemindersCard extends StatelessWidget {
           width: 44,
           height: 38,
           decoration: BoxDecoration(
-            color: accent.withOpacity(0.15),
+            color: accent.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Center(

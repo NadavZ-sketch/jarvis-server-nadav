@@ -25,7 +25,7 @@ class JD {
   static const double display = 22; // hero greeting
   static const double title = 14; // card titles
   static const double body = 13; // primary body text
-  static const double label = 11; // chips / captions
+  static const double label = 12; // chips / captions
   static const double lineHeight = 1.5;
 
   // ── Convenience EdgeInsets (directional-safe; symmetric values) ──

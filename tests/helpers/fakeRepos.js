@@ -157,6 +157,15 @@ function makeContactRepo(opts = {}) {
     };
 }
 
+function makeChatRepo(opts = {}) {
+    const { rows = [], addResult } = opts;
+    return {
+        recentTail:      jest.fn(async () => rows),
+        add:             jest.fn(async () => addResult || { error: null }),
+        recentForSearch: jest.fn(async () => rows),
+    };
+}
+
 function makeTableRepo(rows = []) {
     return {
         all:      jest.fn(async () => rows),
@@ -183,10 +192,11 @@ function makeRepos(tableData = {}) {
         projects: makeProjectRepo({ projects: tableData.projects || [] }),
         subtasks: makeSubtaskRepo({ rows: tableData.subtasks || [] }),
         contacts: makeContactRepo({ rows: tableData.contacts || [] }),
+        chat: makeChatRepo({ rows: tableData.chat_history || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeTableRepo };

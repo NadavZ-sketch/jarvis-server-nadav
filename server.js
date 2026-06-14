@@ -730,12 +730,10 @@ async function getUserProfile() {
     const cached = cacheGet('userProfile');
     if (cached !== undefined) return cached;
 
-    const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .order('updated_at', { ascending: false })
-        .limit(1);
-    if (error) {
+    let data;
+    try {
+        data = await repos.profile.latest();
+    } catch (error) {
         console.error('user_profiles fetch error:', error.message);
         return readLocalProfile(); // don't cache transient DB errors
     }
@@ -1308,18 +1306,9 @@ app.post('/user-profile', async (req, res) => {
 
         let result;
         if (existing?.id) {
-            result = await supabase
-                .from('user_profiles')
-                .update(payload)
-                .eq('id', existing.id)
-                .select()
-                .single();
+            result = await repos.profile.update(existing.id, payload);
         } else {
-            result = await supabase
-                .from('user_profiles')
-                .insert([payload])
-                .select()
-                .single();
+            result = await repos.profile.create(payload);
         }
         if (result.error) {
             console.error('user_profiles save error:', result.error.message);
@@ -1350,7 +1339,7 @@ app.delete('/user-profile', async (_req, res) => {
             cacheInvalidate('userProfile');
             return res.json({ success: true, deleted: true, fallback: true });
         }
-        const { error } = await supabase.from('user_profiles').delete().eq('id', existing.id);
+        const { error } = await repos.profile.removeById(existing.id);
         if (error) {
             console.error('user_profiles delete error:', error.message);
             deleteLocalProfile();
@@ -2082,7 +2071,7 @@ app.get('/auth/google/callback', async (req, res) => {
         });
         const tokenData = tokenRes.data;
         // Store refresh token in user_profiles
-        await supabase.from('user_profiles').upsert([{ id: 'default', google_calendar_token: JSON.stringify(tokenData) }], { onConflict: 'id' });
+        await repos.profile.saveCalendarToken(JSON.stringify(tokenData));
         cacheInvalidate('userProfile');
         res.send('<h2>✅ יומן Google חובר בהצלחה! אפשר לסגור את החלון.</h2>');
     } catch (err) {

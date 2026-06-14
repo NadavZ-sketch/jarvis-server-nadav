@@ -11,11 +11,13 @@ import 'home/home_helpers.dart';
 class SmartProductivityPreviewScreen extends StatefulWidget {
   final AppSettings settings;
   final void Function({String? command})? onNavigateToChat;
+  final VoidCallback? onNavigateToCalendar;
 
   const SmartProductivityPreviewScreen({
     super.key,
     required this.settings,
     this.onNavigateToChat,
+    this.onNavigateToCalendar,
   });
 
   @override
@@ -34,6 +36,7 @@ class _SmartProductivityPreviewScreenState
     _c = HomeController(
       settings: widget.settings,
       onNavigateToChat: widget.onNavigateToChat,
+      onNavigateToCalendar: widget.onNavigateToCalendar,
     )..start();
   }
 

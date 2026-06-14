@@ -215,6 +215,11 @@ class _MainShellState extends State<MainShell> {
                   }
                   _onTabTapped(1);
                 },
+                onNavigateToCalendar: () {
+                  _productivityTab.value = 2;
+                  HapticFeedback.selectionClick();
+                  setState(() => _selectedIndex = 2);
+                },
               ),
               // 1 — Chat (main screen)
               ChatScreen(

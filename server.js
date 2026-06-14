@@ -1089,7 +1089,7 @@ async function askJarvisHandler(req, res) {
             let nudgeTimer;
             try {
                 const sug = await Promise.race([
-                    proactiveEngine.computeProactiveSuggestion(supabase, userMessage),
+                    proactiveEngine.computeProactiveSuggestion(repos, userMessage),
                     new Promise(resolve => { nudgeTimer = setTimeout(() => resolve(null), 400); }),
                 ]);
                 if (sug) {
@@ -3728,7 +3728,7 @@ async function streamJarvisHandler(req, res) {
             let nudgeTimer;
             try {
                 const sug = await Promise.race([
-                    proactiveEngine.computeProactiveSuggestion(supabase, userMessage),
+                    proactiveEngine.computeProactiveSuggestion(repos, userMessage),
                     new Promise(resolve => { nudgeTimer = setTimeout(() => resolve(null), 400); }),
                 ]);
                 if (sug) {
@@ -3865,7 +3865,7 @@ if (!isTestEnv) scheduledJob('fire_reminders', '* * * * *', () => fireDueReminde
 
 // Hourly cleanup of expired session/recent memories (24h / 7d TTLs).
 if (!isTestEnv) scheduledJob('memory_cleanup_hourly', '17 * * * *', async () => {
-    const res = await cleanupExpiredMemories(supabase);
+    const res = await cleanupExpiredMemories(repos);
     if (res.deleted > 0) cacheInvalidate('memories');
     if (res.errors?.length) console.warn('🧹 memoryCleanup errors:', res.errors);
 });
@@ -4015,7 +4015,7 @@ let _lastProactivePushDate = null;
 if (!isTestEnv) scheduledJob('proactive_push', '0 13 * * *', async () => {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
     if (_lastProactivePushDate === today) return;
-    const sug = await proactiveEngine.computeProactiveSuggestion(supabase);
+    const sug = await proactiveEngine.computeProactiveSuggestion(repos);
     if (sug && (sug.type === 'overdue' || sug.type === 'stale_high')) {
         await enqueueNotification(`💡 ${sug.message}`, { title: '💡 ג׳רביס', category: 'proactive' });
         _lastProactivePushDate = today;
@@ -4047,7 +4047,7 @@ if (!isTestEnv) scheduledJob('inactive_agent_check', '0 9 * * *', async () => {
 // hourly, but with full Pinecone + Obsidian sync. Catches anything the hourly
 // job missed and keeps the three stores aligned.
 if (!isTestEnv) scheduledJob('memory_cleanup_nightly', '30 3 * * *', async () => {
-    const res = await cleanupExpiredMemories(supabase);
+    const res = await cleanupExpiredMemories(repos);
     if (res.deleted > 0) {
         cacheInvalidate('memories');
         console.log(`🧹 nightly memoryCleanup: removed ${res.deleted} expired memories`);

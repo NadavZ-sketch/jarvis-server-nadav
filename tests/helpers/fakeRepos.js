@@ -32,6 +32,7 @@ function makeTaskRepo(opts = {}) {
         recentTop:        jest.fn(async () => rows),
         firstOpen:        jest.fn(async () => rows),
         findByContent:    jest.fn(async () => rows),
+        openForNudge:     jest.fn(async () => rows),
         addGraceful:      jest.fn(async () => {}),
         create:           jest.fn(async () => createResult        || { data: firstRow, error: null }),
         insertNext:       jest.fn(async () => insertNextResult    || { error: null }),
@@ -71,6 +72,8 @@ function makeMemoryRepo(opts = {}) {
         insert:          jest.fn(async () => insertResult || rows),
         update:          jest.fn(async () => updateResult || { error: null }),
         deleteByContent: jest.fn(async () => rows),
+        expiredByScope:  jest.fn(async () => rows),
+        deleteMany:      jest.fn(async () => ({ error: null })),
     };
 }
 

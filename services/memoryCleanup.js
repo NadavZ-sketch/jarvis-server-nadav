@@ -14,8 +14,8 @@ const obsidianSync  = require('./obsidianSync');
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const RECENT_TTL_MS  = 7 * 24 * 60 * 60 * 1000;
 
-async function cleanupExpiredMemories(supabase) {
-    if (!supabase) return { deleted: 0, error: 'no supabase client' };
+async function cleanupExpiredMemories(repos) {
+    if (!repos) return { deleted: 0, error: 'no repos' };
     const nowIso = (msAgo) => new Date(Date.now() - msAgo).toISOString();
 
     let totalDeleted = 0;
@@ -27,17 +27,11 @@ async function cleanupExpiredMemories(supabase) {
     ]) {
         try {
             // Fetch id + content so we can remove both vectors and vault entries.
-            const { data: rows, error } = await supabase
-                .from('memories')
-                .select('id, content')
-                .eq('scope', scope)
-                .lt('created_at', cutoff)
-                .limit(500);
-            if (error) throw error;
+            const rows = await repos.memories.expiredByScope(scope, cutoff, 500);
             if (!rows || rows.length === 0) continue;
 
             const ids = rows.map(r => r.id);
-            const { error: delErr } = await supabase.from('memories').delete().in('id', ids);
+            const { error: delErr } = await repos.memories.deleteMany(ids);
             if (delErr) throw delErr;
 
             // Best-effort vector + vault cleanup; ignore individual failures.

@@ -1,20 +1,26 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../app_settings.dart';
 import '../../services/api_service.dart';
+import '../../widgets/productivity/week_strip.dart';
 
 /// Owns every piece of state the home screen renders and exposes optimistic
 /// mutations. Cards listen to this via [AnimatedBuilder]/[ListenableBuilder] so
 /// the screen itself stays a thin shell. Auto-refreshes on a timer and when the
 /// app returns to the foreground, giving the home screen live data.
 class HomeController extends ChangeNotifier with WidgetsBindingObserver {
-  HomeController({required this.settings, required this.onNavigateToChat})
-      : api = ApiService(settings);
+  HomeController({
+    required this.settings,
+    required this.onNavigateToChat,
+    this.onNavigateToCalendar,
+  }) : api = ApiService(settings);
 
   final AppSettings settings;
   // Switches to the chat tab; pass [command] to pre-fill/send a message.
   final void Function({String? command})? onNavigateToChat;
   final ApiService api;
+  final void Function()? onNavigateToCalendar;
 
   // ── Core data ──
   List<Map<String, dynamic>> tasks = [];
@@ -37,6 +43,18 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   int selectedDayOffset = 0;
   String? snack;
   Timer? _snackTimer;
+
+  // ── Week strip ──
+  Map<DateTime, DayMeta> weekDayMeta = {};
+  DateTime selectedWeekDay = DateTime.now();
+
+  // ── Briefing ──
+  String? briefing;
+  bool briefingLoading = false;
+
+  // ── AI rank ──
+  String? aiRank;
+  bool aiRankLoading = false;
 
   // ───────────────────────────────────────────────────────────────────────────
   // Lifecycle
@@ -115,6 +133,9 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _loadSecondary() {
     _loadDashboardContext();
+    _loadWeekData();
+    _loadBriefingCache();
+    _loadAiRankCache();
   }
 
   Future<void> _loadDashboardContext() async {
@@ -130,6 +151,171 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  Future<void> _loadWeekData() async {
+    try {
+      final events = await api.getCalendarEvents();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final startOfWeek = today.subtract(Duration(days: today.weekday % 7));
+      final endOfWeek = startOfWeek.add(const Duration(days: 6));
+      final Map<DateTime, _DayAccum> accum = {};
+      for (final e in events) {
+        DateTime? dt;
+        final type = e['type']?.toString();
+        try {
+          if (type == 'task') {
+            dt = DateTime.tryParse(e['due_date']?.toString() ?? '')?.toLocal();
+          } else if (type == 'reminder') {
+            dt = DateTime.tryParse(e['scheduled_time']?.toString() ?? '')?.toLocal();
+          } else {
+            final dateStr = e['start']?['dateTime']?.toString() ??
+                e['start']?['date']?.toString() ??
+                e['date']?.toString();
+            if (dateStr != null) dt = DateTime.tryParse(dateStr)?.toLocal();
+          }
+        } catch (_) {}
+        if (dt == null) continue;
+        final key = DateTime(dt.year, dt.month, dt.day);
+        if (key.isBefore(startOfWeek) || key.isAfter(endOfWeek)) continue;
+        final a = accum[key] ??= _DayAccum();
+        if (type == 'task') {
+          final isOver = dt.isBefore(now) && e['done'] != true;
+          if (isOver) { a.overdue++; } else { a.tasks++; }
+        } else if (type == 'reminder') {
+          a.reminders++;
+        }
+      }
+      weekDayMeta = accum.map(
+        (k, v) => MapEntry(k, DayMeta(tasks: v.tasks, reminders: v.reminders, overdue: v.overdue)),
+      );
+      notifyListeners();
+    } catch (_) {
+      // non-critical: weekDayMeta stays empty
+    }
+  }
+
+  String get _briefingCacheKey =>
+      'today_briefing_v2::${settings.todayBriefingFocus.trim()}';
+
+  Future<void> _loadBriefingCache() async {
+    if (!settings.todayBriefingEnabled) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final text = prefs.getString(_briefingCacheKey);
+      final tsStr = prefs.getString('${_briefingCacheKey}_ts');
+      if (text != null && tsStr != null) {
+        final ts = DateTime.tryParse(tsStr);
+        if (ts != null && DateTime.now().difference(ts).inHours < 20) {
+          briefing = text;
+          notifyListeners();
+          return;
+        }
+      }
+      await _fetchBriefing();
+    } catch (_) {
+      await _fetchBriefing();
+    }
+  }
+
+  Future<void> _fetchBriefing() async {
+    if (briefingLoading) return;
+    briefingLoading = true;
+    notifyListeners();
+    try {
+      final titles = tasks
+          .map((i) => (i['title'] ?? i['text'] ?? i['content'] ?? '').toString())
+          .where((t) => t.isNotEmpty)
+          .take(20)
+          .join(', ');
+      final focus = settings.todayBriefingFocus.trim();
+      final focusLine = focus.isEmpty ? '' : ' שים דגש על: $focus.';
+      final message =
+          'בריפינג יומי קצר בעברית. הנושאים להיום: '
+          '${titles.isEmpty ? "לא נמצאו פריטים פתוחים" : titles}. '
+          'תן סיכום ממוקד של מה חשוב היום ב-3 נקודות מקסימום.$focusLine';
+      final result = await api.askJarvis(message, settings, intent: 'chat');
+      final raw = ((result['answer'] as String?) ?? '').trim();
+      final looksLikeError = raw.contains('לא הצלחתי') ||
+          raw.contains('לא ניתן') ||
+          (raw.contains('בעיה') && raw.contains('נסה שוב'));
+      final text = (raw.isNotEmpty && !looksLikeError) ? raw : '';
+      if (text.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_briefingCacheKey, text);
+        await prefs.setString('${_briefingCacheKey}_ts', DateTime.now().toIso8601String());
+        briefing = text;
+      }
+      briefingLoading = false;
+      notifyListeners();
+    } catch (_) {
+      briefingLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshBriefing() async {
+    briefing = null;
+    notifyListeners();
+    await _fetchBriefing();
+  }
+
+  static const String _aiRankKey = 'home_ai_rank_v1';
+  static const String _aiRankTsKey = 'home_ai_rank_v1_ts';
+
+  Future<void> _loadAiRankCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(_aiRankKey);
+      final tsStr = prefs.getString(_aiRankTsKey);
+      if (cached != null && tsStr != null) {
+        final ts = DateTime.tryParse(tsStr);
+        if (ts != null && DateTime.now().difference(ts).inHours < 8) {
+          aiRank = cached;
+          notifyListeners();
+          return;
+        }
+      }
+      await _fetchAiRank();
+    } catch (_) {
+      await _fetchAiRank();
+    }
+  }
+
+  Future<void> _fetchAiRank() async {
+    if (aiRankLoading || tasks.isEmpty) return;
+    aiRankLoading = true;
+    notifyListeners();
+    try {
+      final taskLines = tasks
+          .where((t) => t['done'] != true)
+          .take(10)
+          .map((t) =>
+              '- ${t['content'] ?? t['title'] ?? ''}'
+              '${(t['priority'] ?? '').toString().toLowerCase() == 'high' ? ' (דחוף)' : ''}')
+          .join('\n');
+      final reminderLines = reminders
+          .take(5)
+          .map((r) => '- ${r['text'] ?? ''} (${r['scheduled_time'] ?? ''})')
+          .join('\n');
+      final prompt =
+          'רשימת משימות:\n$taskLines\n\nתזכורות:\n$reminderLines\n\n'
+          'בחר את הפריט החשוב ביותר לטפל בו עכשיו ותן סיבה קצרה (עד 8 מילים). '
+          'ענה בפורמט בדיוק: "קדם ראשון: [שם המשימה] — [סיבה]"';
+      final result = await api.askJarvis(prompt, settings, intent: 'chat');
+      final raw = ((result['answer'] as String?) ?? '').trim();
+      if (raw.isNotEmpty && raw.contains('קדם ראשון:')) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_aiRankKey, raw);
+        await prefs.setString(_aiRankTsKey, DateTime.now().toIso8601String());
+        aiRank = raw;
+      }
+      aiRankLoading = false;
+      notifyListeners();
+    } catch (_) {
+      aiRankLoading = false;
+      notifyListeners();
+    }
+  }
 
   // ───────────────────────────────────────────────────────────────────────────
   // Mutations (optimistic)
@@ -209,6 +395,11 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       snack = null;
       notifyListeners();
     });
+  }
+
+  void selectWeekDay(DateTime day) {
+    selectedWeekDay = day;
+    notifyListeners();
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -333,4 +524,10 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
           return false;
         }
       }).length;
+}
+
+class _DayAccum {
+  int tasks = 0;
+  int reminders = 0;
+  int overdue = 0;
 }

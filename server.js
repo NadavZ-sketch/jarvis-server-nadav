@@ -457,15 +457,8 @@ async function loadChatHistory(chatId = 'default-session') {
     try {
         // Fetch a generous tail, then trim to a token budget so short messages
         // give more continuity and long ones don't blow the prompt budget.
-        const { data, error } = await supabase
-            .from('chat_history')
-            .select('role, text')
-            .eq('chat_id', chatId)
-            .order('created_at', { ascending: false })
-            .limit(60);
-
-        if (error) throw error;
-        const ordered = (data || []).reverse();
+        const data = await repos.chat.recentTail(chatId, { limit: 60 });
+        const ordered = data.reverse();
         // Increased budget: savings from removing redundant LLM calls free up ~1700
         // tokens per request, which we reinvest in longer conversation history.
         const result = selectByTokenBudget(ordered, { maxTokens: 3000, maxMessages: 30 });
@@ -479,7 +472,7 @@ async function loadChatHistory(chatId = 'default-session') {
 
 async function saveChatMessage(role, text, chatId = 'default-session') {
     try {
-        const { error } = await supabase.from('chat_history').insert([{ role, text, chat_id: chatId }]);
+        const { error } = await repos.chat.add(role, text, chatId);
         if (error) throw error;
     } catch (err) {
         console.error('⚠️ saveChatMessage fallback:', err.message);
@@ -517,15 +510,11 @@ async function fetchLongTermMemories(query = null) {
 
 // ─── Full history search ──────────────────────────────────────────────────────
 
-async function searchFullHistory(userMessage, supabaseClient) {
+async function searchFullHistory(userMessage) {
     try {
-        const { data, error } = await supabaseClient
-            .from('chat_history')
-            .select('role, text, created_at')
-            .order('created_at', { ascending: false })
-            .limit(200);
+        const data = await repos.chat.recentForSearch(200);
 
-        if (error || !data || data.length === 0) return null;
+        if (!data || data.length === 0) return null;
 
         const topicTokens = new Set(
             userMessage.toLowerCase().split(/[\s,.\-!?:;״׳]+/)
@@ -983,7 +972,7 @@ async function askJarvisHandler(req, res) {
 
         // ── Past-conv: inject relevant history snippets beyond last 20 msgs ──
         if (agentName === 'chat' && PAST_CONV_PATTERN.test(userMessage)) {
-            const historySnippet = await searchFullHistory(userMessage, supabase);
+            const historySnippet = await searchFullHistory(userMessage);
             if (historySnippet) {
                 longTermMemories = longTermMemories + '\n\n' + historySnippet;
                 console.log('🔍 Past-conv context injected');

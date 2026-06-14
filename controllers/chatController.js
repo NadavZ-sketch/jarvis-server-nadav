@@ -1,4 +1,7 @@
-function createChatController({ supabase, askJarvisHandler, streamJarvisHandler }) {
+const { createChatRepo } = require('../services/dataAccess/chatRepo');
+
+function createChatController({ supabase, repos, askJarvisHandler, streamJarvisHandler }) {
+  const chat = (repos && repos.chat) || createChatRepo(supabase);
   return {
     async askJarvis(req, res) {
       if (typeof askJarvisHandler !== 'function') {
@@ -10,14 +13,8 @@ function createChatController({ supabase, askJarvisHandler, streamJarvisHandler 
       try {
         const chatId = req.query.chatId || req.query.chat_id || 'default-session';
         const limit = Math.min(parseInt(req.query.limit, 10) || 60, 200);
-        const { data, error } = await supabase
-          .from('chat_history')
-          .select('role, text, created_at')
-          .eq('chat_id', chatId)
-          .order('created_at', { ascending: false })
-          .limit(limit);
-        if (error) throw error;
-        res.json({ messages: (data || []).reverse(), chatId });
+        const data = await chat.recentTail(chatId, { limit, columns: 'role, text, created_at' });
+        res.json({ messages: data.reverse(), chatId });
       } catch (err) {
         console.error('⚠️ /chat-history error:', err.message);
         res.status(500).json({ messages: [], chatId: 'default-session' });

@@ -56,21 +56,20 @@ function deriveProfile(analysis, tasks = []) {
     return learned;
 }
 
-async function learnUserProfile(supabase, opts = {}) {
+async function learnUserProfile(repos, opts = {}) {
     try {
-        const [chatsRes, tasksRes, memoriesRes] = await Promise.all([
-            supabase.from('chat_history').select('role,text,created_at').order('created_at', { ascending: false }).limit(200),
-            supabase.from('tasks').select('content,created_at'),
-            supabase.from('memories').select('content'),
+        const [chats, tasks, memContents] = await Promise.all([
+            repos.chat.recentForSearch(200),
+            repos.tasks.allBasic(),
+            repos.memories.allContents(),
         ]);
 
-        const chats = chatsRes?.data || [];
         if (chats.length < 5) return { updated: false, reason: 'insufficient_data' };
 
         const data = {
             chats,
-            tasks: tasksRes?.data || [],
-            memories: memoriesRes?.data || [],
+            tasks: tasks || [],
+            memories: (memContents || []).map(c => ({ content: c })),
             contacts: [],
             reminders: [],
         };
@@ -99,10 +98,10 @@ async function learnUserProfile(supabase, opts = {}) {
         const payload = { ...visible, auto_learned, updated_at: new Date().toISOString() };
 
         if (existing?.id && existing.id !== 'local-fallback') {
-            const { error } = await supabase.from('user_profiles').update(payload).eq('id', existing.id);
+            const { error } = await repos.profile.update(existing.id, payload);
             if (error) return { updated: false, reason: error.message };
         } else {
-            const { error } = await supabase.from('user_profiles').insert([payload]);
+            const { error } = await repos.profile.create(payload);
             if (error) return { updated: false, reason: error.message };
         }
         return { updated: true, learned };

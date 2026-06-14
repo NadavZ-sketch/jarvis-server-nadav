@@ -22,6 +22,12 @@ function createTaskRepo(supabase) {
             return data || [];
         },
 
+        // content + created_at for every task (profile learning).
+        async allBasic() {
+            const { data } = await supabase.from(T).select('content, created_at');
+            return data || [];
+        },
+
         // tasks + embedded subtasks; falls back to a plain select when the
         // subtasks relation isn't present on this environment.
         async listWithSubtasks() {

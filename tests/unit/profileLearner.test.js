@@ -26,31 +26,17 @@ describe('deriveProfile', () => {
 });
 
 describe('learnUserProfile', () => {
-    function makeChain(result) {
-        const chain = {
-            then(res) { return Promise.resolve(result).then(res); },
-            select: jest.fn(() => chain),
-            order: jest.fn(() => chain),
-            limit: jest.fn(() => chain),
-            eq: jest.fn(() => chain),
-            update: jest.fn(() => chain),
-            insert: jest.fn(() => chain),
-        };
-        return chain;
-    }
-
+    // repos whose chat/tasks/memories reads return the seeded data and whose
+    // profile writes capture the payload.
     function makeSupabase(chats, tasks, capture) {
         return {
-            from: jest.fn((table) => {
-                if (table === 'chat_history') return makeChain({ data: chats, error: null });
-                if (table === 'tasks') return makeChain({ data: tasks, error: null });
-                if (table === 'memories') return makeChain({ data: [], error: null });
-                // user_profiles write
-                const chain = makeChain({ data: null, error: null });
-                chain.update = jest.fn((p) => { if (capture) capture.payload = p; return chain; });
-                chain.insert = jest.fn((p) => { if (capture) capture.payload = Array.isArray(p) ? p[0] : p; return chain; });
-                return chain;
-            }),
+            chat: { recentForSearch: jest.fn().mockResolvedValue(chats) },
+            tasks: { allBasic: jest.fn().mockResolvedValue(tasks) },
+            memories: { allContents: jest.fn().mockResolvedValue([]) },
+            profile: {
+                update: jest.fn(async (_id, p) => { if (capture) capture.payload = p; return { data: null, error: null }; }),
+                create: jest.fn(async (p) => { if (capture) capture.payload = p; return { data: null, error: null }; }),
+            },
         };
     }
 

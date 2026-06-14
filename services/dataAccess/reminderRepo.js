@@ -40,6 +40,26 @@ function createReminderRepo(supabase) {
             return data || [];
         },
 
+        // All reminders, soonest first (calendar view — includes fired).
+        async allOrdered() {
+            const { data } = await supabase.from(R)
+                .select('id, text, scheduled_time, fired')
+                .order('scheduled_time', { ascending: true });
+            return data || [];
+        },
+
+        // Unfired reminders within [fromISO, toISO], soonest first, limited.
+        async upcomingUnfired(fromISO, toISO, limit) {
+            const { data } = await supabase.from(R)
+                .select('id, text, scheduled_time, fired')
+                .eq('fired', false)
+                .lte('scheduled_time', toISO)
+                .gte('scheduled_time', fromISO)
+                .order('scheduled_time', { ascending: true })
+                .limit(limit);
+            return data || [];
+        },
+
         // Unfired reminders inside a day window [startISO, endISO) (briefing).
         async inWindow(startISO, endISO) {
             const { data } = await supabase.from(R)

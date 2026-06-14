@@ -3995,14 +3995,9 @@ app.get('/notes.json', (_req, res) => {
 // ─── Calendar events ─────────────────────────────────────────────────────────
 app.get('/calendar-events', async (_req, res) => {
     try {
-        const [tasksRes, remindersRes] = await Promise.all([
-            supabase.from('tasks')
-                .select('id, content, due_date, done')
-                .not('due_date', 'is', null)
-                .order('due_date', { ascending: true }),
-            supabase.from('reminders')
-                .select('id, text, scheduled_time, fired')
-                .order('scheduled_time', { ascending: true }),
+        const [taskRows, reminderRows] = await Promise.all([
+            repos.tasks.datedAll(),
+            repos.reminders.allOrdered(),
         ]);
 
         const formatDate = (dateStr) => {
@@ -4015,7 +4010,7 @@ app.get('/calendar-events', async (_req, res) => {
             }
         };
 
-        const tasks = (tasksRes.data || [])
+        const tasks = (taskRows || [])
             .filter(t => formatDate(t.due_date))
             .map(t => ({
                 id:    `task-${t.id}`,
@@ -4025,7 +4020,7 @@ app.get('/calendar-events', async (_req, res) => {
                 done:  t.done === true,
             }));
 
-        const reminders = (remindersRes.data || [])
+        const reminders = (reminderRows || [])
             .filter(r => formatDate(r.scheduled_time))
             .map(r => ({
                 id:    `reminder-${r.id}`,
@@ -4050,31 +4045,18 @@ app.get('/upcoming-items', async (_req, res) => {
         const now = new Date();
         const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-        const [tasksRes, remindersRes] = await Promise.all([
-            supabase.from('tasks')
-                .select('id, content, due_date, done')
-                .not('due_date', 'is', null)
-                .eq('done', false)
-                .lte('due_date', tomorrow.toISOString())
-                .gte('due_date', now.toISOString())
-                .order('due_date', { ascending: true })
-                .limit(5),
-            supabase.from('reminders')
-                .select('id, text, scheduled_time, fired')
-                .eq('fired', false)
-                .lte('scheduled_time', tomorrow.toISOString())
-                .gte('scheduled_time', now.toISOString())
-                .order('scheduled_time', { ascending: true })
-                .limit(5),
+        const [taskRows, reminderRows] = await Promise.all([
+            repos.tasks.upcomingDated(now.toISOString(), tomorrow.toISOString(), 5),
+            repos.reminders.upcomingUnfired(now.toISOString(), tomorrow.toISOString(), 5),
         ]);
 
         const upcoming = [
-            ...(tasksRes.data || []).map(t => ({
+            ...(taskRows || []).map(t => ({
                 type: 'task',
                 title: t.content,
                 date: t.due_date,
             })),
-            ...(remindersRes.data || []).map(r => ({
+            ...(reminderRows || []).map(r => ({
                 type: 'reminder',
                 title: r.text,
                 date: r.scheduled_time,

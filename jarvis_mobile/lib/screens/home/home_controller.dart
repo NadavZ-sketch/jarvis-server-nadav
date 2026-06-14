@@ -213,7 +213,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       }
       await _fetchBriefing();
     } catch (_) {
-      await _fetchBriefing();
+      // SharedPreferences unavailable — skip cache, leave briefing null
     }
   }
 
@@ -277,7 +277,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       }
       await _fetchAiRank();
     } catch (_) {
-      await _fetchAiRank();
+      // SharedPreferences unavailable — skip cache, leave aiRank null
     }
   }
 

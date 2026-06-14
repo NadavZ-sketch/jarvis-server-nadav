@@ -1,13 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// HomeController creates ApiService internally so full controller tests require
+// ApiService injection (not yet added). These tests verify the SharedPreferences
+// cache-freshness logic that _loadAiRankCache and _loadBriefingCache rely on.
 void main() {
-  group('HomeController aiRank cache', () {
+  group('cache freshness checks (SharedPreferences logic)', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('aiRank is null before load', () async {
+    test('aiRank cache fresher than 8h is valid (cache hit)', () async {
       SharedPreferences.setMockInitialValues({
         'home_ai_rank_v1': 'קדם ראשון: משימה X — פג מחר',
         'home_ai_rank_v1_ts': DateTime.now()
@@ -23,7 +26,7 @@ void main() {
       expect(DateTime.now().difference(ts!).inHours < 8, isTrue);
     });
 
-    test('stale cache (>8h) should not be used', () async {
+    test('aiRank cache older than 8h is stale (cache miss)', () async {
       SharedPreferences.setMockInitialValues({
         'home_ai_rank_v1': 'old rank',
         'home_ai_rank_v1_ts': DateTime.now()
@@ -34,6 +37,19 @@ void main() {
       final tsStr = prefs.getString('home_ai_rank_v1_ts');
       final ts = DateTime.tryParse(tsStr!)!;
       expect(DateTime.now().difference(ts).inHours < 8, isFalse);
+    });
+
+    test('briefing cache older than 20h is stale (cache miss)', () async {
+      SharedPreferences.setMockInitialValues({
+        'today_briefing_v2::': 'some briefing text',
+        'today_briefing_v2::_ts': DateTime.now()
+            .subtract(const Duration(hours: 21))
+            .toIso8601String(),
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final tsStr = prefs.getString('today_briefing_v2::_ts');
+      final ts = DateTime.tryParse(tsStr!)!;
+      expect(DateTime.now().difference(ts).inHours < 20, isFalse);
     });
   });
 }

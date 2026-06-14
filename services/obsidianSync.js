@@ -11,7 +11,7 @@ const simpleGit  = require('simple-git');
 const getPinecone = () => require('./pineconeMemory');
 
 let vaultPath    = null;
-let supabase     = null;
+let repos        = null;
 let git          = null;
 let watcher      = null;
 let syncState    = {};          // { relPath: { hash, updated_at, id } }
@@ -202,7 +202,7 @@ async function appendChatMessage(role, text, timestamp) {
 // ─── Vault → DB ──────────────────────────────────────────────────────────────
 
 async function fileToDb(absPath) {
-    if (!supabase) return;
+    if (!repos) return;
     const relPath = relFromVault(absPath);
 
     // Ignore files we just wrote ourselves
@@ -243,9 +243,9 @@ async function upsertNote(parsed) {
         category: data.category || 'Personal',
     };
     if (data.id) {
-        await supabase.from('notes').update(payload).eq('id', data.id);
+        await repos.notes.updateById(data.id, payload);
     } else {
-        const { data: inserted } = await supabase.from('notes').insert([payload]).select().single();
+        const inserted = await repos.notes.add(payload);
         if (inserted?.id) {
             data.id = inserted.id;
             // rewrite with id in frontmatter (no-op if already present)
@@ -263,10 +263,10 @@ async function upsertMemoriesFile(parsed) {
         const content = `[${cat}] ${text}`;
         const payload = { content };
         if (idMatch) {
-            await supabase.from('memories').update(payload).eq('id', idMatch[1]);
+            await repos.memories.update(idMatch[1], content);
             pinecone.upsertMemory(idMatch[1], content).catch(() => {});
         } else {
-            const { data } = await supabase.from('memories').insert([payload]).select('id').limit(1);
+            const data = await repos.memories.insert(payload);
             if (data?.[0]?.id) pinecone.upsertMemory(data[0].id, content).catch(() => {});
         }
     }
@@ -280,9 +280,9 @@ async function upsertListFromFile(table, parsed) {
         const title   = line.replace(/^-\s*\[.\]\s*/, '').replace(/<!--.*?-->/, '').replace(/📅.*$/, '').trim();
         const payload = { title, done };
         if (idMatch) {
-            await supabase.from(table).update(payload).eq('id', idMatch[1]);
+            await repos.table(table).update(idMatch[1], payload);
         } else {
-            await supabase.from(table).insert([payload]);
+            await repos.table(table).insert(payload);
         }
     }
 }
@@ -329,9 +329,9 @@ async function gitPush(message = `Jarvis auto-sync ${new Date().toISOString()}`)
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-async function initSync({ vaultPath: vp, supabase: sb, enableWatch = true, enableGit = true }) {
+async function initSync({ vaultPath: vp, repos: r, enableWatch = true, enableGit = true }) {
     vaultPath = vp;
-    supabase  = sb;
+    repos     = r;
     if (!vaultPath) {
         console.log('[ObsidianSync] OBSIDIAN_VAULT_PATH not set — sync disabled');
         return;
@@ -377,16 +377,12 @@ async function initSync({ vaultPath: vp, supabase: sb, enableWatch = true, enabl
 
 async function safeSelect(table, query = '*', order = null) {
     try {
-        let q = supabase.from(table).select(query);
-        if (order) q = q.order(order, { ascending: true });
-        const { data, error } = await q;
-        if (error) { console.warn(`[ObsidianSync] ${table} fetch skipped:`, error.message); return []; }
-        return data || [];
+        return await repos.table(table).select(query, order);
     } catch (e) { return []; }
 }
 
 async function fullSyncFromDb() {
-    if (!vaultPath || !supabase) return { ok: false, reason: 'not-initialized' };
+    if (!vaultPath || !repos) return { ok: false, reason: 'not-initialized' };
     let counts = { notes: 0, memories: 0, tasks: 0, reminders: 0, contacts: 0, chat_history: 0 };
     try {
         const [notes, memories, tasks, reminders, contacts, chat] = await Promise.all([

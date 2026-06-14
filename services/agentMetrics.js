@@ -10,7 +10,7 @@ const FLUSH_THRESHOLD = 40;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 const READ_LIMIT = 5000;
 
-let _supabase = null;
+let _repos = null;
 let _flushTimer = null;
 
 // Rows recorded since the last successful flush (disjoint from what's in the DB).
@@ -29,9 +29,9 @@ function _bumpLifetime(agent, ms, intentMode) {
   else if (intentMode === 'llm') lifetimeIntent.llm += 1;
 }
 
-function init(supabaseClient) {
-  _supabase = supabaseClient || null;
-  if (!_flushTimer && _supabase) {
+function init(repos) {
+  _repos = repos || null;
+  if (!_flushTimer && _repos) {
     _flushTimer = setInterval(() => { flush().catch(() => {}); }, FLUSH_INTERVAL_MS);
     if (_flushTimer.unref) _flushTimer.unref();
   }
@@ -51,11 +51,11 @@ function record(agentName, ms, intentMode) {
 }
 
 async function flush() {
-  if (!_supabase || pending.length === 0) return;
+  if (!_repos || pending.length === 0) return;
   const batch = pending;
   pending = [];
   try {
-    const { error } = await _supabase.from('agent_metrics').insert(batch);
+    const { error } = await _repos.metrics.insertBatch(batch);
     if (error) throw error;
   } catch (e) {
     // Re-queue so nothing is lost; cap to avoid unbounded growth if DB stays down.
@@ -97,7 +97,7 @@ function stop() {
     clearInterval(_flushTimer);
     _flushTimer = null;
   }
-  _supabase = null;
+  _repos = null;
   pending = [];
 }
 
@@ -105,17 +105,11 @@ async function snapshot() {
   // Fallback aggregate (always available).
   const fallback = () => _format(new Map(lifetime), { ...lifetimeIntent });
 
-  if (!_supabase) return fallback();
+  if (!_repos) return fallback();
 
   try {
     const sinceISO = new Date(Date.now() - WINDOW_MS).toISOString();
-    const { data, error } = await _supabase
-      .from('agent_metrics')
-      .select('agent, ms, intent_mode, created_at')
-      .gte('created_at', sinceISO)
-      .order('created_at', { ascending: false })
-      .limit(READ_LIMIT);
-    if (error) throw error;
+    const data = await _repos.metrics.recentSince(sinceISO, READ_LIMIT);
 
     const { byAgent, intent } = _aggregateRows(data || []);
     // Merge unflushed pending rows so the snapshot reflects the very latest calls.

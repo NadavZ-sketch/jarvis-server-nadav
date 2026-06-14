@@ -23,6 +23,8 @@ const { createProfileRepo } = require('./profileRepo');
 const { createSprintRepo } = require('./sprintRepo');
 const { createCronRepo } = require('./cronRepo');
 const { createTelemetryRepo } = require('./telemetryRepo');
+const { createMetricsRepo } = require('./metricsRepo');
+const { createDeviceRepo } = require('./deviceRepo');
 const { createTableRepo } = require('./tableRepo');
 
 function createRepos(supabase) {
@@ -44,6 +46,8 @@ function createRepos(supabase) {
         sprints: createSprintRepo(supabase),
         cron: createCronRepo(supabase),
         telemetry: createTelemetryRepo(supabase),
+        metrics: createMetricsRepo(supabase),
+        devices: createDeviceRepo(supabase),
         // Lazily-built, memoised generic repo for any other table.
         table(name) {
             return generic[name] || (generic[name] = createTableRepo(supabase, name));

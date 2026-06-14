@@ -18,32 +18,24 @@ jest.mock('axios', () => ({
 
 const pushService = require('../../services/pushService');
 
-function makeMockSupabase(rows = []) {
-    const chain = {
-        data: rows,
-        error: null,
-        select: jest.fn().mockReturnThis(),
-        insert: jest.fn().mockReturnThis(),
-        delete: jest.fn().mockReturnThis(),
-        upsert: jest.fn().mockReturnThis(),
-        eq:     jest.fn().mockReturnThis(),
-        in:     jest.fn().mockReturnThis(),
-        then(fn) { return Promise.resolve({ data: rows, error: null }).then(fn); },
+function makeRepos(rows = []) {
+    const devices = {
+        upsertToken:  jest.fn().mockResolvedValue({ error: null }),
+        list:         jest.fn().mockResolvedValue(rows),
+        deleteTokens: jest.fn().mockResolvedValue({ error: null }),
     };
-    return { from: jest.fn(() => chain), _chain: chain };
+    return { devices };
 }
 
 describe('pushService', () => {
     beforeEach(() => jest.clearAllMocks());
 
     test('registerToken upserts into device_tokens', async () => {
-        const mock = makeMockSupabase();
-        pushService.init(mock);
+        const repos = makeRepos();
+        pushService.init(repos);
         await pushService.registerToken({ token: 'tok123', platform: 'android' });
-        expect(mock.from).toHaveBeenCalledWith('device_tokens');
-        expect(mock._chain.upsert).toHaveBeenCalledWith(
+        expect(repos.devices.upsertToken).toHaveBeenCalledWith(
             expect.objectContaining({ token: 'tok123', platform: 'android' }),
-            expect.any(Object)
         );
     });
 

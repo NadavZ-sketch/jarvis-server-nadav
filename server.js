@@ -347,10 +347,10 @@ const { createRepos } = require('./services/dataAccess');
 const repos = createRepos(supabase);
 
 // Persist per-agent latency/intent metrics to Supabase (degrades to in-memory).
-agentMetrics.init(supabase);
+agentMetrics.init(repos);
 
 // Init push notification service and system logger with the Supabase client.
-pushService.init(supabase);
+pushService.init(repos);
 systemLog.init(supabase, pushService);
 
 // Intent → registry agent id (e.g. 'task' → 'taskAgent'). Core agents are never

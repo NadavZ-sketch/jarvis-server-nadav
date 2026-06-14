@@ -26,6 +26,7 @@ function makeTaskRepo(opts = {}) {
     const firstRow = rows[0] || { id: 1 };
     return {
         listAll:          jest.fn(async () => rows),
+        allBasic:         jest.fn(async () => rows),
         listWithSubtasks: jest.fn(async () => rows),
         listDueUpTo:      jest.fn(async () => rows),
         listOverdue:      jest.fn(async () => rows),

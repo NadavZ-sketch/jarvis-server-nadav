@@ -4059,7 +4059,7 @@ if (!isTestEnv) scheduledJob('memory_cleanup_nightly', '30 3 * * *', async () =>
 // Derives preferred hours / interests / recurring tasks from behaviour and
 // writes them into the profile without clobbering fields the user set manually.
 if (!isTestEnv) scheduledJob('profile_learning', '45 3 * * *', async () => {
-    const r = await profileLearner.learnUserProfile(supabase, { getProfile: getUserProfile });
+    const r = await profileLearner.learnUserProfile(repos, { getProfile: getUserProfile });
     if (r.updated) console.log('🧠 User profile auto-learned from behaviour');
     if (r.updated) cacheInvalidate('userProfile');
     const s = await styleLearner.learnStyle(supabase, {

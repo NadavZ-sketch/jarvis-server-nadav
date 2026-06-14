@@ -45,6 +45,15 @@ function createChatRepo(supabase) {
             return count || 0;
         },
 
+        // role + created_at for messages since a cutoff (analytics series).
+        async rolesSince(sinceISO, limit) {
+            const { data } = await supabase.from(H)
+                .select('role, created_at')
+                .gte('created_at', sinceISO)
+                .limit(limit);
+            return data || [];
+        },
+
         // Recent user-message contents since a cutoff (proposal context).
         async recentUserContent(sinceISO, limit) {
             const { data } = await supabase.from(H)

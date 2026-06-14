@@ -11,6 +11,11 @@ function createMetricsRepo(supabase) {
             return supabase.from(M).insert(rows);
         },
 
+        // Upsert per-agent health alerts (best-effort; table may not exist).
+        upsertAlerts(rows) {
+            return supabase.from('agent_metrics_alerts').upsert(rows, { onConflict: 'agent' });
+        },
+
         async recentSince(sinceISO, limit) {
             const { data, error } = await supabase.from(M)
                 .select('agent, ms, intent_mode, created_at')

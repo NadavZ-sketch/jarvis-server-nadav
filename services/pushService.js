@@ -16,26 +16,24 @@ const driver = (process.env.PUSH_DRIVER || 'none').toLowerCase();
 
 // ─── Device token store ───────────────────────────────────────────────────────
 // Supabase client is injected via init() so this module stays testable.
-let _supabase = null;
+let _repos = null;
 
-function init(supabaseClient) {
-    _supabase = supabaseClient;
+function init(repos) {
+    _repos = repos;
 }
 
 /** Upsert a device token (called from POST /push/register-token). */
 async function registerToken({ token, platform = 'android', appVersion = '' }) {
-    if (!_supabase) return;
-    await _supabase.from('device_tokens').upsert(
+    if (!_repos) return;
+    await _repos.devices.upsertToken(
         { token, platform, app_version: appVersion, last_seen: new Date().toISOString() },
-        { onConflict: 'token' }
     );
 }
 
 /** Fetch all stored FCM tokens. */
 async function _getTokens() {
-    if (!_supabase) return [];
-    const { data } = await _supabase.from('device_tokens').select('token, platform');
-    return data || [];
+    if (!_repos) return [];
+    return _repos.devices.list();
 }
 
 // ─── FCM driver ───────────────────────────────────────────────────────────────
@@ -89,8 +87,8 @@ async function _sendFCM({ title, body, data = {} }) {
                 staleTokens.push(tokenStrings[i]);
             }
         });
-        if (staleTokens.length > 0 && _supabase) {
-            await _supabase.from('device_tokens').delete().in('token', staleTokens);
+        if (staleTokens.length > 0 && _repos) {
+            await _repos.devices.deleteTokens(staleTokens);
             console.log(`[push] FCM: pruned ${staleTokens.length} stale token(s)`);
         }
         console.log(`[push] FCM: sent to ${response.successCount}/${tokenStrings.length} devices`);

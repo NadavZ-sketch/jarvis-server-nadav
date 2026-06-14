@@ -217,6 +217,23 @@ function makeTelemetryRepo(opts = {}) {
     };
 }
 
+function makeMetricsRepo(opts = {}) {
+    const { rows = [] } = opts;
+    return {
+        insertBatch: jest.fn(async () => ({ error: null })),
+        recentSince: jest.fn(async () => rows),
+    };
+}
+
+function makeDeviceRepo(opts = {}) {
+    const { rows = [] } = opts;
+    return {
+        upsertToken:  jest.fn(async () => ({ error: null })),
+        list:         jest.fn(async () => rows),
+        deleteTokens: jest.fn(async () => ({ error: null })),
+    };
+}
+
 function makeCronRepo(opts = {}) {
     const { lastOk = null } = opts;
     return {
@@ -278,10 +295,12 @@ function makeRepos(tableData = {}) {
         sprints: makeSprintRepo({ rows: tableData.project_sprints || [] }),
         cron: makeCronRepo({ lastOk: tableData._cronLastOk || null }),
         telemetry: makeTelemetryRepo({ rows: tableData.smart_telemetry_events || [] }),
+        metrics: makeMetricsRepo({ rows: tableData.agent_metrics || [] }),
+        devices: makeDeviceRepo({ rows: tableData.device_tokens || [] }),
         table(name) {
             return generic[name] || (generic[name] = makeTableRepo(tableData[name] || []));
         },
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTelemetryRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTelemetryRepo, makeMetricsRepo, makeDeviceRepo, makeTableRepo };

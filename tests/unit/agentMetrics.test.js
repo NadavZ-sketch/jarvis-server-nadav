@@ -1,5 +1,14 @@
 const agentMetrics = require('../../services/agentMetrics');
-const { makeChain } = require('../helpers/supabaseMock');
+
+// repos whose metrics repo records batches / returns DB rows as configured.
+function reposWith({ insertBatch, recentSince } = {}) {
+    return {
+        metrics: {
+            insertBatch: insertBatch || jest.fn(async () => ({ error: null })),
+            recentSince: recentSince || jest.fn(async () => []),
+        },
+    };
+}
 
 describe('agentMetrics (in-memory fallback)', () => {
     // No supabase client → snapshot uses the lifetime in-memory aggregate.
@@ -38,34 +47,30 @@ describe('agentMetrics (supabase-backed)', () => {
     afterEach(() => agentMetrics.stop()); // prevent timer leak between tests
 
     test('flush writes the pending batch to agent_metrics and then no-ops when empty', async () => {
-        const chain = makeChain([], null);
-        const supabase = { from: jest.fn(() => chain) };
-        agentMetrics.init(supabase);
+        const insertBatch = jest.fn(async () => ({ error: null }));
+        agentMetrics.init(reposWith({ insertBatch }));
         agentMetrics.record('flushAgent', 120, 'fast');
 
         await agentMetrics.flush();
-        expect(supabase.from).toHaveBeenCalledWith('agent_metrics');
-        expect(chain.insert).toHaveBeenCalledWith(expect.arrayContaining([
+        expect(insertBatch).toHaveBeenCalledWith(expect.arrayContaining([
             expect.objectContaining({ agent: 'flushAgent', ms: 120, intent_mode: 'fast' }),
         ]));
 
-        chain.insert.mockClear();
+        insertBatch.mockClear();
         await agentMetrics.flush();             // nothing pending → no insert
-        expect(chain.insert).not.toHaveBeenCalled();
+        expect(insertBatch).not.toHaveBeenCalled();
     });
 
     test('a failed flush re-queues the batch so a later flush still sends it', async () => {
-        const failChain = makeChain(null, { message: 'db down' });
-        const supabase = { from: jest.fn(() => failChain) };
-        agentMetrics.init(supabase);
+        const insertBatch = jest.fn()
+            .mockResolvedValueOnce({ error: { message: 'db down' } })
+            .mockResolvedValueOnce({ error: null });
+        agentMetrics.init(reposWith({ insertBatch }));
         agentMetrics.record('retryAgent', 200, 'llm');
 
         await agentMetrics.flush();             // fails → row stays pending
-
-        const okChain = makeChain([], null);
-        supabase.from.mockImplementation(() => okChain);
         await agentMetrics.flush();             // recovers
-        expect(okChain.insert).toHaveBeenCalledWith(expect.arrayContaining([
+        expect(insertBatch).toHaveBeenLastCalledWith(expect.arrayContaining([
             expect.objectContaining({ agent: 'retryAgent' }),
         ]));
     });
@@ -75,9 +80,7 @@ describe('agentMetrics (supabase-backed)', () => {
             { agent: 'dbAgent', ms: 100, intent_mode: 'fast', created_at: '2026-06-05T10:00:00Z' },
             { agent: 'dbAgent', ms: 300, intent_mode: 'llm', created_at: '2026-06-05T11:00:00Z' },
         ];
-        const chain = makeChain(dbRows, null);
-        const supabase = { from: jest.fn(() => chain) };
-        agentMetrics.init(supabase);
+        agentMetrics.init(reposWith({ recentSince: jest.fn(async () => dbRows) }));
         agentMetrics.record('dbAgent', 200, 'fast'); // unflushed → must be merged on top
 
         const snap = await agentMetrics.snapshot();
@@ -87,9 +90,7 @@ describe('agentMetrics (supabase-backed)', () => {
     });
 
     test('snapshot falls back to the in-memory lifetime aggregate on a DB error', async () => {
-        const chain = makeChain(null, { message: 'read failed' });
-        const supabase = { from: jest.fn(() => chain) };
-        agentMetrics.init(supabase);
+        agentMetrics.init(reposWith({ recentSince: jest.fn(async () => { throw new Error('read failed'); }) }));
 
         const snap = await agentMetrics.snapshot();
         expect(Array.isArray(snap.latency)).toBe(true);

@@ -2138,8 +2138,7 @@ app.put('/notes/:id', async (req, res) => {
         if (content !== undefined) updates.content = content;
         if (Object.keys(updates).length === 0)
             return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await supabase
-            .from('notes').update(updates).eq('id', req.params.id).select().single();
+        const { data, error } = await repos.notes.updateById(req.params.id, updates);
         if (error) throw error;
         res.json({ note: data });
     } catch (err) {
@@ -2165,12 +2164,8 @@ app.post('/tasks', async (req, res) => {
 // ─── Shopping ─────────────────────────────────────────────────────────────────
 app.get('/shopping', async (_req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('shopping_items')
-            .select('*')
-            .order('created_at', { ascending: true });
-        if (error) throw error;
-        res.json({ items: data || [] });
+        const items = await repos.shopping.listAll();
+        res.json({ items });
     } catch (err) {
         console.error('GET /shopping error:', err.message);
         res.status(500).json({ items: [] });
@@ -2181,10 +2176,7 @@ app.post('/shopping', async (req, res) => {
     try {
         const { item } = req.body;
         if (!item) return res.status(400).json({ error: 'item required' });
-        const { data, error } = await supabase
-            .from('shopping_items')
-            .insert([{ item }])
-            .select().single();
+        const { data, error } = await repos.shopping.create(item);
         if (error) throw error;
         res.json({ item: data });
     } catch (err) {
@@ -2195,7 +2187,7 @@ app.post('/shopping', async (req, res) => {
 
 app.delete('/shopping/:id', async (req, res) => {
     try {
-        const { error } = await supabase.from('shopping_items').delete().eq('id', req.params.id);
+        const { error } = await repos.shopping.removeById(req.params.id);
         if (error) throw error;
         res.json({ ok: true });
     } catch (err) {
@@ -2279,12 +2271,8 @@ app.delete('/memories/:id', async (req, res) => {
 // ─── Notes ────────────────────────────────────────────────────────────────────
 app.get('/notes', async (_req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('notes')
-            .select('*')
-            .order('created_at', { ascending: false });
-        if (error) throw error;
-        res.json({ notes: data || [] });
+        const notes = await repos.notes.listAll();
+        res.json({ notes });
     } catch (err) {
         console.error('GET /notes error:', err.message);
         res.status(500).json({ notes: [] });
@@ -2295,11 +2283,7 @@ app.post('/notes', async (req, res) => {
     try {
         const { title, content } = req.body;
         if (!content) return res.status(400).json({ error: 'content required' });
-        const { data, error } = await supabase
-            .from('notes')
-            .insert([{ title: title || '', content }])
-            .select().single();
-        if (error) throw error;
+        const data = await repos.notes.add({ title: title || '', content });
         res.json({ note: data });
     } catch (err) {
         console.error('POST /notes error:', err.message);
@@ -2309,7 +2293,7 @@ app.post('/notes', async (req, res) => {
 
 app.delete('/notes/:id', async (req, res) => {
     try {
-        const { error } = await supabase.from('notes').delete().eq('id', req.params.id);
+        const { error } = await repos.notes.removeById(req.params.id);
         if (error) throw error;
         res.json({ ok: true });
     } catch (err) {
@@ -3699,8 +3683,7 @@ app.patch('/shopping/:id', async (req, res) => {
         if (item !== undefined) updates.item = item;
         if (Object.keys(updates).length === 0)
             return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await supabase
-            .from('shopping_items').update(updates).eq('id', req.params.id).select().single();
+        const { data, error } = await repos.shopping.updateById(req.params.id, updates);
         if (error) throw error;
         res.json({ item: data });
     } catch (err) {

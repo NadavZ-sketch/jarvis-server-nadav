@@ -40,6 +40,18 @@ function createReminderRepo(supabase) {
             return data || [];
         },
 
+        // Unfired reminders inside [startISO, endISO) — used by GET /tasks/today,
+        // which ignores query errors (returns []), so this read swallows too.
+        async dueWindow(startISO, endISO) {
+            const { data } = await supabase.from(R)
+                .select('id, text, scheduled_time, fired, recurrence')
+                .eq('fired', false)
+                .gte('scheduled_time', startISO)
+                .lt('scheduled_time', endISO)
+                .order('scheduled_time', { ascending: true });
+            return data || [];
+        },
+
         // ── writes ─────────────────────────────────────────────────────────
         async add(row) {
             return supabase.from(R).insert([row]);

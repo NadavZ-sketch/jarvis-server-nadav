@@ -297,6 +297,15 @@ function makeRepos(tableData = {}) {
         telemetry: makeTelemetryRepo({ rows: tableData.smart_telemetry_events || [] }),
         metrics: makeMetricsRepo({ rows: tableData.agent_metrics || [] }),
         devices: makeDeviceRepo({ rows: tableData.device_tokens || [] }),
+        e2e: {
+            listRecent: jest.fn(async () => tableData.e2e_reports || []),
+            byRun: jest.fn(async () => tableData.e2e_reports || []),
+            byRunAndFingerprints: jest.fn(async () => tableData.e2e_reports || []),
+            deleteRun: jest.fn(async () => ({ error: null })),
+            markDone: jest.fn(async () => ({ error: null })),
+            recentScores: jest.fn(async () => tableData.e2e_reports || []),
+            recentFailures: jest.fn(async () => tableData.e2e_reports || []),
+        },
         stats: { dashboardCounts: jest.fn(async () => ({
             chat: { total: 0, today: 0 },
             tasks: { total: 0, done: 0, pending: 0, byCategory: {} },

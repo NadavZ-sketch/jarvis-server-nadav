@@ -26,7 +26,8 @@ jest.mock('../../services/weatherSource', () => ({
     getWeatherSummary: jest.fn().mockResolvedValue({ summary: 'שמש, 22°C' }),
 }));
 jest.mock('../../services/newsSource', () => ({
-    getNewsSummary: jest.fn().mockResolvedValue({ summary: 'חדשות: ישראל בחדשות.' }),
+    getNewsSummary: jest.fn().mockResolvedValue({ summary: 'חדשות: ישראל בחדשות.', headlines: ['חדשות'] }),
+    getTopicHeadlines: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('../../agents/models', () => ({
     callGemma4: jest.fn().mockResolvedValue('שלום! יש לך 2 משימות פתוחות ותזכורת בשעה 10:00.'),
@@ -72,6 +73,8 @@ beforeEach(() => {
     jest.clearAllMocks();
     cacheInvalidate('dashboard:weather');
     cacheInvalidate('dashboard:news');
+    cacheInvalidate('dashboard:sports');
+    cacheInvalidate('dashboard:tech');
     ['morning','late_morning','noon','afternoon','evening','night'].forEach(s =>
         cacheInvalidate(`dashboard:hero:${s}`)
     );
@@ -151,5 +154,32 @@ describe('GET /dashboard-context', () => {
         expect(typeof res.body.heroCard.text).toBe('string');
         expect(res.body.heroCard.text.length).toBeGreaterThan(0);
         expect(typeof res.body.heroCard.confidence).toBe('number');
+    });
+
+    it('includes sports and tech widgets when sources return data', async () => {
+        const { getNewsSummary, getTopicHeadlines } = require('../../services/newsSource');
+        getNewsSummary.mockResolvedValue({ headlines: ['כותרת חדשות'], summary: '• כותרת חדשות' });
+        getTopicHeadlines
+            .mockResolvedValueOnce({ headlines: ['מכבי זכתה'] })   // sports
+            .mockResolvedValueOnce({ headlines: ['אפל הכריזה'] }); // tech
+        const res = await request(app).get('/dashboard-context');
+        expect(res.status).toBe(200);
+        const sports = res.body.widgets.find(w => w.type === 'sports');
+        const tech   = res.body.widgets.find(w => w.type === 'tech');
+        expect(sports).toBeDefined();
+        expect(sports.data.headlines).toContain('מכבי זכתה');
+        expect(tech).toBeDefined();
+        expect(tech.data.headlines).toContain('אפל הכריזה');
+    });
+
+    it('omits sports/tech widgets when sources fail', async () => {
+        const { getTopicHeadlines } = require('../../services/newsSource');
+        getTopicHeadlines.mockResolvedValue(null);
+        const res = await request(app).get('/dashboard-context');
+        expect(res.status).toBe(200);
+        const sports = res.body.widgets.find(w => w.type === 'sports');
+        const tech   = res.body.widgets.find(w => w.type === 'tech');
+        expect(sports).toBeUndefined();
+        expect(tech).toBeUndefined();
     });
 });

@@ -48,8 +48,8 @@ void showAddTaskDialog(BuildContext context, HomeController c) {
   );
 }
 
-void showAddReminderDialog(BuildContext context, HomeController c) {
-  final textController = TextEditingController();
+void showAddReminderDialog(BuildContext context, HomeController c, {String? initialText}) {
+  final textController = TextEditingController(text: initialText ?? '');
   DateTime reminderTime = DateTime.now()
       .add(const Duration(hours: 1))
       .copyWith(second: 0, microsecond: 0);
@@ -228,13 +228,21 @@ class _BuildDaySheetState extends State<_BuildDaySheet> {
   }
 
   Future<void> _fetchBrief() async {
-    setState(() => _briefLoading = true);
+    if (mounted) setState(() => _briefLoading = true);
     try {
-      final r = await c.api.askJarvis(
-        'פתח לי את היום: שורה אחת מוטיבציה אישית, פסקה קצרה "הידעת?" עם עובדה מעניינת, '
-        'וציון תאריכים או אירועים מיוחדים של היום אם יש. בעברית, קצר וקולח, בלי כותרות מודגשות.',
-        c.settings,
-      );
+      final openCount = c.openTasks;
+      final topTasks = c.tasks
+          .where((t) => t['done'] != true)
+          .take(5)
+          .map((t) => '- ${(t['content'] ?? '').toString()}')
+          .join('\n');
+      final prompt =
+          'בנה לי תוכנית יום קצרה בעברית (3-4 משפטים). '
+          'יש לי $openCount משימות פתוחות. '
+          '${topTasks.isNotEmpty ? 'המשימות הבולטות:\n$topTasks\n\n' : ''}'
+          'מה כדאי לטפל בו ראשון ולמה? איך לארגן את היום בצורה יעילה? '
+          'תן עצה קצרה ומעשית, בלי כותרות מודגשות.';
+      final r = await c.api.askJarvis(prompt, c.settings);
       if (mounted) setState(() => _brief = r['answer'] as String? ?? '');
     } catch (_) {
       if (mounted) setState(() => _brief = '');

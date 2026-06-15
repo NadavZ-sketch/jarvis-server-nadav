@@ -275,6 +275,14 @@ class ApiService {
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
+  Future<List<Map<String, dynamic>>> getSmartSuggestions() async {
+    final res = await _client
+        .get(_uri('/smart-suggestions'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['suggestions'] ?? []);
+  }
+
   Future<List<Map<String, dynamic>>> getTaskSuggestions(String taskId) async {
     final res = await _client.post(
       _uri('/tasks/$taskId/suggest'),

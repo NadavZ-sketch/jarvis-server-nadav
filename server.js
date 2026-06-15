@@ -1892,7 +1892,7 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
         // ── Parallel data fetch ──────────────────────────────────────────────
         const threeHoursLater = new Date(nowJer.getTime() + 3 * 60 * 60 * 1000).toISOString();
 
-        const [tasks, reminders, weatherData, newsData] = await Promise.all([
+        const [tasks, reminders, weatherData, newsData, sportsData, techData] = await Promise.all([
             repos.tasks.topByPriority(6),
             repos.reminders.dueBefore(threeHoursLater, 6),
             (async () => {
@@ -1914,6 +1914,28 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
                 try {
                     const { getNewsSummary } = require('./services/newsSource');
                     const data = await getNewsSummary();
+                    if (data) cacheSet(cacheKey, data, TTL_DASHBOARD_NEWS);
+                    return data;
+                } catch { return null; }
+            })(),
+            (async () => {
+                const cacheKey = 'dashboard:sports';
+                const cached = cacheGet(cacheKey);
+                if (cached) return cached;
+                try {
+                    const { getTopicHeadlines } = require('./services/newsSource');
+                    const data = await getTopicHeadlines('ספורט ישראל');
+                    if (data) cacheSet(cacheKey, data, TTL_DASHBOARD_NEWS);
+                    return data;
+                } catch { return null; }
+            })(),
+            (async () => {
+                const cacheKey = 'dashboard:tech';
+                const cached = cacheGet(cacheKey);
+                if (cached) return cached;
+                try {
+                    const { getTopicHeadlines } = require('./services/newsSource');
+                    const data = await getTopicHeadlines('טכנולוגיה הייטק');
                     if (data) cacheSet(cacheKey, data, TTL_DASHBOARD_NEWS);
                     return data;
                 } catch { return null; }
@@ -1944,6 +1966,8 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
 
         if (weatherData) widgets.push({ type: 'weather', data: weatherData });
         if (newsData)    widgets.push({ type: 'news',    data: newsData });
+        if (sportsData)  widgets.push({ type: 'sports',  data: sportsData });
+        if (techData)    widgets.push({ type: 'tech',    data: techData });
 
         res.json({
             heroCard,
@@ -1954,6 +1978,85 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
     } catch (err) {
         console.error('GET /dashboard-context error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── Smart Suggestions ────────────────────────────────────────────────────────
+
+const TTL_SMART_SUGGESTIONS = 60 * 60 * 1000; // 1 h
+
+app.get('/smart-suggestions', _rl(10), async (req, res) => {
+    const cacheKey = 'smart-suggestions';
+    const cached = cacheGet(cacheKey);
+    if (cached !== undefined) return res.json(cached);
+
+    try {
+        const [chatRows, taskRows] = await Promise.all([
+            repos.chat.recentForSearch(30),
+            repos.tasks.listOpenByCreated(),
+        ]);
+
+        // Filter to tasks created more than 3 days ago (stale)
+        const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+        const staleTasks = taskRows
+            .filter(t => t.created_at < cutoff)
+            .slice(0, 10);
+
+        // Build compact chat excerpt (user messages only, last 20)
+        const chatExcerpts = chatRows
+            .filter(r => r.role === 'user')
+            .slice(0, 20)
+            .map(r => `- ${(r.text || '').substring(0, 120)}`)
+            .join('\n');
+
+        const staleTaskLines = staleTasks
+            .map(t => `- ${t.content}`)
+            .join('\n');
+
+        if (!chatExcerpts && !staleTaskLines) {
+            const empty = { suggestions: [] };
+            cacheSet(cacheKey, empty, TTL_SMART_SUGGESTIONS);
+            return res.json(empty);
+        }
+
+        const prompt =
+            'להלן הודעות אחרונות של המשתמש עם ג\'רוויס:\n' +
+            (chatExcerpts || 'אין היסטוריה') +
+            '\n\nמשימות ישנות שלא טופלו:\n' +
+            (staleTaskLines || 'אין') +
+            '\n\nזהה עד 5 פריטים שהמשתמש אמר שצריך לטפל בהם, תכנן לעתיד, ' +
+            'או משימות ישנות שנשכחו. ' +
+            'החזר JSON בלבד — מערך ללא הסברים:\n' +
+            '[{"text":"...","sourceType":"chat|task|plan","sourceLabel":"..."}]';
+
+        const raw = await callGemma4(prompt, false, 600);
+
+        let suggestions = [];
+        try {
+            // Find JSON array in the response
+            const match = raw.match(/\[[\s\S]*\]/);
+            if (match) {
+                const parsed = JSON.parse(match[0]);
+                if (Array.isArray(parsed)) {
+                    suggestions = parsed
+                        .filter(s => s && typeof s.text === 'string' && s.text.trim())
+                        .slice(0, 5)
+                        .map((s, i) => ({
+                            id: `sug-${Date.now()}-${i}`,
+                            text: s.text.trim(),
+                            sourceType: s.sourceType || 'chat',
+                            sourceLabel: s.sourceLabel || '',
+                        }));
+                }
+            }
+        } catch (_) { /* malformed JSON — return empty */ }
+
+        const result = { suggestions };
+        cacheSet(cacheKey, result, TTL_SMART_SUGGESTIONS);
+        res.json(result);
+    } catch (err) {
+        console.error('GET /smart-suggestions error:', err.message);
+        res.json({ suggestions: [] }); // never 500 — UI must always render
     }
 });
 

@@ -57,3 +57,38 @@ describe('getNewsSummary', () => {
     expect(r).toBeNull();
   });
 });
+
+describe('getTopicHeadlines', () => {
+  it('fetches topic-specific feed and returns headlines', async () => {
+    axios.get.mockResolvedValue({ data: SAMPLE_RSS });
+    const mod = freshModule();
+    const r = await mod.getTopicHeadlines('ספורט ישראל');
+    expect(r).not.toBeNull();
+    expect(r.headlines.length).toBeGreaterThan(0);
+    expect(Array.isArray(r.headlines)).toBe(true);
+  });
+
+  it('uses correct search URL with encoded topic', async () => {
+    axios.get.mockResolvedValue({ data: SAMPLE_RSS });
+    const mod = freshModule();
+    await mod.getTopicHeadlines('טכנולוגיה הייטק');
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining('%D7%98%D7%9B%D7%A0%D7%95%D7%9C%D7%95%D7%92%D7%99%D7%94'),
+      expect.any(Object)
+    );
+  });
+
+  it('returns null on network failure', async () => {
+    axios.get.mockRejectedValue(new Error('timeout'));
+    const mod = freshModule();
+    const r = await mod.getTopicHeadlines('ספורט');
+    expect(r).toBeNull();
+  });
+
+  it('respects custom maxItems', async () => {
+    axios.get.mockResolvedValue({ data: SAMPLE_RSS });
+    const mod = freshModule();
+    const r = await mod.getTopicHeadlines('חדשות', 2);
+    expect(r.headlines.length).toBeLessThanOrEqual(2);
+  });
+});

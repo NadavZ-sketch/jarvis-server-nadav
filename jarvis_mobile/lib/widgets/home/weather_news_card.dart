@@ -3,7 +3,6 @@ import '../../main.dart' show JC;
 import '../../screens/home/home_controller.dart';
 import '../../screens/home/home_helpers.dart';
 
-/// Each widget type exposed by /dashboard-context.
 class _Topic {
   final String key;
   final String emoji;
@@ -13,11 +12,12 @@ class _Topic {
 }
 
 const _kTopics = [
-  _Topic('weather', '🌤', 'מזג אוויר', Color(0xFF60A5FA)),
-  _Topic('news', '📰', 'חדשות', Color(0xFFF59E0B)),
+  _Topic('news',   '📰', 'חדשות',      Color(0xFFF59E0B)),
+  _Topic('sports', '⚽', 'ספורט',       Color(0xFF22C55E)),
+  _Topic('tech',   '💻', 'טכנולוגיה',  Color(0xFFA78BFA)),
 ];
 
-/// Dynamic weather + news card with per-topic chip filter.
+/// Weather pill always visible + tabbed news/sports/tech feed.
 class WeatherNewsCard extends StatefulWidget {
   final HomeController c;
   const WeatherNewsCard(this.c, {super.key});
@@ -26,8 +26,10 @@ class WeatherNewsCard extends StatefulWidget {
   State<WeatherNewsCard> createState() => _WeatherNewsCardState();
 }
 
-class _WeatherNewsCardState extends State<WeatherNewsCard> {
-  String? _selected;
+class _WeatherNewsCardState extends State<WeatherNewsCard>
+    with SingleTickerProviderStateMixin {
+  TabController? _tabController;
+  List<_Topic> _lastAvailable = [];
 
   HomeController get c => widget.c;
 
@@ -46,41 +48,88 @@ class _WeatherNewsCardState extends State<WeatherNewsCard> {
   List<_Topic> get _available =>
       _kTopics.where((t) => _widgetData(t.key) != null).toList();
 
+  void _syncTabController(List<_Topic> available) {
+    if (available.length != _lastAvailable.length) {
+      _tabController?.dispose();
+      _tabController = available.isEmpty
+          ? null
+          : TabController(length: available.length, vsync: this);
+      _lastAvailable = List.from(available);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _syncTabController(_available);
+  }
+
+  @override
+  void didUpdateWidget(WeatherNewsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncTabController(_available);
+  }
+
+  @override
+  void dispose() {
+    _tabController?.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final weatherData = _widgetData('weather');
+    final available = _available;
+
     Widget body;
     if (c.dashboardLoading && c.dashboardContext == null) {
-      body = const CardSkeleton(lines: 3);
+      body = const CardSkeleton(lines: 4);
     } else {
-      final available = _available;
-      if (available.isEmpty) {
-        body = const EmptyState(message: 'אין מידע זמין כרגע');
-      } else {
-        final activeKey =
-            (_selected != null && available.any((t) => t.key == _selected))
-                ? _selected
-                : null;
-
-        final shown = activeKey != null
-            ? available.where((t) => t.key == activeKey).toList()
-            : available;
-
-        body = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildChips(available, activeKey),
-            const SizedBox(height: 12),
-            for (int i = 0; i < shown.length; i++) ...[
-              if (i > 0) ...[
-                const SizedBox(height: 8),
-                Divider(color: JC.border.withOpacity(0.4), height: 1),
-                const SizedBox(height: 8),
-              ],
-              _buildSection(shown[i]),
-            ],
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Weather pill (always visible) ──
+          if (weatherData != null) ...[
+            _buildWeatherPill(weatherData),
+            const SizedBox(height: 10),
           ],
-        );
-      }
+          // ── Tab bar + content ──
+          if (available.isEmpty && weatherData == null)
+            const EmptyState(message: 'אין מידע זמין כרגע')
+          else if (available.isNotEmpty && _tabController != null) ...[
+            TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              labelStyle: const TextStyle(
+                  fontFamily: 'Heebo',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700),
+              unselectedLabelStyle: const TextStyle(
+                  fontFamily: 'Heebo', fontSize: 12),
+              indicatorSize: TabBarIndicatorSize.label,
+              dividerColor: JC.border,
+              tabs: available
+                  .map((t) => Tab(text: '${t.emoji} ${t.label}'))
+                  .toList(),
+              labelColor: JC.textPrimary,
+              unselectedLabelColor: JC.textMuted,
+              indicatorColor: JC.blue500,
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 160,
+              child: TabBarView(
+                controller: _tabController,
+                children: available.map((t) {
+                  final data = _widgetData(t.key)!;
+                  return _buildHeadlineList(data, t.color);
+                }).toList(),
+              ),
+            ),
+          ],
+        ],
+      );
     }
 
     return SectionCard(
@@ -91,218 +140,129 @@ class _WeatherNewsCardState extends State<WeatherNewsCard> {
     );
   }
 
-  Widget _buildChips(List<_Topic> available, String? activeKey) {
-    return SizedBox(
-      height: 28,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.zero,
-        children: [
-          _chip(
-            emoji: '🌐',
-            label: 'הכל',
-            selected: activeKey == null,
-            color: const Color(0xFF6366F1),
-            onTap: () => setState(() => _selected = null),
-          ),
-          ...available.map((t) {
-            final sel = activeKey == t.key;
-            return Padding(
-              padding: const EdgeInsetsDirectional.only(start: 6),
-              child: _chip(
-                emoji: t.emoji,
-                label: t.label,
-                selected: sel,
-                color: t.color,
-                onTap: () => setState(() => _selected = sel ? null : t.key),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
+  /// Compact weather pill: emoji · temp · desc · chips row.
+  Widget _buildWeatherPill(Map<String, dynamic> d) {
+    final emoji = (d['emoji'] as String?) ?? '🌡';
+    final temp  = d['temp']  as int?;
+    final desc  = (d['desc'] as String?) ?? '';
+    final max   = d['max']   as int?;
+    final min   = d['min']   as int?;
+    final rain  = d['rain']  as int?;
+    final city  = (d['city'] as String?) ?? '';
 
-  Widget _chip({
-    required String emoji,
-    required String label,
-    required bool selected,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.18) : const Color(0xFF0B1929),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? color : JC.border.withOpacity(0.7),
-            width: 0.8,
-          ),
-        ),
-        child: Text(
-          '$emoji $label',
-          style: TextStyle(
-            color: selected ? color : JC.textSecondary,
-            fontSize: 11,
-            fontFamily: 'Heebo',
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSection(_Topic topic) {
-    final data = _widgetData(topic.key)!;
-    return topic.key == 'weather'
-        ? _buildWeather(data)
-        : _buildNews(data);
-  }
-
-  /// Structured weather display: large temp + condition + max/min/rain chips.
-  Widget _buildWeather(Map<String, dynamic> d) {
-    final emoji  = (d['emoji']  as String?) ?? '🌡';
-    final temp   = d['temp']  as int?;
-    final desc   = (d['desc']  as String?) ?? '';
-    final max    = d['max']   as int?;
-    final min    = d['min']   as int?;
-    final rain   = d['rain']  as int?;
-    final advice = (d['advice'] as String?) ?? '';
-    final city   = (d['city']  as String?) ?? '';
-
-    // Fallback to raw summary if structured fields absent (old server).
     if (temp == null) {
       final summary = (d['summary'] as String?) ?? '';
-      return Text(
-        summary,
-        style: TextStyle(color: JC.textSecondary, fontSize: 12.5, height: 1.5, fontFamily: 'Heebo'),
-      );
+      return Text(summary,
+          style: TextStyle(
+              color: JC.textSecondary,
+              fontSize: 12.5,
+              height: 1.5,
+              fontFamily: 'Heebo'));
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // City + large temp row
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 32)),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$temp°',
-                  style: const TextStyle(
-                    color: Color(0xFFE2E8F0),
-                    fontSize: 36,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: 'Heebo',
-                    height: 1.0,
-                  ),
-                ),
-                if (desc.isNotEmpty)
-                  Text(
-                    desc,
-                    style: TextStyle(
-                      color: JC.textSecondary,
-                      fontSize: 12,
-                      fontFamily: 'Heebo',
-                    ),
-                  ),
-              ],
-            ),
-            if (city.isNotEmpty) ...[
-              const Spacer(),
-              Text(
-                city,
-                style: TextStyle(
-                  color: JC.textSecondary.withOpacity(0.6),
-                  fontSize: 11,
-                  fontFamily: 'Heebo',
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 8),
-        // Detail chips row
-        Wrap(
-          spacing: 6,
-          runSpacing: 4,
-          children: [
-            if (max != null && min != null)
-              _detailChip('↑$max° ↓$min°', const Color(0xFF60A5FA)),
-            if (rain != null && rain > 0)
-              _detailChip('$rain% גשם', const Color(0xFF818CF8)),
-            if (advice.isNotEmpty)
-              _detailChip(advice, const Color(0xFF34D399)),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _detailChip(String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: const Color(0xFF3B82F6).withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3), width: 0.8),
+        border: Border.all(
+            color: const Color(0xFF3B82F6).withValues(alpha: 0.18), width: 0.8),
       ),
-      child: Text(
-        label,
-        style: TextStyle(color: color, fontSize: 11, fontFamily: 'Heebo', fontWeight: FontWeight.w600),
-      ),
+      child: Row(children: [
+        Text(emoji, style: const TextStyle(fontSize: 26)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Text('$temp°',
+                  style: const TextStyle(
+                      color: Color(0xFFE2E8F0),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo',
+                      height: 1.0)),
+              if (city.isNotEmpty) ...[
+                const Spacer(),
+                Text(city,
+                    style: TextStyle(
+                        color: JC.textMuted,
+                        fontSize: 11,
+                        fontFamily: 'Heebo')),
+              ],
+            ]),
+            if (desc.isNotEmpty)
+              Text(desc,
+                  style: TextStyle(
+                      color: JC.textSecondary,
+                      fontSize: 11,
+                      fontFamily: 'Heebo')),
+            const SizedBox(height: 4),
+            Wrap(spacing: 5, children: [
+              if (max != null && min != null)
+                _wChip('↑$max° ↓$min°', const Color(0xFF60A5FA)),
+              if (rain != null && rain > 0)
+                _wChip('$rain% גשם', const Color(0xFF818CF8)),
+            ]),
+          ]),
+        ),
+      ]),
     );
   }
 
-  /// News as a clean headline list.
-  Widget _buildNews(Map<String, dynamic> d) {
+  Widget _wChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 0.7),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontFamily: 'Heebo',
+              fontWeight: FontWeight.w600)),
+    );
+  }
+
+  /// Renders a headline list (news, sports, or tech — same structure).
+  Widget _buildHeadlineList(Map<String, dynamic> d, Color dotColor) {
     final rawHeadlines = d['headlines'];
     final headlines = rawHeadlines is List
-        ? rawHeadlines.cast<String>()
-        : (d['summary'] as String? ?? '').split('\n').map((l) => l.replaceFirst(RegExp(r'^[•·]\s*'), '')).where((l) => l.isNotEmpty).toList();
+        ? rawHeadlines.whereType<String>().toList()
+        : (d['summary'] as String? ?? '')
+            .split('\n')
+            .map((l) => l.replaceFirst(RegExp(r'^[•·]\s*'), ''))
+            .where((l) => l.isNotEmpty)
+            .toList();
 
-    if (headlines.isEmpty) return const SizedBox.shrink();
+    if (headlines.isEmpty) return const EmptyState(message: 'אין כותרות');
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return ListView(
+      padding: EdgeInsets.zero,
       children: [
         for (int i = 0; i < headlines.length; i++) ...[
-          if (i > 0) const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Container(
-                  width: 5,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF59E0B),
-                    shape: BoxShape.circle,
-                  ),
-                ),
+          if (i > 0) const SizedBox(height: 8),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  headlines[i],
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(headlines[i],
                   style: TextStyle(
-                    color: JC.textSecondary,
-                    fontSize: 12.5,
-                    height: 1.45,
-                    fontFamily: 'Heebo',
-                  ),
-                ),
-              ),
-            ],
-          ),
+                      color: JC.textSecondary,
+                      fontSize: 12.5,
+                      height: 1.45,
+                      fontFamily: 'Heebo')),
+            ),
+          ]),
         ],
       ],
     );

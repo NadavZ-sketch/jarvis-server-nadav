@@ -4,13 +4,19 @@ import '../../screens/home/home_controller.dart';
 import '../../screens/home/home_dialogs.dart';
 import '../../screens/home/home_helpers.dart';
 
-/// The day's actionable task list, ranked urgent → important → queue. Tap the
-/// circle or swipe to complete, swipe the other way to postpone, star to mark
-/// important. Shows every open task (not just the important ones) so nothing
-/// hides behind a "+N in queue" line.
-class TasksCard extends StatelessWidget {
+class TasksCard extends StatefulWidget {
   final HomeController c;
   const TasksCard(this.c, {super.key});
+
+  @override
+  State<TasksCard> createState() => _TasksCardState();
+}
+
+class _TasksCardState extends State<TasksCard> {
+  final Set<String> _openGroups = {};
+  final Set<String> _expandedTasks = {};
+
+  HomeController get c => widget.c;
 
   @override
   Widget build(BuildContext context) {
@@ -82,67 +88,114 @@ class TasksCard extends StatelessWidget {
         ] else ...[
           const SizedBox(height: 12),
           if (highTasks.isNotEmpty)
-            _group(context, 'דחוף', const Color(0xFFEF4444), highTasks),
+            _group(context, 'high', 'דחוף', const Color(0xFFEF4444), highTasks),
           if (starredTasks.isNotEmpty)
-            _group(context, 'מסומן חשוב', const Color(0xFFF59E0B), starredTasks),
+            _group(context, 'starred', 'מסומן חשוב', const Color(0xFFF59E0B), starredTasks),
           if (queueTasks.isNotEmpty)
-            _group(context, 'בתור', const Color(0xFF3B82F6), queueTasks),
+            _group(context, 'queue', 'בתור', const Color(0xFF3B82F6), queueTasks),
         ],
       ]),
     );
   }
 
-  Widget _group(BuildContext context, String label, Color color,
+  Widget _group(BuildContext context, String groupKey, String label, Color color,
       List<Map<String, dynamic>> tasks) {
-    const maxShown = 4;
+    final isOpen = _openGroups.contains(groupKey);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-              width: 3,
-              height: 12,
-              decoration: BoxDecoration(
-                  color: color, borderRadius: BorderRadius.circular(2))),
-          const SizedBox(width: 7),
-          Text(label,
-              style: TextStyle(
-                  color: color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Heebo')),
-          const SizedBox(width: 6),
-          Text('${tasks.length}',
-              style: TextStyle(
-                  color: JC.textMuted, fontSize: 10, fontFamily: 'Heebo')),
-        ]),
-        const SizedBox(height: 6),
-        ...tasks.take(maxShown).map((t) => _row(context, t)),
-        if (tasks.length > maxShown)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text('+${tasks.length - maxShown} נוספות',
-                style: TextStyle(
-                    color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
+        // ── Group header (always visible, tap to toggle) ──
+        GestureDetector(
+          onTap: () => setState(() {
+            if (isOpen) {
+              _openGroups.remove(groupKey);
+            } else {
+              _openGroups.add(groupKey);
+            }
+          }),
+          child: Container(
+            color: Colors.transparent,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              Container(
+                  width: 3,
+                  height: 12,
+                  decoration: BoxDecoration(
+                      color: color, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 7),
+              Text(label,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Heebo')),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text('${tasks.length}',
+                    style: TextStyle(
+                        color: color,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Heebo')),
+              ),
+              const Spacer(),
+              Icon(
+                isOpen ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                color: JC.textMuted,
+                size: 16,
+              ),
+            ]),
           ),
+        ),
+        // ── Expanded task list ──
+        if (isOpen) ...[
+          const SizedBox(height: 4),
+          ...tasks.map((t) => _row(context, t, color)),
+        ],
       ]),
     );
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> task) {
+  Widget _row(BuildContext context, Map<String, dynamic> task, Color accent) {
     final id = task['id'].toString();
     final content = task['content'] as String? ?? '—';
     final priority = task['priority'] as String?;
     final isHigh = (priority ?? '').toString().toLowerCase() == 'high';
     final isImportant = c.markedImportant.contains(id);
-    final accent = isHigh ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
+    final rowAccent = isHigh ? const Color(0xFFEF4444) : const Color(0xFFF59E0B);
     final subs = subtasksOf(task);
     final openSubs = subs.where((s) => s['done'] != true).length;
+    final isExpanded = _expandedTasks.contains(id);
+
+    // Due date formatting
+    String dueLabel = '';
+    final dueIso = task['due_date'] as String?;
+    if (dueIso != null) {
+      try {
+        final dt = DateTime.parse(dueIso).toLocal();
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final dueDay = DateTime(dt.year, dt.month, dt.day);
+        final hhmm =
+            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        if (dueDay == today) {
+          dueLabel = 'היום $hhmm';
+        } else if (dueDay == today.subtract(const Duration(days: 1))) {
+          dueLabel = 'אתמול';
+        } else {
+          dueLabel = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
+        }
+      } catch (_) {}
+    }
+    final category = task['category'] as String?;
 
     return Dismissible(
       key: ValueKey('task-$id'),
-      // Directional so RTL reveals match the swipe: start→end (from the right)
-      // completes; end→start (from the left) postpones.
       background: _swipeBg(AlignmentDirectional.centerStart,
           const Color(0xFF22C55E), Icons.check_rounded, 'השלם'),
       secondaryBackground: _swipeBg(AlignmentDirectional.centerEnd,
@@ -150,105 +203,155 @@ class TasksCard extends StatelessWidget {
       confirmDismiss: (dir) async {
         if (dir == DismissDirection.startToEnd) {
           await tryCompleteTask(context, c, task);
-          return false; // controller handles removal + animation
+          return false;
         } else {
           c.postponeTask(task);
           return false;
         }
       },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: JC.jarvisBubble,
-          borderRadius: BorderRadius.circular(10),
-          border: BorderDirectional(start: BorderSide(color: accent, width: 3)),
-        ),
-        child: Row(children: [
-          Semantics(
-            button: true,
-            label: 'סיים משימה: $content',
-            child: GestureDetector(
-              onTap: () => tryCompleteTask(context, c, task),
-              child: SizedBox(
-                width: 44,
-                height: 44,
-                child: Center(
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: c.completing.contains(id)
-                            ? JC.green500
-                            : accent,
-                        width: 1.5,
+      child: GestureDetector(
+        onTap: () => setState(() {
+          if (isExpanded) {
+            _expandedTasks.remove(id);
+          } else {
+            _expandedTasks.add(id);
+          }
+        }),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: JC.jarvisBubble,
+            borderRadius: BorderRadius.circular(10),
+            border: BorderDirectional(start: BorderSide(color: rowAccent, width: 3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Semantics(
+                  button: true,
+                  label: 'סיים משימה: $content',
+                  child: GestureDetector(
+                    onTap: () => tryCompleteTask(context, c, task),
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Center(
+                        child: Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: c.completing.contains(id)
+                                  ? JC.green500
+                                  : rowAccent,
+                              width: 1.5,
+                            ),
+                            color: c.completing.contains(id)
+                                ? JC.green500.withValues(alpha: 0.15)
+                                : Colors.transparent,
+                          ),
+                          child: c.completing.contains(id)
+                              ? Icon(Icons.check_rounded, size: 13, color: JC.green500)
+                              : null,
+                        ),
                       ),
-                      color: c.completing.contains(id)
-                          ? JC.green500.withValues(alpha: 0.15)
-                          : Colors.transparent,
                     ),
-                    child: c.completing.contains(id)
-                        ? Icon(Icons.check_rounded, size: 13, color: JC.green500)
-                        : null,
                   ),
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(content,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    content,
+                    maxLines: isExpanded ? null : 1,
+                    overflow: isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
                     style: TextStyle(
                       color: JC.textPrimary,
                       fontSize: 13,
                       fontFamily: 'Heebo',
                       fontWeight: FontWeight.w600,
-                    )),
-                if (subs.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.checklist_rounded,
-                        size: 11, color: JC.textMuted),
-                    const SizedBox(width: 3),
-                    Text('${subs.length - openSubs}/${subs.length} תתי-משימות',
-                        style: TextStyle(
-                            color: openSubs > 0
-                                ? const Color(0xFFF59E0B)
-                                : const Color(0xFF22C55E),
-                            fontSize: 10,
-                            fontFamily: 'Heebo')),
-                  ]),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          PriorityBadge(priority),
-          Semantics(
-            button: true,
-            label: isImportant ? 'מסומן חשוב' : 'סמן כחשוב',
-            child: GestureDetector(
-              onTap: isImportant ? null : () => c.markImportant(task),
-              child: SizedBox(
-                width: 44,
-                height: 44,
-                child: Center(
-                  child: Icon(
-                    isImportant ? Icons.star_rounded : Icons.star_outline_rounded,
-                    color: isImportant ? JC.amber400 : JC.textMuted,
-                    size: 16,
+                    ),
                   ),
                 ),
-              ),
-            ),
+                const SizedBox(width: 8),
+                Icon(
+                  isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                  color: JC.textMuted,
+                  size: 16,
+                ),
+                Semantics(
+                  button: true,
+                  label: isImportant ? 'מסומן חשוב' : 'סמן כחשוב',
+                  child: GestureDetector(
+                    onTap: isImportant ? null : () => c.markImportant(task),
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Center(
+                        child: Icon(
+                          isImportant ? Icons.star_rounded : Icons.star_outline_rounded,
+                          color: isImportant ? JC.amber400 : JC.textMuted,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ]),
+              // ── Expanded detail row ──
+              if (isExpanded) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 4, children: [
+                  if (dueLabel.isNotEmpty)
+                    _detailChip(Icons.schedule_rounded, dueLabel, JC.blue400),
+                  if (category != null && category.isNotEmpty)
+                    _detailChip(Icons.label_outline_rounded, category, JC.textMuted),
+                  if (subs.isNotEmpty)
+                    _detailChip(Icons.checklist_rounded,
+                        '${subs.length - openSubs}/${subs.length} תתי-משימות',
+                        openSubs > 0 ? const Color(0xFFF59E0B) : const Color(0xFF22C55E)),
+                ]),
+              ] else if (subs.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.checklist_rounded, size: 11, color: JC.textMuted),
+                  const SizedBox(width: 3),
+                  Text('${subs.length - openSubs}/${subs.length} תתי-משימות',
+                      style: TextStyle(
+                          color: openSubs > 0
+                              ? const Color(0xFFF59E0B)
+                              : const Color(0xFF22C55E),
+                          fontSize: 10,
+                          fontFamily: 'Heebo')),
+                ]),
+              ],
+            ],
           ),
-        ]),
+        ),
       ),
+    );
+  }
+
+  Widget _detailChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 0.8),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 4),
+        Text(label,
+            style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w600)),
+      ]),
     );
   }
 

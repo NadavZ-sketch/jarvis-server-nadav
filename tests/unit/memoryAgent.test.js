@@ -16,7 +16,7 @@ jest.mock('../../services/pineconeMemory', () => ({
 
 const { callGemma4 }      = require('../../agents/models');
 const pinecone             = require('../../services/pineconeMemory');
-const { runMemoryAgent, autoExtractMemory, checkDuplicate } = require('../../agents/memoryAgent');
+const { runMemoryAgent, autoExtractMemory, checkDuplicate, findConflict } = require('../../agents/memoryAgent');
 const { makeRepos, makeMemoryRepo } = require('../helpers/fakeRepos');
 
 beforeEach(() => {
@@ -204,11 +204,13 @@ describe('checkDuplicate', () => {
 describe('autoExtractMemory', () => {
     beforeEach(() => pinecone.isReady.mockReturnValue(true));
 
-    test('extracts and saves a long_term fact', async () => {
-        callGemma4.mockResolvedValue('{"items":[{"content":"[location] גר בתל אביב","scope":"long_term"}]}');
+    test('extracts a fact and stores it as pending (not saved directly)', async () => {
+        callGemma4.mockResolvedValue('{"memories":[{"type":"fact","content":"[location] גר בתל אביב"}]}');
         const repos = makeRepos({ memories: [{ id: 10, content: '[location] גר בתל אביב' }] });
-        await autoExtractMemory('אני גר בתל אביב כבר שלוש שנים ונהנה מהעיר מאוד', 'מעולה, שמרתי!', repos, {});
-        expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[location] גר בתל אביב', scope: 'long_term' });
+        const result = await autoExtractMemory('אני גר בתל אביב כבר שלוש שנים ונהנה מהעיר מאוד', 'מעולה, שמרתי!', repos, {}, 'chat-x');
+        // fact type → pending, not saved directly
+        expect(repos.memories.insert).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ content: '[location] גר בתל אביב' });
     });
 
     test('skips extraction for weather queries', async () => {
@@ -221,27 +223,29 @@ describe('autoExtractMemory', () => {
         expect(callGemma4).not.toHaveBeenCalled();
     });
 
-    test('does not save when LLM returns empty items', async () => {
-        callGemma4.mockResolvedValue('{"items":[]}');
+    test('does not save when LLM returns empty memories', async () => {
+        callGemma4.mockResolvedValue('{"memories":[]}');
         const repos = makeRepos({ memories: [] });
         await autoExtractMemory('מה שלומך היום?', 'בסדר גמור!', repos, {});
         expect(repos.memories.insert).not.toHaveBeenCalled();
     });
 
-    test('skips duplicate detected by Pinecone', async () => {
-        callGemma4.mockResolvedValue('{"items":[{"content":"[hobby] פיצה","scope":"long_term"}]}');
+    test('skips duplicate detected by Pinecone (score > 0.92)', async () => {
+        callGemma4.mockResolvedValue('{"memories":[{"type":"fact","content":"[hobby] פיצה"}]}');
         pinecone.findSimilarMemory.mockResolvedValue({ id: '1', content: '[hobby] פיצה', score: 0.97 });
         const repos = makeRepos({ memories: [] });
-        await autoExtractMemory('אני אוהב פיצה ומעדיף אותה על פני כל מאכל אחר', 'שמרתי', repos, {});
+        const result = await autoExtractMemory('אני אוהב פיצה ומעדיף אותה על פני כל מאכל אחר', 'שמרתי', repos, {});
         expect(repos.memories.insert).not.toHaveBeenCalled();
+        // duplicate → returns null (no pending either)
+        expect(result).toBeNull();
     });
 
-    test('saves up to 3 items max', async () => {
-        callGemma4.mockResolvedValue(JSON.stringify({ items: [
-            { content: '[a] א', scope: 'long_term' },
-            { content: '[b] ב', scope: 'long_term' },
-            { content: '[c] ג', scope: 'long_term' },
-            { content: '[d] ד', scope: 'long_term' }, // 4th — should be ignored
+    test('saves up to 3 context items max (auto-save for context type)', async () => {
+        callGemma4.mockResolvedValue(JSON.stringify({ memories: [
+            { type: 'context', content: '[context] א' },
+            { type: 'context', content: '[context] ב' },
+            { type: 'context', content: '[context] ג' },
+            { type: 'context', content: '[context] ד' }, // 4th — should be ignored
         ]}));
         const repos = makeRepos({ memories: [{ id: 1 }] });
         await autoExtractMemory('יש לי הרבה מידע חשוב לשמור היום לגבי הפרויקט החדש', 'כן', repos, {});
@@ -251,5 +255,72 @@ describe('autoExtractMemory', () => {
     test('does not throw when LLM returns invalid JSON', async () => {
         callGemma4.mockResolvedValue('not valid json at all');
         await expect(autoExtractMemory('נתון כלשהו', 'תשובה', makeRepos(), {})).resolves.toBeNull();
+    });
+});
+
+// ─── findConflict ──────────────────────────────────────────────────────────────
+
+describe('findConflict', () => {
+    beforeEach(() => pinecone.isReady.mockReturnValue(true));
+
+    test('returns "new" when no similar memory found', async () => {
+        pinecone.findSimilarMemory.mockResolvedValue(null);
+        const result = await findConflict('[fact] גר בירושלים');
+        expect(result.type).toBe('new');
+    });
+
+    test('returns "duplicate" when similarity > 0.92', async () => {
+        pinecone.findSimilarMemory.mockResolvedValue({ id: '5', content: '[fact] גר בירושלים', score: 0.95 });
+        const result = await findConflict('[fact] גר בירושלים');
+        expect(result.type).toBe('duplicate');
+    });
+
+    test('returns "update" when similarity is 0.70-0.92', async () => {
+        pinecone.findSimilarMemory.mockResolvedValue({ id: '3', content: '[fact] גר בתל אביב', score: 0.80 });
+        const result = await findConflict('[fact] גר בירושלים');
+        expect(result.type).toBe('update');
+        expect(result.existingId).toBe('3');
+        expect(result.existingContent).toBe('[fact] גר בתל אביב');
+    });
+});
+
+// ─── autoExtractMemory: new prompt types ─────────────────────────────────────
+
+describe('autoExtractMemory — 3-type extraction', () => {
+    beforeEach(() => pinecone.isReady.mockReturnValue(true));
+
+    test('does NOT skip reminder intent (relaxed skip)', async () => {
+        pinecone.findSimilarMemory.mockResolvedValue(null);
+        callGemma4.mockResolvedValue('{"memories":[{"type":"fact","content":"[fact] גר בתל אביב"}]}');
+        const repos = makeRepos();
+        // "תזמין לי פיצה" has reminder keyword but is ≥20 chars — should not skip
+        await autoExtractMemory('תזמין לי פיצה לרחוב הרצל 5 בתל אביב', 'הזמנתי!', repos);
+        expect(callGemma4).toHaveBeenCalled();
+    });
+
+    test('skips messages shorter than 20 chars', async () => {
+        const repos = makeRepos();
+        await autoExtractMemory('תודה', 'בשמחה', repos);
+        expect(callGemma4).not.toHaveBeenCalled();
+    });
+
+    test('pending stored when new fact detected', async () => {
+        pinecone.findSimilarMemory.mockResolvedValue(null);
+        callGemma4.mockResolvedValue('{"memories":[{"type":"fact","content":"[fact] גר בירושלים"}]}');
+        const repos = makeRepos();
+        const result = await autoExtractMemory(
+            'אני גר בירושלים בשכונת גילה', 'נהדר!', repos, {}, 'chat-1'
+        );
+        // Should NOT save immediately — returns pending object
+        expect(repos.memories.insert).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ type: 'new', content: '[fact] גר בירושלים' });
+    });
+
+    test('[context] type is saved directly (no confirmation needed)', async () => {
+        pinecone.findSimilarMemory.mockResolvedValue(null);
+        callGemma4.mockResolvedValue('{"memories":[{"type":"context","content":"[context] עובד על מצגת"}]}');
+        const repos = makeRepos({ memories: [{ id: 9 }] });
+        await autoExtractMemory('מחר יש לי הצגה של המצגת לצוות', 'בהצלחה!', repos, {}, 'chat-2');
+        expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[context] עובד על מצגת', scope: 'session' });
     });
 });

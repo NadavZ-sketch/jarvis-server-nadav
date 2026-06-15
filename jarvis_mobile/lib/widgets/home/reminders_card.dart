@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 import '../../main.dart' show JC;
 import '../../screens/home/home_controller.dart';
+import '../../screens/home/home_dialogs.dart';
 import '../../screens/home/home_helpers.dart';
 
-/// Reminders with an inline 7-day strip on top (merged from the old calendar
-/// card). Tapping today shows the urgency grouping (soon / today / next);
-/// tapping another day shows that day's reminders.
-class RemindersCard extends StatelessWidget {
+/// Reminders with an inline 7-day strip on top and an AI suggestions bar.
+class RemindersCard extends StatefulWidget {
   final HomeController c;
   const RemindersCard(this.c, {super.key});
+
+  @override
+  State<RemindersCard> createState() => _RemindersCardState();
+}
+
+class _RemindersCardState extends State<RemindersCard> {
+  bool _suggestionsOpen = false;
+
+  HomeController get c => widget.c;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +66,9 @@ class RemindersCard extends StatelessWidget {
                   )),
             ]),
           ),
+          // ── AI suggestions bar ──
+          if (c.activeSuggestions.isNotEmpty || c.suggestionsLoading)
+            _buildAiBar(context),
           Divider(color: JC.border, height: 1),
           // ── 7-day strip ──
           Padding(
@@ -157,7 +168,184 @@ class RemindersCard extends StatelessWidget {
     );
   }
 
-  /// Today: the urgency grouping (soon within 2h / later today / future).
+  // ── AI bar ──────────────────────────────────────────────────────────────────
+
+  Widget _buildAiBar(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _suggestionsOpen = !_suggestionsOpen),
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF8B5CF6).withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.25), width: 0.8),
+            ),
+            child: Row(children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFA78BFA),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  c.suggestionsLoading
+                      ? '✦ טוען תובנות...'
+                      : '✦ ${c.activeSuggestions.length} תובנות AI',
+                  style: const TextStyle(
+                    color: Color(0xFFA78BFA),
+                    fontSize: 12,
+                    fontFamily: 'Heebo',
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (!c.suggestionsLoading && c.activeSuggestions.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text('חדש',
+                      style: TextStyle(
+                          color: Color(0xFFA78BFA),
+                          fontSize: 10,
+                          fontFamily: 'Heebo',
+                          fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Icon(
+                _suggestionsOpen
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                color: const Color(0xFF64748B),
+                size: 18,
+              ),
+            ]),
+          ),
+        ),
+        if (_suggestionsOpen && c.activeSuggestions.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+            child: Column(
+              children: c.activeSuggestions
+                  .map((s) => _suggestionRow(context, s))
+                  .toList(),
+            ),
+          ),
+        const SizedBox(height: 6),
+      ],
+    );
+  }
+
+  Widget _suggestionRow(BuildContext context, Map<String, dynamic> s) {
+    final id = s['id']?.toString() ?? '';
+    final text = s['text']?.toString() ?? '';
+    final sourceType = s['sourceType']?.toString() ?? 'chat';
+    final sourceLabel = s['sourceLabel']?.toString() ?? '';
+
+    final (srcEmoji, srcColor) = switch (sourceType) {
+      'task' => ('📋', const Color(0xFFEF4444)),
+      'plan' => ('🗓', const Color(0xFF22C55E)),
+      _ => ('💬', const Color(0xFFA78BFA)),
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D2137),
+        borderRadius: BorderRadius.circular(10),
+        border: BorderDirectional(
+            start: BorderSide(color: srcColor, width: 3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: srcColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text('$srcEmoji ${sourceType == 'task' ? 'משימה' : sourceType == 'plan' ? 'תכנון' : 'שיחה'}',
+                  style: TextStyle(
+                      color: srcColor,
+                      fontSize: 10,
+                      fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w700)),
+            ),
+            if (sourceLabel.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Text(sourceLabel,
+                  style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 10,
+                      fontFamily: 'Heebo')),
+            ],
+          ]),
+          const SizedBox(height: 6),
+          Text(text,
+              style: TextStyle(
+                  color: JC.textPrimary,
+                  fontSize: 13,
+                  fontFamily: 'Heebo',
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Row(children: [
+            _actionBtn('📋 משימה', const Color(0xFF3B82F6),
+                () => c.addTask(text)),
+            const SizedBox(width: 6),
+            _actionBtn('⏰ תזכורת', const Color(0xFFF59E0B),
+                () => showAddReminderDialog(context, c, initialText: text)),
+            const SizedBox(width: 6),
+            _actionBtn('💬 שיחה', const Color(0xFFA78BFA),
+                () => c.onNavigateToChat?.call(command: text)),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => c.dismissSuggestion(id),
+              child: const Icon(Icons.close_rounded,
+                  color: Color(0xFF64748B), size: 16),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionBtn(String label, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 0.8),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+
+  // ── Reminders body (unchanged from original) ─────────────────────────────────
+
   Widget _todayView(DateTime now, List<Map<String, dynamic>> sorted) {
     if (sorted.isEmpty) {
       return const EmptyState(message: 'אין תזכורות קרובות');
@@ -254,7 +442,6 @@ class RemindersCard extends StatelessWidget {
     ]);
   }
 
-  /// Another selected day: a flat chronological list for that day.
   Widget _dayView(int offset) {
     final events = c.remindersForOffset(offset);
     if (events.isEmpty) {

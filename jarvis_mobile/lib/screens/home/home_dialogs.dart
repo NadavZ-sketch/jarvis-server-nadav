@@ -48,8 +48,8 @@ void showAddTaskDialog(BuildContext context, HomeController c) {
   );
 }
 
-void showAddReminderDialog(BuildContext context, HomeController c) {
-  final textController = TextEditingController();
+void showAddReminderDialog(BuildContext context, HomeController c, {String? initialText}) {
+  final textController = TextEditingController(text: initialText ?? '');
   DateTime reminderTime = DateTime.now()
       .add(const Duration(hours: 1))
       .copyWith(second: 0, microsecond: 0);

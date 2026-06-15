@@ -86,4 +86,35 @@ async function getNewsSummary() {
     }
 }
 
-module.exports = { getNewsSummary, parseHeadlines };
+const TOPIC_RSS_BASE = 'https://news.google.com/rss/search';
+
+/**
+ * Fetches headlines for a specific topic using Google News RSS search.
+ * @param {string} topic - Hebrew search string (e.g., 'ספורט ישראל')
+ * @param {number} maxItems - max headlines to return (default 4)
+ * @returns {{ headlines: string[] } | null}
+ */
+async function getTopicHeadlines(topic, maxItems = 4) {
+    const cacheKey = `news:topic:${topic}`;
+    const cached = _cacheGet(cacheKey);
+    if (cached !== undefined) return cached;
+
+    try {
+        const url = `${TOPIC_RSS_BASE}?q=${encodeURIComponent(topic)}&hl=he&gl=IL&ceid=IL:he`;
+        const res = await axios.get(url, {
+            timeout: HTTP_TIMEOUT,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Jarvis/1.0)' },
+            responseType: 'text',
+        });
+        const headlines = parseHeadlines(res.data, maxItems);
+        if (headlines.length === 0) { _cacheSet(cacheKey, null, TTL_NEWS); return null; }
+        const data = { headlines };
+        _cacheSet(cacheKey, data, TTL_NEWS);
+        return data;
+    } catch (err) {
+        console.warn(`⚠️ newsSource.getTopicHeadlines(${topic}) failed:`, err.message);
+        return null;
+    }
+}
+
+module.exports = { getNewsSummary, parseHeadlines, getTopicHeadlines };

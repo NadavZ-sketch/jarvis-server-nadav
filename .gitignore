@@ -5,3 +5,4 @@ agents/custom/agent-status.json
 coverage/
 **/__pycache__/
 *.pyc
+.superpowers/

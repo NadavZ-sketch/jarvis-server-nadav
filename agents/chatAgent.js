@@ -261,7 +261,11 @@ ${chatSummary}
         return `\nStyle hint: mirror length=${length}, register=${register}.`;
     })() : '';
 
-    return `You are ${name}, a personal AI assistant for ${userName}. Respond in Hebrew only.
+    const pendingQ = settings._pendingMemoryQuestion
+        ? `הוראה: פתח את תגובתך עם השאלה הבאה בדיוק: "${settings._pendingMemoryQuestion}"\n\n`
+        : '';
+
+    return `${pendingQ}You are ${name}, a personal AI assistant for ${userName}. Respond in Hebrew only.
 ${genderInstr}
 Personality: ${personalityDesc}
 CRITICAL: Mirror ${userName}'s writing style, vocabulary and tone.${styleHint}

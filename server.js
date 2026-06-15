@@ -46,7 +46,14 @@ const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCusto
 const routeTracker = require('./services/routeTracker');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
-const { runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator } = require('./agents/memoryAgent');
+const _memoryAgent = require('./agents/memoryAgent');
+const {
+    runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator,
+    saveSessionSummary,
+} = _memoryAgent;
+// Use module-level accessors so Jest spies can intercept in tests
+const getPendingMemory  = (...args) => _memoryAgent.getPendingMemory(...args);
+const clearPendingMemory = (...args) => _memoryAgent.clearPendingMemory(...args);
 const { cleanupExpiredMemories } = require('./services/memoryCleanup');
 const { getAgentRegistry } = require('./services/agentRegistryService');
 const agentMetrics = require('./services/agentMetrics');
@@ -585,6 +592,37 @@ async function generateSpeech(text) {
     }
 }
 
+// ─── Memory Confirm ────────────────────────────────────────────────────────────
+
+app.post('/memories/confirm', async (req, res) => {
+    const { chatId, action } = req.body;
+    if (!chatId) return res.status(400).json({ error: 'chatId required' });
+
+    const pending = getPendingMemory(chatId);
+    if (!pending) return res.status(404).json({ error: 'no pending memory for this chat' });
+
+    clearPendingMemory(chatId);
+
+    if (action === 'discard') return res.json({ ok: true });
+
+    try {
+        const inserted = await repos.memories.insert({ content: pending.content, scope: 'long_term' });
+        if (inserted?.[0]?.id) {
+            await pinecone.upsertMemory(inserted[0].id, pending.content).catch(() => {});
+        }
+        if (pending.replacesId) {
+            await repos.memories.updateById(pending.replacesId, { scope: 'archive' });
+            await pinecone.deleteMemory(pending.replacesId).catch(() => {});
+            console.log('🧠 Archived old memory:', pending.replacesId);
+        }
+        cacheInvalidate('memories');
+        res.json({ ok: true, saved: pending.content });
+    } catch (err) {
+        console.error('❌ memories/confirm error:', err.message);
+        res.status(500).json({ error: 'שגיאה בשמירת הזיכרון' });
+    }
+});
+
 // ─── Document Parser ──────────────────────────────────────────────────────────
 
 app.post('/parse-document', _rl(5), async (req, res) => {
@@ -1001,6 +1039,16 @@ async function askJarvisHandler(req, res) {
             : '';
         const tDb = Date.now();
 
+        // Check for a pending memory confirmation for this chatId.
+        const pendingMemory = chatId ? getPendingMemory(chatId) : null;
+        if (pendingMemory && agentName === 'chat') {
+            const isUpdate = !!pendingMemory.replacesId;
+            const question = isUpdate
+                ? `שמתי לב שציינת "${pendingMemory.content.replace(/^\[\w+\]\s*/, '')}" — זה שונה ממה שרשמתי (${(pendingMemory.replacesContent || '?').replace(/^\[\w+\]\s*/, '')}). לעדכן?`
+                : `שמתי לב שציינת "${pendingMemory.content.replace(/^\[\w+\]\s*/, '')}" — האם לשמור לזיכרון?`;
+            settings._pendingMemoryQuestion = question;
+        }
+
         // ── Past-conv: inject relevant history snippets beyond last 20 msgs ──
         if (agentName === 'chat' && PAST_CONV_PATTERN.test(userMessage)) {
             const historySnippet = await searchFullHistory(userMessage);
@@ -1143,7 +1191,7 @@ async function askJarvisHandler(req, res) {
             saveChatMessage('jarvis', answer, chatId),
             ttsEnabled ? generateSpeech(answer) : Promise.resolve(null),
             shouldExtract
-                ? autoExtractMemory(originalMessage, answer, repos, settings).catch(e => { systemLog.logError('autoExtractMemory', e).catch(() => {}); return null; })
+                ? autoExtractMemory(originalMessage, answer, repos, settings, chatId).catch(e => { systemLog.logError('autoExtractMemory', e).catch(() => {}); return null; })
                 : Promise.resolve(null),
         ]);
         cacheInvalidate(`chatHistory:${chatId}`); // history just updated
@@ -1153,6 +1201,7 @@ async function askJarvisHandler(req, res) {
             setImmediate(() => {
                 loadChatHistory(chatId).then(freshHistory => {
                     conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, repos, settings).catch(e => systemLog.logError('updateSummaryIfNeeded', e).catch(() => {}));
+                    saveSessionSummary(chatId, repos, freshHistory).catch(e => systemLog.logError('saveSessionSummary', e).catch(() => {}));
                 }).catch(e => systemLog.logError('loadChatHistory:postChat', e).catch(() => {}));
             });
         }

@@ -228,7 +228,7 @@ class _BuildDaySheetState extends State<_BuildDaySheet> {
   }
 
   Future<void> _fetchBrief() async {
-    setState(() => _briefLoading = true);
+    if (mounted) setState(() => _briefLoading = true);
     try {
       final openCount = c.openTasks;
       final topTasks = c.tasks

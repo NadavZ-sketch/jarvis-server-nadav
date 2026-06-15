@@ -78,14 +78,19 @@ function makeReminderRepo(opts = {}) {
 }
 
 function makeMemoryRepo(opts = {}) {
-    const { rows = [], insertResult, updateResult } = opts;
+    const { rows = [], insertResult, updateResult, updateByIdResult } = opts;
     return {
         findByContent:   jest.fn(async () => rows),
         allContents:     jest.fn(async () => rows.map(r => r.content)),
         recentByCreated: jest.fn(async () => rows),
+        listAll:         jest.fn(async () => rows),
+        create:          jest.fn(async () => rows),
+        updateById:      jest.fn(async () => updateByIdResult || [{ id: 1 }]),
+        removeById:      jest.fn(async () => rows),
         insert:          jest.fn(async () => insertResult || rows),
         update:          jest.fn(async () => updateResult || { error: null }),
         deleteByContent: jest.fn(async () => rows),
+        findByScope:     jest.fn(async () => rows),
         expiredByScope:  jest.fn(async () => rows),
         deleteMany:      jest.fn(async () => ({ error: null })),
     };

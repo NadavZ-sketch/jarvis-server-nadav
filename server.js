@@ -2032,7 +2032,7 @@ app.get('/smart-suggestions', _rl(10), async (req, res) => {
         // Filter to tasks created more than 3 days ago (stale)
         const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
         const staleTasks = taskRows
-            .filter(t => !t.done && t.created_at < cutoff)
+            .filter(t => t.created_at < cutoff)
             .slice(0, 10);
 
         // Build compact chat excerpt (user messages only, last 20)

@@ -57,17 +57,15 @@
     "supertest": "^7.2.2"
   },
   "dependencies": {
+    "@cocal/google-calendar-mcp": "^2.6.2",
     "@huggingface/inference": "^4.13.15",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server-brave-search": "^0.6.2",
     "@modelcontextprotocol/server-filesystem": "^2026.1.14",
     "@modelcontextprotocol/server-memory": "^2026.1.26",
-    "@modelcontextprotocol/server-sequential-thinking": "^2025.5.2",
-    "@cocal/google-calendar-mcp": "^2.6.2",
-    "@modelcontextprotocol/server-brave-search": "^0.6.2",
     "@modelcontextprotocol/server-postgres": "^0.6.2",
+    "@modelcontextprotocol/server-sequential-thinking": "^2025.5.2",
     "@notionhq/notion-mcp-server": "^2.2.1",
-    "mcp-server-fetch-typescript": "^0.1.1",
-    "tavily-mcp": "^0.2.20",
     "@pinecone-database/pinecone": "^7.1.0",
     "@supabase/supabase-js": "^2.102.1",
     "axios": "^1.14.0",
@@ -80,11 +78,14 @@
     "google-tts-api": "^2.0.2",
     "gray-matter": "^4.0.3",
     "helmet": "^8.1.0",
+    "mammoth": "^1.12.0",
+    "mcp-server-fetch-typescript": "^0.1.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.5",
     "openai": "^6.33.0",
     "pdf-parse": "^2.4.5",
     "simple-git": "^3.36.0",
+    "tavily-mcp": "^0.2.20",
     "ws": "^8.18.0"
   }
 }

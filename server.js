@@ -4104,6 +4104,23 @@ if (!isTestEnv) scheduledJob('inactive_agent_check', '0 9 * * *', async () => {
 // Daily deep-clean at 03:30 — re-run the same cleanupExpiredMemories that runs
 // hourly, but with full Pinecone + Obsidian sync. Catches anything the hourly
 // job missed and keeps the three stores aligned.
+// Daily at 03:00 — expire [context] memories older than 7 days.
+if (!isTestEnv) scheduledJob('context_memory_expiry', '0 3 * * *', async () => {
+    try {
+        const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const expired = await repos.memories.expiredByScope('session', cutoff);
+        const contextExpired = expired.filter(m => (m.content || '').startsWith('[context]'));
+        if (contextExpired.length === 0) return;
+        const ids = contextExpired.map(m => m.id);
+        await repos.memories.deleteMany(ids);
+        await Promise.allSettled(ids.map(id => pinecone.deleteMemory(id)));
+        cacheInvalidate('memories');
+        console.log(`🧠 Expired ${ids.length} [context] memories older than 7 days`);
+    } catch (err) {
+        console.error('❌ context expiry cron error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
+
 if (!isTestEnv) scheduledJob('memory_cleanup_nightly', '30 3 * * *', async () => {
     const res = await cleanupExpiredMemories(repos);
     if (res.deleted > 0) {
@@ -4113,7 +4130,7 @@ if (!isTestEnv) scheduledJob('memory_cleanup_nightly', '30 3 * * *', async () =>
     if (res.errors?.length) console.warn('🧹 nightly memoryCleanup errors:', res.errors);
 }, { timezone: 'Asia/Jerusalem' });
 
-// Daily user-profile learning — 03:45 Jerusalem (after the 03:30 memory cleanup).
+// Daily user-profile learning — 03:45 Jerusalem (after the 03:00 context cleanup and 03:30 memory cleanup).
 // Derives preferred hours / interests / recurring tasks from behaviour and
 // writes them into the profile without clobbering fields the user set manually.
 if (!isTestEnv) scheduledJob('profile_learning', '45 3 * * *', async () => {

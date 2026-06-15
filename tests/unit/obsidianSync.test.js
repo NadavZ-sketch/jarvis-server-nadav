@@ -59,9 +59,24 @@ describe('obsidianSync — internals', () => {
             expect(p).toMatch(/^Notes\/.+\.md$/);
         });
 
-        test('memories → Memories/<category>.md', () => {
+        test('memories with [fact] prefix → Memories/Facts.md', () => {
+            const rec = { id: 'abc', content: '[fact] my birthday is June 1' };
+            expect(filePathForRecord('memories', rec)).toBe('Memories/Facts.md');
+        });
+
+        test('memories with [pref] prefix → Memories/Preferences.md', () => {
+            const rec = { id: 'abc', content: '[pref] prefer tea over coffee' };
+            expect(filePathForRecord('memories', rec)).toBe('Memories/Preferences.md');
+        });
+
+        test('memories with [context] prefix → Memories/Recent.md', () => {
+            const rec = { id: 'abc', content: '[context] last topic we discussed' };
+            expect(filePathForRecord('memories', rec)).toBe('Memories/Recent.md');
+        });
+
+        test('memories with other categories → Memories/General.md', () => {
             const rec = { id: 'abc', content: '[Work] deadline is Friday' };
-            expect(filePathForRecord('memories', rec)).toBe('Memories/Work.md');
+            expect(filePathForRecord('memories', rec)).toBe('Memories/General.md');
         });
 
         test('memories with no category → Memories/General.md', () => {

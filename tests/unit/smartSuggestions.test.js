@@ -54,6 +54,9 @@ describe('GET /smart-suggestions', () => {
     });
 
     it('returns empty array when LLM returns invalid JSON', async () => {
+        supabaseClient.from = jest.fn().mockImplementation(() =>
+            makeChain([{ role: 'user', text: 'צריך לדבר עם אביב', created_at: new Date().toISOString() }])
+        );
         callGemma4.mockResolvedValue('לא הצלחתי לנתח');
         const res = await request(app).get('/smart-suggestions');
         expect(res.status).toBe(200);
@@ -61,6 +64,9 @@ describe('GET /smart-suggestions', () => {
     });
 
     it('returns empty array when LLM call fails', async () => {
+        supabaseClient.from = jest.fn().mockImplementation(() =>
+            makeChain([{ role: 'user', text: 'צריך לדבר עם אביב', created_at: new Date().toISOString() }])
+        );
         callGemma4.mockRejectedValue(new Error('LLM down'));
         const res = await request(app).get('/smart-suggestions');
         expect(res.status).toBe(200);

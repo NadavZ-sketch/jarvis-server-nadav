@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app_settings.dart';
 import '../../main.dart' show JC;
+import '../../widgets/chat/voice_panel.dart';
 
 // ─── Data model ──────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ class _ChatScreenState extends State<ChatScreen>
     with SingleTickerProviderStateMixin {
   final List<ChatMessage> _messages = [];
   ChatMode _mode = ChatMode.voice;
+  final GlobalKey<VoicePanelState> _voicePanelKey = GlobalKey();
 
   static const _voiceKey = ValueKey('voice');
   static const _textKey  = ValueKey('text');
@@ -75,7 +77,15 @@ class _ChatScreenState extends State<ChatScreen>
 
   void _switchMode(ChatMode mode) {
     if (mode == _mode) return;
+    if (_mode == ChatMode.voice) {
+      _voicePanelKey.currentState?.stopVoice();
+    }
     setState(() => _mode = mode);
+    if (mode == ChatMode.voice) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _voicePanelKey.currentState?.resumeVoice();
+      });
+    }
   }
 
   @override
@@ -141,8 +151,13 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _buildVoicePanel() {
-    // VoicePanel is wired in Task 4.
-    return const SizedBox.expand(key: _voiceKey);
+    return VoicePanel(
+      key: _voicePanelKey,
+      chatId: widget.chatId,
+      settings: widget.settings,
+      messages: _messages,
+      onNewMessage: _addMessage,
+    );
   }
 
   Widget _buildTextPanel() {

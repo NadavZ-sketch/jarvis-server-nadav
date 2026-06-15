@@ -36,6 +36,21 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   // app switch doesn't re-hit the server on every foreground.
   DateTime? _lastDashboardAt;
 
+  // ── Smart suggestions (AI bar in RemindersCard) ──
+  List<Map<String, dynamic>> smartSuggestions = [];
+  bool suggestionsLoading = false;
+  final Set<String> _dismissedSuggestions = {};
+
+  List<Map<String, dynamic>> get activeSuggestions =>
+      smartSuggestions
+          .where((s) => !_dismissedSuggestions.contains(s['id']?.toString()))
+          .toList();
+
+  void dismissSuggestion(String id) {
+    _dismissedSuggestions.add(id);
+    notifyListeners();
+  }
+
   // ── Transient UI state ──
   final Set<String> postponed = {};
   final Set<String> markedImportant = {};
@@ -136,6 +151,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     _loadWeekData();
     _loadBriefingCache();
     _loadAiRankCache();
+    _loadSmartSuggestions();
   }
 
   Future<void> _loadDashboardContext() async {
@@ -315,6 +331,19 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       aiRankLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _loadSmartSuggestions() async {
+    if (suggestionsLoading) return;
+    suggestionsLoading = true;
+    notifyListeners();
+    try {
+      smartSuggestions = await api.getSmartSuggestions();
+    } catch (_) {
+      smartSuggestions = [];
+    }
+    suggestionsLoading = false;
+    notifyListeners();
   }
 
   // ───────────────────────────────────────────────────────────────────────────

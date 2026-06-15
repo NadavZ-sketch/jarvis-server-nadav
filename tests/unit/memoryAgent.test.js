@@ -324,3 +324,32 @@ describe('autoExtractMemory — 3-type extraction', () => {
         expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[context] עובד על מצגת', scope: 'session' });
     });
 });
+
+// ─── saveSessionSummary ───────────────────────────────────────────────────────
+
+describe('saveSessionSummary', () => {
+    test('saves [context] summary when history has ≥5 turns', async () => {
+        pinecone.findSimilarMemory.mockResolvedValue(null);
+        callGemma4.mockResolvedValue('השיחה עסקה בתכנון טיול לאילת ובבחירת מלון.');
+        const repos = makeRepos({ memories: [{ id: 7 }] });
+        const history = [
+            { sender: 'user', text: 'תכנן לי טיול' },
+            { sender: 'jarvis', text: 'לאן?' },
+            { sender: 'user', text: 'אילת' },
+            { sender: 'jarvis', text: 'מתי?' },
+            { sender: 'user', text: 'בחודש הבא' },
+        ];
+        const { saveSessionSummary } = require('../../agents/memoryAgent');
+        await saveSessionSummary('chat-99', repos, history);
+        expect(repos.memories.insert).toHaveBeenCalledWith(
+            expect.objectContaining({ content: expect.stringContaining('[context]'), scope: 'session' })
+        );
+    });
+
+    test('does nothing when history has <5 turns', async () => {
+        const repos = makeRepos();
+        const { saveSessionSummary } = require('../../agents/memoryAgent');
+        await saveSessionSummary('chat-99', repos, [{ sender: 'user', text: 'שלום' }]);
+        expect(repos.memories.insert).not.toHaveBeenCalled();
+    });
+});

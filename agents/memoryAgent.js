@@ -335,8 +335,27 @@ async function runMemoryAgent(userMessage, repos, useLocal = true, settings = {}
     return { answer: 'הייתה בעיה בשמירת הזיכרון, נסה שוב.' };
 }
 
+async function saveSessionSummary(chatId, repos, history) {
+    if (!history || history.length < 5) return;
+    try {
+        const turns = history.slice(-10)
+            .map(m => `${m.sender === 'user' ? 'משתמש' : 'ג׳רביס'}: ${m.text}`)
+            .join('\n');
+        const prompt = `סכם בשני משפטים קצרים את נושאי השיחה הבאה (בעברית):\n${turns}\nהחזר רק את הסיכום, ללא הסברים.`;
+        const summary = await callGemma4([{ role: 'user', content: prompt }], false, 200);
+        if (!summary || summary.trim().length < 5) return;
+        const content = `[context] ${summary.trim()}`;
+        const inserted = await repos.memories.insert({ content, scope: 'session' });
+        if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
+        _invalidateMemoryCache();
+        console.log('🧠 Session summary saved for', chatId);
+    } catch (err) {
+        console.error('saveSessionSummary error (suppressed):', err.message);
+    }
+}
+
 module.exports = {
     runMemoryAgent, autoExtractMemory, checkDuplicate, findConflict,
-    getPendingMemory, clearPendingMemory,
+    getPendingMemory, clearPendingMemory, saveSessionSummary,
     setMemoryCacheInvalidator, deleteMemory, updateMemory,
 };

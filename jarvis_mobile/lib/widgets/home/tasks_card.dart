@@ -155,13 +155,13 @@ class _TasksCardState extends State<TasksCard> {
         // ── Expanded task list ──
         if (isOpen) ...[
           const SizedBox(height: 4),
-          ...tasks.map((t) => _row(context, t, color)),
+          ...tasks.map((t) => _row(context, t)),
         ],
       ]),
     );
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> task, Color accent) {
+  Widget _row(BuildContext context, Map<String, dynamic> task) {
     final id = task['id'].toString();
     final content = task['content'] as String? ?? '—';
     final priority = task['priority'] as String?;
@@ -185,7 +185,7 @@ class _TasksCardState extends State<TasksCard> {
             '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
         if (dueDay == today) {
           dueLabel = 'היום $hhmm';
-        } else if (dueDay == today.subtract(const Duration(days: 1))) {
+        } else if (dueDay == DateTime(today.year, today.month, today.day - 1)) {
           dueLabel = 'אתמול';
         } else {
           dueLabel = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app_settings.dart';
 import '../../main.dart' show JC;
 import '../../widgets/chat/voice_panel.dart';
+import '../../widgets/chat/text_panel.dart';
 
 // ─── Data model ──────────────────────────────────────────────────────────────
 
@@ -161,7 +162,12 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _buildTextPanel() {
-    // TextPanel is wired in Task 5.
-    return const SizedBox.expand(key: _textKey);
+    return TextPanel(
+      key: const ValueKey('text'),
+      messages: _messages,
+      settings: widget.settings,
+      chatId: widget.chatId,
+      onNewMessage: _addMessage,
+    );
   }
 }

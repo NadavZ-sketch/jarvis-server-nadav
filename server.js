@@ -1892,7 +1892,7 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
         // ── Parallel data fetch ──────────────────────────────────────────────
         const threeHoursLater = new Date(nowJer.getTime() + 3 * 60 * 60 * 1000).toISOString();
 
-        const [tasks, reminders, weatherData, newsData] = await Promise.all([
+        const [tasks, reminders, weatherData, newsData, sportsData, techData] = await Promise.all([
             repos.tasks.topByPriority(6),
             repos.reminders.dueBefore(threeHoursLater, 6),
             (async () => {
@@ -1914,6 +1914,28 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
                 try {
                     const { getNewsSummary } = require('./services/newsSource');
                     const data = await getNewsSummary();
+                    if (data) cacheSet(cacheKey, data, TTL_DASHBOARD_NEWS);
+                    return data;
+                } catch { return null; }
+            })(),
+            (async () => {
+                const cacheKey = 'dashboard:sports';
+                const cached = cacheGet(cacheKey);
+                if (cached) return cached;
+                try {
+                    const { getTopicHeadlines } = require('./services/newsSource');
+                    const data = await getTopicHeadlines('ספורט ישראל');
+                    if (data) cacheSet(cacheKey, data, TTL_DASHBOARD_NEWS);
+                    return data;
+                } catch { return null; }
+            })(),
+            (async () => {
+                const cacheKey = 'dashboard:tech';
+                const cached = cacheGet(cacheKey);
+                if (cached) return cached;
+                try {
+                    const { getTopicHeadlines } = require('./services/newsSource');
+                    const data = await getTopicHeadlines('טכנולוגיה הייטק');
                     if (data) cacheSet(cacheKey, data, TTL_DASHBOARD_NEWS);
                     return data;
                 } catch { return null; }
@@ -1944,6 +1966,8 @@ app.get('/dashboard-context', _rl(30), async (req, res) => {
 
         if (weatherData) widgets.push({ type: 'weather', data: weatherData });
         if (newsData)    widgets.push({ type: 'news',    data: newsData });
+        if (sportsData)  widgets.push({ type: 'sports',  data: sportsData });
+        if (techData)    widgets.push({ type: 'tech',    data: techData });
 
         res.json({
             heroCard,

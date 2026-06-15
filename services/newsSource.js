@@ -94,7 +94,7 @@ const TOPIC_RSS_BASE = 'https://news.google.com/rss/search';
  * @param {number} maxItems - max headlines to return (default 4)
  * @returns {{ headlines: string[] } | null}
  */
-async function getTopicHeadlines(topic, maxItems = 4) {
+async function getTopicHeadlines(topic, maxItems = MAX_HEADLINES) {
     const cacheKey = `news:topic:${topic}`;
     const cached = _cacheGet(cacheKey);
     if (cached !== undefined) return cached;

@@ -30,7 +30,7 @@ class _MainShellState extends State<MainShell> {
   Timer? _notifPollTimer;
   String? _pendingChatCommand;
 
-  // Drives the Productivity tab's inner sub-tab (1=tasks, 2=reminders) when the
+  // Drives the Productivity tab's inner sub-tab (0=tasks, 1=reminders, 2=calendar) when the
   // chat sends the user there via an inline navigate button.
   final ValueNotifier<int> _productivityTab = ValueNotifier<int>(0);
 
@@ -100,7 +100,7 @@ class _MainShellState extends State<MainShell> {
       return;
     }
     // tasks/reminders live inside the Productivity tab (index 2).
-    final subTab = target == 'reminders' ? 2 : 1;
+    final subTab = target == 'reminders' ? 1 : 0;
     _productivityTab.value = subTab;
     HapticFeedback.selectionClick();
     setState(() => _selectedIndex = 2);
@@ -214,6 +214,11 @@ class _MainShellState extends State<MainShell> {
                     setState(() => _pendingChatCommand = command);
                   }
                   _onTabTapped(1);
+                },
+                onNavigateToCalendar: () {
+                  _productivityTab.value = 2;
+                  HapticFeedback.selectionClick();
+                  setState(() => _selectedIndex = 2);
                 },
               ),
               // 1 — Chat (main screen)

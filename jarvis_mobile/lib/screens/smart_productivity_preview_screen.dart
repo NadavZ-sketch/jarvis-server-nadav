@@ -11,11 +11,13 @@ import 'home/home_helpers.dart';
 class SmartProductivityPreviewScreen extends StatefulWidget {
   final AppSettings settings;
   final void Function({String? command})? onNavigateToChat;
+  final VoidCallback? onNavigateToCalendar;
 
   const SmartProductivityPreviewScreen({
     super.key,
     required this.settings,
     this.onNavigateToChat,
+    this.onNavigateToCalendar,
   });
 
   @override
@@ -24,9 +26,15 @@ class SmartProductivityPreviewScreen extends StatefulWidget {
 }
 
 class _SmartProductivityPreviewScreenState
-    extends State<SmartProductivityPreviewScreen> {
+    extends State<SmartProductivityPreviewScreen>
+    with TickerProviderStateMixin {
   late final HomeController _c;
   bool _editMode = false;
+
+  late final List<AnimationController> _staggerCtls;
+  late final List<Animation<double>> _staggerFades;
+  late final List<Animation<Offset>> _staggerSlides;
+  static const int _maxCards = 8; // enough for all home cards
 
   @override
   void initState() {
@@ -34,12 +42,33 @@ class _SmartProductivityPreviewScreenState
     _c = HomeController(
       settings: widget.settings,
       onNavigateToChat: widget.onNavigateToChat,
+      onNavigateToCalendar: widget.onNavigateToCalendar,
     )..start();
+    _staggerCtls = List.generate(_maxCards, (i) {
+      final ctrl = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 320),
+      );
+      Future.delayed(Duration(milliseconds: 80 * i), () {
+        if (mounted) ctrl.forward();
+      });
+      return ctrl;
+    });
+    _staggerFades = _staggerCtls
+        .map((c) => CurvedAnimation(parent: c, curve: Curves.easeOut))
+        .toList();
+    _staggerSlides = _staggerCtls
+        .map((c) => Tween<Offset>(
+              begin: const Offset(0, 0.06),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(parent: c, curve: Curves.easeOut)))
+        .toList();
   }
 
   @override
   void dispose() {
     _c.dispose();
+    for (final c in _staggerCtls) c.dispose();
     super.dispose();
   }
 
@@ -194,7 +223,16 @@ class _SmartProductivityPreviewScreenState
       padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad + 16),
       itemCount: cards.length,
       separatorBuilder: (_, __) => const SizedBox(height: 16),
-      itemBuilder: (context, i) => cards[i].build(context, _c),
+      itemBuilder: (context, i) {
+        final idx = i.clamp(0, _maxCards - 1);
+        return FadeTransition(
+          opacity: _staggerFades[idx],
+          child: SlideTransition(
+            position: _staggerSlides[idx],
+            child: cards[i].build(context, _c),
+          ),
+        );
+      },
     );
   }
 

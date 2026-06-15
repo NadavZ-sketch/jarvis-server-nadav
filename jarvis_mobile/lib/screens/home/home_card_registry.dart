@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../../app_settings.dart';
 import '../../widgets/home/hero_card.dart';
 import '../../widgets/home/quick_actions_card.dart';
-import '../../widgets/home/jarvis_card.dart';
+import '../../widgets/home/day_focus_card.dart';
+import '../../widgets/home/week_strip_card.dart';
 import '../../widgets/home/tasks_card.dart';
 import '../../widgets/home/reminders_card.dart';
 import '../../widgets/home/weather_news_card.dart';
@@ -27,18 +28,13 @@ class HomeCardSpec {
 /// Master list in default display order. The hero card is pinned and never
 /// hidden/reordered.
 final List<HomeCardSpec> kHomeCards = [
-  HomeCardSpec(id: 'hero', titleHe: 'ברכה', build: (_, c) => HeroCard(c)),
-  HomeCardSpec(
-      id: 'quick_actions',
-      titleHe: 'פעולות מהירות',
-      build: (_, c) => QuickActionsCard(c)),
-  HomeCardSpec(id: 'jarvis', titleHe: 'פוקוס', build: (_, c) => JarvisCard(c)),
-  HomeCardSpec(
-      id: 'tasks', titleHe: 'משימות להיום', build: (_, c) => TasksCard(c)),
-  HomeCardSpec(
-      id: 'reminders', titleHe: 'תזכורות', build: (_, c) => RemindersCard(c)),
-  HomeCardSpec(
-      id: 'weather_news', titleHe: 'סביבה', build: (_, c) => WeatherNewsCard(c)),
+  HomeCardSpec(id: 'hero',         titleHe: 'ברכה',          build: (_, c) => HeroCard(c)),
+  HomeCardSpec(id: 'week_strip',   titleHe: 'רצועת שבוע',    build: (_, c) => WeekStripCard(c)),
+  HomeCardSpec(id: 'day_focus',    titleHe: 'מסלול היום',    build: (_, c) => DayFocusCard(c)),
+  HomeCardSpec(id: 'quick_actions',titleHe: 'פעולות מהירות', build: (_, c) => QuickActionsCard(c)),
+  HomeCardSpec(id: 'tasks',        titleHe: 'משימות להיום',  build: (_, c) => TasksCard(c)),
+  HomeCardSpec(id: 'reminders',    titleHe: 'תזכורות',       build: (_, c) => RemindersCard(c)),
+  HomeCardSpec(id: 'weather_news', titleHe: 'סביבה',         build: (_, c) => WeatherNewsCard(c)),
 ];
 
 const String kPinnedCardId = 'hero';
@@ -48,8 +44,9 @@ const String kPinnedCardId = 'hero';
 /// Ids with no entry and no matching card (e.g. 'calendar', 'stats') are simply
 /// dropped by [orderedCards].
 const Map<String, String> kLegacyCardIds = {
-  'next_action': 'jarvis',
-  'insight': 'jarvis',
+  'next_action': 'day_focus',
+  'insight':     'day_focus',
+  'jarvis':      'day_focus',   // jarvis card replaced by day_focus
 };
 
 HomeCardSpec? cardById(String id) {

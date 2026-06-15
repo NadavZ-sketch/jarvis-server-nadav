@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../main.dart' show JC;
 
-/// Single card used in the Dashboard (Today tab) to display both tasks and
-/// reminders in a unified visual style with a coloured left-side accent bar.
+/// Single card to display both tasks and reminders with a coloured left-side
+/// accent bar. Used in the Dashboard and anywhere a unified item view is needed.
 class UnifiedItemCard extends StatelessWidget {
   final Map<String, dynamic> item;
   final String itemType; // 'task' | 'reminder'
@@ -17,7 +17,7 @@ class UnifiedItemCard extends StatelessWidget {
     this.isCompleting = false,
   });
 
-  /// Shared time-formatting logic (also called from today_tab.dart).
+  /// Formats an ISO timestamp for display.
   static String formatTime(dynamic iso) {
     if (iso == null) return '';
     try {

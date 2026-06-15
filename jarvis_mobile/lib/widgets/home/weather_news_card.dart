@@ -59,6 +59,18 @@ class _WeatherNewsCardState extends State<WeatherNewsCard>
   }
 
   @override
+  void initState() {
+    super.initState();
+    _syncTabController(_available);
+  }
+
+  @override
+  void didUpdateWidget(WeatherNewsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncTabController(_available);
+  }
+
+  @override
   void dispose() {
     _tabController?.dispose();
     super.dispose();
@@ -68,7 +80,6 @@ class _WeatherNewsCardState extends State<WeatherNewsCard>
   Widget build(BuildContext context) {
     final weatherData = _widgetData('weather');
     final available = _available;
-    _syncTabController(available);
 
     Widget body;
     if (c.dashboardLoading && c.dashboardContext == null) {
@@ -219,7 +230,7 @@ class _WeatherNewsCardState extends State<WeatherNewsCard>
   Widget _buildHeadlineList(Map<String, dynamic> d, Color dotColor) {
     final rawHeadlines = d['headlines'];
     final headlines = rawHeadlines is List
-        ? rawHeadlines.cast<String>()
+        ? rawHeadlines.whereType<String>().toList()
         : (d['summary'] as String? ?? '')
             .split('\n')
             .map((l) => l.replaceFirst(RegExp(r'^[•·]\s*'), ''))

@@ -79,8 +79,12 @@ function filePathForRecord(entity, record) {
         return `${dir}/${name}.md`;
     }
     if (entity === 'memories') {
-        const cat = extractCategory(record.content) || 'General';
-        return `${dir}/${sanitizeFilename(cat)}.md`;
+        const content = record.content || '';
+        let subdir = 'General';
+        if (/^\[fact\]/i.test(content))    subdir = 'Facts';
+        else if (/^\[pref\]/i.test(content)) subdir = 'Preferences';
+        else if (/^\[context\]/i.test(content)) subdir = 'Recent';
+        return `${dir}/${subdir}.md`;
     }
     if (entity === 'tasks')     return `${dir}/tasks.md`;
     if (entity === 'reminders') return `${dir}/reminders.md`;

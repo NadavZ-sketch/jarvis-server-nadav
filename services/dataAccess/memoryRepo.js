@@ -77,6 +77,17 @@ function createMemoryRepo(supabase) {
             return data || [];
         },
 
+        // All memories of a given scope, newest first; throws on error.
+        async findByScope(scope, limit = 500) {
+            const { data, error } = await supabase.from(M)
+                .select('id, content, scope, created_at')
+                .eq('scope', scope)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+            if (error) throw error;
+            return data || [];
+        },
+
         // Expired memories of a scope (older than cutoff); throws on error.
         async expiredByScope(scope, cutoffISO, limit = 500) {
             const { data, error } = await supabase.from(M)

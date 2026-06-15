@@ -40,7 +40,7 @@ jest.mock('../../agents/router', () => {
 });
 jest.mock('../../agents/taskAgent', () => ({ runTaskAgent: jest.fn() }));
 jest.mock('../../agents/reminderAgent', () => ({ runReminderAgent: jest.fn() }));
-jest.mock('../../agents/memoryAgent', () => ({ runMemoryAgent: jest.fn(), autoExtractMemory: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../../agents/memoryAgent', () => ({ runMemoryAgent: jest.fn(), autoExtractMemory: jest.fn().mockResolvedValue(undefined), setMemoryCacheInvalidator: jest.fn(), getPendingMemory: jest.fn().mockReturnValue(null), clearPendingMemory: jest.fn(), saveSessionSummary: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('../../agents/chatAgent', () => ({ runChatAgent: jest.fn(), detectFollowUp: jest.fn().mockReturnValue(false), filterRelevantMemories: jest.fn(m => m) }));
 jest.mock('../../agents/sportsAgent', () => ({ runSportsAgent: jest.fn() }));
 jest.mock('../../agents/musicAgent', () => ({ runMusicAgent: jest.fn() }));

@@ -46,7 +46,14 @@ const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCusto
 const routeTracker = require('./services/routeTracker');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
-const { runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator } = require('./agents/memoryAgent');
+const _memoryAgent = require('./agents/memoryAgent');
+const {
+    runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator,
+    saveSessionSummary,
+} = _memoryAgent;
+// Use module-level accessors so Jest spies can intercept in tests
+const getPendingMemory  = (...args) => _memoryAgent.getPendingMemory(...args);
+const clearPendingMemory = (...args) => _memoryAgent.clearPendingMemory(...args);
 const { cleanupExpiredMemories } = require('./services/memoryCleanup');
 const { getAgentRegistry } = require('./services/agentRegistryService');
 const agentMetrics = require('./services/agentMetrics');
@@ -585,6 +592,37 @@ async function generateSpeech(text) {
     }
 }
 
+// ─── Memory Confirm ────────────────────────────────────────────────────────────
+
+app.post('/memories/confirm', async (req, res) => {
+    const { chatId, action } = req.body;
+    if (!chatId) return res.status(400).json({ error: 'chatId required' });
+
+    const pending = getPendingMemory(chatId);
+    if (!pending) return res.status(404).json({ error: 'no pending memory for this chat' });
+
+    clearPendingMemory(chatId);
+
+    if (action === 'discard') return res.json({ ok: true });
+
+    try {
+        const inserted = await repos.memories.insert({ content: pending.content, scope: 'long_term' });
+        if (inserted?.[0]?.id) {
+            await pinecone.upsertMemory(inserted[0].id, pending.content).catch(() => {});
+        }
+        if (pending.replacesId) {
+            await repos.memories.updateById(pending.replacesId, { scope: 'archive' });
+            await pinecone.deleteMemory(pending.replacesId).catch(() => {});
+            console.log('🧠 Archived old memory:', pending.replacesId);
+        }
+        cacheInvalidate('memories');
+        res.json({ ok: true, saved: pending.content });
+    } catch (err) {
+        console.error('❌ memories/confirm error:', err.message);
+        res.status(500).json({ error: 'שגיאה בשמירת הזיכרון' });
+    }
+});
+
 // ─── Document Parser ──────────────────────────────────────────────────────────
 
 app.post('/parse-document', _rl(5), async (req, res) => {
@@ -1001,6 +1039,16 @@ async function askJarvisHandler(req, res) {
             : '';
         const tDb = Date.now();
 
+        // Check for a pending memory confirmation for this chatId.
+        const pendingMemory = chatId ? getPendingMemory(chatId) : null;
+        if (pendingMemory && agentName === 'chat') {
+            const isUpdate = !!pendingMemory.replacesId;
+            const question = isUpdate
+                ? `שמתי לב שציינת "${pendingMemory.content.replace(/^\[\w+\]\s*/, '')}" — זה שונה ממה שרשמתי (${(pendingMemory.replacesContent || '?').replace(/^\[\w+\]\s*/, '')}). לעדכן?`
+                : `שמתי לב שציינת "${pendingMemory.content.replace(/^\[\w+\]\s*/, '')}" — האם לשמור לזיכרון?`;
+            settings._pendingMemoryQuestion = question;
+        }
+
         // ── Past-conv: inject relevant history snippets beyond last 20 msgs ──
         if (agentName === 'chat' && PAST_CONV_PATTERN.test(userMessage)) {
             const historySnippet = await searchFullHistory(userMessage);
@@ -1143,7 +1191,7 @@ async function askJarvisHandler(req, res) {
             saveChatMessage('jarvis', answer, chatId),
             ttsEnabled ? generateSpeech(answer) : Promise.resolve(null),
             shouldExtract
-                ? autoExtractMemory(originalMessage, answer, repos, settings).catch(e => { systemLog.logError('autoExtractMemory', e).catch(() => {}); return null; })
+                ? autoExtractMemory(originalMessage, answer, repos, settings, chatId).catch(e => { systemLog.logError('autoExtractMemory', e).catch(() => {}); return null; })
                 : Promise.resolve(null),
         ]);
         cacheInvalidate(`chatHistory:${chatId}`); // history just updated
@@ -1153,6 +1201,7 @@ async function askJarvisHandler(req, res) {
             setImmediate(() => {
                 loadChatHistory(chatId).then(freshHistory => {
                     conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, repos, settings).catch(e => systemLog.logError('updateSummaryIfNeeded', e).catch(() => {}));
+                    saveSessionSummary(chatId, repos, freshHistory).catch(e => systemLog.logError('saveSessionSummary', e).catch(() => {}));
                 }).catch(e => systemLog.logError('loadChatHistory:postChat', e).catch(() => {}));
             });
         }
@@ -4055,6 +4104,23 @@ if (!isTestEnv) scheduledJob('inactive_agent_check', '0 9 * * *', async () => {
 // Daily deep-clean at 03:30 — re-run the same cleanupExpiredMemories that runs
 // hourly, but with full Pinecone + Obsidian sync. Catches anything the hourly
 // job missed and keeps the three stores aligned.
+// Daily at 03:00 — expire [context] memories older than 7 days.
+if (!isTestEnv) scheduledJob('context_memory_expiry', '0 3 * * *', async () => {
+    try {
+        const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const expired = await repos.memories.expiredByScope('session', cutoff);
+        const contextExpired = expired.filter(m => (m.content || '').startsWith('[context]'));
+        if (contextExpired.length === 0) return;
+        const ids = contextExpired.map(m => m.id);
+        await repos.memories.deleteMany(ids);
+        await Promise.allSettled(ids.map(id => pinecone.deleteMemory(id)));
+        cacheInvalidate('memories');
+        console.log(`🧠 Expired ${ids.length} [context] memories older than 7 days`);
+    } catch (err) {
+        console.error('❌ context expiry cron error:', err.message);
+    }
+}, { timezone: 'Asia/Jerusalem' });
+
 if (!isTestEnv) scheduledJob('memory_cleanup_nightly', '30 3 * * *', async () => {
     const res = await cleanupExpiredMemories(repos);
     if (res.deleted > 0) {
@@ -4064,7 +4130,7 @@ if (!isTestEnv) scheduledJob('memory_cleanup_nightly', '30 3 * * *', async () =>
     if (res.errors?.length) console.warn('🧹 nightly memoryCleanup errors:', res.errors);
 }, { timezone: 'Asia/Jerusalem' });
 
-// Daily user-profile learning — 03:45 Jerusalem (after the 03:30 memory cleanup).
+// Daily user-profile learning — 03:45 Jerusalem (after the 03:00 context cleanup and 03:30 memory cleanup).
 // Derives preferred hours / interests / recurring tasks from behaviour and
 // writes them into the profile without clobbering fields the user set manually.
 if (!isTestEnv) scheduledJob('profile_learning', '45 3 * * *', async () => {

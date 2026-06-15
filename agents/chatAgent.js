@@ -138,7 +138,7 @@ function _embedStats() {
 // Async embedding-based ranking. Pinecone is the primary path; token ranking is
 // the last-resort fallback (Pinecone unavailable or embedding error).
 // Used by the chat agent before assembling system prompt.
-async function filterRelevantMemoriesAsync(memoriesText, userMessage, topK = 5) {
+async function filterRelevantMemoriesAsync(memoriesText, userMessage, topK = 8) {
     if (!memoriesText || memoriesText === 'אין עדיין זיכרונות שמורים.') return memoriesText;
     const lines = memoriesText.split('\n').filter(l => l.trim());
     if (lines.length <= topK) return memoriesText;
@@ -170,6 +170,21 @@ function filterRelevantMemories(memoriesText, userMessage) {
     const lines = memoriesText.split('\n').filter(l => l.trim());
     if (lines.length <= 8) return memoriesText;
     return _tokenRankMemories(lines, userMessage).join('\n');
+}
+
+// Groups memory objects by type (fact/pref/context) with emoji labels.
+// Accepts an array of { content } objects or returns '' for empty input.
+function formatMemories(memories) {
+    if (!memories || memories.length === 0) return '';
+    const clean = s => s.replace(/^\[(fact|pref|context)\]\s*/i, '').trim();
+    const facts = memories.filter(m => /^\[fact\]/i.test(m.content) || !/^\[/.test(m.content));
+    const prefs = memories.filter(m => /^\[pref\]/i.test(m.content));
+    const ctx   = memories.filter(m => /^\[context\]/i.test(m.content));
+    const lines = [];
+    if (facts.length) lines.push(`📌 עובדות: ${facts.map(m => clean(m.content)).join(' · ')}`);
+    if (prefs.length) lines.push(`⭐ העדפות: ${prefs.map(m => clean(m.content)).join(' · ')}`);
+    if (ctx.length)   lines.push(`🕐 הקשר אחרון: ${ctx.map(m => clean(m.content)).join(' · ')}`);
+    return lines.join('\n');
 }
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
@@ -252,16 +267,25 @@ ${chatSummary}
     // by filterRelevantMemoriesAsync, so the tail is the least useful content.
     // Cap at 1200 chars (~400 tokens). Relevant memories are ranked first by
     // filterRelevantMemoriesAsync, so the trimmed tail is the least useful content.
-    const memoriesCapped = (longTermMemories || '').length > 1200
-        ? longTermMemories.slice(0, 1200) + '\n(ועוד…)'
-        : (longTermMemories || '');
+    let formattedMemories;
+    if (Array.isArray(longTermMemories)) {
+        formattedMemories = formatMemories(longTermMemories);
+    } else {
+        const memStr = (longTermMemories || '').slice(0, 1200);
+        formattedMemories = memStr + ((longTermMemories || '').length > 1200 ? '\n(ועוד…)' : '');
+    }
+    const memoriesCapped = formattedMemories;
 
     const styleHint = userMessage && !voiceMode ? (() => {
         const { length, register } = analyzeUserStyle(userMessage);
         return `\nStyle hint: mirror length=${length}, register=${register}.`;
     })() : '';
 
-    return `You are ${name}, a personal AI assistant for ${userName}. Respond in Hebrew only.
+    const pendingQ = settings._pendingMemoryQuestion
+        ? `הוראה: פתח את תגובתך עם השאלה הבאה בדיוק: "${settings._pendingMemoryQuestion}"\n\n`
+        : '';
+
+    return `${pendingQ}You are ${name}, a personal AI assistant for ${userName}. Respond in Hebrew only.
 ${genderInstr}
 Personality: ${personalityDesc}
 CRITICAL: Mirror ${userName}'s writing style, vocabulary and tone.${styleHint}
@@ -270,8 +294,13 @@ CRITICAL: You cannot send emails, links, or files. Never promise to "send" anyth
 ${voiceModeBlock}${emotionalIntelligenceBlock}${clarificationLine}${briefLine}
 ${profileBlock}${learnedStyleBlock}
 ${followUpBlock}${summaryBlock}
---- Permanent Memories About ${userName} ---
+--- זיכרונות אישיים על ${userName} ---
 ${memoriesCapped}
+
+הנחיות שימוש בזיכרון:
+- שלב עובדות רלוונטיות בתשובה בצורה טבעית, ללא הכרזה מיוחדת.
+- כשמתאים, הזכר מה שנאמר בשיחות קודמות ("כמו שאמרת...").
+- כשיש ספק לגבי העדפה, שאל ("אתה מעדיף תשובה קצרה כרגיל?").
 --------------------------------------
 
 Current DateTime: ${currentDay}, ${currentDate}, ${currentTime}.
@@ -434,4 +463,4 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
     return { answer: 'סליחה, נתקלתי בבעיה. נסה שוב.' };
 }
 
-module.exports = { runChatAgent, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, getMemoryRecallStats, analyzeUserStyle, buildSystemPrompt };
+module.exports = { runChatAgent, buildSystemPrompt, buildLocalMessages, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, formatMemories, getMemoryRecallStats, analyzeUserStyle };

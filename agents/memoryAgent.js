@@ -51,6 +51,14 @@ async function checkDuplicate(rawContent, memories) {
     return { duplicate: false };
 }
 
+async function findConflict(content) {
+    if (!pinecone.isReady()) return { type: 'new' };
+    const similar = await pinecone.findSimilarMemory(content, 0.70);
+    if (!similar) return { type: 'new' };
+    if (similar.score > 0.92) return { type: 'duplicate' };
+    return { type: 'update', existingId: similar.id, existingContent: similar.content, score: similar.score };
+}
+
 // Retry wrapper: exponential backoff up to N attempts. Returns the resolved value
 // or rethrows the last error. Used for LLM calls in auto-extraction so transient
 // network/rate-limit failures don't silently lose extracted facts.
@@ -67,72 +75,106 @@ async function withRetry(fn, { attempts = 2, baseMs = 400 } = {}) {
     throw lastErr;
 }
 
+// ─── Pending TTL cache ────────────────────────────────────────────────────────
+
+const _pendingMemories = new Map();
+const PENDING_TTL_MS = 10 * 60 * 1000;
+
+function getPendingMemory(chatId) {
+    const entry = _pendingMemories.get(chatId);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) { _pendingMemories.delete(chatId); return null; }
+    return entry.data;
+}
+
+function clearPendingMemory(chatId) {
+    _pendingMemories.delete(chatId);
+}
+
 // ─── Passive auto-extraction (fire-and-forget) ────────────────────────────────
 
-const AUTO_EXTRACT_PROMPT = `You are a memory extractor for a Hebrew personal assistant.
-Given a user message and assistant reply, extract personal facts worth remembering.
+const AUTO_EXTRACT_PROMPT = `אתה מנתח שיחה ומחלץ עובדות אישיות חשובות לשמירה.
 
-Save facts in these categories:
-- long_term: stable personal facts (health/allergy, family, location, job, hobby, preference, schedule)
-- session: active goals, current tasks, decisions made this session, names of people/places just mentioned
-- Do NOT save: questions, commands, greetings, weather queries, sports questions, or general non-personal content.
+הודעת המשתמש: "{message}"
+תגובת העוזר: "{answer}"
 
-Return ONLY JSON (no explanation):
-{"items": []} — if nothing worth saving
-{"items": [{"content": "[tag] fact in Hebrew", "scope": "long_term|session"}]} — up to 3 items
+חלץ עד 3 פריטי מידע בעלי ערך לזיכרון ארוך טווח.
+סווג כל פריט לאחת מהקטגוריות:
+- [fact]: עובדה יציבה — משפחה, מקום מגורים, בריאות, עבודה, גיל
+- [pref]: העדפה או דפוס התנהגות — מה אוהב, איך עובד, שגרת יום
+- [context]: הקשר פעיל — פרויקט עכשווי, החלטה השבוע, מטרה קרובה
 
-Tags: health, location, family, work, hobby, preference, goal, decision, context, schedule, other
-Scope: "long_term" for stable facts, "session" for current goals/tasks/decisions.
+החזר JSON בלבד:
+{ "memories": [ { "type": "fact|pref|context", "content": "[tag] תוכן בעברית" } ] }
 
-User message: `;
+כללים:
+- רק מידע אישי ספציפי (לא שאלות כלליות)
+- משפט אחד קצר לכל פריט
+- אם אין מידע ראוי — החזר { "memories": [] }`;
 
-async function autoExtractMemory(userMessage, assistantAnswer, repos, settings = {}) {
+async function autoExtractMemory(userMessage, assistantAnswer, repos, settings = {}, chatId = null) {
     const memories = repos.memories;
     try {
-        // Skip extraction on short/filler messages — nothing memorable in "תודה" or "יאלה".
-        if (!userMessage || userMessage.trim().length < 30) return null;
-        if (/מה אתה יודע|מה את יודעת|מה ידוע לך|יודע עליי|יודעת עליי|מה זכרת|ספר לי עליי|מה שמרת|מחק זיכרון|הסר זיכרון|שכח ש|מזג האוויר|תחזית|חדשות|כותרות|ספורט|תוצאות|מניות|שוק המניות|שוק|מניה/i.test(userMessage)) return null;
+        if (!userMessage || userMessage.trim().length < 20) return null;
+        if (/מזג האוויר|תחזית|חדשות|כותרות|ספורט|תוצאות|מניות|שוק המניות|מה אתה יודע|מה ידוע לך|מחק זיכרון|הסר זיכרון/i.test(userMessage)) return null;
 
-        const prompt = AUTO_EXTRACT_PROMPT + userMessage
-            + `\nAssistant reply: ${(assistantAnswer || '').slice(0, 200)}`;
+        const prompt = AUTO_EXTRACT_PROMPT
+            .replace('{message}', userMessage)
+            .replace('{answer}', (assistantAnswer || '').slice(0, 200));
 
         const aiText = await withRetry(() => callGemma4(
             [{ role: 'user', content: prompt }],
             settings.useLocalModel === true,
-            300,
+            400,
         ));
 
-        // Parse the first complete JSON object from the response.
-        const firstOpen  = aiText.indexOf('{');
-        const lastClose  = aiText.lastIndexOf('}');
+        const firstOpen = aiText.indexOf('{');
+        const lastClose = aiText.lastIndexOf('}');
         if (firstOpen === -1 || lastClose === -1) return null;
 
         let parsed;
         try { parsed = JSON.parse(aiText.substring(firstOpen, lastClose + 1)); } catch { return null; }
 
-        const items = Array.isArray(parsed.items) ? parsed.items : [];
+        const items = Array.isArray(parsed.memories) ? parsed.memories : [];
         if (items.length === 0) return null;
 
-        let firstSaved = null;
         for (const item of items.slice(0, 3)) {
             const content = (item.content || '').trim();
-            const scope   = item.scope === 'session' ? 'session' : 'long_term';
+            const type    = item.type || 'fact';
             if (!content) continue;
 
-            const dup = await checkDuplicate(content, memories);
-            if (dup.duplicate) {
+            if (type === 'context') {
+                const dup = await checkDuplicate(content, memories);
+                if (dup.duplicate) continue;
+                const inserted = await memories.insert({ content, scope: 'session' });
+                obsidianSync.dbToVault('memories', { content, scope: 'session' });
+                if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
+                console.log('🧠 AutoExtract [context] saved:', content);
+                _invalidateMemoryCache();
+                continue;
+            }
+
+            const conflict = await findConflict(content);
+            if (conflict.type === 'duplicate') {
                 console.log('🧠 AutoExtract: duplicate skipped:', content);
                 continue;
             }
 
-            const inserted = await memories.insert({ content, scope });
-            obsidianSync.dbToVault('memories', { content, scope });
-            if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
-            if (!firstSaved) firstSaved = content;
-            console.log(`🧠 AutoExtract saved [${scope}]:`, content);
+            if (chatId) {
+                _pendingMemories.set(chatId, {
+                    data: { content, type, ...( conflict.type === 'update' && {
+                        replacesId:      conflict.existingId,
+                        replacesContent: conflict.existingContent,
+                    })},
+                    expiresAt: Date.now() + PENDING_TTL_MS,
+                });
+                console.log(`🧠 AutoExtract: pending [${type}] for chatId ${chatId}:`, content);
+                return { type: conflict.type, content, ...( conflict.type === 'update' && {
+                    replacesId: conflict.existingId, replacesContent: conflict.existingContent,
+                })};
+            }
         }
-        if (firstSaved) _invalidateMemoryCache();
-        return firstSaved;
+        return null;
     } catch (err) {
         console.error('AutoExtract error (suppressed):', err.message);
         return null;
@@ -293,4 +335,27 @@ async function runMemoryAgent(userMessage, repos, useLocal = true, settings = {}
     return { answer: 'הייתה בעיה בשמירת הזיכרון, נסה שוב.' };
 }
 
-module.exports = { runMemoryAgent, autoExtractMemory, checkDuplicate, setMemoryCacheInvalidator, deleteMemory, updateMemory };
+async function saveSessionSummary(chatId, repos, history) {
+    if (!history || history.length < 5) return;
+    try {
+        const turns = history.slice(-10)
+            .map(m => `${m.sender === 'user' ? 'משתמש' : 'ג׳רביס'}: ${m.text}`)
+            .join('\n');
+        const prompt = `סכם בשני משפטים קצרים את נושאי השיחה הבאה (בעברית):\n${turns}\nהחזר רק את הסיכום, ללא הסברים.`;
+        const summary = await callGemma4([{ role: 'user', content: prompt }], false, 200);
+        if (!summary || summary.trim().length < 5) return;
+        const content = `[context] ${summary.trim()}`;
+        const inserted = await repos.memories.insert({ content, scope: 'session' });
+        if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
+        _invalidateMemoryCache();
+        console.log('🧠 Session summary saved for', chatId);
+    } catch (err) {
+        console.error('saveSessionSummary error (suppressed):', err.message);
+    }
+}
+
+module.exports = {
+    runMemoryAgent, autoExtractMemory, checkDuplicate, findConflict,
+    getPendingMemory, clearPendingMemory, saveSessionSummary,
+    setMemoryCacheInvalidator, deleteMemory, updateMemory,
+};

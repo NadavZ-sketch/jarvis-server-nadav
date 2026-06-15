@@ -108,3 +108,33 @@ describe('buildSystemPrompt — token-budget guardrails', () => {
         expect(callGemma4).toHaveBeenCalledTimes(1);
     });
 });
+
+// ─── formatMemories ───────────────────────────────────────────────────────────
+
+describe('formatMemories', () => {
+    const { formatMemories } = require('../../agents/chatAgent');
+
+    test('groups fact/pref/context into labeled sections', () => {
+        const memories = [
+            { content: '[fact] גר בירושלים' },
+            { content: '[pref] מעדיף תשובות קצרות' },
+            { content: '[context] עובד על מצגת' },
+        ];
+        const result = formatMemories(memories);
+        expect(result).toContain('📌 עובדות:');
+        expect(result).toContain('⭐ העדפות:');
+        expect(result).toContain('🕐 הקשר אחרון:');
+        expect(result).toContain('גר בירושלים');
+        expect(result).not.toContain('[fact]');
+    });
+
+    test('returns empty string when no memories', () => {
+        expect(formatMemories([])).toBe('');
+    });
+
+    test('handles legacy memories without prefix as facts', () => {
+        const memories = [{ content: 'אוהב פיצה' }];
+        const result = formatMemories(memories);
+        expect(result).toContain('אוהב פיצה');
+    });
+});

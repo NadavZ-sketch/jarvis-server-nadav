@@ -67,3 +67,21 @@ describe('memoryRepo', () => {
         expect(rows).toEqual([{ id: 7, content: 'new' }]);
     });
 });
+
+describe('memoryRepo.findByScope', () => {
+    test('returns rows matching scope', async () => {
+        const chain = makeChain([{ id: 1, content: '[fact] test', scope: 'archive' }]);
+        const repo = createMemoryRepo({ from: () => chain });
+        const rows = await repo.findByScope('archive');
+        expect(chain.eq).toHaveBeenCalledWith('scope', 'archive');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].content).toBe('[fact] test');
+    });
+
+    test('returns empty array when no rows match', async () => {
+        const chain = makeChain([]);
+        const repo = createMemoryRepo({ from: () => chain });
+        const rows = await repo.findByScope('archive');
+        expect(rows).toEqual([]);
+    });
+});

@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../app_settings.dart';
 import '../../main.dart' show JC;
@@ -40,6 +43,10 @@ class _TextPanelState extends State<TextPanel>
 
   bool _sending = false;
   int _prevCount = 0;
+
+  String? _pendingFileName;
+  List<int>? _pendingFileBytes;
+  String? _pendingFileType; // 'image' | 'pdf' | 'docx' | 'audio:<ext>'
 
   @override
   void initState() {
@@ -83,6 +90,7 @@ class _TextPanelState extends State<TextPanel>
   }
 
   Future<void> _sendText() async {
+    if (_pendingFileBytes != null) { await _sendWithFile(); return; }
     final text = _textCtrl.text.trim();
     if (text.isEmpty || _sending) return;
     _textCtrl.clear();
@@ -159,6 +167,148 @@ class _TextPanelState extends State<TextPanel>
     );
   }
 
+  void _clearPendingFile() {
+    setState(() {
+      _pendingFileName = null;
+      _pendingFileBytes = null;
+      _pendingFileType = null;
+    });
+  }
+
+  Future<void> _showAttachmentSheet() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: JC.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 32, height: 3,
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: JC.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.image_rounded, color: JC.blue400),
+              title: Text('📷 תמונה', style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
+              onTap: () => Navigator.pop(context, 'image'),
+            ),
+            ListTile(
+              leading: Icon(Icons.description_rounded, color: JC.indigo500),
+              title: Text('📄 מסמך (PDF / Word)', style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
+              onTap: () => Navigator.pop(context, 'doc'),
+            ),
+            ListTile(
+              leading: Icon(Icons.audiotrack_rounded, color: const Color(0xFF22C55E)),
+              title: Text('🎵 אודיו', style: TextStyle(color: JC.textPrimary, fontFamily: 'Heebo')),
+              onTap: () => Navigator.pop(context, 'audio'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    if (choice == 'image') {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+      if (picked == null || !mounted) return;
+      final bytes = await picked.readAsBytes();
+      setState(() {
+        _pendingFileName = picked.name;
+        _pendingFileBytes = List<int>.from(bytes);
+        _pendingFileType = 'image';
+      });
+    } else if (choice == 'doc') {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'docx'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty || !mounted) return;
+      final file = result.files.first;
+      setState(() {
+        _pendingFileName = file.name;
+        _pendingFileBytes = file.bytes != null ? List<int>.from(file.bytes!) : null;
+        _pendingFileType = file.extension?.toLowerCase() == 'docx' ? 'docx' : 'pdf';
+      });
+    } else if (choice == 'audio') {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['mp3', 'm4a', 'wav', 'ogg'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty || !mounted) return;
+      final file = result.files.first;
+      setState(() {
+        _pendingFileName = file.name;
+        _pendingFileBytes = file.bytes != null ? List<int>.from(file.bytes!) : null;
+        _pendingFileType = 'audio:${file.extension ?? 'mp3'}';
+      });
+    }
+  }
+
+  Future<void> _sendWithFile() async {
+    final bytes = _pendingFileBytes;
+    final fileType = _pendingFileType;
+    final fileName = _pendingFileName ?? 'קובץ';
+    final caption = _textCtrl.text.trim();
+    if (bytes == null || fileType == null) return;
+    _textCtrl.clear();
+    _clearPendingFile();
+    setState(() => _sending = true);
+
+    widget.onNewMessage(ChatMessage(
+      id: 't-u-${DateTime.now().millisecondsSinceEpoch}',
+      sender: 'user',
+      text: caption.isNotEmpty ? caption : '📎 $fileName',
+      fileName: fileName,
+    ));
+
+    try {
+      final command = caption.isNotEmpty ? caption : 'נתח את הקובץ הזה';
+      String? answer;
+
+      if (fileType == 'image') {
+        final base64 = base64Encode(bytes);
+        final result = await _api.askJarvisWithImage(command, base64, widget.settings);
+        answer = result['answer'] as String?;
+      } else if (fileType.startsWith('audio:')) {
+        final format = fileType.split(':').last;
+        final transcript = await _api.transcribeAudio(bytes, format);
+        if (transcript.isEmpty) throw Exception('לא זוהה תוכן');
+        final result = await _api.askJarvis('תמלול: $transcript\n\n$command', widget.settings);
+        answer = result['answer'] as String?;
+      } else {
+        final text = await _api.parseDocument(bytes, fileType);
+        final result = await _api.askJarvis('תוכן הקובץ:\n$text\n\n$command', widget.settings);
+        answer = result['answer'] as String?;
+      }
+
+      if ((answer ?? '').isNotEmpty) {
+        widget.onNewMessage(ChatMessage(
+          id: 't-${DateTime.now().millisecondsSinceEpoch}',
+          sender: 'jarvis',
+          text: answer!.trim(),
+        ));
+      }
+    } catch (e) {
+      widget.onNewMessage(ChatMessage(
+        id: 't-err-${DateTime.now().millisecondsSinceEpoch}',
+        sender: 'jarvis',
+        text: '⚠️ ${e.toString().replaceFirst('Exception: ', '')}',
+      ));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   @override
   void dispose() {
     _textCtrl.dispose();
@@ -185,6 +335,16 @@ class _TextPanelState extends State<TextPanel>
             },
           ),
         ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          child: _pendingFileName == null
+              ? const SizedBox.shrink()
+              : _FilePreviewRow(
+                  fileName: _pendingFileName!,
+                  onDismiss: _clearPendingFile,
+                ),
+        ),
         _InputBar(
           controller: _textCtrl,
           micRecording: _micRecording,
@@ -192,6 +352,7 @@ class _TextPanelState extends State<TextPanel>
           sending: _sending,
           onSend: _sendText,
           onMic: _toggleMic,
+          onAttach: _showAttachmentSheet,
         ),
       ],
     );
@@ -288,6 +449,7 @@ class _InputBar extends StatelessWidget {
   final bool sending;
   final VoidCallback onSend;
   final VoidCallback onMic;
+  final VoidCallback onAttach;
 
   const _InputBar({
     required this.controller,
@@ -296,6 +458,7 @@ class _InputBar extends StatelessWidget {
     required this.sending,
     required this.onSend,
     required this.onMic,
+    required this.onAttach,
   });
 
   @override
@@ -308,13 +471,20 @@ class _InputBar extends StatelessWidget {
       ),
       child: Row(
         children: [
+          GestureDetector(
+            onTap: onAttach,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Icon(Icons.attach_file_rounded, size: 22, color: JC.textSecondary),
+            ),
+          ),
+          const SizedBox(width: 4),
           ScaleTransition(
             scale: micScale,
             child: GestureDetector(
               onTap: onMic,
               child: Container(
-                width: 36,
-                height: 36,
+                width: 36, height: 36,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: micRecording
@@ -341,16 +511,13 @@ class _InputBar extends StatelessWidget {
               controller: controller,
               textDirection: TextDirection.rtl,
               onSubmitted: (_) => onSend(),
-              style: TextStyle(
-                  color: JC.textPrimary, fontSize: 14, fontFamily: 'Heebo'),
+              style: TextStyle(color: JC.textPrimary, fontSize: 14, fontFamily: 'Heebo'),
               decoration: InputDecoration(
                 hintText: 'כתוב הודעה...',
-                hintStyle:
-                    TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
+                hintStyle: TextStyle(color: JC.textMuted, fontFamily: 'Heebo'),
                 filled: true,
                 fillColor: JC.surface,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(22),
                   borderSide: BorderSide.none,
@@ -362,8 +529,7 @@ class _InputBar extends StatelessWidget {
           GestureDetector(
             onTap: sending ? null : onSend,
             child: Container(
-              width: 36,
-              height: 36,
+              width: 36, height: 36,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: sending ? JC.border : JC.indigo500,
@@ -371,14 +537,50 @@ class _InputBar extends StatelessWidget {
               child: sending
                   ? Padding(
                       padding: const EdgeInsets.all(10),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: JC.textPrimary,
-                      ),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: JC.textPrimary),
                     )
-                  : const Icon(Icons.send_rounded,
-                      size: 18, color: Colors.white),
+                  : const Icon(Icons.send_rounded, size: 18, color: Colors.white),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── File preview row ────────────────────────────────────────────────────────
+
+class _FilePreviewRow extends StatelessWidget {
+  final String fileName;
+  final VoidCallback onDismiss;
+  const _FilePreviewRow({required this.fileName, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: JC.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: JC.indigo500.withValues(alpha: 0.4), width: 1),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.attach_file_rounded, size: 16, color: JC.indigo500),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              fileName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textDirection: TextDirection.rtl,
+              style: TextStyle(color: JC.textSecondary, fontSize: 12, fontFamily: 'Heebo'),
+            ),
+          ),
+          GestureDetector(
+            onTap: onDismiss,
+            child: Icon(Icons.close_rounded, size: 16, color: JC.textMuted),
           ),
         ],
       ),

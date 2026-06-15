@@ -323,6 +323,50 @@ class ApiService {
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> askJarvisWithImage(
+      String command, String imageBase64, AppSettings settings) async {
+    final body = <String, dynamic>{
+      'command': command,
+      'imageBase64': imageBase64,
+      'settings': settings.toJson(),
+    };
+    final res = await _client
+        .post(
+          _uri('/ask-jarvis'),
+          headers: _headers({'Content-Type': 'application/json'}),
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 60));
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<String> transcribeAudio(List<int> bytes, String format) async {
+    final base64Audio = base64Encode(bytes);
+    final res = await _client
+        .post(
+          _uri('/transcribe'),
+          headers: _headers({'Content-Type': 'application/json'}),
+          body: jsonEncode({'audio': base64Audio, 'format': format}),
+        )
+        .timeout(const Duration(seconds: 30));
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return (data['text'] as String? ?? '').trim();
+  }
+
+  Future<String> parseDocument(List<int> bytes, String fileType) async {
+    final base64File = base64Encode(bytes);
+    final res = await _client
+        .post(
+          _uri('/parse-document'),
+          headers: _headers({'Content-Type': 'application/json'}),
+          body: jsonEncode({'fileBase64': base64File, 'fileType': fileType}),
+        )
+        .timeout(const Duration(seconds: 30));
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    if (data['error'] != null) throw Exception(data['error']);
+    return (data['text'] as String? ?? '').trim();
+  }
+
   // ─── Reminders ────────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getReminders() async {

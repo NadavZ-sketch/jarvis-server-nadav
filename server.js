@@ -623,39 +623,6 @@ app.post('/memories/confirm', async (req, res) => {
     }
 });
 
-// ─── Document Parser ──────────────────────────────────────────────────────────
-
-app.post('/parse-document', _rl(5), async (req, res) => {
-    const { fileBase64, fileType } = req.body;
-    if (!fileBase64) return res.status(400).json({ error: 'fileBase64 required' });
-    const type = (fileType || '').toLowerCase().replace('.', '');
-    if (!['pdf', 'docx'].includes(type)) {
-        return res.status(400).json({ error: `סוג קובץ לא נתמך: ${type}. השתמש ב-pdf או docx.` });
-    }
-    try {
-        const buffer = Buffer.from(fileBase64, 'base64');
-        let text = '';
-        let pages;
-        if (type === 'pdf') {
-            const pdfParse = require('pdf-parse');
-            const result = await pdfParse(buffer);
-            text = (result.text || '').trim();
-            pages = result.numpages;
-        } else {
-            const mammoth = require('mammoth');
-            const result = await mammoth.extractRawText({ buffer });
-            text = (result.value || '').trim();
-        }
-        if (!text) return res.status(422).json({ error: 'לא ניתן לחלץ טקסט מהקובץ' });
-        const truncated = text.slice(0, 8000);
-        const wordCount = truncated.split(/\s+/).filter(Boolean).length;
-        res.json({ text: truncated, ...(pages !== undefined && { pages }), wordCount });
-    } catch (err) {
-        console.error('❌ parse-document error:', err.message);
-        res.status(500).json({ error: 'לא ניתן לקרוא את הקובץ' });
-    }
-});
-
 // ─── Whisper STT ──────────────────────────────────────────────────────────────
 
 app.post('/transcribe', _rl(60), async (req, res) => {

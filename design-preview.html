@@ -152,7 +152,6 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
     <div class="nav-item" onclick="switchSection('activity')"><span class="icon">📊</span><span class="label">פעילות</span></div>
     <div class="nav-item" onclick="switchSection('insights')"><span class="icon">💡</span><span class="label">תובנות</span></div>
     <div class="nav-item" onclick="switchSection('data')"><span class="icon">📈</span><span class="label">נתונים</span></div>
-    <div class="nav-item" onclick="switchSection('settings')"><span class="icon">⚙️</span><span class="label">הגדרות</span></div>
     <div class="sidebar-footer">עודכן<br><strong>לפני 3 דקות</strong></div>
   </div>
 
@@ -415,14 +414,6 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
       </div>
     </div>
 
-    <!-- ══ SETTINGS ══ -->
-    <div id="sec-settings" class="sec" style="display:none;flex-direction:column;flex:1;overflow:hidden">
-      <div class="content" style="background:var(--bg)">
-        <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:8px;color:var(--muted);font-size:.85rem">
-          <div style="font-size:2rem">⚙️</div><div style="color:var(--text);font-weight:700">הגדרות</div><div>זהה לממשק הנוכחי</div>
-        </div>
-      </div>
-    </div>
 
   </div>
 </div>
@@ -433,7 +424,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 // ──────────────────────────────────────────────
 // Navigation
 // ──────────────────────────────────────────────
-const SECS = ['brain','activity','insights','data','settings'];
+const SECS = ['brain','activity','insights','data'];
 function switchSection(name) {
   SECS.forEach(s => {
     const el = document.getElementById('sec-' + s);

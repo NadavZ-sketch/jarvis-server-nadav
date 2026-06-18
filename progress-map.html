@@ -16,6 +16,34 @@
   --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--blue:#60a5fa;
   --border:rgba(255,255,255,.08);--radius:14px;--radius-sm:9px;--blur:blur(20px);
 }
+[data-theme="glassDark"]{
+  --bg:#04091a;--surface:rgba(12,22,48,.88);--card:rgba(18,32,66,.92);--card2:rgba(22,40,80,.9);
+  --glass:rgba(80,130,255,.06);--glass-border:rgba(100,160,255,.18);
+  --text:#cce6ff;--muted:#6090b8;--accent:#3a9ef0;--accent2:#70c0ff;
+  --glow:rgba(58,158,240,.3);--glow2:rgba(58,158,240,.12);
+  --border:rgba(80,140,255,.12);
+}
+[data-theme="neoDark"]{
+  --bg:#020208;--surface:#080818;--card:#0c0c22;--card2:#101028;
+  --glass:rgba(0,255,136,.04);--glass-border:rgba(0,255,136,.12);
+  --text:#c0ffd4;--muted:#4a7a62;--accent:#00e87a;--accent2:#40ffa0;
+  --glow:rgba(0,232,122,.3);--glow2:rgba(0,232,122,.1);
+  --border:rgba(0,255,136,.1);
+}
+[data-theme="material3"]{
+  --bg:#1a1c1e;--surface:#2d3038;--card:#333640;--card2:#3a3d48;
+  --glass:rgba(155,130,255,.06);--glass-border:rgba(155,130,255,.14);
+  --text:#e2e2e6;--muted:#909094;--accent:#9d84ff;--accent2:#b8a4ff;
+  --glow:rgba(157,132,255,.25);--glow2:rgba(157,132,255,.1);
+  --border:rgba(255,255,255,.13);
+}
+[data-theme="cyberpunk"]{
+  --bg:#050012;--surface:#0d0022;--card:#130038;--card2:#18004a;
+  --glass:rgba(255,40,155,.05);--glass-border:rgba(255,40,155,.14);
+  --text:#f0e0ff;--muted:#7040a8;--accent:#ff2d9b;--accent2:#ff70c0;
+  --glow:rgba(255,45,155,.3);--glow2:rgba(255,45,155,.1);
+  --border:rgba(255,40,155,.12);
+}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Heebo','Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:24px 20px 60px;position:relative}
 body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(rgba(255,255,255,.022) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;z-index:0}
@@ -1264,7 +1292,8 @@ async function useProposalAsPrompt(id, mode = 'prompt') {
   if (!proposal) { showToast('הצעה לא נמצאה', 'error'); return; }
 
   _activeProposal = proposal;
-  _proposalAnswers = {};
+  // Restore any previously saved answers for this proposal
+  try { _proposalAnswers = JSON.parse(sessionStorage.getItem('pqa-' + id) || '{}'); } catch { _proposalAnswers = {}; }
   _proposalMode = mode;
 
   // Show questions panel below the proposal
@@ -1343,13 +1372,17 @@ function renderProposalQuestions(id, questions) {
       } else {
         otherInput.style.display = 'none';
         _proposalAnswers[label] = btn.textContent.trim();
+        try { sessionStorage.setItem('pqa-' + id, JSON.stringify(_proposalAnswers)); } catch {}
       }
     });
   });
   wrap.querySelectorAll('.pq-other-input').forEach(input => {
     const qi = parseInt(input.id.split('-').pop(), 10);
     const label = input.closest('.pq-question').dataset.label;
-    input.addEventListener('input', () => { _proposalAnswers[label] = input.value; });
+    input.addEventListener('input', () => {
+      _proposalAnswers[label] = input.value;
+      try { sessionStorage.setItem('pqa-' + id, JSON.stringify(_proposalAnswers)); } catch {};
+    });
   });
   document.getElementById(`pq-submit-${id}`).addEventListener('click', () => submitProposalQuestions(id));
   wrap.querySelector('.pq-skip').addEventListener('click', () => submitProposalQuestions(id));
@@ -1372,6 +1405,7 @@ async function submitProposalQuestions(id) {
 
     if (d.prompt) {
       window._generatedPrompt = d.prompt;
+      try { sessionStorage.removeItem('pqa-' + id); } catch {}
 
       // Show the prompt first so the user can see/copy it
       result.innerHTML = `
@@ -1946,9 +1980,9 @@ async function triggerE2E() {
 const SCAN_SEV = { critical:{he:'קריטי',emoji:'🔴'}, high:{he:'גבוה',emoji:'🟠'}, medium:{he:'בינוני',emoji:'🟡'}, low:{he:'נמוך',emoji:'🟢'} };
 const SCAN_SEV_ORDER = { critical:0, high:1, medium:2, low:3 };
 
-function renderScanFindings(findings) {
+function renderScanFindings(findings, limit = 50) {
   const sorted = [...findings].sort((a,b)=>(SCAN_SEV_ORDER[a.severity]??9)-(SCAN_SEV_ORDER[b.severity]??9));
-  return sorted.map(f => {
+  const renderRow = f => {
     const s = SCAN_SEV[f.severity] || { he:f.severity||'', emoji:'⚪' };
     return `<div class="scan-finding scan-sev-${f.severity||'low'}">
       <div class="scan-finding-head">
@@ -1958,7 +1992,15 @@ function renderScanFindings(findings) {
       <div class="scan-issue">${escapeHtml(f.finding||'')}</div>
       ${f.recommendation?`<div class="scan-fix">✅ ${escapeHtml(f.recommendation)}</div>`:''}
     </div>`;
-  }).join('');
+  };
+  const visible = sorted.slice(0, limit);
+  const rest = sorted.slice(limit);
+  const uid = Math.random().toString(36).slice(2, 8);
+  const restHtml = rest.length
+    ? `<div id="sr-${uid}" style="display:none">${rest.map(renderRow).join('')}</div>
+       <button class="qa-btn" style="margin-top:8px;width:100%" onclick="document.getElementById('sr-${uid}').style.display='';this.remove()">הצג ${rest.length} ממצאים נוספים ▾</button>`
+    : '';
+  return visible.map(renderRow).join('') + restHtml;
 }
 
 async function scanErrors() {
@@ -2177,6 +2219,7 @@ async function loadSettings(){
   // ── Advanced ──
   _setChk('cfg-obsidianSync', pf.obsidianAutoSync !== false);
   _setChk('cfg-telemetry', pf.telemetryConsent || false);
+  applyTheme(pf.selectedTheme || 'navyDark');
   loadProviders();
 }
 async function saveSettings(){
@@ -2216,6 +2259,7 @@ async function saveSettings(){
   try {
     await fetch('/user-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     showToast('הגדרות נשמרו ✓','success');
+    applyTheme(body.preferences.selectedTheme);
     // If the access role changed, re-apply tab gating immediately (no refresh needed).
     const newRole = body.role === 'admin' ? 'admin' : 'user';
     if (newRole !== _ccRole) {
@@ -2227,6 +2271,18 @@ async function saveSettings(){
   }
   catch { showToast('שגיאה בשמירה','error'); }
 }
+
+function applyTheme(name) {
+  const valid = ['navyDark','glassDark','neoDark','material3','cyberpunk'];
+  const t = valid.includes(name) ? name : 'navyDark';
+  if (t === 'navyDark') {
+    document.body.removeAttribute('data-theme');
+  } else {
+    document.body.dataset.theme = t;
+  }
+}
+document.getElementById('cfg-selectedTheme')?.addEventListener('change', e => applyTheme(e.target.value));
+
 async function loadProviders(){
   const el=document.getElementById('apikeys-list');
   if (!el) return;
@@ -2880,6 +2936,7 @@ async function acSendChat(agentId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, history: _acChatHistory[agentId] }),
+      signal: AbortSignal.timeout(20000),
     }).then(r => r.json());
 
     const loadEl = document.getElementById(loadId);
@@ -3012,6 +3069,7 @@ async function devLabTest() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: input, history: [] }),
+      signal: AbortSignal.timeout(15000),
     }).then(r => r.json());
     if (result) result.innerHTML = `<div class="dev-lab-output">
       <div class="dev-lab-output-label">תגובת הסוכן (${agentId})</div>

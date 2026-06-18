@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>מרכז שליטה ג'רביס — דוח חזון, פיצ'רים וממצאים</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#070b12;--surface:#0c1018;--card:#0f1724;--card2:#131e2e;
+  --glass:rgba(255,255,255,.04);--glass-border:rgba(255,255,255,.09);
+  --text:#E0D4BE;--muted:#6E7F96;--accent:#C8913A;--accent2:#E8B96A;
+  --glow2:rgba(200,145,58,.12);
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--blue:#60a5fa;--purple:#a855f7;
+  --border:rgba(255,255,255,.08);--radius:14px;--radius-sm:9px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Heebo',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6}
+body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(rgba(255,255,255,.018) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;z-index:0}
+.container{max-width:1140px;margin:0 auto;padding:0 20px 90px;position:relative;z-index:1}
+
+/* Header */
+.report-header{padding:42px 0 28px;text-align:center}
+.report-title{font-size:2.05rem;font-weight:800;color:var(--accent2);margin-bottom:6px;letter-spacing:-.01em}
+.report-subtitle{color:var(--muted);font-size:.97rem;margin-bottom:20px}
+.header-pills{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+.hpill{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;font-size:.8rem;font-weight:700;border:1px solid}
+.hpill.app{background:rgba(96,165,250,.1);color:var(--blue);border-color:rgba(96,165,250,.3)}
+.hpill.web{background:rgba(168,85,247,.1);color:var(--purple);border-color:rgba(168,85,247,.3)}
+.hpill.bug{background:rgba(239,68,68,.1);color:var(--red);border-color:rgba(239,68,68,.3)}
+.hpill.fix{background:rgba(34,197,94,.1);color:var(--green);border-color:rgba(34,197,94,.3)}
+.hpill.date{background:var(--glass);color:var(--muted);border-color:var(--glass-border)}
+
+/* Nav */
+.sticky-nav{position:sticky;top:0;z-index:100;background:rgba(7,11,18,.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--glass-border);padding:10px 0;margin-bottom:30px}
+.nav-inner{max-width:1140px;margin:0 auto;padding:0 20px;display:flex;gap:4px;overflow-x:auto}
+.nav-btn{flex-shrink:0;padding:8px 14px;background:transparent;border:1px solid transparent;border-radius:var(--radius-sm);color:var(--muted);font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .18s;white-space:nowrap}
+.nav-btn:hover{color:var(--text);background:var(--glass)}
+.nav-btn.active{background:rgba(200,145,58,.15);color:var(--accent2);border-color:rgba(200,145,58,.3)}
+
+/* Section */
+.section{display:none;animation:fadeUp .3s ease}
+.section.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.section-title{font-size:1.35rem;font-weight:800;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.section-desc{color:var(--muted);font-size:.88rem;margin-bottom:24px;line-height:1.7}
+.divider{height:1px;background:linear-gradient(90deg,rgba(200,145,58,.3),transparent);margin:28px 0}
+.sub-title{font-size:.75rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.8px;margin:24px 0 12px;display:flex;align-items:center;gap:6px}
+.sub-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,rgba(200,145,58,.3),transparent)}
+
+/* Surface badges */
+.surface-tag{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:6px;font-size:.68rem;font-weight:700}
+.surface-tag.app{background:rgba(96,165,250,.12);color:var(--blue);border:1px solid rgba(96,165,250,.25)}
+.surface-tag.web{background:rgba(168,85,247,.12);color:var(--purple);border:1px solid rgba(168,85,247,.25)}
+
+/* Vision diagram */
+.vision-diagram{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch;margin:20px 0}
+@media(max-width:720px){.vision-diagram{grid-template-columns:1fr}}
+.vision-box{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:18px 20px}
+.vision-box.app{border-color:rgba(96,165,250,.3)}
+.vision-box.web{border-color:rgba(168,85,247,.3)}
+.vision-box h3{font-size:1rem;font-weight:800;margin-bottom:4px}
+.vision-box .vrole{font-size:.78rem;color:var(--muted);margin-bottom:12px}
+.vision-box ul{list-style:none;display:flex;flex-direction:column;gap:6px}
+.vision-box li{font-size:.8rem;display:flex;gap:7px;align-items:flex-start}
+.vision-box li::before{content:'▸';color:var(--accent);flex-shrink:0;margin-top:1px}
+.vision-arrow{display:flex;align-items:center;justify-content:center;font-size:1.6rem;color:var(--accent2);font-weight:800}
+@media(max-width:720px){.vision-arrow{transform:rotate(90deg)}}
+.vs-state{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px}
+@media(max-width:600px){.vs-state{grid-template-columns:1fr}}
+.vs-card{border-radius:var(--radius);padding:14px 16px;border:1px solid}
+.vs-card.now{background:rgba(239,68,68,.05);border-color:rgba(239,68,68,.2)}
+.vs-card.goal{background:rgba(34,197,94,.05);border-color:rgba(34,197,94,.2)}
+.vs-card h4{font-size:.85rem;margin-bottom:8px}
+.vs-card.now h4{color:var(--red)}
+.vs-card.goal h4{color:var(--green)}
+.vs-card p{font-size:.8rem;color:var(--muted);line-height:1.7}
+
+/* Wireframe */
+.wireframe{background:var(--card);border:1px solid var(--glass-border);border-radius:var(--radius);padding:16px;margin-bottom:20px;position:relative}
+.wireframe::before{content:attr(data-frame);position:absolute;top:-10px;right:14px;background:var(--card);padding:0 8px;font-size:.68rem;color:var(--muted);border:1px solid var(--glass-border);border-radius:4px}
+.wf-bar{min-height:38px;border-radius:8px;background:rgba(200,145,58,.1);border:1px dashed rgba(200,145,58,.3);display:flex;align-items:center;padding:8px 14px;gap:10px;margin-bottom:9px;font-size:.78rem;color:var(--accent2);font-weight:600;flex-wrap:wrap}
+.wf-bar .wf-input{flex:1;min-width:80px;height:26px;background:rgba(255,255,255,.04);border:1px dashed var(--glass-border);border-radius:6px}
+.wf-bar .wf-btn{width:74px;height:26px;background:rgba(200,145,58,.3);border-radius:6px}
+.wf-metrics{display:flex;gap:8px;margin-bottom:9px;flex-wrap:wrap}
+.wf-metric{flex:1;min-width:70px;height:58px;background:rgba(255,255,255,.03);border:1px dashed var(--glass-border);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.wf-metric .wf-num{font-size:1.2rem;font-weight:800;color:var(--accent2)}
+.wf-metric .wf-lbl{font-size:.62rem;color:var(--muted)}
+.wf-charts{display:grid;gap:8px;margin-bottom:9px}
+.wf-charts.c3{grid-template-columns:repeat(3,1fr)}
+.wf-charts.c2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:600px){.wf-charts.c3,.wf-charts.c2{grid-template-columns:1fr 1fr}}
+.wf-chart{height:84px;background:rgba(255,255,255,.02);border:1px dashed var(--glass-border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.7rem;color:var(--muted);text-align:center;padding:4px}
+.wf-row{display:flex;gap:8px;margin-bottom:9px;flex-wrap:wrap}
+.wf-box{flex:1;min-width:120px;min-height:44px;background:rgba(255,255,255,.02);border:1px dashed var(--glass-border);border-radius:8px;display:flex;align-items:center;padding:8px 12px;font-size:.74rem;color:var(--muted)}
+.wf-note{font-size:.68rem;color:var(--muted);margin-top:6px}
+.wf-sidebar-layout{display:grid;grid-template-columns:170px 1fr;gap:8px}
+@media(max-width:600px){.wf-sidebar-layout{grid-template-columns:1fr}}
+.wf-sidebar{background:rgba(255,255,255,.02);border:1px dashed var(--glass-border);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:5px}
+.wf-agent-item{min-height:34px;border-radius:6px;background:rgba(255,255,255,.03);border:1px solid transparent;display:flex;align-items:center;padding:0 8px;gap:7px;font-size:.72rem}
+.wf-agent-item.active{background:rgba(200,145,58,.1);border-color:rgba(200,145,58,.2);color:var(--accent2)}
+.wf-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.wf-dot.green{background:var(--green)}.wf-dot.gold{background:var(--accent2)}.wf-dot.red{background:var(--red)}
+.wf-panel{background:rgba(255,255,255,.02);border:1px dashed var(--glass-border);border-radius:8px;padding:12px}
+.wf-subtabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}
+.wf-subtab{padding:5px 9px;border-radius:6px;font-size:.7rem;font-weight:600}
+.wf-subtab.active{background:var(--accent);color:#fff}
+.wf-subtab:not(.active){background:var(--surface);color:var(--muted);border:1px solid var(--border)}
+.wf-bug{position:relative}
+.wf-bug-ring{outline:2px solid rgba(239,68,68,.55);outline-offset:2px;border-radius:8px;animation:bugPulse 2s infinite}
+@keyframes bugPulse{0%,100%{outline-color:rgba(239,68,68,.55)}50%{outline-color:rgba(239,68,68,.18)}}
+
+/* Feature list */
+.feature-list{display:flex;flex-direction:column;gap:6px;margin-bottom:22px}
+.feature-item{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:rgba(34,197,94,.04);border:1px solid rgba(34,197,94,.12);border-radius:var(--radius-sm)}
+.feature-item .fi-icon{font-size:1rem;flex-shrink:0;line-height:1.4}
+.feature-item .fi-text{flex:1;line-height:1.55;font-size:.84rem}
+.feature-item .fi-text strong{color:var(--text);font-weight:600}
+.feature-item .fi-text span{color:var(--muted);font-size:.78rem}
+.feature-item .fi-goal{display:block;color:var(--blue);font-size:.73rem;margin-top:3px}
+
+/* Findings */
+.findings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;margin-bottom:14px}
+.finding-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.finding-card::before{content:'';position:absolute;inset-inline-start:0;top:0;bottom:0;width:3px}
+.finding-card.bug::before{background:var(--red)}
+.finding-card.ux::before{background:var(--amber)}
+.finding-card.improvement::before{background:var(--blue)}
+.finding-card.fixed::before{background:var(--green)}
+.finding-card:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(0,0,0,.4)}
+.finding-card.expanded .finding-detail{display:block}
+.finding-header{display:flex;align-items:flex-start;gap:10px}
+.finding-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;font-size:.63rem;font-weight:700;white-space:nowrap;flex-shrink:0;margin-top:2px}
+.finding-badge.bug{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25)}
+.finding-badge.ux{background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25)}
+.finding-badge.improvement{background:rgba(96,165,250,.12);color:var(--blue);border:1px solid rgba(96,165,250,.25)}
+.finding-badge.fixed{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25)}
+.finding-title{font-size:.87rem;font-weight:700;color:var(--text);flex:1;line-height:1.4}
+.finding-detail{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:.8rem;color:var(--muted);line-height:1.75}
+.finding-detail code{background:var(--card);border-radius:4px;padding:1px 5px;font-size:.74rem;color:var(--accent2);font-family:monospace;direction:ltr;display:inline-block}
+.finding-toggle{font-size:.67rem;color:var(--muted);margin-top:4px;opacity:.7}
+
+/* Correction callout */
+.correction{background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.22);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
+.correction-title{font-size:.82rem;font-weight:700;color:var(--green);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.correction-item{font-size:.8rem;color:var(--muted);line-height:1.7;padding:5px 0;border-top:1px solid rgba(255,255,255,.04)}
+.correction-item:first-of-type{border-top:none}
+.correction-item code{background:var(--card);border-radius:4px;padding:1px 5px;font-size:.73rem;color:var(--accent2);font-family:monospace;direction:ltr;display:inline-block}
+.correction-item .was{color:var(--red);text-decoration:line-through;opacity:.7}
+.correction-item .now{color:var(--green);font-weight:600}
+
+/* Summary cols */
+.summary-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:26px}
+@media(max-width:760px){.summary-cols{grid-template-columns:1fr}}
+.summary-col{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:14px 16px}
+.summary-col-title{font-size:.82rem;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.summary-col-title.red{color:var(--red)}.summary-col-title.amber{color:var(--amber)}.summary-col-title.blue{color:var(--blue)}
+.summary-item{display:flex;align-items:flex-start;gap:7px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.8rem;line-height:1.45}
+.summary-item:last-child{border-bottom:none}
+.summary-item .si-tab{font-size:.62rem;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap;flex-shrink:0;margin-top:2px}
+.si-tab.app{background:rgba(96,165,250,.12);color:var(--blue)}
+.si-tab.web{background:rgba(168,85,247,.12);color:var(--purple)}
+.si-tab.both{background:rgba(200,145,58,.12);color:var(--accent2)}
+
+.chart-wrap,.matrix-wrap{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:16px 18px;margin-bottom:24px}
+.chart-title,.matrix-title{font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:14px}
+.chart-canvas-wrap{position:relative;height:230px}
+.matrix{display:grid;grid-template-columns:1fr 1fr;gap:2px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.matrix-cell{padding:16px 14px;min-height:130px}
+.matrix-cell.hh{background:rgba(239,68,68,.06)}.matrix-cell.hl{background:rgba(245,158,11,.06)}
+.matrix-cell.lh{background:rgba(96,165,250,.06)}.matrix-cell.ll{background:rgba(34,197,94,.06)}
+.matrix-label{font-size:.67rem;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+.matrix-dot{display:inline-block;padding:3px 8px;border-radius:5px;font-size:.7rem;font-weight:600;margin:3px}
+.matrix-dot.bug{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3)}
+.matrix-dot.ux{background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.3)}
+.matrix-dot.imp{background:rgba(96,165,250,.15);color:var(--blue);border:1px solid rgba(96,165,250,.3)}
+.matrix-axis-x{text-align:center;font-size:.72rem;color:var(--muted);margin-top:8px;font-weight:600}
+
+/* Roadmap phases */
+.phase{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px}
+.phase-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.phase-num{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:800;flex-shrink:0}
+.phase-num.p1{background:rgba(239,68,68,.18);color:var(--red);border:1px solid rgba(239,68,68,.35)}
+.phase-num.p2{background:rgba(245,158,11,.18);color:var(--amber);border:1px solid rgba(245,158,11,.35)}
+.phase-num.p3{background:rgba(96,165,250,.18);color:var(--blue);border:1px solid rgba(96,165,250,.35)}
+.phase-title{font-size:.95rem;font-weight:800;color:var(--text)}
+.phase-meta{font-size:.72rem;color:var(--muted)}
+.step-item{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)}
+.step-item:last-child{border-bottom:none}
+.step-dot{font-size:.9rem;flex-shrink:0;margin-top:1px}
+.step-body .step-title{font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:2px}
+.step-body .step-desc{font-size:.78rem;color:var(--muted);line-height:1.55}
+.step-body .step-desc code{background:var(--card);border-radius:4px;padding:1px 5px;font-size:.72rem;color:var(--accent2);font-family:monospace;direction:ltr;display:inline-block}
+
+/* trade-off table */
+.tradeoff{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+@media(max-width:600px){.tradeoff{grid-template-columns:1fr}}
+.to-card{border-radius:var(--radius);padding:14px 16px;border:1px solid var(--glass-border);background:var(--glass)}
+.to-card.rec{border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.04)}
+.to-card h4{font-size:.88rem;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.to-card .pro{font-size:.78rem;color:var(--green);padding:2px 0}
+.to-card .con{font-size:.78rem;color:var(--muted);padding:2px 0}
+</style>
+</head>
+<body>
+
+<div class="sticky-nav">
+  <div class="nav-inner">
+    <button class="nav-btn active" onclick="show('vision',this)">🎯 חזון וסקירה</button>
+    <button class="nav-btn" onclick="show('app',this)">📱 אפליקציה</button>
+    <button class="nav-btn" onclick="show('web',this)">🌐 Web</button>
+    <button class="nav-btn" onclick="show('parity',this)">🔗 Parity ו-Backend</button>
+    <button class="nav-btn" onclick="show('roadmap',this)">🚀 חזון + Roadmap</button>
+    <button class="nav-btn" onclick="show('summary',this)">📊 סיכום ממצאים</button>
+  </div>
+</div>
+
+<div class="container">
+
+<div class="report-header">
+  <div class="report-title">מרכז שליטה ג'רביס</div>
+  <div class="report-subtitle">דוח חזון, מיפוי פיצ'רים וממצאים — אפליקציה (Flutter) מול Web</div>
+  <div class="header-pills">
+    <span class="hpill date">📅 18 יוני 2026</span>
+    <span class="hpill app">📱 אפליקציה: 6 טאבים + 5 תת-טאבי סוכן</span>
+    <span class="hpill web">🌐 Web: 6 טאבים · 38 endpoints</span>
+    <span class="hpill bug">🔴 7 ממצאים פעילים</span>
+    <span class="hpill fix">✅ 2 תיקוני דוח קודם</span>
+  </div>
+</div>
+
+<!-- ════════ VISION ════════ -->
+<div id="section-vision" class="section active">
+  <div class="section-title">🎯 חזון וסקירה</div>
+  <div class="section-desc">
+    שני "מרכזי שליטה" קיימים היום בנפרד — אחד באפליקציה (Flutter) ואחד ב-Web. כיום הם
+    <strong>כפילים</strong> זה של זה. החזון מגדיר תפקידים משלימים: האפליקציה היא המקום לראות
+    ולבחון את יכולות ג'רביס; ה-Web הוא <strong>שער/הפניה</strong> לאזור הוויזואלי של מרכז השליטה.
+  </div>
+
+  <div class="vision-diagram">
+    <div class="vision-box app">
+      <h3><span class="surface-tag app">📱 אפליקציה</span></h3>
+      <div class="vrole">מרכז בחינת היכולות — לראות ולבחון את ג'רביס</div>
+      <ul>
+        <li>רשימת 24 סוכנים עם מדדים חיים + health score</li>
+        <li>כרטיס סוכן: שיחה ישירה (chat), Prompt Builder, חיבורים</li>
+        <li>Feature Lab / E2E / סריקה — בחינה בפועל</li>
+        <li>Command bar בשפה טבעית</li>
+      </ul>
+    </div>
+    <div class="vision-arrow">←</div>
+    <div class="vision-box web">
+      <h3><span class="surface-tag web">🌐 Web</span></h3>
+      <div class="vrole">שער / הפניה — מצביע לאמצעים הוויזואליים</div>
+      <ul>
+        <li>נקודת כניסה מהירה דרך דפדפן (<code style="direction:ltr">/progress-map</code>)</li>
+        <li>מפנה אל / מטמיע את האזור הוויזואלי של האפליקציה</li>
+        <li>מקור אמת אחד — בלי תחזוקה כפולה</li>
+        <li>היום מושק חיצונית מההגדרות באפליקציה (<code style="direction:ltr">_openProgressMap</code>)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="vs-state">
+    <div class="vs-card now">
+      <h4>⚠️ מצב נוכחי</h4>
+      <p>ה-Web (<code>progress-map.html</code>, 3103 שורות) וה-Flutter (<code>progress_map_screen.dart</code>)
+      מממשים <strong>את אותו דשבורד פעמיים</strong> — אותם 6 טאבים, אותם endpoints. כל שינוי צריך
+      תחזוקה בשני מקומות. חלק מהפיצ'רים מפותחים בצד אחד ולא בשני (פערי parity).</p>
+    </div>
+    <div class="vs-card goal">
+      <h4>✅ מצב יעד</h4>
+      <p>האפליקציה היא הבית של בחינת היכולות (UX מובייל מלא). ה-Web הופך לשער דק שמפנה/מטמיע
+      את האזור הוויזואלי — מקור אמת אחד, פחות באגים, פחות תחזוקה.</p>
+    </div>
+  </div>
+
+  <div class="sub-title">איך לקרוא את הדוח</div>
+  <div class="feature-list">
+    <div class="feature-item"><div class="fi-icon">📱</div><div class="fi-text"><strong>טאב אפליקציה</strong> <span>— מיפוי 6 הטאבים + כרטיס הסוכן ב-Flutter, ואיך כל פיצ'ר תורם ל"בחינת יכולות".</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🌐</div><div class="fi-text"><strong>טאב Web</strong> <span>— מיפוי ה-progress-map.html, ממצאים מאומתים, <strong>ותיקון 2 false-positives</strong> מהדוח הקודם.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🔗</div><div class="fi-text"><strong>Parity ו-Backend</strong> <span>— 38 ה-endpoints (כולם קיימים), שכבת השירות, ופערים בין הצדדים.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🚀</div><div class="fi-text"><strong>Roadmap</strong> <span>— 3 שלבים: תיקוני באגים → יישור ארכיטקטורה (web=שער) → חיזוק בחינת היכולות.</span></div></div>
+  </div>
+</div>
+
+<!-- ════════ APP ════════ -->
+<div id="section-app" class="section">
+  <div class="section-title">📱 אפליקציה — מרכז שליטה (Flutter)</div>
+  <div class="section-desc">
+    טאב תחתון 3 ב-<code>main_shell.dart</code> → <code>progress_map_screen.dart</code> (6 טאבים, role-gated:
+    משתמש רגיל רואה סקירה+הגדרות; אדמין רואה הכל). לחיצה על סוכן פותחת <code>agent_detail_sheet.dart</code>
+    (5 תת-טאבים). <strong>זהו האזור המיועד לבחינת היכולות.</strong>
+  </div>
+
+  <div class="sub-title">מבנה — טאב סוכנים + כרטיס הסוכן (לב בחינת היכולות)</div>
+  <div class="wireframe" data-frame="📱 Flutter · טאב סוכנים">
+    <div class="wf-sidebar-layout">
+      <div class="wf-sidebar">
+        <div style="min-height:28px;background:var(--surface);border:1px dashed var(--border);border-radius:6px;font-size:.68rem;color:var(--muted);display:flex;align-items:center;padding:0 8px">🔍 חיפוש סוכן...</div>
+        <div class="wf-agent-item"><div class="wf-dot green"></div><span>chatAgent · 92</span></div>
+        <div class="wf-agent-item active"><div class="wf-dot green"></div><span>memoryAgent · 88</span></div>
+        <div class="wf-agent-item"><div class="wf-dot gold"></div><span>customAgent</span></div>
+        <div class="wf-agent-item"><div class="wf-dot red"></div><span style="color:var(--red)">securityAgent</span></div>
+      </div>
+      <div class="wf-panel">
+        <div style="font-size:.8rem;font-weight:700;margin-bottom:8px">כרטיס סוכן (AgentDetailSheet)</div>
+        <div class="wf-subtabs">
+          <div class="wf-subtab active">כרטיס</div>
+          <div class="wf-subtab">מידע</div>
+          <div class="wf-subtab">חיבורים</div>
+          <div class="wf-subtab">דאשבורד</div>
+          <div class="wf-subtab">💬 שיחה</div>
+        </div>
+        <div class="wf-box" style="margin-bottom:6px">תיאור + תחומי אחריות + תצוגת פרומפט</div>
+        <div class="wf-box" style="margin-bottom:6px">🔧 Prompt Builder — תאר שינוי → build-prompt</div>
+        <div class="wf-box">💬 שיחה עם הסוכן — בחן תגובה אמיתית (agents/:id/chat)</div>
+      </div>
+    </div>
+    <div class="wf-note">מקור: <code>progress_map_screen.dart:2521</code> · <code>agent_detail_sheet.dart:405-1004</code></div>
+  </div>
+
+  <div class="sub-title">6 הטאבים — פיצ'רים ותרומה למטרה</div>
+  <div class="feature-list">
+    <div class="feature-item"><div class="fi-icon">📊</div><div class="fi-text"><strong>סקירה</strong> <span>— greeting, command bar (NL → <code>/progress-map/command</code>), status bar, quick actions (הרץ E2E / סרוק שגיאות), כרטיס תובנות.</span><span class="fi-goal">↳ נקודת כניסה לבחינה מהירה + הרצת בדיקות בלחיצה.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🤖</div><div class="fi-text"><strong>סוכנים</strong> <span>— רשימה מ-<code>/progress-map/agents</code>, חיפוש, מדדים חיים, health score, toggle. כרטיס סוכן עם 5 תת-טאבים כולל <strong>שיחה</strong> ו-<strong>Prompt Builder</strong>.</span><span class="fi-goal">↳ הלב: כאן רואים מה כל סוכן עושה ובוחנים אותו חי.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">📈</div><div class="fi-text"><strong>אנליטיקה</strong> <span>— 4 counters, top agents, פילוח כוונות (<code>intentClassification</code>), פילוח מודלים.</span><span class="fi-goal">↳ מדידת שימוש אמיתי ביכולות לאורך זמן.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🛠️</div><div class="fi-text"><strong>פיתוח</strong> <span>— Smart proposals, תובנות שיחות, פידבק→פיתוח, סטטוס יכולות, AI Backlog, מחולל פרומפטים, פריטים ידניים.</span><span class="fi-goal">↳ מגשר פידבק על יכולות → משימות פיתוח.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🧪</div><div class="fi-text"><strong>בדיקות וסקרים</strong> <span>— E2E reports (<code>e2e_reports_screen.dart</code>) + היסטוריית סקרים.</span><span class="fi-goal">↳ אימות שהיכולות עובדות end-to-end.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">⚙️</div><div class="fi-text"><strong>הגדרות</strong> <span>— פרופיל + role gating, ושיגור ה-Web החיצונית דרך <code>_openProgressMap</code> (<code>settings_screen.dart:364</code>).</span><span class="fi-goal">↳ כאן יושב הקישור ל-Web — בדיוק הנקודה להפיכת ה-Web לשער.</span></div></div>
+  </div>
+
+  <div class="sub-title">ממצאים — אפליקציה</div>
+  <div class="findings-grid">
+    <div class="finding-card improvement" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge improvement">🔵 שיפור</span><div><div class="finding-title">סקירה במובייל חסרה metrics/charts חיים</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail">בניגוד ל-Web, טאב הסקירה (<code>_buildOverviewTab:2081</code>) לא מציג את 5 המטריקות החיות והגרפים — הם הועברו לטאב אנליטיקה. משתמש רגיל (שרואה רק סקירה+הגדרות) מפספס תמונת מצב מספרית.<br><br><strong>שיפור:</strong> הוסף שורת מטריקות קומפקטית לסקירה, או חשוף KPI עיקרי אחד.</div>
+    </div>
+    <div class="finding-card improvement" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge improvement">🔵 שיפור</span><div><div class="finding-title">Prompt Builder — אין "החל" אמיתי</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail">כרטיס הסוכן (<code>_buildCardTab:504</code>) מייצר פרומפט דרך <code>build-prompt</code>, אבל אין כפתור שמחיל/שומר אותו כ-customization בפועל מעבר לשיחה. בחינת היכולת מסתיימת בטקסט.<br><br><strong>שיפור:</strong> חבר את פלט ה-Builder ל-<code>agents/:id/chat</code> כ-customization, בדומה לזרימה בטאב שיחה.</div>
+    </div>
+    <div class="finding-card ux" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge ux">🟡 UX</span><div><div class="finding-title">קישור ל-Web פותח דשבורד כפול, לא "שער"</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail"><code>_openProgressMap</code> (<code>settings_screen.dart:364</code>) משגר את ה-Web ב-<code>LaunchMode.externalApplication</code> — והמשתמש מקבל עותק שני של אותו דשבורד. סותר את החזון (Web = שער).<br><br><strong>תיקון:</strong> אחרי יישור הארכיטקטורה, ה-Web יציג שער/הפניה ולא דשבורד מלא.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ WEB ════════ -->
+<div id="section-web" class="section">
+  <div class="section-title">🌐 Web — מרכז שליטה (progress-map.html)</div>
+  <div class="section-desc">
+    מוגש ב-<code>/progress-map</code> דרך <code>routes/agentCenter.js</code> (mount ב-<code>server.js:4153</code>;
+    <code>/agent-center</code> מפנה 301 ל-<code>/progress-map</code> ב-:4154). SPA בקובץ יחיד, 6 טאבים, RTL.
+    <strong>כל 38 ה-endpoints שה-frontend קורא קיימים בשרת — אין פיצ'רים שבורים ברמת ה-API.</strong>
+  </div>
+
+  <div class="correction">
+    <div class="correction-title">✅ תיקון הדוח הקודם — 2 ממצאים היו false-positive</div>
+    <div class="correction-item"><span class="was">"Range filter (7d/30d/90d) לא מסנן data אישי"</span> → <span class="now">עובד תקין.</span> ה-Web קורא <code>/dashboard/analytics?range=</code> (HTML :1806) והשרת מכבד דרך <code>ANALYTICS_RANGES</code> (<code>server.js:1726</code>). הדוח הקודם בלבל עם <code>/stats</code>.</div>
+    <div class="correction-item"><span class="was">"/stats חסר intents — שיקוף שיחות שבור"</span> → <span class="now">by design.</span> נתוני intent מגיעים מ-<code>/progress-map/metrics</code> ו-<code>/dashboard/conversation-insights</code>, לא מ-<code>/stats</code> (שמחזיר <code>{chat,tasks,reminders,memories,notes,shopping}</code>).</div>
+  </div>
+
+  <div class="sub-title">מבנה — טאב סקירה (Web)</div>
+  <div class="wireframe" data-frame="🌐 Web · סקירה">
+    <div class="wf-bar"><span>⌘ Command Bar</span><div class="wf-input"></div><div class="wf-btn"></div></div>
+    <div class="wf-metrics">
+      <div class="wf-metric"><div class="wf-num">247</div><div class="wf-lbl">שיחות</div></div>
+      <div class="wf-metric"><div class="wf-num">18</div><div class="wf-lbl">משימות</div></div>
+      <div class="wf-metric"><div class="wf-num">5</div><div class="wf-lbl">תזכורות</div></div>
+      <div class="wf-metric"><div class="wf-num">132</div><div class="wf-lbl">זיכרונות</div></div>
+      <div class="wf-metric"><div class="wf-num">41</div><div class="wf-lbl">פתקים</div></div>
+    </div>
+    <div class="wf-charts c3">
+      <div class="wf-chart">פעילות סוכנים 24ש'</div>
+      <div class="wf-chart">זיהוי כוונות</div>
+      <div class="wf-chart">שימוש מערכת</div>
+    </div>
+    <div class="wf-row">
+      <div class="wf-box">שלב נוכחי · כיסוי MVP</div>
+      <div class="wf-box wf-bug wf-bug-ring">Progress Bar ⚠️ חישוב</div>
+    </div>
+  </div>
+
+  <div class="sub-title">פיצ'רים קיימים (Web)</div>
+  <div class="feature-list">
+    <div class="feature-item"><div class="fi-icon">⌘</div><div class="fi-text"><strong>Command bar NL</strong> <span>— deterministic-first → LLM fallback (<code>/progress-map/command</code>).</span></div></div>
+    <div class="feature-item"><div class="fi-icon">📡</div><div class="fi-text"><strong>5 מטריקות חיות + 3 גרפים</strong> <span>— Chart.js, מתרעננות כל 30ש'.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🤖</div><div class="fi-text"><strong>טאב סוכנים מלא</strong> <span>— sidebar + פאנל פרטים, analyze/build-prompt/chat/toggle/risk.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">📈</div><div class="fi-text"><strong>אנליטיקה</strong> <span>— range 7/30/90, KPIs, 8 גרפים, תובנות AI. <strong>range עובד תקין.</strong></span></div></div>
+    <div class="feature-item"><div class="fi-icon">🧪</div><div class="fi-text"><strong>QA</strong> <span>— E2E trigger, סריקת קוד, סקר חכם, ייצוא לקלוד.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🧠</div><div class="fi-text"><strong>Learner</strong> <span>— <code>dashboardLearner.js</code> מסדר טאבים לפי שימוש (מינ' 5 צפיות).</span></div></div>
+  </div>
+
+  <div class="sub-title">ממצאים מאומתים — Web</div>
+  <div class="findings-grid">
+    <div class="finding-card bug" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge bug">🔴 באג</span><div><div class="finding-title">CSS חסר — .ac-overlay שבור במובייל</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail">ה-HTML מגדיר <code>div.ac-overlay</code> ו-<code>button.ac-overlay-back</code> (:1033-1035) לפאנל מובייל. ה-JS מוסיף class <code>.open</code> (:2567,:2572) — אבל <strong>אין CSS</strong> ל-selectors האלה. אין <code>position/z-index/display</code> → תצוגת פרטי הסוכן במובייל בלתי-נראית.<br><br><strong>תיקון:</strong> הוסף <code>.ac-overlay{position:fixed;inset:0;z-index:1000;...}</code> + <code>.ac-overlay.open{display:block}</code>.</div>
+    </div>
+    <div class="finding-card bug" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge bug">🔴 באג</span><div><div class="finding-title">החלפת ערכת נושא / בהירות — stubbed</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail"><code>cfg-selectedTheme</code> (:968) ו-<code>cfg-brightnessMode</code> (:969) נטענים ונשמרים ל-<code>/user-profile</code> — אבל <strong>אין JS שמחיל theme</strong>. ה-<code>:root</code> קשיח (:11-18); אין <code>prefers-color-scheme</code> listener. הדף תמיד dark, הבחירה מתעלמת.<br><br><strong>תיקון:</strong> <code>data-theme</code> על <code>&lt;html&gt;</code> + CSS variable overlays per theme, מיושם ב-init מ-localStorage/profile.</div>
+    </div>
+    <div class="finding-card ux" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge ux">🟡 UX</span><div><div class="finding-title">Feature Lab מתעלם מ-useLocal</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail"><code>devLabTest()</code> (:2996-3027) שולח ל-<code>/progress-map/agents/:id/chat</code> בלי <code>useLocal</code> ב-body. ה-checkbox <code>cfg-useLocal</code> (:948) לא מועבר → ה-Lab תמיד משתמש ב-provider chain של השרת, מתעלם מהעדפת Ollama.<br><br><strong>תיקון:</strong> הוסף <code>useLocal: getChk('cfg-useLocal')</code> ל-body.</div>
+    </div>
+    <div class="finding-card bug" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge bug">🔴 באג</span><div><div class="finding-title">Progress Bar — חישוב שלילי אפשרי</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail"><code>pctPlanned = 100 - pctDone - pctBuilding</code> כשכל אחד עבר <code>toFixed(0)</code> בנפרד — עיגול יכול לתת סכום &gt;100 → רוחב CSS שלילי.<br><br><strong>תיקון:</strong> חשב <code>pctPlanned</code> ישירות מהספירה.</div>
+    </div>
+    <div class="finding-card ux" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge ux">🟡 UX</span><div><div class="finding-title">Alerts/Tips בלי auto-refresh</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail">המטריקות מתרעננות כל 30ש' אבל ה-alerts/tips נטענים פעם אחת. התראה חדשה לא מופיעה ללא reload.<br><br><strong>תיקון:</strong> <code>setInterval(loadAlerts, 90000)</code>.</div>
+    </div>
+    <div class="finding-card ux" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge ux">🟡 UX</span><div><div class="finding-title">"ייצוא לקלוד" + E2E בלי polling + mark-done</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail">שם "ייצוא לקלוד" לא מסביר את הפעולה; E2E רץ ברקע בלי polling שמודיע על סיום; אין כפתור mark-done ישיר מרשימת הדוחות.<br><br><strong>תיקון:</strong> שם ברור + tooltip; polling ל-<code>/e2e-reports</code> אחרי trigger; כפתור ✓ בכל שורה.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ PARITY ════════ -->
+<div id="section-parity" class="section">
+  <div class="section-title">🔗 Parity ו-Backend</div>
+  <div class="section-desc">
+    שני ה-frontends חולקים את אותם 38 endpoints. כולם קיימים ומחווטים — אין שום endpoint שה-frontend
+    קורא ולא קיים בשרת. הפערים הם ב-<strong>parity</strong> (מה מומש איפה) ולא ב-API.
+  </div>
+
+  <div class="sub-title">שכבת ה-Backend</div>
+  <div class="feature-list">
+    <div class="feature-item"><div class="fi-icon">🛣️</div><div class="fi-text"><strong>routes/agentCenter.js</strong> <span>— כל <code>/progress-map/*</code> (agents, toggle, risk, metrics, analyze, build-prompt, chat, command).</span></div></div>
+    <div class="feature-item"><div class="fi-icon">📊</div><div class="fi-text"><strong>statsRepo.js</strong> <span>— <code>/stats</code>: <code>{chat,tasks,reminders,memories,notes,shopping}</code>. (אין <code>intents</code> — by design.)</span></div></div>
+    <div class="feature-item"><div class="fi-icon">📈</div><div class="fi-text"><strong>/dashboard/analytics</strong> <span>— <code>server.js:1724</code>, מכבד <code>?range=</code> דרך <code>ANALYTICS_RANGES</code> (:1726).</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🧠</div><div class="fi-text"><strong>dashboardLearner.js + feedbackStore.js + telemetryRepo.js</strong> <span>— <code>/control-center/layout</code>: סדר טאבים נלמד מ-<code>smart_telemetry_events</code>.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">🤖</div><div class="fi-text"><strong>agentRegistryService.js</strong> <span>— registry + health scoring (<code>_computeHealthScore</code>) שמוזרק ל-<code>/progress-map/agents</code>.</span></div></div>
+  </div>
+
+  <div class="sub-title">פערי Parity (אפליקציה ↔ Web)</div>
+  <div class="findings-grid">
+    <div class="finding-card improvement" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge improvement">🔵 פער</span><div><div class="finding-title">Health score — מוצג באפליקציה, לא ב-Web</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail">השרת מחזיר <code>healthScore</code> לכל סוכן. האפליקציה מציגה אותו ברשימת הסוכנים; ה-Web מחשב אבל לא מציג. <strong>תיקון:</strong> badge ב-Web ליד שם הסוכן.</div>
+    </div>
+    <div class="finding-card improvement" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge improvement">🔵 פער</span><div><div class="finding-title">מיקום metrics/charts שונה בין הצדדים</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail">ב-Web המטריקות והגרפים החיים בולטים בסקירה; באפליקציה הם בטאב אנליטיקה והסקירה רזה יותר. <strong>החלטה:</strong> ליישר חוויה — או להוסיף KPI לסקירת האפליקציה, או לפשט את סקירת ה-Web בהתאם לחזון השער.</div>
+    </div>
+    <div class="finding-card bug" onclick="tf(this)">
+      <div class="finding-header"><span class="finding-badge bug">🔴 כפילות</span><div><div class="finding-title">תחזוקה כפולה של אותו דשבורד</div><div class="finding-toggle">לחץ לפרטים ▾</div></div></div>
+      <div class="finding-detail">אותם 6 טאבים מתוחזקים פעמיים (3103 שורות HTML + מסך Flutter 265KB). באג מתוקן בצד אחד נשאר בשני (למשל ה-overlay/theme תוקנו? צריך לוודא בשני המקומות). <strong>החזון פותר זאת:</strong> Web=שער מצמצם את הכפילות.</div>
+    </div>
+  </div>
+
+  <div class="sub-title">טבלת endpoints מרכזיים</div>
+  <div class="feature-list">
+    <div class="feature-item"><div class="fi-icon">✅</div><div class="fi-text"><strong>/stats · /health · /user-profile</strong> <span>— נתוני בסיס ופרופיל. שני הצדדים.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">✅</div><div class="fi-text"><strong>/progress-map/{agents,toggle,risk,metrics,analyze,build-prompt,chat,command}</strong> <span>— ניהול ובחינת סוכנים. שני הצדדים.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">✅</div><div class="fi-text"><strong>/dashboard/{features,backlog,analytics,smart-telemetry,conversation-insights}</strong> <span>— אנליטיקה, backlog, תובנות.</span></div></div>
+    <div class="feature-item"><div class="fi-icon">✅</div><div class="fi-text"><strong>/e2e-reports/* · /scan/errors/run · /control-center/{events,layout}</strong> <span>— QA, התראות, סדר טאבים נלמד.</span></div></div>
+  </div>
+</div>
+
+<!-- ════════ ROADMAP ════════ -->
+<div id="section-roadmap" class="section">
+  <div class="section-title">🚀 חזון + Roadmap</div>
+  <div class="section-desc">שלושה שלבים: ראשית לייצב (תיקוני באגים), אחר כך ליישר את הארכיטקטורה לחזון (Web=שער), ולבסוף לחזק את בחינת היכולות באפליקציה.</div>
+
+  <div class="sub-title">החלטת ארכיטקטורה — איך Web הופך לשער</div>
+  <div class="tradeoff">
+    <div class="to-card rec">
+      <h4>✅ מומלץ: שער דק + הטמעה</h4>
+      <div class="pro">+ מקור אמת אחד; פחות תחזוקה</div>
+      <div class="pro">+ דף נחיתה קצר ב-<code>/progress-map</code> שמפנה/מטמיע את האזור הוויזואלי</div>
+      <div class="pro">+ תואם לחזון: אפליקציה=בית, Web=שער</div>
+      <div class="con">− צריך החלטה מה בדיוק "האזור הוויזואלי" המוטמע</div>
+    </div>
+    <div class="to-card">
+      <h4>דשבורד Web מלא (מצב נוכחי)</h4>
+      <div class="con">− כפילות תחזוקה מתמשכת</div>
+      <div class="con">− באגים מתפצלים בין שני frontends</div>
+      <div class="pro">+ עובד גם בלי האפליקציה</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><div class="phase-num p1">1</div><div><div class="phase-title">ייצוב — תיקוני באגים ישירים</div><div class="phase-meta">מהיר · השפעה גבוהה · ~יום עבודה</div></div></div>
+    <div class="step-item"><div class="step-dot">🔴</div><div class="step-body"><div class="step-title">CSS ל-.ac-overlay / .ac-overlay-back</div><div class="step-desc">ב-<code>progress-map.html</code>: <code>position:fixed;inset:0;z-index:1000</code> + <code>.open{display:block}</code>. מתקן תצוגת סוכן במובייל-web.</div></div></div>
+    <div class="step-item"><div class="step-dot">🔴</div><div class="step-body"><div class="step-title">החל ערכות נושא / בהירות</div><div class="step-desc"><code>data-theme</code> + CSS overlays + <code>prefers-color-scheme</code> listener, מיושם ב-init.</div></div></div>
+    <div class="step-item"><div class="step-dot">🔴</div><div class="step-body"><div class="step-title">תקן חישוב Progress Bar</div><div class="step-desc"><code>pctPlanned</code> ישיר מהספירה במקום חיסור.</div></div></div>
+    <div class="step-item"><div class="step-dot">🟡</div><div class="step-body"><div class="step-title">Feature Lab — העבר useLocal</div><div class="step-desc">הוסף <code>useLocal</code> ל-body של <code>devLabTest()</code> מתוך <code>cfg-useLocal</code>.</div></div></div>
+    <div class="step-item"><div class="step-dot">🟡</div><div class="step-body"><div class="step-title">E2E polling + mark-done + שם "ייצוא"</div><div class="step-desc">polling ל-<code>/e2e-reports</code> אחרי trigger; כפתור ✓ ברשימה; שם ברור עם tooltip.</div></div></div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><div class="phase-num p2">2</div><div><div class="phase-title">יישור ארכיטקטורה — Web = שער</div><div class="phase-meta">בינוני · השפעה גבוהה · ~2-3 ימים</div></div></div>
+    <div class="step-item"><div class="step-dot">🎯</div><div class="step-body"><div class="step-title">הגדר את "האזור הוויזואלי" המשותף</div><div class="step-desc">בחר אילו אמצעים ויזואליים מהאפליקציה ה-Web מצביע/מטמיע (סוכנים? אנליטיקה? הכל?).</div></div></div>
+    <div class="step-item"><div class="step-dot">🛣️</div><div class="step-body"><div class="step-title">הפוך /progress-map לשער</div><div class="step-desc">ב-<code>routes/agentCenter.js</code>: דף נחיתה קצר שמפנה/מטמיע, במקום SPA מלא של 3103 שורות.</div></div></div>
+    <div class="step-item"><div class="step-dot">📱</div><div class="step-body"><div class="step-title">עדכן את הקישור מהאפליקציה</div><div class="step-desc"><code>settings_screen.dart::_openProgressMap</code> יפתח את השער, לא דשבורד כפול.</div></div></div>
+    <div class="step-item"><div class="step-dot">🗑️</div><div class="step-body"><div class="step-title">הסר כפילות תחזוקה</div><div class="step-desc">מקור אמת אחד לאמצעים הוויזואליים — פחות באגים מפוצלים.</div></div></div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><div class="phase-num p3">3</div><div><div class="phase-title">חיזוק בחינת היכולות (אפליקציה)</div><div class="phase-meta">המשך · ערך מוצר · שוטף</div></div></div>
+    <div class="step-item"><div class="step-dot">💬</div><div class="step-body"><div class="step-title">Prompt Builder → "החל"</div><div class="step-desc">חבר פלט ה-Builder ל-customization בפועל (<code>agents/:id/chat</code>).</div></div></div>
+    <div class="step-item"><div class="step-dot">📊</div><div class="step-body"><div class="step-title">חשוף health score + KPI בסקירת האפליקציה</div><div class="step-desc">תמונת מצב מספרית גם למשתמש רגיל.</div></div></div>
+    <div class="step-item"><div class="step-dot">🧪</div><div class="step-body"><div class="step-title">הרחב את Feature Lab לבחינה אינטראקטיבית</div><div class="step-desc">בחינת כל סוכן עם קלט אמיתי + השוואת תגובות, כלב "בחינת היכולות".</div></div></div>
+  </div>
+</div>
+
+<!-- ════════ SUMMARY ════════ -->
+<div id="section-summary" class="section">
+  <div class="section-title">📊 סיכום ממצאים</div>
+  <div class="section-desc">7 ממצאים פעילים + 2 תיקוני דוח קודם, ממופים לפי מסך, סוג ועדיפות.</div>
+
+  <div class="summary-cols">
+    <div class="summary-col">
+      <div class="summary-col-title red">🔴 באגים (4)</div>
+      <div class="summary-item"><span class="si-tab web">Web</span>CSS .ac-overlay חסר — מובייל שבור</div>
+      <div class="summary-item"><span class="si-tab web">Web</span>החלפת theme/בהירות stubbed</div>
+      <div class="summary-item"><span class="si-tab web">Web</span>Progress Bar חישוב שלילי</div>
+      <div class="summary-item"><span class="si-tab both">שניהם</span>כפילות תחזוקה (פותר ע"י החזון)</div>
+    </div>
+    <div class="summary-col">
+      <div class="summary-col-title amber">🟡 UX (3)</div>
+      <div class="summary-item"><span class="si-tab web">Web</span>Feature Lab מתעלם מ-useLocal</div>
+      <div class="summary-item"><span class="si-tab web">Web</span>Alerts בלי auto-refresh</div>
+      <div class="summary-item"><span class="si-tab web">Web</span>E2E polling + "ייצוא" + mark-done</div>
+      <div class="summary-item"><span class="si-tab app">אפליקציה</span>קישור Web פותח דשבורד כפול</div>
+    </div>
+    <div class="summary-col">
+      <div class="summary-col-title blue">🔵 שיפורים / פערים (4)</div>
+      <div class="summary-item"><span class="si-tab app">אפליקציה</span>סקירה חסרה metrics/KPI</div>
+      <div class="summary-item"><span class="si-tab app">אפליקציה</span>Prompt Builder בלי "החל"</div>
+      <div class="summary-item"><span class="si-tab both">שניהם</span>Health score לא ב-Web</div>
+      <div class="summary-item"><span class="si-tab both">שניהם</span>parity מיקום charts</div>
+    </div>
+  </div>
+
+  <div class="correction">
+    <div class="correction-title">✅ תיקוני דיוק מהדוח הקודם</div>
+    <div class="correction-item">Range filter ב-Web <span class="now">עובד</span> — לא באג. <code>/dashboard/analytics?range=</code> מכובד בשרת.</div>
+    <div class="correction-item"><code>/stats</code> חוסר <code>intents</code> <span class="now">by design</span> — intent מגיע מ-<code>/progress-map/metrics</code>.</div>
+  </div>
+
+  <div class="chart-wrap">
+    <div class="chart-title">📊 ממצאים לפי מסך וסוג</div>
+    <div class="chart-canvas-wrap"><canvas id="findingsChart"></canvas></div>
+  </div>
+
+  <div class="matrix-wrap">
+    <div class="matrix-title">🎯 מטריצת עדיפויות — השפעה מול מאמץ</div>
+    <div class="matrix">
+      <div class="matrix-cell hh">
+        <div class="matrix-label">מאמץ נמוך · השפעה גבוהה ⭐</div>
+        <div class="matrix-dot bug">CSS overlay</div>
+        <div class="matrix-dot bug">Progress Bar</div>
+        <div class="matrix-dot ux">useLocal</div>
+        <div class="matrix-dot ux">Alerts refresh</div>
+      </div>
+      <div class="matrix-cell hl">
+        <div class="matrix-label">מאמץ גבוה · השפעה גבוהה</div>
+        <div class="matrix-dot bug">Web = שער (חזון)</div>
+        <div class="matrix-dot bug">theme/בהירות</div>
+      </div>
+      <div class="matrix-cell lh">
+        <div class="matrix-label">מאמץ נמוך · השפעה נמוכה</div>
+        <div class="matrix-dot ux">שם "ייצוא"</div>
+        <div class="matrix-dot ux">E2E polling</div>
+        <div class="matrix-dot imp">health score ב-Web</div>
+      </div>
+      <div class="matrix-cell ll">
+        <div class="matrix-label">מאמץ גבוה · השפעה נמוכה</div>
+        <div class="matrix-dot imp">KPI בסקירת אפליקציה</div>
+        <div class="matrix-dot imp">Prompt Builder "החל"</div>
+        <div class="matrix-dot imp">parity charts</div>
+      </div>
+    </div>
+    <div class="matrix-axis-x">← מאמץ נמוך &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; מאמץ גבוה →</div>
+    <div style="margin-top:10px;display:flex;gap:12px;font-size:.72rem;flex-wrap:wrap">
+      <span><span class="matrix-dot bug" style="display:inline-block">●</span> באג</span>
+      <span><span class="matrix-dot ux" style="display:inline-block">●</span> UX</span>
+      <span><span class="matrix-dot imp" style="display:inline-block">●</span> שיפור/פער</span>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><div class="phase-num p1">→</div><div><div class="phase-title">תמונה להמשך</div><div class="phase-meta">הצעד הבא המומלץ</div></div></div>
+    <div class="step-item"><div class="step-dot">1️⃣</div><div class="step-body"><div class="step-title">שלב 1 — תיקוני באגים (יום)</div><div class="step-desc">overlay, theme, progress bar, useLocal, E2E polling. ייצוב מהיר ובעל השפעה.</div></div></div>
+    <div class="step-item"><div class="step-dot">2️⃣</div><div class="step-body"><div class="step-title">שלב 2 — Web=שער (2-3 ימים)</div><div class="step-desc">החלטה על האזור הוויזואלי המשותף, ואז הפיכת <code>/progress-map</code> לשער דק.</div></div></div>
+    <div class="step-item"><div class="step-dot">3️⃣</div><div class="step-body"><div class="step-title">שלב 3 — חיזוק בחינת היכולות</div><div class="step-desc">Prompt Builder "החל", KPI בסקירה, Feature Lab אינטראקטיבי.</div></div></div>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+function show(name, btn){
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('section-'+name).classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function tf(card){
+  card.classList.toggle('expanded');
+  const t=card.querySelector('.finding-toggle');
+  if(t) t.textContent = card.classList.contains('expanded') ? 'לחץ לסגירה ▴' : 'לחץ לפרטים ▾';
+}
+document.addEventListener('keydown', e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  const btns=document.querySelectorAll('.nav-btn');
+  const cur=Array.from(btns).findIndex(b=>b.classList.contains('active'));
+  if(e.key==='ArrowLeft'&&cur<btns.length-1) btns[cur+1].click();
+  if(e.key==='ArrowRight'&&cur>0) btns[cur-1].click();
+});
+document.addEventListener('DOMContentLoaded', ()=>{
+  const ctx=document.getElementById('findingsChart');
+  if(!ctx||!window.Chart) return;
+  new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:['אפליקציה','Web','משותף'],
+      datasets:[
+        {label:'🔴 באגים',data:[0,3,1],backgroundColor:'rgba(239,68,68,.6)',borderColor:'rgba(239,68,68,.9)',borderWidth:1,borderRadius:5},
+        {label:'🟡 UX',data:[1,3,0],backgroundColor:'rgba(245,158,11,.6)',borderColor:'rgba(245,158,11,.9)',borderWidth:1,borderRadius:5},
+        {label:'🔵 שיפורים/פערים',data:[2,0,2],backgroundColor:'rgba(96,165,250,.6)',borderColor:'rgba(96,165,250,.9)',borderWidth:1,borderRadius:5}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'top',labels:{color:'#E0D4BE',font:{family:'Heebo',size:12},padding:16}},
+        tooltip:{backgroundColor:'#0f1724',borderColor:'rgba(255,255,255,.1)',borderWidth:1,titleColor:'#E0D4BE',bodyColor:'#6E7F96',titleFont:{family:'Heebo'},bodyFont:{family:'Heebo'}}
+      },
+      scales:{
+        x:{ticks:{color:'#6E7F96',font:{family:'Heebo'}},grid:{color:'rgba(255,255,255,.05)'}},
+        y:{beginAtZero:true,ticks:{color:'#6E7F96',font:{family:'Heebo'},stepSize:1},grid:{color:'rgba(255,255,255,.05)'}}
+      }
+    }
+  });
+});
+</script>
+</body>
+</html>

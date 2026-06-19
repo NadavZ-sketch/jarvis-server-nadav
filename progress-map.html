@@ -436,26 +436,47 @@ async function api(path, opts={}) {
 }
 
 async function loadMemories() {
+  const gw = document.getElementById('brain-graph');
   try {
-    const d = await api('/memories', { signal: AbortSignal.timeout(25000) });
-    S.memories = (d.memories || []).filter(m => m.scope !== 'archive');
+    if (gw) gw.innerHTML = `<div class="loading-state"><div class="spinner"></div><span>טוען זיכרונות...</span></div>`;
+    const raw = await fetch('/memories', { signal: AbortSignal.timeout(25000) });
+    const status = raw.status;
+    const body = await raw.text();
+    let d;
+    try { d = JSON.parse(body); } catch { d = null; }
+    if (!raw.ok || !d) {
+      if (gw) gw.innerHTML = `<div class="empty-state" style="padding-top:60px">
+        <span class="es-icon">⚠️</span>
+        <div style="color:var(--red);margin-bottom:6px">שגיאת שרת ${status}</div>
+        <div style="font-size:.72rem;color:var(--muted);max-width:280px;word-break:break-all;margin-bottom:12px">${esc(body.slice(0,200))}</div>
+        <button class="gbtn primary" onclick="loadMemories()">נסה שוב</button>
+      </div>`;
+      document.getElementById('memoriesCount').textContent = `שגיאה ${status}`;
+      document.getElementById('cnt-brain').textContent = '!';
+      S.memories = []; S.loaded.memories = false;
+      return;
+    }
+    const all = d.memories || [];
+    S.memories = all.filter(m => m.scope !== 'archive');
     S.loaded.memories = true;
-    document.getElementById('memoriesCount').textContent = `${S.memories.length} זיכרונות`;
+    document.getElementById('memoriesCount').textContent = `${S.memories.length} זיכרונות${all.length !== S.memories.length ? ` (${all.length - S.memories.length} בארכיון)` : ''}`;
     document.getElementById('cnt-brain').textContent = S.memories.length;
     setUpdated();
+    if (!S.memories.length && gw) gw.innerHTML = `<div class="empty-state" style="padding-top:80px">
+      <span class="es-icon">🧠</span>
+      <div style="margin-bottom:8px">אין זיכרונות עדיין</div>
+      <div style="font-size:.74rem;color:var(--muted)">שוחח עם ג'רוויס ובקש "תזכור ש..."</div>
+    </div>`;
   } catch(e) {
-    console.error('[memories]', e?.message);
-    S.memories = [];
-    S.loaded.memories = false;
-    document.getElementById('memoriesCount').textContent = 'שגיאת טעינה';
-    document.getElementById('cnt-brain').textContent = '!';
-    // Show retry button in graph area
-    const gw = document.getElementById('brain-graph');
-    if (gw) gw.innerHTML = `<div class="empty-state" style="padding-top:80px">
+    const msg = e?.message || 'timeout';
+    if (gw) gw.innerHTML = `<div class="empty-state" style="padding-top:60px">
       <span class="es-icon">⚠️</span>
-      <div style="color:var(--muted);margin-bottom:14px">לא ניתן לטעון זיכרונות</div>
+      <div style="color:var(--red);margin-bottom:6px">שגיאת רשת: ${esc(msg)}</div>
       <button class="gbtn primary" onclick="loadMemories()">נסה שוב</button>
     </div>`;
+    document.getElementById('memoriesCount').textContent = `שגיאה: ${msg}`;
+    document.getElementById('cnt-brain').textContent = '!';
+    S.memories = []; S.loaded.memories = false;
   }
   if (S.currentSection==='brain') onSubtab('brain', S.subtabs.brain);
 }

@@ -473,6 +473,7 @@ async function loadMemories() {
       <div style="margin-bottom:8px">אין זיכרונות עדיין</div>
       <div style="font-size:.74rem;color:var(--muted);margin-bottom:16px">שוחח עם ג'רוויס ובקש "תזכור ש..."</div>
       <button class="gbtn primary" onclick="recoverFromPinecone()" style="margin-bottom:8px">🔄 שחזר מ-Pinecone</button>
+      <button class="gbtn" onclick="rebuildFromChat()" style="margin-bottom:8px;font-size:.8rem">💬 בנה מחדש מהיסטוריית שיחות</button>
     </div>`;
   } catch(e) {
     const msg = e?.message || 'timeout';
@@ -541,8 +542,12 @@ async function recoverFromPinecone() {
   try {
     const d = await api('/memories/recover-from-pinecone', { method: 'POST' });
     if (!d.ok) { showToast(d.reason || 'Pinecone לא זמין', 'error'); loadMemories(); return; }
-    if (d.recovered === 0) {
-      showToast(`Pinecone: לא נמצאו זיכרונות חדשים (${d.total} סה"כ)`, 'info');
+    if (d.recovered === 0 && d.total === 0) {
+      showToast('Pinecone ריק — מנסה לבנות מהיסטוריית שיחות...', 'info', 3000);
+      setTimeout(rebuildFromChat, 500);
+      return;
+    } else if (d.recovered === 0) {
+      showToast(`Pinecone: לא נמצאו זיכרונות חדשים (${d.total} ב-Pinecone)`, 'info');
     } else {
       showToast(`שוחזרו ${d.recovered} זיכרונות מ-Pinecone!`, 'success');
     }
@@ -550,6 +555,25 @@ async function recoverFromPinecone() {
     loadMemories();
   } catch(e) {
     showToast('שגיאה בשחזור מ-Pinecone', 'error');
+    loadMemories();
+  }
+}
+
+async function rebuildFromChat() {
+  const gw = document.getElementById('brain-graph');
+  if (gw) gw.innerHTML = `<div class="loading-state"><div class="spinner"></div><span>מחלץ זיכרונות מהיסטוריית שיחות... (עשוי לקחת כמה שניות)</span></div>`;
+  try {
+    const d = await api('/memories/rebuild-from-chat', { method: 'POST' });
+    if (!d.ok) { showToast(d.error || 'שגיאה בבנייה מחדש', 'error'); loadMemories(); return; }
+    if (d.saved === 0) {
+      showToast(`עובד על ${d.processed} שיחות — לא נמצא מידע אישי חדש`, 'info');
+    } else {
+      showToast(`נשמרו ${d.saved} זיכרונות מ-${d.processed} שיחות!`, 'success');
+    }
+    S.loaded.memories = false;
+    loadMemories();
+  } catch(e) {
+    showToast('שגיאה בבנייה מחדש', 'error');
     loadMemories();
   }
 }

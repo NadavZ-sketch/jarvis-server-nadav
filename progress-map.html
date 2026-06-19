@@ -437,17 +437,25 @@ async function api(path, opts={}) {
 
 async function loadMemories() {
   try {
-    const d = await api('/memories');
-    S.memories = d.memories || [];
+    const d = await api('/memories', { signal: AbortSignal.timeout(25000) });
+    S.memories = (d.memories || []).filter(m => m.scope !== 'archive');
     S.loaded.memories = true;
     document.getElementById('memoriesCount').textContent = `${S.memories.length} זיכרונות`;
     document.getElementById('cnt-brain').textContent = S.memories.length;
     setUpdated();
-  } catch {
+  } catch(e) {
+    console.error('[memories]', e?.message);
     S.memories = [];
-    S.loaded.memories = true;
+    S.loaded.memories = false;
     document.getElementById('memoriesCount').textContent = 'שגיאת טעינה';
     document.getElementById('cnt-brain').textContent = '!';
+    // Show retry button in graph area
+    const gw = document.getElementById('brain-graph');
+    if (gw) gw.innerHTML = `<div class="empty-state" style="padding-top:80px">
+      <span class="es-icon">⚠️</span>
+      <div style="color:var(--muted);margin-bottom:14px">לא ניתן לטעון זיכרונות</div>
+      <button class="gbtn primary" onclick="loadMemories()">נסה שוב</button>
+    </div>`;
   }
   if (S.currentSection==='brain') onSubtab('brain', S.subtabs.brain);
 }

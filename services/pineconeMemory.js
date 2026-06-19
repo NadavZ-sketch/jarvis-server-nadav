@@ -172,14 +172,21 @@ async function listAll() {
             const batch = ids.slice(i, i + 100);
             try {
                 const fetched = await _index.fetch(batch);
-                for (const [id, vec] of Object.entries(fetched?.records || fetched?.vectors || {})) {
-                    const text = vec.fields?.text || vec.metadata?.text || '';
-                    if (text) records.push({ id, content: text });
+                const map = fetched?.records || fetched?.vectors || {};
+                for (const [id, vec] of Object.entries(map)) {
+                    // Integrated inference indexes store source text directly at vec.text
+                    const text = vec.text || vec.fields?.text || vec.metadata?.text || '';
+                    if (text) {
+                        records.push({ id, content: text });
+                    } else {
+                        console.warn('[Pinecone] listAll: no text for id', id, '— keys:', Object.keys(vec).join(','));
+                    }
                 }
             } catch (fetchErr) {
                 console.warn('🔵 Pinecone fetch batch error:', fetchErr.message);
             }
         }
+        console.info(`[Pinecone] listAll: ${ids.length} vectors, ${records.length} with text`);
         return records;
     } catch (err) {
         console.error('🔵 Pinecone listAll error:', err.message);

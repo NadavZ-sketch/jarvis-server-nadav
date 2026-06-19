@@ -2356,13 +2356,15 @@ app.post('/memories/recover-from-pinecone', async (_req, res) => {
     try {
         if (!pinecone.isReady()) return res.json({ ok: false, reason: 'Pinecone not configured' });
         const pineconeRecords = await pinecone.listAll();
+        console.info(`[recover] Pinecone returned ${pineconeRecords.length} records with text`);
         if (!pineconeRecords.length) return res.json({ ok: true, recovered: 0, total: 0 });
         const existing = await repos.memories.listAll().catch(() => []);
         const existingContents = new Set(existing.map(m => m.content?.trim()));
         let recovered = 0;
         for (const rec of pineconeRecords) {
             if (!rec.content || existingContents.has(rec.content.trim())) continue;
-            await repos.memories.insert({ content: rec.content }).catch(() => {});
+            await repos.memories.insert({ content: rec.content }).catch(e =>
+                console.warn('[recover] insert failed:', e.message));
             recovered++;
         }
         cacheInvalidate('memories');

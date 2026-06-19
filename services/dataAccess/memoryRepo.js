@@ -55,13 +55,23 @@ function createMemoryRepo(supabase) {
         },
 
         // Insert returning the full row (endpoints want it echoed back).
+        // Falls back to without scope if the column doesn't exist yet.
         async create(row) {
             const { data, error } = await supabase.from(M)
                 .insert([row])
                 .select('id, content, scope, created_at')
                 .limit(1);
-            if (error) throw error;
-            return data || [];
+            if (!error) return data || [];
+            if (error.message?.includes('scope') || error.code === '42703') {
+                const { scope: _s, ...rowWithoutScope } = row;
+                const { data: d2, error: err2 } = await supabase.from(M)
+                    .insert([rowWithoutScope])
+                    .select('id, content, created_at')
+                    .limit(1);
+                if (err2) throw err2;
+                return d2 || [];
+            }
+            throw error;
         },
 
         async updateById(id, patch) {
@@ -110,9 +120,16 @@ function createMemoryRepo(supabase) {
         },
 
         // Insert one memory, returning [{ id }] so the caller can embed it.
+        // Falls back to insert without scope if the scope column doesn't exist.
         async insert(row) {
-            const { data } = await supabase.from(M).insert([row]).select('id').limit(1);
-            return data || [];
+            const { data, error } = await supabase.from(M).insert([row]).select('id').limit(1);
+            if (!error) return data || [];
+            if (error.message?.includes('scope') || error.code === '42703') {
+                const { scope: _s, ...rowWithoutScope } = row;
+                const { data: d2 } = await supabase.from(M).insert([rowWithoutScope]).select('id').limit(1);
+                return d2 || [];
+            }
+            throw error;
         },
 
         async update(id, content) {

@@ -152,9 +152,44 @@ async function syncFromSupabase(supabase) {
     }
 }
 
-function isReady() { return _ready; }
+async function listAll() {
+    await ensureInit();
+    if (!_ready) return [];
+    try {
+        const ids = [];
+        let paginationToken;
+        do {
+            const res = await _index.listPaginated({ limit: 100, paginationToken });
+            for (const v of (res.vectors || [])) ids.push(v.id);
+            paginationToken = res.pagination?.next;
+        } while (paginationToken);
+
+        if (!ids.length) return [];
+
+        // Fetch records in batches of 100 to get text content
+        const records = [];
+        for (let i = 0; i < ids.length; i += 100) {
+            const batch = ids.slice(i, i + 100);
+            try {
+                const fetched = await _index.fetch(batch);
+                for (const [id, vec] of Object.entries(fetched?.records || fetched?.vectors || {})) {
+                    const text = vec.fields?.text || vec.metadata?.text || '';
+                    if (text) records.push({ id, content: text });
+                }
+            } catch (fetchErr) {
+                console.warn('🔵 Pinecone fetch batch error:', fetchErr.message);
+            }
+        }
+        return records;
+    } catch (err) {
+        console.error('🔵 Pinecone listAll error:', err.message);
+        return [];
+    }
+}
+
+
 
 module.exports = {
     upsertMemory, searchMemories, searchMemoriesDetailed, findSimilarMemory,
-    deleteMemory, syncFromSupabase, ensureInit, isReady,
+    deleteMemory, syncFromSupabase, listAll, ensureInit, isReady,
 };

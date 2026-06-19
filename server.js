@@ -4154,6 +4154,12 @@ app.use('/progress-map', _rl(20), createAgentCenterRouter({ callGemma4, agentMet
 app.get('/agent-center', (_req, res) => res.redirect(301, '/progress-map'));
 app.get('/control-center', (_req, res) => res.redirect(301, '/progress-map'));
 
+app.get('/design-preview', (_req, res) => {
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src fonts.gstatic.com; connect-src 'none'; img-src 'self' data:");
+    res.sendFile(path.join(__dirname, 'design-preview.html'),
+        err => { if (err && !res.headersSent) res.status(404).send('design-preview.html not found'); });
+});
+
 app.get('/projects-dashboard', (_req, res) => {
     res.setHeader(
         'Content-Security-Policy',

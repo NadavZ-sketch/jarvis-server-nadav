@@ -40,18 +40,23 @@ function createMemoryRepo(supabase) {
         },
 
         // Full rows for the /memories CRUD endpoints.
-        // Falls back to a query without `scope` if that column doesn't yet exist.
+        // Falls back progressively if columns are missing in PostgREST schema cache.
         async listAll() {
             const { data, error } = await supabase.from(M)
                 .select('id, content, scope, created_at')
                 .order('created_at', { ascending: false });
             if (!error) return data || [];
-            // scope column may not exist in older DB schemas — retry without it
+            // created_at or scope may not exist — try without scope
             const { data: data2, error: err2 } = await supabase.from(M)
                 .select('id, content, created_at')
                 .order('created_at', { ascending: false });
-            if (err2) throw err2;
-            return data2 || [];
+            if (!err2) return data2 || [];
+            // Last resort: minimal columns only, order by id
+            const { data: data3, error: err3 } = await supabase.from(M)
+                .select('id, content')
+                .order('id', { ascending: false });
+            if (err3) throw err3;
+            return data3 || [];
         },
 
         // Insert returning the full row (endpoints want it echoed back).

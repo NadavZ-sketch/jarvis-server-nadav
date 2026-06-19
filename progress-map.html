@@ -444,10 +444,10 @@ async function loadMemories() {
     document.getElementById('cnt-brain').textContent = S.memories.length;
     setUpdated();
   } catch {
-    S.memories = SAMPLE_MEMS;
+    S.memories = [];
     S.loaded.memories = true;
-    document.getElementById('memoriesCount').textContent = `${S.memories.length} זיכרונות (demo)`;
-    document.getElementById('cnt-brain').textContent = S.memories.length;
+    document.getElementById('memoriesCount').textContent = 'שגיאת טעינה';
+    document.getElementById('cnt-brain').textContent = '!';
   }
   if (S.currentSection==='brain') onSubtab('brain', S.subtabs.brain);
 }
@@ -710,7 +710,7 @@ function buildClusters() {
     el.innerHTML=`<div class="cb-label" style="color:${cl.color}">${cl.label} <span style="opacity:.55;font-weight:400;font-size:.7rem">(${cl.items.length})</span></div>
       <div class="cb-count">${cl.items[0]?.content.slice(0,60)||''}</div>
       <div class="cluster-items" id="ci-${cl.label}">
-        ${cl.items.map(i=>`<div class="cluster-item">${esc(i.content)}</div>`).join('')}
+        ${cl.items.slice(1).map(i=>`<div class="cluster-item">${esc(i.content)}</div>`).join('')}
       </div>`;
     el.querySelector('.cb-count').addEventListener('click',()=>{ document.getElementById('ci-'+cl.label)?.classList.toggle('open'); });
     wrap.appendChild(el);
@@ -726,17 +726,16 @@ function buildWordCloud() {
   wrap.innerHTML='';
   const freq={};
   for(const m of S.memories) for(const w of getWords(m.content)) freq[w]=(freq[w]||0)+1;
-  const list=Object.entries(freq).sort(([,a],[,b])=>b-a).slice(0,60);
+  const list=Object.entries(freq).sort(([,a],[,b])=>b-a).slice(0,50);
   if(!list.length){ wrap.innerHTML='<div class="empty-state" style="padding-top:60px"><span class="es-icon">☁️</span>אין מספיק זיכרונות</div>'; return; }
-  const maxF=list[0][1], W=wrap.clientWidth||500, H=wrap.clientHeight||300;
+  // Use flex-wrap layout — guaranteed no overlaps, works on all screen sizes
+  wrap.style.cssText='display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px 14px;padding:20px 14px;position:static;height:auto;min-height:200px';
+  const maxF=list[0][1];
   list.forEach(([word,count],i)=>{
-    const frac=count/maxF, size=Math.round(10+frac*24);
+    const frac=count/maxF, size=Math.round(11+frac*26);
     const el=document.createElement('span');
     el.className='cloud-word'; el.textContent=word;
-    el.style.fontSize=size+'px'; el.style.color=COLORS[i%COLORS.length]; el.style.opacity=String(.4+frac*.6);
-    const seed=word.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
-    el.style.left=Math.max(1,((seed*137+i*73)%(W-size*word.length*.55))/W*90)+'%';
-    el.style.top =Math.max(2,((seed*97+i*53)%(H-size))/H*88)+'%';
+    el.style.cssText=`font-size:${size}px;color:${COLORS[i%COLORS.length]};opacity:${(.4+frac*.6).toFixed(2)};position:static;white-space:nowrap;cursor:pointer`;
     el.title=`${word}: ${count}×`;
     wrap.appendChild(el);
   });

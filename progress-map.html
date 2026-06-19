@@ -461,9 +461,11 @@ async function loadMemories() {
       return;
     }
     const all = d.memories || [];
-    S.memories = all.filter(m => m.scope !== 'archive');
+    // Show long_term + archive (real memories); hide session (noisy context snippets)
+    S.memories = all.filter(m => m.scope !== 'session' && !(m.content||'').startsWith('[context]'));
     S.loaded.memories = true;
-    document.getElementById('memoriesCount').textContent = `${S.memories.length} זיכרונות${all.length !== S.memories.length ? ` (${all.length - S.memories.length} בארכיון)` : ''}`;
+    const hidden = all.length - S.memories.length;
+    document.getElementById('memoriesCount').textContent = `${S.memories.length} זיכרונות${hidden ? ` (${hidden} הוסתרו)` : ''}`;
     document.getElementById('cnt-brain').textContent = S.memories.length;
     setUpdated();
     if (!S.memories.length && gw) gw.innerHTML = `<div class="empty-state" style="padding-top:80px">

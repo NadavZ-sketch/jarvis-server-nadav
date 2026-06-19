@@ -2288,9 +2288,10 @@ app.get('/memories', async (req, res) => {
             if (hits) return res.json({ memories: hits.map(content => ({ content })) });
         }
         const data = await repos.memories.listAll();
+        console.info(`[GET /memories] returning ${data.length} memories`);
         res.json({ memories: data });
     } catch (err) {
-        console.error('GET /memories error:', err.message);
+        console.error('GET /memories error:', err.message, err.code);
         res.json({ memories: [] });
     }
 });

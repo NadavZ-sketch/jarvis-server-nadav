@@ -445,15 +445,19 @@ async function loadMemories() {
     let d;
     try { d = JSON.parse(body); } catch { d = null; }
     if (!raw.ok || !d) {
+      const is502 = status === 502 || status === 503 || status === 504;
+      const errMsg = is502
+        ? 'השרת מתחיל, נסה שוב בעוד רגע...'
+        : `שגיאת שרת ${status}: ${esc(body.slice(0,120))}`;
       if (gw) gw.innerHTML = `<div class="empty-state" style="padding-top:60px">
-        <span class="es-icon">⚠️</span>
-        <div style="color:var(--red);margin-bottom:6px">שגיאת שרת ${status}</div>
-        <div style="font-size:.72rem;color:var(--muted);max-width:280px;word-break:break-all;margin-bottom:12px">${esc(body.slice(0,200))}</div>
+        <span class="es-icon">${is502 ? '⏳' : '⚠️'}</span>
+        <div style="color:${is502?'var(--amber)':'var(--red)'};margin-bottom:12px">${errMsg}</div>
         <button class="gbtn primary" onclick="loadMemories()">נסה שוב</button>
       </div>`;
       document.getElementById('memoriesCount').textContent = `שגיאה ${status}`;
       document.getElementById('cnt-brain').textContent = '!';
       S.memories = []; S.loaded.memories = false;
+      if (is502) setTimeout(loadMemories, 15000);
       return;
     }
     const all = d.memories || [];

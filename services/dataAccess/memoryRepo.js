@@ -40,12 +40,18 @@ function createMemoryRepo(supabase) {
         },
 
         // Full rows for the /memories CRUD endpoints.
+        // Falls back to a query without `scope` if that column doesn't yet exist.
         async listAll() {
             const { data, error } = await supabase.from(M)
                 .select('id, content, scope, created_at')
                 .order('created_at', { ascending: false });
-            if (error) throw error;
-            return data || [];
+            if (!error) return data || [];
+            // scope column may not exist in older DB schemas — retry without it
+            const { data: data2, error: err2 } = await supabase.from(M)
+                .select('id, content, created_at')
+                .order('created_at', { ascending: false });
+            if (err2) throw err2;
+            return data2 || [];
         },
 
         // Insert returning the full row (endpoints want it echoed back).

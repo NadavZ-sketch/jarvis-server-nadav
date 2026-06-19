@@ -2291,7 +2291,7 @@ app.get('/memories', async (req, res) => {
         res.json({ memories: data });
     } catch (err) {
         console.error('GET /memories error:', err.message);
-        res.status(500).json({ memories: [] });
+        res.json({ memories: [] });
     }
 });
 

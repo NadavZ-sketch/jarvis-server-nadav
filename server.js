@@ -2351,18 +2351,84 @@ app.delete('/memories/:id', async (req, res) => {
     }
 });
 
+// Rebuild memories by re-running extraction over recent chat history
+app.post('/memories/rebuild-from-chat', async (_req, res) => {
+    try {
+        const { callGemma4 } = require('./agents/models');
+        const EXTRACT_PROMPT = `אתה מנתח שיחה ומחלץ עובדות אישיות חשובות לשמירה.
+
+הודעת המשתמש: "{message}"
+תגובת העוזר: "{answer}"
+
+חלץ עד 3 פריטי מידע בעלי ערך לזיכרון ארוך טווח.
+סווג: [fact] עובדה יציבה (משפחה, עבודה, גיל, מגורים), [pref] העדפה (מה אוהב, שגרה)
+החזר JSON בלבד: { "memories": [ { "type": "fact|pref", "content": "[tag] תוכן בעברית" } ] }
+רק מידע אישי ספציפי. אם אין — { "memories": [] }`;
+
+        const rows = await repos.chat.recentForSearch(400);
+        rows.reverse();
+
+        const pairs = [];
+        for (let i = 0; i < rows.length - 1; i++) {
+            if (rows[i].role === 'user' && rows[i + 1]?.role === 'assistant') {
+                pairs.push({ user: rows[i].text, assistant: rows[i + 1].text });
+                i++;
+            }
+        }
+
+        const SKIP_RE = /מזג האוויר|תחזית|חדשות|כותרות|ספורט|תוצאות|מניות|שלום|היי|בוקר טוב/i;
+        const toProcess = pairs
+            .filter(p => p.user && p.user.length >= 25 && !SKIP_RE.test(p.user))
+            .slice(-60);
+
+        const existing = await repos.memories.allContents().catch(() => []);
+        const seen = new Set(existing.map(c => c.toLowerCase().trim()));
+
+        let saved = 0;
+        for (const pair of toProcess) {
+            try {
+                const prompt = EXTRACT_PROMPT
+                    .replace('{message}', pair.user.slice(0, 300))
+                    .replace('{answer}', (pair.assistant || '').slice(0, 150));
+                const aiText = await callGemma4([{ role: 'user', content: prompt }], false, 300);
+                const first = aiText.indexOf('{'), last = aiText.lastIndexOf('}');
+                if (first === -1) continue;
+                let parsed;
+                try { parsed = JSON.parse(aiText.substring(first, last + 1)); } catch { continue; }
+                for (const item of (parsed.memories || [])) {
+                    const content = (item.content || '').trim();
+                    if (!content || item.type === 'context') continue;
+                    if (seen.has(content.toLowerCase().trim())) continue;
+                    seen.add(content.toLowerCase().trim());
+                    const inserted = await repos.memories.insert({ content, scope: 'long_term' }).catch(() => []);
+                    if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
+                    saved++;
+                }
+            } catch { /* skip failed extractions */ }
+        }
+
+        cacheInvalidate('memories');
+        res.json({ ok: true, saved, processed: toProcess.length });
+    } catch (err) {
+        console.error('POST /memories/rebuild-from-chat error:', err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
 // Recover memories from Pinecone back into Supabase (for schema migration recovery)
 app.post('/memories/recover-from-pinecone', async (_req, res) => {
     try {
         if (!pinecone.isReady()) return res.json({ ok: false, reason: 'Pinecone not configured' });
         const pineconeRecords = await pinecone.listAll();
+        console.info(`[recover] Pinecone returned ${pineconeRecords.length} records with text`);
         if (!pineconeRecords.length) return res.json({ ok: true, recovered: 0, total: 0 });
         const existing = await repos.memories.listAll().catch(() => []);
         const existingContents = new Set(existing.map(m => m.content?.trim()));
         let recovered = 0;
         for (const rec of pineconeRecords) {
             if (!rec.content || existingContents.has(rec.content.trim())) continue;
-            await repos.memories.insert({ content: rec.content }).catch(() => {});
+            await repos.memories.insert({ content: rec.content }).catch(e =>
+                console.warn('[recover] insert failed:', e.message));
             recovered++;
         }
         cacheInvalidate('memories');

@@ -46,17 +46,22 @@ function createMemoryRepo(supabase) {
                 .select('id, content, scope, created_at')
                 .order('created_at', { ascending: false });
             if (!error) return data || [];
-            // created_at or scope may not exist — try without scope
+            // scope may be missing — try without it but keep created_at ordering
             const { data: data2, error: err2 } = await supabase.from(M)
                 .select('id, content, created_at')
                 .order('created_at', { ascending: false });
             if (!err2) return data2 || [];
-            // Last resort: minimal columns only, order by id
+            // created_at may be missing — keep scope so session rows stay hidden
             const { data: data3, error: err3 } = await supabase.from(M)
+                .select('id, content, scope')
+                .order('id', { ascending: false });
+            if (!err3) return data3 || [];
+            // Last resort: minimal columns only
+            const { data: data4, error: err4 } = await supabase.from(M)
                 .select('id, content')
                 .order('id', { ascending: false });
-            if (err3) throw err3;
-            return data3 || [];
+            if (err4) throw err4;
+            return data4 || [];
         },
 
         // Insert returning the full row (endpoints want it echoed back).

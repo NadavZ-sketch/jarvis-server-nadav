@@ -461,8 +461,8 @@ async function loadMemories() {
       return;
     }
     const all = d.memories || [];
-    // Show long_term + archive (real memories); hide session (noisy context snippets)
-    S.memories = all.filter(m => m.scope !== 'session' && !(m.content||'').startsWith('[context]'));
+    // Show long_term + archive; hide only session-scope (noisy real-time context)
+    S.memories = all.filter(m => m.scope !== 'session');
     S.loaded.memories = true;
     const hidden = all.length - S.memories.length;
     document.getElementById('memoriesCount').textContent = `${S.memories.length} זיכרונות${hidden ? ` (${hidden} הוסתרו)` : ''}`;

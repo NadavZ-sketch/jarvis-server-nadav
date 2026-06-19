@@ -471,7 +471,8 @@ async function loadMemories() {
     if (!S.memories.length && gw) gw.innerHTML = `<div class="empty-state" style="padding-top:80px">
       <span class="es-icon">🧠</span>
       <div style="margin-bottom:8px">אין זיכרונות עדיין</div>
-      <div style="font-size:.74rem;color:var(--muted)">שוחח עם ג'רוויס ובקש "תזכור ש..."</div>
+      <div style="font-size:.74rem;color:var(--muted);margin-bottom:16px">שוחח עם ג'רוויס ובקש "תזכור ש..."</div>
+      <button class="gbtn primary" onclick="recoverFromPinecone()" style="margin-bottom:8px">🔄 שחזר מ-Pinecone</button>
     </div>`;
   } catch(e) {
     const msg = e?.message || 'timeout';
@@ -531,6 +532,25 @@ async function loadTasks() {
     S.loaded.tasks = true;
   } catch {
     S.tasks = []; S.loaded.tasks = true;
+  }
+}
+
+async function recoverFromPinecone() {
+  const gw = document.getElementById('brain-graph');
+  if (gw) gw.innerHTML = `<div class="loading-state"><div class="spinner"></div><span>מחפש זיכרונות ב-Pinecone...</span></div>`;
+  try {
+    const d = await api('/memories/recover-from-pinecone', { method: 'POST' });
+    if (!d.ok) { showToast(d.reason || 'Pinecone לא זמין', 'error'); loadMemories(); return; }
+    if (d.recovered === 0) {
+      showToast(`Pinecone: לא נמצאו זיכרונות חדשים (${d.total} סה"כ)`, 'info');
+    } else {
+      showToast(`שוחזרו ${d.recovered} זיכרונות מ-Pinecone!`, 'success');
+    }
+    S.loaded.memories = false;
+    loadMemories();
+  } catch(e) {
+    showToast('שגיאה בשחזור מ-Pinecone', 'error');
+    loadMemories();
   }
 }
 

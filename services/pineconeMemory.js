@@ -189,6 +189,8 @@ async function listAll() {
 
 
 
+function isReady() { return _ready; }
+
 module.exports = {
     upsertMemory, searchMemories, searchMemoriesDetailed, findSimilarMemory,
     deleteMemory, syncFromSupabase, listAll, ensureInit, isReady,

@@ -353,6 +353,9 @@ const supabase = supabaseAdmin;
 const { createRepos } = require('./services/dataAccess');
 const repos = createRepos(supabase);
 
+// In-memory recording state (single-user server; lost on restart).
+const _recordings = new Map(); // chatId → { startedAt, turns[] }
+
 // Persist per-agent latency/intent metrics to Supabase (degrades to in-memory).
 agentMetrics.init(repos);
 
@@ -1234,6 +1237,16 @@ async function askJarvisHandler(req, res) {
             }).catch(() => {});
         } catch (_logErr) { /* never block response */ }
 
+        // ── Test recorder: append turn if a recording is active for this chat ───
+        if (_recordings.has(chatId)) {
+            _recordings.get(chatId).turns.push({
+                input:                String(originalMessage || userMessage).slice(0, 500),
+                expected_intent:      agentName,
+                expected_action_type: action?.type || null,
+                expected_contains:    [],
+            });
+        }
+
         // For WhatsApp — pass action to Flutter to open deep link
         // Return chatId so client can use it for subsequent messages
         res.json({ answer, audio: audioBase64, action, chatId, suggestions, provider: llmProvider, memorySaved: memorySaved || null });
@@ -1512,6 +1525,71 @@ app.delete('/prompt-library/:id', _rl(10), async (req, res) => {
         await repos.promptLibrary.remove(req.params.id);
         res.json({ ok: true });
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Test Cases ──────────────────────────────────────────────────────────
+
+app.get('/test-cases', _rl(30), async (_req, res) => {
+    try {
+        res.json({ testCases: await repos.testCases.listAll() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/test-cases', _rl(20), async (req, res) => {
+    try {
+        const { name, turns } = req.body || {};
+        if (!name || !Array.isArray(turns) || turns.length === 0)
+            return res.status(400).json({ error: 'name and non-empty turns required' });
+        res.json({ testCase: await repos.testCases.create({ name, turns }) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/test-cases/start-recording', _rl(10), (req, res) => {
+    const chatId = req.body?.chatId || 'default-session';
+    _recordings.set(chatId, { startedAt: new Date().toISOString(), turns: [] });
+    res.json({ ok: true, chatId });
+});
+
+app.post('/test-cases/stop-recording', _rl(10), (req, res) => {
+    const chatId = req.body?.chatId || 'default-session';
+    const rec = _recordings.get(chatId);
+    if (!rec) return res.status(404).json({ error: 'no active recording for chatId' });
+    _recordings.delete(chatId);
+    res.json({ ok: true, turns: rec.turns, startedAt: rec.startedAt });
+});
+
+app.post('/test-cases/:id/run', _rl(5), async (req, res) => {
+    try {
+        const tc = await repos.testCases.byId(req.params.id);
+        const turns = Array.isArray(tc.turns) ? tc.turns : JSON.parse(tc.turns || '[]');
+        const results = [];
+        let overallPass = true;
+
+        for (const turn of turns) {
+            const classification = await classifyIntentDetailed(turn.input, supabase);
+            const detectedIntent = classification?.intent || 'unknown';
+            const intentMatch = !turn.expected_intent || detectedIntent === turn.expected_intent;
+            if (!intentMatch) overallPass = false;
+            results.push({
+                input:            turn.input,
+                expected_intent:  turn.expected_intent,
+                detected_intent:  detectedIntent,
+                intent_match:     intentMatch,
+                pass:             intentMatch,
+            });
+        }
+
+        const finalStatus = overallPass ? 'pass' : 'fail';
+        await repos.testCases.markResult(tc.id, finalStatus, results);
+        res.json({ status: finalStatus, results });
+    } catch (err) {
+        console.error('POST /test-cases/:id/run error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });

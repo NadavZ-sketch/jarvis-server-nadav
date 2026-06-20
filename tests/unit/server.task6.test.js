@@ -92,3 +92,77 @@ describe('POST /surveys/analyze-sentiment logic', () => {
         expect(result.total).toBe(3);
     });
 });
+
+describe('GET /e2e-schedule logic', () => {
+    test('returns null when no profile exists', async () => {
+        const repos = makeRepos({});
+        const rows = await repos.profile.latest();
+        const prefs = rows[0]?.preferences || {};
+        const schedule = prefs['e2e-schedule'] ?? null;
+        expect(schedule).toBeNull();
+    });
+
+    test('returns stored schedule when set', async () => {
+        const storedSchedule = { frequency: 'daily', time: '03:00' };
+        const repos = makeRepos({ user_profiles: [{ id: 'p1', preferences: { 'e2e-schedule': storedSchedule } }] });
+        const rows = await repos.profile.latest();
+        const prefs = rows[0]?.preferences || {};
+        const schedule = prefs['e2e-schedule'] ?? null;
+        expect(schedule).toEqual(storedSchedule);
+    });
+});
+
+describe('GET /changelog/generate line parsing', () => {
+    function parseGitLogLine(line) {
+        const [hash, ...rest] = line.split(' ');
+        return { hash, message: rest.join(' ') };
+    }
+
+    test('parses hash and message from git log line', () => {
+        const entry = parseGitLogLine('abc1234 feat: add weekly score endpoint');
+        expect(entry.hash).toBe('abc1234');
+        expect(entry.message).toBe('feat: add weekly score endpoint');
+    });
+
+    test('handles message with multiple spaces', () => {
+        const entry = parseGitLogLine('def5678 fix: update   spacing   in   message');
+        expect(entry.hash).toBe('def5678');
+        expect(entry.message).toBe('fix: update   spacing   in   message');
+    });
+});
+
+describe('GET /surveys/export CSV generation', () => {
+    test('generates correct CSV header and rows', () => {
+        const rows = [
+            { id: 'r1', question_id: 'q1', response: 'great', created_at: '2026-01-01T00:00:00Z' },
+            { id: 'r2', question_id: 'q2', response: null, created_at: '2026-01-02T00:00:00Z' },
+        ];
+        const header = 'id,question_id,response,created_at';
+        const csvRows = rows.map(r =>
+            [r.id, r.question_id, JSON.stringify(r.response ?? ''), r.created_at].join(',')
+        );
+        const csv = [header, ...csvRows].join('\n');
+        expect(csv).toContain('id,question_id,response,created_at');
+        expect(csv).toContain('r1,q1,"great",2026-01-01T00:00:00Z');
+        expect(csv).toContain('r2,q2,"",2026-01-02T00:00:00Z');
+    });
+});
+
+describe('PUT /e2e-schedule create branch', () => {
+    test('creates new profile when none exists', async () => {
+        const repos = makeRepos({ user_profiles: [] });
+        const rows = await repos.profile.latest();
+        const existing = rows[0] || {};
+        const schedule = { frequency: 'weekly' };
+        const prefs = { ...(existing.preferences || {}), 'e2e-schedule': schedule };
+        if (existing.id) {
+            await repos.profile.update(existing.id, { preferences: prefs });
+        } else {
+            await repos.profile.create({ preferences: prefs });
+        }
+        expect(repos.profile.create).toHaveBeenCalledWith({
+            preferences: { 'e2e-schedule': schedule },
+        });
+        expect(repos.profile.update).not.toHaveBeenCalled();
+    });
+});

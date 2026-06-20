@@ -1620,7 +1620,7 @@ app.get('/e2e-schedule', _rl(20), async (_req, res) => {
     try {
         const rows = await repos.profile.latest();
         const prefs = rows[0]?.preferences || {};
-        res.json({ schedule: prefs['e2e-schedule'] || null });
+        res.json({ schedule: prefs['e2e-schedule'] ?? null });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

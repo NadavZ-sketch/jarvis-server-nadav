@@ -167,23 +167,48 @@ CRUD: GET/POST/PUT/DELETE `/prompt-library`
 ---
 
 ### Multi-turn Test Recorder
-מקליט שיחות כ-test cases ומריץ אותן מחדש.
+מקליט שיחות אמיתיות של המשתמש עם ג'רוויס ושומר אותן כ-test cases לניגון חוזר.
+
+**Flow הקלטה:**
+1. המשתמש לוחץ "התחל הקלטה" בטאב 2
+2. עובר לטאב שיחה — כל הודעה + תגובה נרשמים ב-background
+3. חוזר לטאב 2, לוחץ "עצור" → מוצג סיכום השיחה
+4. מגדיר שם לבדיקה + assertions אוטומטיים (intent שזוהה, האם היה action)
+5. שמירה → test case נוצר
+
+**Assertions אוטומטיים (מה שנרשם מהשיחה האמיתית):**
+- `expected_intent` — ה-intent שג'רוויס זיהה בפועל
+- `expected_action_type` — סוג ה-action שהוחזר (אם היה)
+- `expected_contains` — ביטויים שהיו בתגובה האמיתית (המשתמש יכול לערוך)
 
 **מבנה test case:**
 ```json
 {
   "id": "tc_001",
-  "name": "שם הבדיקה",
+  "name": "תזכורת לשעה 8",
+  "recorded_at": "2026-06-20T10:00:00Z",
+  "source": "recorded",
   "turns": [
-    { "input": "...", "expected_intent": "reminder", "expected_contains": ["תזכורת"] }
+    {
+      "input": "תזכיר לי בשעה 8 לקחת תרופה",
+      "expected_intent": "reminder",
+      "expected_action_type": "reminder_set",
+      "expected_contains": ["8:00", "תזכורת"]
+    }
   ],
   "last_run": "2026-06-20T14:00:00Z",
   "last_status": "pass" | "fail" | "pending"
 }
 ```
 
-**API:** GET/POST `/test-cases` · POST `/test-cases/:id/run`  
-**UI:** רשימה עם pass/fail + כפתור "הקלט שיחה חדשה" + כפתור "הרץ"
+**ניגון חוזר (Replay):**
+- שולח את ה-inputs המקוריים מחדש ל-`/ask-jarvis`
+- משווה intent + action type + נוכחות ביטויים בתגובה
+- מסמן pass/fail לכל turn בנפרד
+- כשל = הצגת ה-diff: מה היה בהקלטה vs מה החזיר עכשיו
+
+**API:** `GET/POST /test-cases` · `POST /test-cases/:id/run` · `POST /test-cases/start-recording` · `POST /test-cases/stop-recording`  
+**UI:** רשימה עם pass/fail + badge "מוקלט" · כפתור "הקלט שיחה" · כפתור "הרץ שוב"
 
 ---
 
@@ -310,13 +335,16 @@ CREATE TABLE prompt_library (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Test cases
+-- Test cases (מוקלטים משיחות אמיתיות)
 CREATE TABLE test_cases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
-  turns JSONB NOT NULL,
+  turns JSONB NOT NULL,          -- [{input, expected_intent, expected_action_type, expected_contains[]}]
+  source TEXT DEFAULT 'recorded', -- 'recorded' בלבד בשלב זה
+  recorded_at TIMESTAMPTZ,
   last_run TIMESTAMPTZ,
-  last_status TEXT,
+  last_status TEXT,              -- 'pass' | 'fail' | 'pending'
+  last_run_diff JSONB,           -- diff בין הקלטה לריצה האחרונה
   created_at TIMESTAMPTZ DEFAULT now()
 );
 ```

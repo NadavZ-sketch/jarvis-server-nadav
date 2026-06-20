@@ -199,6 +199,7 @@ function makeSurveyRepo(opts = {}) {
         recentResponsesById:          jest.fn(async () => rows),
         recentResponsesWithDateById:  jest.fn(async () => rows),
         lastForUser:                  jest.fn(async () => rows),
+        listAll:                      jest.fn(async () => rows),
     };
 }
 

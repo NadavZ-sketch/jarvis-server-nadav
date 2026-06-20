@@ -148,6 +148,17 @@ describe('GET /surveys/export CSV generation', () => {
     });
 });
 
+describe('GET /surveys/export repo call', () => {
+    test('calls surveys.listAll to fetch all rows', async () => {
+        const repos = makeRepos({ user_surveys: [
+            { id: 'r1', question_id: 'q1', response: 'great', created_at: '2026-01-01T00:00:00Z' },
+        ]});
+        const rows = await repos.surveys.listAll();
+        expect(repos.surveys.listAll).toHaveBeenCalled();
+        expect(rows).toHaveLength(1);
+    });
+});
+
 describe('PUT /e2e-schedule create branch', () => {
     test('creates new profile when none exists', async () => {
         const repos = makeRepos({ user_profiles: [] });

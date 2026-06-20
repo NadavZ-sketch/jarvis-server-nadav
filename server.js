@@ -8,6 +8,7 @@ const fs         = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const googleTTS  = require('google-tts-api');
 const { OpenAI, toFile } = require('openai');
+const { execSync } = require('child_process');
 
 const pushService = require('./services/pushService');
 const systemLog   = require('./services/systemLog');
@@ -1630,7 +1631,7 @@ app.get('/e2e-schedule', _rl(20), async (_req, res) => {
 app.put('/e2e-schedule', _rl(10), async (req, res) => {
     try {
         const { schedule } = req.body || {};
-        if (!schedule || typeof schedule !== 'object')
+        if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule))
             return res.status(400).json({ error: 'schedule object required' });
         const rows = await repos.profile.latest();
         const existing = rows[0] || {};
@@ -1649,7 +1650,6 @@ app.put('/e2e-schedule', _rl(10), async (req, res) => {
 // GET /changelog/generate — last 20 git commits as structured changelog
 app.get('/changelog/generate', _rl(5), async (_req, res) => {
     try {
-        const { execSync } = require('child_process');
         const raw = execSync(
             'git log --oneline -20 --no-decorate',
             { cwd: __dirname, timeout: 5000, encoding: 'utf8' }
@@ -1668,7 +1668,7 @@ app.get('/changelog/generate', _rl(5), async (_req, res) => {
 // GET /surveys/export — export survey responses as CSV
 app.get('/surveys/export', _rl(5), async (_req, res) => {
     try {
-        const rows = await repos.surveys.historyForUser('all');
+        const rows = await repos.surveys.listAll();
         const header = 'id,question_id,response,created_at';
         const csvRows = rows.map(r =>
             [r.id, r.question_id, JSON.stringify(r.response ?? ''), r.created_at].join(',')

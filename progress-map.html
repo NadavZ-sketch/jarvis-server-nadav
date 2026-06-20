@@ -160,6 +160,51 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:rgba(200,145,58,.2);border-radius:2px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(200,145,58,.35)}
+
+/* ── Bottom Nav (mobile only) ── */
+.bottom-nav{display:none}
+
+/* ── Mobile breakpoint ── */
+@media (max-width:768px){
+  body{padding-bottom:56px}
+  .sidebar{display:none}
+  .topbar-sub,.topbar-time{display:none}
+  .topbar-search{width:110px}
+  .topbar-badge{display:none}
+  .side-panel{width:min(300px,90vw)}
+
+  .bottom-nav{
+    display:flex;
+    position:fixed;bottom:0;left:0;right:0;
+    height:56px;
+    background:var(--surface);
+    border-top:1px solid var(--border);
+    z-index:200;
+    align-items:stretch;
+    justify-content:space-around;
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  .bnav-item{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;flex:1;cursor:pointer;position:relative;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .bnav-item::before{
+    content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
+    width:32px;height:2px;background:var(--accent);border-radius:0 0 3px 3px;
+    opacity:0;transition:opacity .15s;
+  }
+  .bnav-item.active::before{opacity:1}
+  .bnav-item .bico{font-size:20px;line-height:1}
+  .bnav-item .blbl{font-size:10px;color:var(--muted);font-weight:600;transition:color .15s}
+  .bnav-item.active .blbl{color:var(--accent2)}
+  .bnav-badge{
+    position:absolute;top:6px;right:calc(50% - 18px);
+    background:var(--accent);color:#000;font-size:8px;font-weight:800;
+    border-radius:8px;padding:1px 4px;min-width:15px;text-align:center;
+    display:none;
+  }
+}
 </style>
 </head>
 <body>
@@ -348,6 +393,27 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
   </div>
 </div>
 
+<!-- MOBILE BOTTOM NAV -->
+<nav class="bottom-nav" aria-label="ניווט ראשי">
+  <div class="bnav-item active" id="bnav-brain" onclick="switchSection('brain')" role="button" aria-label="מוח">
+    <span class="bico">🧠</span>
+    <span class="blbl">מוח</span>
+    <span class="bnav-badge" id="bnav-cnt"></span>
+  </div>
+  <div class="bnav-item" id="bnav-activity" onclick="switchSection('activity')" role="button" aria-label="פעילות">
+    <span class="bico">📊</span>
+    <span class="blbl">פעילות</span>
+  </div>
+  <div class="bnav-item" id="bnav-insights" onclick="switchSection('insights')" role="button" aria-label="תובנות">
+    <span class="bico">💡</span>
+    <span class="blbl">תובנות</span>
+  </div>
+  <div class="bnav-item" id="bnav-data" onclick="switchSection('data')" role="button" aria-label="נתונים">
+    <span class="bico">📈</span>
+    <span class="blbl">נתונים</span>
+  </div>
+</nav>
+
 <script>
 // ═══════════════════════════════════════════════
 // STATE
@@ -369,6 +435,7 @@ function switchSection(name) {
   SECS.forEach(s => {
     document.getElementById('sec-'+s)?.classList.toggle('active', s===name);
     document.getElementById('nav-'+s)?.classList.toggle('active', s===name);
+    document.getElementById('bnav-'+s)?.classList.toggle('active', s===name);
   });
   S.currentSection = name;
   loadSection(name);
@@ -467,6 +534,8 @@ async function loadMemories() {
     const hidden = all.length - S.memories.length;
     document.getElementById('memoriesCount').textContent = `${S.memories.length} זיכרונות${hidden ? ` (${hidden} הוסתרו)` : ''}`;
     document.getElementById('cnt-brain').textContent = S.memories.length;
+    const bnavCnt = document.getElementById('bnav-cnt');
+    if (bnavCnt && S.memories.length) { bnavCnt.textContent = S.memories.length; bnavCnt.style.display = ''; }
     setUpdated();
     if (!S.memories.length && gw) gw.innerHTML = `<div class="empty-state" style="padding-top:80px">
       <span class="es-icon">🧠</span>

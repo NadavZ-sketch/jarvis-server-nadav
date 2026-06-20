@@ -719,7 +719,13 @@ async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settin
 // ─── Health check (for local connectivity testing) ───────────────────────────
 
 app.get('/health', (req, res) => {
-    res.json({ ok: true, version: 'multi-agent-v3', ts: Date.now(), pinecone: pinecone.isReady() });
+    res.json({
+        ok: true,
+        version: 'multi-agent-v3',
+        ts: Date.now(),
+        pinecone: pinecone.isReady(),
+        active_model: getLastKnownProvider(),
+    });
 });
 
 // ─── Push notification token registration ────────────────────────────────────
@@ -1217,6 +1223,17 @@ async function askJarvisHandler(req, res) {
             ` | agent=${agentName}`
         );
 
+        // ── Execution log (fire-and-forget, never blocks response) ─────────────
+        try {
+            repos.executionLog.insert({
+                cmd:         String(originalMessage || userMessage).slice(0, 300),
+                agent:       agentName,
+                model:       llmProvider || getLastKnownProvider() || 'unknown',
+                duration_ms: tDone - t0,
+                status:      'ok',
+            }).catch(() => {});
+        } catch (_logErr) { /* never block response */ }
+
         // For WhatsApp — pass action to Flutter to open deep link
         // Return chatId so client can use it for subsequent messages
         res.json({ answer, audio: audioBase64, action, chatId, suggestions, provider: llmProvider, memorySaved: memorySaved || null });
@@ -1233,6 +1250,16 @@ async function askJarvisHandler(req, res) {
             });
         }
         console.error('Route Error:', err.message);
+        try {
+            repos.executionLog.insert({
+                cmd:         String(req.body?.command || '').slice(0, 300),
+                agent:       typeof agentName !== 'undefined' ? agentName : 'unknown',
+                model:       getLastKnownProvider() || 'unknown',
+                duration_ms: Date.now() - t0,
+                status:      'fail',
+                error:       err?.message,
+            }).catch(() => {});
+        } catch (_logErr) { /* never block error response */ }
         const isRateLimit = err.response?.status === 429 || /429|rate.limit|quota/i.test(err.message);
         const isDb = /supabase|PGRST|relation/i.test(err.message || '');
         res.status(200).json({
@@ -1439,6 +1466,18 @@ app.get('/stats', async (_req, res) => {
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
     res.json(await repos.stats.dashboardCounts(todayStart.toISOString()));
+});
+
+// ─── Execution log ────────────────────────────────────────────────────────
+app.get('/execution-log', _rl(30), async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+        const rows = await repos.executionLog.recent(limit);
+        res.json({ log: rows });
+    } catch (err) {
+        console.error('GET /execution-log error:', err.message);
+        res.status(500).json({ error: 'internal server error' });
+    }
 });
 
 // ─── GET /day-plan — Smart Day Engine: scored, prioritized, load-aware plan ──
@@ -3678,7 +3717,7 @@ app.patch('/shopping/:id', async (req, res) => {
 
 // ─── Streaming endpoint (SSE) ─────────────────────────────────────────────────
 
-const { callGemma4Stream, callGemma4, providerContext, getCurrentProvider, LocalModelError } = require('./agents/models');
+const { callGemma4Stream, callGemma4, providerContext, getCurrentProvider, getLastKnownProvider, LocalModelError } = require('./agents/models');
 
 async function streamJarvisHandler(req, res) {
     res.setHeader('Content-Type', 'text/event-stream');

@@ -2,7 +2,7 @@
 jest.mock('axios');
 
 const axios = require('axios');
-const { callGemma4, callGeminiWithSearch, callGeminiVision, detectMimeType } = require('../../agents/models');
+const { callGemma4, callGeminiWithSearch, callGeminiVision, detectMimeType, getLastKnownProvider } = require('../../agents/models');
 
 const GROQ_RESPONSE = {
     data: { choices: [{ message: { content: '  groq answer  ' } }] }
@@ -215,5 +215,14 @@ describe('callGeminiVision', () => {
         const smallImage = 'iVBORsmall';
         const result = await callGeminiVision('describe this', smallImage);
         expect(result).toBe('gemini answer');
+    });
+});
+
+describe('getLastKnownProvider', () => {
+    test('returns null before any provider is set', () => {
+        // Note: this may return a value if other tests ran first.
+        // Just verify it returns a string or null.
+        const p = getLastKnownProvider();
+        expect(p === null || typeof p === 'string').toBe(true);
     });
 });

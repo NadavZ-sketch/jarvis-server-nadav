@@ -1,5 +1,10 @@
 'use strict';
 
+// Execution-log repository — data-access seam for the `execution_log` table.
+// Records every /ask-jarvis invocation (cmd, agent, model, ms, status) as an
+// audit trail for the control-center dashboard. insert() is fire-and-forget
+// with error swallowing so logging never blocks agent responses.
+
 const T = 'execution_log';
 
 function createExecutionLogRepo(supabase) {

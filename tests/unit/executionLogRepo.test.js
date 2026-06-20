@@ -2,11 +2,14 @@
 const { createExecutionLogRepo } = require('../../services/dataAccess/executionLogRepo');
 
 function makeSupabase({ rows = [], insertError = null } = {}) {
+    const insertMock = insertError
+        ? jest.fn().mockRejectedValue(insertError)
+        : jest.fn().mockResolvedValue({ error: null });
     const chain = {
         select: jest.fn().mockReturnThis(),
         order:  jest.fn().mockReturnThis(),
         limit:  jest.fn().mockResolvedValue({ data: rows, error: null }),
-        insert: jest.fn().mockResolvedValue({ error: insertError }),
+        insert: insertMock,
     };
     return { from: jest.fn(() => chain), _chain: chain };
 }

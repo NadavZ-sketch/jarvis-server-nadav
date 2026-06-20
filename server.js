@@ -1480,6 +1480,42 @@ app.get('/execution-log', _rl(30), async (req, res) => {
     }
 });
 
+// ─── Prompt Library ───────────────────────────────────────────────────────
+app.get('/prompt-library', _rl(30), async (_req, res) => {
+    try {
+        res.json({ prompts: await repos.promptLibrary.listAll() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/prompt-library', _rl(20), async (req, res) => {
+    try {
+        const { name, content } = req.body || {};
+        if (!name || !content) return res.status(400).json({ error: 'name and content required' });
+        res.json({ prompt: await repos.promptLibrary.create({ name, content }) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/prompt-library/:id', _rl(20), async (req, res) => {
+    try {
+        res.json({ prompt: await repos.promptLibrary.update(req.params.id, req.body || {}) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/prompt-library/:id', _rl(10), async (req, res) => {
+    try {
+        await repos.promptLibrary.remove(req.params.id);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── GET /day-plan — Smart Day Engine: scored, prioritized, load-aware plan ──
 app.get('/day-plan', async (req, res) => {
     try {

@@ -1594,6 +1594,119 @@ app.post('/test-cases/:id/run', _rl(5), async (req, res) => {
     }
 });
 
+// ─── Task 6: new backend endpoints ───────────────────────────────────────────
+
+// GET /stats/weekly-score — weekly quality score from feedback telemetry
+app.get('/stats/weekly-score', _rl(20), async (_req, res) => {
+    try {
+        const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const { data } = await supabase.from('smart_telemetry_events')
+            .select('event_type')
+            .in('event_type', ['feedback_up', 'feedback_down'])
+            .gte('created_at', since);
+        const rows = data || [];
+        const ups   = rows.filter(r => r.event_type === 'feedback_up').length;
+        const downs = rows.filter(r => r.event_type === 'feedback_down').length;
+        const total = ups + downs;
+        const score = total === 0 ? null : Math.round((ups / total) * 1000) / 10;
+        res.json({ score, ups, downs, total });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /e2e-schedule — read e2e run schedule from user profile preferences
+app.get('/e2e-schedule', _rl(20), async (_req, res) => {
+    try {
+        const rows = await repos.profile.latest();
+        const prefs = rows[0]?.preferences || {};
+        res.json({ schedule: prefs['e2e-schedule'] || null });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /e2e-schedule — write e2e run schedule to user profile preferences
+app.put('/e2e-schedule', _rl(10), async (req, res) => {
+    try {
+        const { schedule } = req.body || {};
+        if (!schedule || typeof schedule !== 'object')
+            return res.status(400).json({ error: 'schedule object required' });
+        const rows = await repos.profile.latest();
+        const existing = rows[0] || {};
+        const prefs = { ...(existing.preferences || {}), 'e2e-schedule': schedule };
+        if (existing.id) {
+            await repos.profile.update(existing.id, { preferences: prefs });
+        } else {
+            await repos.profile.create({ preferences: prefs });
+        }
+        res.json({ ok: true, schedule });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /changelog/generate — last 20 git commits as structured changelog
+app.get('/changelog/generate', _rl(5), async (_req, res) => {
+    try {
+        const { execSync } = require('child_process');
+        const raw = execSync(
+            'git log --oneline -20 --no-decorate',
+            { cwd: __dirname, timeout: 5000, encoding: 'utf8' }
+        ).trim();
+        const lines = raw.split('\n').filter(Boolean);
+        const entries = lines.map(line => {
+            const [hash, ...rest] = line.split(' ');
+            return { hash, message: rest.join(' ') };
+        });
+        res.json({ entries });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /surveys/export — export survey responses as CSV
+app.get('/surveys/export', _rl(5), async (_req, res) => {
+    try {
+        const rows = await repos.surveys.historyForUser('all');
+        const header = 'id,question_id,response,created_at';
+        const csvRows = rows.map(r =>
+            [r.id, r.question_id, JSON.stringify(r.response ?? ''), r.created_at].join(',')
+        );
+        const csv = [header, ...csvRows].join('\n');
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="surveys.csv"');
+        res.send(csv);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /surveys/analyze-sentiment — keyword-based sentiment counts (no LLM)
+app.post('/surveys/analyze-sentiment', _rl(10), async (req, res) => {
+    try {
+        const { responses } = req.body || {};
+        if (!Array.isArray(responses))
+            return res.status(400).json({ error: 'responses array required' });
+
+        const POS = ['טוב', 'מעולה', 'אוהב', 'נהדר', 'מצוין', 'great', 'good', 'love', 'excellent', 'awesome'];
+        const NEG = ['רע', 'גרוע', 'שונא', 'נורא', 'bad', 'terrible', 'hate', 'awful', 'poor'];
+
+        let positive = 0, negative = 0, neutral = 0;
+        for (const r of responses) {
+            const text = String(r).toLowerCase();
+            const isPos = POS.some(w => text.includes(w));
+            const isNeg = NEG.some(w => text.includes(w));
+            if (isPos && !isNeg) positive++;
+            else if (isNeg && !isPos) negative++;
+            else neutral++;
+        }
+        res.json({ positive, negative, neutral, total: responses.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── GET /day-plan — Smart Day Engine: scored, prioritized, load-aware plan ──
 app.get('/day-plan', async (req, res) => {
     try {

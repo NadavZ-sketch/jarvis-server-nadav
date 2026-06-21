@@ -676,9 +676,11 @@ class ApiService {
       final data = jsonDecode(_safeBody(res));
       if (data is Map<String, dynamic>) {
         final proposals = data['proposals'] as List? ?? [];
-        final proposal = proposals.cast<Map<String, dynamic>>().firstWhere(
+        final proposal = proposals
+            .whereType<Map<String, dynamic>>()
+            .firstWhere(
               (p) => p['id'] == proposalId,
-              orElse: () => {},
+              orElse: () => <String, dynamic>{},
             );
         return List<Map<String, dynamic>>.from(
             proposal['workshopHistory'] as List? ?? []);

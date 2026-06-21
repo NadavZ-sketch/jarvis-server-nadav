@@ -232,34 +232,38 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
 
   Future<void> _showCreateProposalDialog(String type) async {
     final titleCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(type == 'bug' ? '🐛 דיווח באג' : '✨ הצעת פיצ\'ר',
-            style: const TextStyle(fontFamily: 'Heebo')),
-        content: TextField(
-          controller: titleCtrl,
-          autofocus: true,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            hintText: 'תאר את הבקשה...',
-            hintStyle: TextStyle(fontFamily: 'Heebo'),
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(type == 'bug' ? '🐛 דיווח באג' : '✨ הצעת פיצ\'ר',
+              style: const TextStyle(fontFamily: 'Heebo')),
+          content: TextField(
+            controller: titleCtrl,
+            autofocus: true,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: 'תאר את הבקשה...',
+              hintStyle: TextStyle(fontFamily: 'Heebo'),
+            ),
+            style: const TextStyle(fontFamily: 'Heebo'),
           ),
-          style: const TextStyle(fontFamily: 'Heebo'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('ביטול', style: TextStyle(fontFamily: 'Heebo'))),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('שלח', style: TextStyle(fontFamily: 'Heebo'))),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('ביטול', style: TextStyle(fontFamily: 'Heebo'))),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('שלח', style: TextStyle(fontFamily: 'Heebo'))),
-        ],
-      ),
-    );
-    if (ok == true && titleCtrl.text.isNotEmpty && mounted) {
-      await _api.createProposal(titleCtrl.text, type);
-      _loadProposals();
+      );
+      if (ok == true && titleCtrl.text.isNotEmpty && mounted) {
+        await _api.createProposal(titleCtrl.text, type);
+        if (mounted) _loadProposals();
+      }
+    } finally {
+      titleCtrl.dispose();
     }
   }
 

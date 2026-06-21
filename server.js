@@ -4693,7 +4693,11 @@ function readBacklog() {
         if (!data.proposals) data.proposals = [];
         if (!data.proposals_history) data.proposals_history = [];
         if (!data.ranking_version) data.ranking_version = BACKLOG_RANKING_VERSION;
-        if (!data._nextId)   data._nextId   = (data.items.length > 0 ? Math.max(...data.items.map(i => i.id)) + 1 : 1);
+        if (!data._nextId) {
+            const maxItemId = data.items.length > 0 ? Math.max(...data.items.map(i => i.id)) : 0;
+            const maxProposalId = data.proposals?.length > 0 ? Math.max(...data.proposals.map(p => p.id)) : 0;
+            data._nextId = Math.max(maxItemId, maxProposalId) + 1;
+        }
         return data;
     } catch {
         return {

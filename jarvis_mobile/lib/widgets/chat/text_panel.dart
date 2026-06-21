@@ -331,7 +331,7 @@ class _TextPanelState extends State<TextPanel>
             initialItemCount: widget.messages.length,
             itemBuilder: (context, index, animation) {
               final msg = widget.messages[index];
-              return _BubbleEntry(msg: msg, animation: animation);
+              return _BubbleEntry(msg: msg, animation: animation, settings: widget.settings, chatId: widget.chatId);
             },
           ),
         ),
@@ -364,7 +364,9 @@ class _TextPanelState extends State<TextPanel>
 class _BubbleEntry extends StatelessWidget {
   final ChatMessage msg;
   final Animation<double> animation;
-  const _BubbleEntry({required this.msg, required this.animation});
+  final AppSettings settings;
+  final String chatId;
+  const _BubbleEntry({required this.msg, required this.animation, required this.settings, required this.chatId});
 
   @override
   Widget build(BuildContext context) {
@@ -373,19 +375,40 @@ class _BubbleEntry extends StatelessWidget {
           .animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
       child: FadeTransition(
         opacity: animation,
-        child: _Bubble(msg: msg),
+        child: _Bubble(msg: msg, settings: settings, chatId: chatId),
       ),
     );
   }
 }
 
-class _Bubble extends StatelessWidget {
+class _Bubble extends StatefulWidget {
   final ChatMessage msg;
-  const _Bubble({required this.msg});
+  final AppSettings settings;
+  final String chatId;
+  const _Bubble({required this.msg, required this.settings, required this.chatId});
+
+  @override
+  State<_Bubble> createState() => _BubbleState();
+}
+
+class _BubbleState extends State<_Bubble> {
+  bool? _rated; // null=unrated, true=up, false=down
+
+  Future<void> _rate(bool up) async {
+    if (_rated != null) return; // already rated
+    setState(() => _rated = up);
+    final api = ApiService(widget.settings);
+    await api.sendFeedback(
+      chatId: widget.chatId,
+      messageText: widget.msg.text,
+      signal: up ? 'up' : 'down',
+      source: 'chat_inline',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isUser = msg.sender == 'user';
+    final isUser = widget.msg.sender == 'user';
     return Align(
       alignment: isUser
           ? AlignmentDirectional.centerStart
@@ -415,7 +438,7 @@ class _Bubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (msg.fromVoice)
+            if (widget.msg.fromVoice)
               Padding(
                 padding: const EdgeInsetsDirectional.only(bottom: 4),
                 child: Text(
@@ -424,7 +447,7 @@ class _Bubble extends StatelessWidget {
                 ),
               ),
             Text(
-              msg.text,
+              widget.msg.text,
               textDirection: TextDirection.rtl,
               style: TextStyle(
                 color: JC.textPrimary,
@@ -433,8 +456,57 @@ class _Bubble extends StatelessWidget {
                 fontFamily: 'Heebo',
               ),
             ),
+            // 👍👎 row — only for Jarvis messages
+            if (!isUser) ...[
+              const SizedBox(height: 6),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _FeedbackBtn(
+                    icon: Icons.thumb_up_outlined,
+                    activeIcon: Icons.thumb_up,
+                    active: _rated == true,
+                    dimmed: _rated == false,
+                    onTap: () => _rate(true),
+                  ),
+                  const SizedBox(width: 8),
+                  _FeedbackBtn(
+                    icon: Icons.thumb_down_outlined,
+                    activeIcon: Icons.thumb_down,
+                    active: _rated == false,
+                    dimmed: _rated == true,
+                    onTap: () => _rate(false),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FeedbackBtn extends StatelessWidget {
+  final IconData icon;
+  final IconData activeIcon;
+  final bool active;
+  final bool dimmed;
+  final VoidCallback onTap;
+  const _FeedbackBtn({required this.icon, required this.activeIcon, required this.active, required this.dimmed, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: active || dimmed ? null : onTap,
+      child: Icon(
+        active ? activeIcon : icon,
+        size: 14,
+        color: active
+            ? JC.amber400
+            : dimmed
+                ? JC.textMuted.withValues(alpha: 0.3)
+                : JC.textMuted,
       ),
     );
   }

@@ -83,3 +83,31 @@ describe('POST /workshop/:proposalId/chat', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('POST /workshop/:proposalId/save-spec', () => {
+  it('returns 200 with path on valid spec', async () => {
+    const res = await request(app)
+      .post('/workshop/1/save-spec')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free')
+      .send({
+        spec: {
+          name: 'My Feature',
+          type: 'feature',
+          description: 'Does something cool',
+          acceptanceCriteria: ['Works', 'Fast'],
+        },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.path).toMatch(/\.md$/);
+  });
+
+  it('returns 400 when spec is missing', async () => {
+    const res = await request(app)
+      .post('/workshop/1/save-spec')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free')
+      .send({});
+    expect(res.status).toBe(400);
+  });
+});

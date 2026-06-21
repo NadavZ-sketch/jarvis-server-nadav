@@ -5447,6 +5447,32 @@ Always output the JSON block, even if nothing changed. Keep replies concise and 
     }
 });
 
+app.post('/workshop/:proposalId/save-spec', (req, res) => {
+    try {
+        const { spec } = req.body || {};
+        if (!spec || typeof spec !== 'object') return res.status(400).json({ error: 'spec required' });
+
+        const name = String(spec.name || 'spec');
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const today = new Date().toISOString().slice(0, 10);
+        const filename = `${today}-${slug || 'workshop-spec'}.md`;
+        const dirPath = path.join(__dirname, 'docs', 'superpowers', 'specs');
+        const filePath = path.join(dirPath, filename);
+
+        const acLines = Array.isArray(spec.acceptanceCriteria)
+            ? spec.acceptanceCriteria.map(ac => `- ${ac}`).join('\n')
+            : '';
+        const markdown = `# ${name}\n\n**סוג:** ${spec.type || 'feature'}\n\n## תיאור\n${spec.description || ''}\n\n## קריטריוני קבלה\n${acLines}\n`;
+
+        if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+        fs.writeFileSync(filePath, markdown, 'utf8');
+
+        res.json({ path: `docs/superpowers/specs/${filename}` });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.delete('/dashboard/backlog/proposals/:id', (req, res) => {
     try {
         const id   = parseInt(req.params.id, 10);

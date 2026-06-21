@@ -199,6 +199,7 @@ function makeSurveyRepo(opts = {}) {
         recentResponsesById:          jest.fn(async () => rows),
         recentResponsesWithDateById:  jest.fn(async () => rows),
         lastForUser:                  jest.fn(async () => rows),
+        listAll:                      jest.fn(async () => rows),
     };
 }
 
@@ -250,6 +251,36 @@ function makeDeviceRepo(opts = {}) {
         upsertToken:  jest.fn(async () => ({ error: null })),
         list:         jest.fn(async () => rows),
         deleteTokens: jest.fn(async () => ({ error: null })),
+    };
+}
+
+function makeExecutionLogRepo(opts = {}) {
+    const { rows = [], insertError = null } = opts;
+    return {
+        recent:  jest.fn(async () => rows),
+        insert:  jest.fn(async () => { if (insertError) throw insertError; }),
+    };
+}
+
+function makePromptLibraryRepo(opts = {}) {
+    const { rows = [] } = opts;
+    const first = rows[0] || { id: 'p1', name: 'x', content: 'y', version: 1, is_active: true };
+    return {
+        listAll: jest.fn(async () => rows),
+        create:  jest.fn(async () => first),
+        update:  jest.fn(async () => first),
+        remove:  jest.fn(async () => undefined),
+    };
+}
+
+function makeTestCasesRepo(opts = {}) {
+    const { rows = [] } = opts;
+    const first = rows[0] || { id: 'tc1', name: 'x', turns: '[]', source: 'recorded', last_status: 'pending' };
+    return {
+        listAll:    jest.fn(async () => rows),
+        create:     jest.fn(async () => first),
+        markResult: jest.fn(async () => undefined),
+        byId:       jest.fn(async () => first),
     };
 }
 
@@ -321,6 +352,9 @@ function makeRepos(tableData = {}) {
         telemetry: makeTelemetryRepo({ rows: tableData.smart_telemetry_events || [] }),
         metrics: makeMetricsRepo({ rows: tableData.agent_metrics || [] }),
         devices: makeDeviceRepo({ rows: tableData.device_tokens || [] }),
+        executionLog: makeExecutionLogRepo({ rows: tableData.execution_log || [] }),
+        promptLibrary: makePromptLibraryRepo({ rows: tableData.prompt_library || [] }),
+        testCases: makeTestCasesRepo({ rows: tableData.test_cases || [] }),
         e2e: {
             listRecent: jest.fn(async () => tableData.e2e_reports || []),
             byRun: jest.fn(async () => tableData.e2e_reports || []),
@@ -342,4 +376,4 @@ function makeRepos(tableData = {}) {
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTelemetryRepo, makeMetricsRepo, makeDeviceRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTelemetryRepo, makeMetricsRepo, makeDeviceRepo, makeExecutionLogRepo, makePromptLibraryRepo, makeTestCasesRepo, makeTableRepo };

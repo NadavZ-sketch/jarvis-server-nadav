@@ -941,4 +941,152 @@ class ApiService {
       return [];
     }
   }
+
+  // ─── Execution Log ────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchExecutionLog({int limit = 50}) async {
+    final res = await _client
+        .get(_uri('/execution-log?limit=$limit'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['log'] ?? []);
+  }
+
+  // ─── Weekly Score ─────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> fetchWeeklyScore() async {
+    final res = await _client
+        .get(_uri('/stats/weekly-score'), headers: _baseHeaders)
+        .timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  // ─── Prompt Library ───────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchPrompts() async {
+    final res = await _client
+        .get(_uri('/prompt-library'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['prompts'] ?? []);
+  }
+
+  Future<Map<String, dynamic>?> createPrompt(String name, String content) async {
+    final res = await _client.post(
+      _uri('/prompt-library'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'name': name, 'content': content}),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    final prompt = data['prompt'];
+    if (prompt is Map<String, dynamic>) return prompt;
+    if (prompt is Map) return Map<String, dynamic>.from(prompt);
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> updatePrompt(String id, Map<String, dynamic> patch) async {
+    final res = await _client.put(
+      _uri('/prompt-library/$id'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode(patch),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    final prompt = data['prompt'];
+    if (prompt is Map<String, dynamic>) return prompt;
+    if (prompt is Map) return Map<String, dynamic>.from(prompt);
+    return null;
+  }
+
+  Future<bool> deletePrompt(String id) async {
+    final res = await _client
+        .delete(_uri('/prompt-library/$id'), headers: _baseHeaders)
+        .timeout(_timeout);
+    return res.statusCode == 200;
+  }
+
+  // ─── Test Cases ───────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchTestCases() async {
+    final res = await _client
+        .get(_uri('/test-cases'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['testCases'] ?? []);
+  }
+
+  Future<bool> startRecording(String chatId) async {
+    final res = await _client.post(
+      _uri('/test-cases/start-recording'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'chatId': chatId}),
+    ).timeout(_timeout);
+    return res.statusCode == 200;
+  }
+
+  Future<Map<String, dynamic>?> stopRecording(String chatId) async {
+    final res = await _client.post(
+      _uri('/test-cases/stop-recording'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'chatId': chatId}),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return data;
+  }
+
+  Future<Map<String, dynamic>?> saveTestCase(
+      String name, List<Map<String, dynamic>> turns) async {
+    final res = await _client.post(
+      _uri('/test-cases'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'name': name, 'turns': turns}),
+    ).timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    final testCase = data['testCase'];
+    if (testCase is Map<String, dynamic>) return testCase;
+    if (testCase is Map) return Map<String, dynamic>.from(testCase);
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> runTestCase(String id) async {
+    final res = await _client.post(
+      _uri('/test-cases/$id/run'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({}),
+    ).timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  // ─── E2E Schedule ─────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>?> fetchE2eSchedule() async {
+    final res = await _client
+        .get(_uri('/e2e-schedule'), headers: _baseHeaders)
+        .timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  Future<bool> setE2eSchedule(Map<String, dynamic> schedule) async {
+    final res = await _client.put(
+      _uri('/e2e-schedule'),
+      headers: _headers({'Content-Type': 'application/json'}),
+      body: jsonEncode({'schedule': schedule}),
+    ).timeout(_timeout);
+    return res.statusCode == 200;
+  }
+
+  // ─── Changelog ────────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> generateChangelog() async {
+    final res = await _client
+        .get(_uri('/changelog/generate'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['entries'] ?? []);
+  }
+
+  // ─── Surveys Export ───────────────────────────────────────────────────────
+
+  /// Returns the URL for downloading the surveys CSV export.
+  /// The caller is responsible for opening the URL in a browser or download manager.
+  String surveysExportUrl() => '${settings.serverUrl}/surveys/export';
 }

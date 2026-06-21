@@ -14,10 +14,13 @@ const providerContext = new AsyncLocalStorage();
 function _setProvider(name) {
     const store = providerContext.getStore();
     if (store) store.provider = name;
+    _lastKnownProvider = name;   // track last provider globally
 }
 function getCurrentProvider() {
     return providerContext.getStore()?.provider || null;
 }
+let _lastKnownProvider = null;
+function getLastKnownProvider() { return _lastKnownProvider; }
 // Merge explicit opts arg with request-scoped opts from the store (arg wins).
 function _resolveOpts(opts) {
     const fromStore = providerContext.getStore()?.opts || {};
@@ -410,4 +413,4 @@ async function callGeminiVision(prompt, imageBase64) {
     return response.data.candidates[0].content.parts[0].text.trim();
 }
 
-module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision, callWithTools, detectMimeType, providerContext, getCurrentProvider, LocalModelError };
+module.exports = { GEMINI_URL, callGemma4, callGemma4Stream, callGeminiWithSearch, callGeminiVision, callWithTools, detectMimeType, providerContext, getCurrentProvider, getLastKnownProvider, LocalModelError };

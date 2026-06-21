@@ -87,6 +87,15 @@ function createSurveyRepo(supabase) {
                 .limit(1);
             return data || [];
         },
+
+        // Export all survey rows (no user filter) for dashboard CSV export.
+        async listAll() {
+            const { data, error } = await supabase.from(U)
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        },
     };
 }
 

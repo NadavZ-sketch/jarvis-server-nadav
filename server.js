@@ -8,6 +8,7 @@ const fs         = require('fs');
 const { createClient } = require('@supabase/supabase-js');
 const googleTTS  = require('google-tts-api');
 const { OpenAI, toFile } = require('openai');
+const { execSync } = require('child_process');
 
 const pushService = require('./services/pushService');
 const systemLog   = require('./services/systemLog');
@@ -352,6 +353,9 @@ const supabase = supabaseAdmin;
 // instead of the raw client (see services/dataAccess).
 const { createRepos } = require('./services/dataAccess');
 const repos = createRepos(supabase);
+
+// In-memory recording state (single-user server; lost on restart).
+const _recordings = new Map(); // chatId → { startedAt, turns[] }
 
 // Persist per-agent latency/intent metrics to Supabase (degrades to in-memory).
 agentMetrics.init(repos);
@@ -719,7 +723,13 @@ async function tryCustomAgent(agentName, userMessage, supabase, useLocal, settin
 // ─── Health check (for local connectivity testing) ───────────────────────────
 
 app.get('/health', (req, res) => {
-    res.json({ ok: true, version: 'multi-agent-v3', ts: Date.now(), pinecone: pinecone.isReady() });
+    res.json({
+        ok: true,
+        version: 'multi-agent-v3',
+        ts: Date.now(),
+        pinecone: pinecone.isReady(),
+        active_model: getLastKnownProvider(),
+    });
 });
 
 // ─── Push notification token registration ────────────────────────────────────
@@ -1217,6 +1227,27 @@ async function askJarvisHandler(req, res) {
             ` | agent=${agentName}`
         );
 
+        // ── Execution log (fire-and-forget, never blocks response) ─────────────
+        try {
+            repos.executionLog.insert({
+                cmd:         String(originalMessage || userMessage).slice(0, 300),
+                agent:       agentName,
+                model:       llmProvider || getLastKnownProvider() || 'unknown',
+                duration_ms: tDone - t0,
+                status:      'ok',
+            }).catch(() => {});
+        } catch (_logErr) { /* never block response */ }
+
+        // ── Test recorder: append turn if a recording is active for this chat ───
+        if (_recordings.has(chatId)) {
+            _recordings.get(chatId).turns.push({
+                input:                String(originalMessage || userMessage).slice(0, 500),
+                expected_intent:      agentName,
+                expected_action_type: action?.type || null,
+                expected_contains:    [],
+            });
+        }
+
         // For WhatsApp — pass action to Flutter to open deep link
         // Return chatId so client can use it for subsequent messages
         res.json({ answer, audio: audioBase64, action, chatId, suggestions, provider: llmProvider, memorySaved: memorySaved || null });
@@ -1233,6 +1264,16 @@ async function askJarvisHandler(req, res) {
             });
         }
         console.error('Route Error:', err.message);
+        try {
+            repos.executionLog.insert({
+                cmd:         String(req.body?.command || '').slice(0, 300),
+                agent:       typeof agentName !== 'undefined' ? agentName : 'unknown',
+                model:       getLastKnownProvider() || 'unknown',
+                duration_ms: Date.now() - t0,
+                status:      'fail',
+                error:       err?.message,
+            }).catch(() => {});
+        } catch (_logErr) { /* never block error response */ }
         const isRateLimit = err.response?.status === 429 || /429|rate.limit|quota/i.test(err.message);
         const isDb = /supabase|PGRST|relation/i.test(err.message || '');
         res.status(200).json({
@@ -1439,6 +1480,231 @@ app.get('/stats', async (_req, res) => {
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
     res.json(await repos.stats.dashboardCounts(todayStart.toISOString()));
+});
+
+// ─── Execution log ────────────────────────────────────────────────────────
+app.get('/execution-log', _rl(30), async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+        const rows = await repos.executionLog.recent(limit);
+        res.json({ log: rows });
+    } catch (err) {
+        console.error('GET /execution-log error:', err.message);
+        res.status(500).json({ error: 'internal server error' });
+    }
+});
+
+// ─── Prompt Library ───────────────────────────────────────────────────────
+app.get('/prompt-library', _rl(30), async (_req, res) => {
+    try {
+        res.json({ prompts: await repos.promptLibrary.listAll() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/prompt-library', _rl(20), async (req, res) => {
+    try {
+        const { name, content } = req.body || {};
+        if (!name || !content) return res.status(400).json({ error: 'name and content required' });
+        res.json({ prompt: await repos.promptLibrary.create({ name, content }) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/prompt-library/:id', _rl(20), async (req, res) => {
+    try {
+        res.json({ prompt: await repos.promptLibrary.update(req.params.id, req.body || {}) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/prompt-library/:id', _rl(10), async (req, res) => {
+    try {
+        await repos.promptLibrary.remove(req.params.id);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Test Cases ──────────────────────────────────────────────────────────
+
+app.get('/test-cases', _rl(30), async (_req, res) => {
+    try {
+        res.json({ testCases: await repos.testCases.listAll() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/test-cases', _rl(20), async (req, res) => {
+    try {
+        const { name, turns } = req.body || {};
+        if (!name || !Array.isArray(turns) || turns.length === 0)
+            return res.status(400).json({ error: 'name and non-empty turns required' });
+        res.json({ testCase: await repos.testCases.create({ name, turns }) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/test-cases/start-recording', _rl(10), (req, res) => {
+    const chatId = req.body?.chatId || 'default-session';
+    _recordings.set(chatId, { startedAt: new Date().toISOString(), turns: [] });
+    res.json({ ok: true, chatId });
+});
+
+app.post('/test-cases/stop-recording', _rl(10), (req, res) => {
+    const chatId = req.body?.chatId || 'default-session';
+    const rec = _recordings.get(chatId);
+    if (!rec) return res.status(404).json({ error: 'no active recording for chatId' });
+    _recordings.delete(chatId);
+    res.json({ ok: true, turns: rec.turns, startedAt: rec.startedAt });
+});
+
+app.post('/test-cases/:id/run', _rl(5), async (req, res) => {
+    try {
+        const tc = await repos.testCases.byId(req.params.id);
+        const turns = Array.isArray(tc.turns) ? tc.turns : JSON.parse(tc.turns || '[]');
+        const results = [];
+        let overallPass = true;
+
+        for (const turn of turns) {
+            const classification = await classifyIntentDetailed(turn.input, supabase);
+            const detectedIntent = classification?.intent || 'unknown';
+            const intentMatch = !turn.expected_intent || detectedIntent === turn.expected_intent;
+            if (!intentMatch) overallPass = false;
+            results.push({
+                input:            turn.input,
+                expected_intent:  turn.expected_intent,
+                detected_intent:  detectedIntent,
+                intent_match:     intentMatch,
+                pass:             intentMatch,
+            });
+        }
+
+        const finalStatus = overallPass ? 'pass' : 'fail';
+        await repos.testCases.markResult(tc.id, finalStatus, results);
+        res.json({ status: finalStatus, results });
+    } catch (err) {
+        console.error('POST /test-cases/:id/run error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Task 6: new backend endpoints ───────────────────────────────────────────
+
+// GET /stats/weekly-score — weekly quality score from feedback telemetry
+app.get('/stats/weekly-score', _rl(20), async (_req, res) => {
+    try {
+        const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const { data } = await supabase.from('smart_telemetry_events')
+            .select('event_type')
+            .in('event_type', ['feedback_up', 'feedback_down'])
+            .gte('created_at', since);
+        const rows = data || [];
+        const ups   = rows.filter(r => r.event_type === 'feedback_up').length;
+        const downs = rows.filter(r => r.event_type === 'feedback_down').length;
+        const total = ups + downs;
+        const score = total === 0 ? null : Math.round((ups / total) * 1000) / 10;
+        res.json({ score, ups, downs, total });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /e2e-schedule — read e2e run schedule from user profile preferences
+app.get('/e2e-schedule', _rl(20), async (_req, res) => {
+    try {
+        const rows = await repos.profile.latest();
+        const prefs = rows[0]?.preferences || {};
+        res.json({ schedule: prefs['e2e-schedule'] ?? null });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /e2e-schedule — write e2e run schedule to user profile preferences
+app.put('/e2e-schedule', _rl(10), async (req, res) => {
+    try {
+        const { schedule } = req.body || {};
+        if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule))
+            return res.status(400).json({ error: 'schedule object required' });
+        const rows = await repos.profile.latest();
+        const existing = rows[0] || {};
+        const prefs = { ...(existing.preferences || {}), 'e2e-schedule': schedule };
+        if (existing.id) {
+            await repos.profile.update(existing.id, { preferences: prefs });
+        } else {
+            await repos.profile.create({ preferences: prefs });
+        }
+        res.json({ ok: true, schedule });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /changelog/generate — last 20 git commits as structured changelog
+app.get('/changelog/generate', _rl(5), async (_req, res) => {
+    try {
+        const raw = execSync(
+            'git log --oneline -20 --no-decorate',
+            { cwd: __dirname, timeout: 5000, encoding: 'utf8' }
+        ).trim();
+        const lines = raw.split('\n').filter(Boolean);
+        const entries = lines.map(line => {
+            const [hash, ...rest] = line.split(' ');
+            return { hash, message: rest.join(' ') };
+        });
+        res.json({ entries });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /surveys/export — export survey responses as CSV
+app.get('/surveys/export', _rl(5), async (_req, res) => {
+    try {
+        const rows = await repos.surveys.listAll();
+        const header = 'id,question_id,response,created_at';
+        const csvRows = rows.map(r =>
+            [r.id, r.question_id, JSON.stringify(r.response ?? ''), r.created_at].join(',')
+        );
+        const csv = [header, ...csvRows].join('\n');
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="surveys.csv"');
+        res.send(csv);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /surveys/analyze-sentiment — keyword-based sentiment counts (no LLM)
+app.post('/surveys/analyze-sentiment', _rl(10), async (req, res) => {
+    try {
+        const { responses } = req.body || {};
+        if (!Array.isArray(responses))
+            return res.status(400).json({ error: 'responses array required' });
+
+        const POS = ['טוב', 'מעולה', 'אוהב', 'נהדר', 'מצוין', 'great', 'good', 'love', 'excellent', 'awesome'];
+        const NEG = ['רע', 'גרוע', 'שונא', 'נורא', 'bad', 'terrible', 'hate', 'awful', 'poor'];
+
+        let positive = 0, negative = 0, neutral = 0;
+        for (const r of responses) {
+            const text = String(r).toLowerCase();
+            const isPos = POS.some(w => text.includes(w));
+            const isNeg = NEG.some(w => text.includes(w));
+            if (isPos && !isNeg) positive++;
+            else if (isNeg && !isPos) negative++;
+            else neutral++;
+        }
+        res.json({ positive, negative, neutral, total: responses.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ─── GET /day-plan — Smart Day Engine: scored, prioritized, load-aware plan ──
@@ -3678,7 +3944,7 @@ app.patch('/shopping/:id', async (req, res) => {
 
 // ─── Streaming endpoint (SSE) ─────────────────────────────────────────────────
 
-const { callGemma4Stream, callGemma4, providerContext, getCurrentProvider, LocalModelError } = require('./agents/models');
+const { callGemma4Stream, callGemma4, providerContext, getCurrentProvider, getLastKnownProvider, LocalModelError } = require('./agents/models');
 
 async function streamJarvisHandler(req, res) {
     res.setHeader('Content-Type', 'text/event-stream');

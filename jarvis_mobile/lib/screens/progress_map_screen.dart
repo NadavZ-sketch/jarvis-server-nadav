@@ -12,6 +12,7 @@ import '../services/proposal_scoring.dart';
 import '../services/telemetry_policy.dart';
 import '../transitions/slide_fade_route.dart';
 import 'e2e_reports_screen.dart';
+import 'control_center/control_center_shell.dart';
 
 /// Unified Control Center tabs. Order drives both the TabBar and the per-tab
 /// badge mapping from /control-center/events.
@@ -1850,10 +1851,7 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
           children: [
             _buildAlertsBanner(),
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: _visibleTabs.map(_buildTabBody).toList(),
-              ),
+              child: ControlCenterShell(isAdmin: _isAdmin, settings: widget.settings),
             ),
           ],
         ),

@@ -27,6 +27,9 @@ const { createMetricsRepo } = require('./metricsRepo');
 const { createDeviceRepo } = require('./deviceRepo');
 const { createStatsRepo } = require('./statsRepo');
 const { createE2eRepo } = require('./e2eRepo');
+const { createExecutionLogRepo } = require('./executionLogRepo');
+const { createPromptLibraryRepo } = require('./promptLibraryRepo');
+const { createTestCasesRepo } = require('./testCasesRepo');
 const { createTableRepo } = require('./tableRepo');
 
 function createRepos(supabase) {
@@ -52,6 +55,9 @@ function createRepos(supabase) {
         devices: createDeviceRepo(supabase),
         stats: createStatsRepo(supabase),
         e2e: createE2eRepo(supabase),
+        executionLog: createExecutionLogRepo(supabase),
+        promptLibrary: createPromptLibraryRepo(supabase),
+        testCases: createTestCasesRepo(supabase),
         // Lazily-built, memoised generic repo for any other table.
         table(name) {
             return generic[name] || (generic[name] = createTableRepo(supabase, name));

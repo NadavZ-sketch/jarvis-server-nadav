@@ -1605,8 +1605,8 @@ app.get('/stats/weekly-score', _rl(20), async (req, res) => {
             // Multi-week history mode
             const since = new Date(Date.now() - weeksParam * 7 * 24 * 60 * 60 * 1000).toISOString();
             const { data } = await supabase.from('smart_telemetry_events')
-                .select('event_type, created_at')
-                .in('event_type', ['feedback_up', 'feedback_down'])
+                .select('event_name, created_at')
+                .in('event_name', ['feedback_up', 'feedback_down'])
                 .gte('created_at', since);
             const rows = data || [];
             const now = new Date();
@@ -1618,8 +1618,8 @@ app.get('/stats/weekly-score', _rl(20), async (req, res) => {
                     const t = new Date(r.created_at);
                     return t >= weekStart && t < weekEnd;
                 });
-                const ups = weekRows.filter(r => r.event_type === 'feedback_up').length;
-                const downs = weekRows.filter(r => r.event_type === 'feedback_down').length;
+                const ups = weekRows.filter(r => r.event_name === 'feedback_up').length;
+                const downs = weekRows.filter(r => r.event_name === 'feedback_down').length;
                 const total = ups + downs;
                 const score = total === 0 ? null : Math.round((ups / total) * 1000) / 10;
                 const label = weekStart.toLocaleDateString('he-IL', {
@@ -1632,12 +1632,12 @@ app.get('/stats/weekly-score', _rl(20), async (req, res) => {
         // Original single-week mode (backward compatible)
         const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const { data } = await supabase.from('smart_telemetry_events')
-            .select('event_type')
-            .in('event_type', ['feedback_up', 'feedback_down'])
+            .select('event_name')
+            .in('event_name', ['feedback_up', 'feedback_down'])
             .gte('created_at', since);
         const rows = data || [];
-        const ups   = rows.filter(r => r.event_type === 'feedback_up').length;
-        const downs = rows.filter(r => r.event_type === 'feedback_down').length;
+        const ups   = rows.filter(r => r.event_name === 'feedback_up').length;
+        const downs = rows.filter(r => r.event_name === 'feedback_down').length;
         const total = ups + downs;
         const score = total === 0 ? null : Math.round((ups / total) * 1000) / 10;
         res.json({ score, ups, downs, total });
@@ -4832,6 +4832,8 @@ function resolveProposalActor(req) {
 }
 
 function normalizeProposalForMvp(p) {
+    if (typeof p.plan !== 'string') p.plan = '';
+    if (!['high', 'medium', 'low'].includes(p.priority)) p.priority = 'medium';
     if (!Array.isArray(p.auditTrail)) p.auditTrail = [];
     if (!Array.isArray(p.checklist)) p.checklist = [];
     if (!Array.isArray(p.blockers)) p.blockers = [];
@@ -5186,6 +5188,8 @@ app.post('/proposals', _rl(20), (req, res) => {
             title: title.trim(),
             type: type === 'bug' ? 'bug' : 'feature',
             status: 'proposal',
+            plan: '',
+            priority: 'medium',
             createdAt: new Date().toISOString(),
             auditTrail: [],
             checklist: [],

@@ -620,6 +620,33 @@ class ApiService {
     return [];
   }
 
+  Future<List<Map<String, dynamic>>> fetchProposals() async {
+    final res = await _client
+        .get(_uri('/dashboard/backlog'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res));
+    if (data is Map<String, dynamic>) {
+      return List<Map<String, dynamic>>.from(data['proposals'] ?? []);
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>?> createProposal(String title, String type) async {
+    try {
+      final res = await _client
+          .post(
+            _uri('/proposals'),
+            headers: _headers({'Content-Type': 'application/json'}),
+            body: jsonEncode({'title': title, 'type': type}),
+          )
+          .timeout(_timeout);
+      final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+      return data['proposal'] as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> generateBacklog() async {
     final res = await _client.post(
       _uri('/dashboard/backlog/generate'),

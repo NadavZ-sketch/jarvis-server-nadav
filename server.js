@@ -5140,6 +5140,38 @@ app.get('/dashboard/backlog/schema', (_req, res) => {
     }
 });
 
+app.post('/proposals', _rl(20), (req, res) => {
+    try {
+        const { title, type } = req.body || {};
+        if (!title?.trim()) return res.status(400).json({ error: 'title required' });
+        const data = readBacklog();
+        const id = (data._nextId || 1000);
+        data._nextId = id + 1;
+        const proposal = {
+            id,
+            title: title.trim(),
+            type: type === 'bug' ? 'bug' : 'feature',
+            status: 'proposal',
+            createdAt: new Date().toISOString(),
+            auditTrail: [],
+            checklist: [],
+            blockers: [],
+            acceptanceCriteria: [],
+            owner: 'human',
+            estimation: 'MVP',
+            sprint: 'sprint-1',
+            privacyChecklist: {
+                permissionScopeChecked: false,
+                piiExposureChecked: false,
+                memoryRetentionReviewed: false,
+            },
+        };
+        data.proposals.push(proposal);
+        writeBacklog(data);
+        res.json({ proposal });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/dashboard/backlog', (_req, res) => {
     const data = readBacklog();
 

@@ -1816,36 +1816,6 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
               onPressed: _loadAll,
             ),
           ],
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(62),
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: JC.border.withOpacity(0.5), width: 0.6),
-                ),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                isScrollable: true,
-                labelColor: _kGold,
-                unselectedLabelColor: JC.textMuted,
-                indicator: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: _kGold.withOpacity(0.12),
-                  border: Border.all(color: _kGold.withOpacity(0.45), width: 0.8),
-                  boxShadow: [
-                    BoxShadow(color: _kGold.withOpacity(0.18), blurRadius: 10, spreadRadius: 0),
-                  ],
-                ),
-                indicatorSize: TabBarIndicatorSize.tab,
-                indicatorPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
-                dividerColor: Colors.transparent,
-                labelStyle: const TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.w700, fontSize: 11),
-                unselectedLabelStyle: const TextStyle(fontFamily: 'Heebo', fontSize: 11),
-                tabs: _visibleTabs.map((t) => _tabWithBadge(_tabLabel(t), t)).toList(),
-              ),
-            ),
-          ),
         ),
         body: Column(
           children: [

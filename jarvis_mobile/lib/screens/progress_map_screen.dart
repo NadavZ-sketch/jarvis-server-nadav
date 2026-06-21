@@ -1851,7 +1851,7 @@ ${desc.isNotEmpty ? 'תיאור: $desc' : ''}
           children: [
             _buildAlertsBanner(),
             Expanded(
-              child: ControlCenterShell(isAdmin: _isAdmin),
+              child: ControlCenterShell(isAdmin: _isAdmin, settings: widget.settings),
             ),
           ],
         ),

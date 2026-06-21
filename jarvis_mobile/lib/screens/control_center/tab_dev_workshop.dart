@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../app_settings.dart';
 
 class TabDevWorkshop extends StatefulWidget {
-  const TabDevWorkshop({super.key});
+  final AppSettings settings;
+  const TabDevWorkshop({super.key, required this.settings});
 
   @override
   State<TabDevWorkshop> createState() => _TabDevWorkshopState();

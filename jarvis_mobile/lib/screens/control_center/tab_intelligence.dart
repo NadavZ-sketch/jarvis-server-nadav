@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../app_settings.dart';
 
 class TabIntelligence extends StatefulWidget {
-  const TabIntelligence({super.key});
+  final AppSettings settings;
+  const TabIntelligence({super.key, required this.settings});
 
   @override
   State<TabIntelligence> createState() => _TabIntelligenceState();

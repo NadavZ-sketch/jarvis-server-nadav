@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../app_settings.dart';
 import '../../main.dart' show JC;
 import 'tab_overview.dart';
 import 'tab_intelligence.dart';
@@ -9,7 +10,8 @@ enum CcTab { overview, intelligence, devWorkshop, tests }
 
 class ControlCenterShell extends StatefulWidget {
   final bool isAdmin;
-  const ControlCenterShell({super.key, this.isAdmin = false});
+  final AppSettings settings;
+  const ControlCenterShell({super.key, this.isAdmin = false, required this.settings});
 
   @override
   State<ControlCenterShell> createState() => _ControlCenterShellState();
@@ -57,10 +59,10 @@ class _ControlCenterShellState extends State<ControlCenterShell>
       };
 
   Widget _tabBody(CcTab t) => switch (t) {
-        CcTab.overview => const TabOverview(),
-        CcTab.intelligence => const TabIntelligence(),
-        CcTab.devWorkshop => const TabDevWorkshop(),
-        CcTab.tests => const TabTests(),
+        CcTab.overview => TabOverview(settings: widget.settings),
+        CcTab.intelligence => TabIntelligence(settings: widget.settings),
+        CcTab.devWorkshop => TabDevWorkshop(settings: widget.settings),
+        CcTab.tests => TabTests(settings: widget.settings),
       };
 
   @override

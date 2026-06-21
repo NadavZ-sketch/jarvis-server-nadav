@@ -5370,7 +5370,7 @@ app.post('/dashboard/backlog/proposals/:id/draft-plan', (req, res) => {
 });
 
 // ── Workshop chat ─────────────────────────────────────────────────────────
-app.post('/workshop/:proposalId/chat', async (req, res) => {
+app.post('/workshop/:proposalId/chat', _rl(10), async (req, res) => {
     try {
         const id = parseInt(req.params.proposalId, 10);
         if (isNaN(id)) return res.status(400).json({ error: 'invalid proposalId' });
@@ -5447,7 +5447,7 @@ Always output the JSON block, even if nothing changed. Keep replies concise and 
     }
 });
 
-app.post('/workshop/:proposalId/save-spec', (req, res) => {
+app.post('/workshop/:proposalId/save-spec', _rl(20), (req, res) => {
     try {
         const { spec } = req.body || {};
         if (!spec || typeof spec !== 'object') return res.status(400).json({ error: 'spec required' });

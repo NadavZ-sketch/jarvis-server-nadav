@@ -36,8 +36,12 @@ class _TabIntelligenceState extends State<TabIntelligence>
     ]);
     if (!mounted) return;
     setState(() {
-      _scoreData = results[0] as Map<String, dynamic>;
-      _history   = results[1] as List<Map<String, dynamic>>;
+      _scoreData = results[0] is Map<String, dynamic>
+          ? results[0] as Map<String, dynamic>
+          : {};
+      _history = results[1] is List
+          ? List<Map<String, dynamic>>.from(results[1] as List)
+          : [];
       _loading   = false;
     });
   }
@@ -63,7 +67,7 @@ class _TabIntelligenceState extends State<TabIntelligence>
   }
 
   Widget _weeklyScoreCard() {
-    final score = _scoreData?['score'] as double?;
+    final score = (_scoreData?['score'] as num?)?.toDouble();
     final ups   = _scoreData?['ups']   as int? ?? 0;
     final downs = _scoreData?['downs'] as int? ?? 0;
     final total = _scoreData?['total'] as int? ?? 0;

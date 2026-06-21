@@ -691,6 +691,24 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>?> saveWorkshopSpec({
+    required int proposalId,
+    required Map<String, dynamic> spec,
+  }) async {
+    try {
+      final res = await _client
+          .post(
+            _uri('/workshop/$proposalId/save-spec'),
+            headers: _headers({'Content-Type': 'application/json'}),
+            body: jsonEncode({'spec': spec}),
+          )
+          .timeout(_timeout);
+      return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> generateBacklog() async {
     final res = await _client.post(
       _uri('/dashboard/backlog/generate'),

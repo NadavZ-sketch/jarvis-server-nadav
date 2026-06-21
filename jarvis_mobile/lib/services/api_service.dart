@@ -647,6 +647,48 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>?> workshopChat({
+    required int proposalId,
+    required String message,
+    required List<Map<String, dynamic>> history,
+  }) async {
+    try {
+      final res = await _client
+          .post(
+            _uri('/workshop/$proposalId/chat'),
+            headers: _headers({'Content-Type': 'application/json'}),
+            body: jsonEncode({'message': message, 'history': history}),
+          )
+          .timeout(const Duration(seconds: 45));
+      return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getWorkshopHistory({
+    required int proposalId,
+  }) async {
+    try {
+      final res = await _client
+          .get(_uri('/dashboard/backlog'), headers: _baseHeaders)
+          .timeout(_timeout);
+      final data = jsonDecode(_safeBody(res));
+      if (data is Map<String, dynamic>) {
+        final proposals = data['proposals'] as List? ?? [];
+        final proposal = proposals.cast<Map<String, dynamic>>().firstWhere(
+              (p) => p['id'] == proposalId,
+              orElse: () => {},
+            );
+        return List<Map<String, dynamic>>.from(
+            proposal['workshopHistory'] as List? ?? []);
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<List<Map<String, dynamic>>> generateBacklog() async {
     final res = await _client.post(
       _uri('/dashboard/backlog/generate'),

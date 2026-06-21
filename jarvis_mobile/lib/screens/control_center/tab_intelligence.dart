@@ -18,6 +18,7 @@ class _TabIntelligenceState extends State<TabIntelligence>
   late final ApiService _api = ApiService(widget.settings);
 
   Map<String, dynamic>? _scoreData;
+  List<Map<String, dynamic>> _history = [];
   bool _loading = true;
 
   @override
@@ -29,11 +30,19 @@ class _TabIntelligenceState extends State<TabIntelligence>
   Future<void> _load() async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final score = await _api.fetchWeeklyScore().catchError((_) => <String, dynamic>{});
+    final results = await Future.wait([
+      _api.fetchWeeklyScore().catchError((_) => <String, dynamic>{}),
+      _api.fetchWeeklyHistory(weeks: 6).catchError((_) => <Map<String, dynamic>>[]),
+    ]);
     if (!mounted) return;
     setState(() {
-      _scoreData = score;
-      _loading = false;
+      _scoreData = results[0] is Map<String, dynamic>
+          ? results[0] as Map<String, dynamic>
+          : {};
+      _history = results[1] is List
+          ? List<Map<String, dynamic>>.from(results[1] as List)
+          : [];
+      _loading   = false;
     });
   }
 
@@ -48,6 +57,8 @@ class _TabIntelligenceState extends State<TabIntelligence>
         children: [
           _weeklyScoreCard(),
           const SizedBox(height: 16),
+          _historyChart(),
+          const SizedBox(height: 16),
           _feedbackSection(),
           const SizedBox(height: 32),
         ],
@@ -56,7 +67,7 @@ class _TabIntelligenceState extends State<TabIntelligence>
   }
 
   Widget _weeklyScoreCard() {
-    final score = _scoreData?['score'] as double?;
+    final score = (_scoreData?['score'] as num?)?.toDouble();
     final ups   = _scoreData?['ups']   as int? ?? 0;
     final downs = _scoreData?['downs'] as int? ?? 0;
     final total = _scoreData?['total'] as int? ?? 0;
@@ -103,6 +114,68 @@ class _TabIntelligenceState extends State<TabIntelligence>
                 padding: EdgeInsets.only(top: 8),
                 child: Text('אין נתוני משוב השבוע', style: TextStyle(color: Colors.grey, fontFamily: 'Heebo', fontSize: 12)),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _historyChart() {
+    if (_history.isEmpty) return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('היסטוריה שבועית',
+                style: TextStyle(fontFamily: 'Heebo', fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 80,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: _history.map((week) {
+                  final score = (week['score'] as num?)?.toDouble();
+                  final label = week['label'] as String? ?? '';
+                  final Color barColor = score == null
+                      ? Colors.grey.shade300
+                      : score > 70
+                          ? Colors.green
+                          : score > 40
+                              ? Colors.amber
+                              : Colors.red;
+                  final double barHeight = score == null ? 4 : (score / 100 * 56).clamp(4.0, 56.0);
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          if (score != null)
+                            Text(
+                              score.toStringAsFixed(0),
+                              style: TextStyle(fontSize: 9, color: barColor, fontWeight: FontWeight.bold),
+                            ),
+                          const SizedBox(height: 2),
+                          Container(
+                            height: barHeight,
+                            decoration: BoxDecoration(
+                              color: barColor,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(label,
+                              style: const TextStyle(fontSize: 9, color: Colors.grey),
+                              overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
           ],
         ),
       ),

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../app_settings.dart';
 import '../../services/api_service.dart';
+import '../e2e_reports_screen.dart';
 
 class TabTests extends StatefulWidget {
   final AppSettings settings;
@@ -22,6 +23,9 @@ class _TabTestsState extends State<TabTests>
   List<Map<String, dynamic>> _testCases = [];
   Map<String, dynamic>? _schedule;
   bool _loading = true;
+
+  static const _freqOptions = ['manual', 'daily', 'weekly'];
+  static const _freqLabels  = {'manual': 'ידני', 'daily': 'יומי', 'weekly': 'שבועי'};
 
   @override
   void initState() {
@@ -53,6 +57,13 @@ class _TabTestsState extends State<TabTests>
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: E2eReportsPanel(settings: widget.settings),
+            ),
+          ),
+          const SizedBox(height: 16),
           _testCasesCard(),
           const SizedBox(height: 16),
           _scheduleCard(),
@@ -74,21 +85,15 @@ class _TabTestsState extends State<TabTests>
             Row(children: [
               const Expanded(
                 child: Text(
-                  'מקרי בדיקה',
+                  'מקרי בדיקה מוקלטים',
                   style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Heebo'),
                 ),
               ),
-              Text(
-                '${_testCases.length}',
-                style: const TextStyle(color: Colors.grey),
-              ),
+              Text('${_testCases.length}', style: const TextStyle(color: Colors.grey)),
             ]),
             const SizedBox(height: 8),
             if (_testCases.isEmpty)
-              const Text(
-                'אין מקרי בדיקה',
-                style: TextStyle(color: Colors.grey, fontFamily: 'Heebo'),
-              )
+              const Text('אין מקרי בדיקה', style: TextStyle(color: Colors.grey, fontFamily: 'Heebo'))
             else
               ..._testCases.take(5).map((tc) {
                 final name   = tc['name']        as String? ?? '—';
@@ -101,10 +106,7 @@ class _TabTestsState extends State<TabTests>
                 return ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    name,
-                    style: const TextStyle(fontFamily: 'Heebo', fontSize: 14),
-                  ),
+                  title: Text(name, style: const TextStyle(fontFamily: 'Heebo', fontSize: 14)),
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -112,10 +114,7 @@ class _TabTestsState extends State<TabTests>
                         color: color.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Text(
-                        status,
-                        style: TextStyle(fontSize: 11, color: color),
-                      ),
+                      child: Text(status, style: TextStyle(fontSize: 11, color: color)),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
@@ -139,43 +138,53 @@ class _TabTestsState extends State<TabTests>
     if (!mounted) return;
     final status = result?['status'] as String? ?? 'unknown';
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'תוצאה: $status',
-          style: const TextStyle(fontFamily: 'Heebo'),
-        ),
-      ),
+      SnackBar(content: Text('תוצאה: $status', style: const TextStyle(fontFamily: 'Heebo'))),
     );
     _load();
   }
 
   Widget _scheduleCard() {
     final sched = _schedule?['schedule'] as Map<String, dynamic>?;
-    final freq  = sched?['frequency'] as String? ?? 'לא מוגדר';
-    final time  = sched?['time']      as String? ?? '';
+    final freq  = sched?['frequency'] as String? ?? 'manual';
+    final time  = sched?['time']      as String? ?? '03:00';
+    final validFreq = _freqOptions.contains(freq) ? freq : 'manual';
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'לוח זמנים — E2E',
-              style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Heebo'),
-            ),
-            const SizedBox(height: 8),
+            const Text('תזמון E2E',
+                style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Heebo')),
+            const SizedBox(height: 12),
             Row(children: [
               const Icon(Icons.schedule, size: 16, color: Colors.grey),
-              const SizedBox(width: 6),
-              Text(
-                '$freq${time.isNotEmpty ? " בשעה $time" : ""}',
-                style: const TextStyle(fontFamily: 'Heebo'),
+              const SizedBox(width: 8),
+              DropdownButton<String>(
+                value: validFreq,
+                isDense: true,
+                items: _freqOptions.map((f) => DropdownMenuItem(
+                  value: f,
+                  child: Text(_freqLabels[f]!, style: const TextStyle(fontFamily: 'Heebo')),
+                )).toList(),
+                onChanged: (val) => _saveSchedule(val!, time),
               ),
-              const Spacer(),
-              TextButton(
-                onPressed: _showScheduleEditor,
-                child: const Text('ערוך', style: TextStyle(fontFamily: 'Heebo')),
-              ),
+              if (validFreq != 'manual') ...[
+                const SizedBox(width: 12),
+                const Text('בשעה ', style: TextStyle(fontFamily: 'Heebo', fontSize: 13)),
+                GestureDetector(
+                  onTap: () => _pickTime(validFreq),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(time, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+                  ),
+                ),
+              ],
             ]),
           ],
         ),
@@ -183,49 +192,28 @@ class _TabTestsState extends State<TabTests>
     );
   }
 
-  Future<void> _showScheduleEditor() async {
-    final freqCtrl = TextEditingController(
-      text: (_schedule?['schedule'] as Map?)?['frequency'] as String? ?? 'daily',
-    );
-    final timeCtrl = TextEditingController(
-      text: (_schedule?['schedule'] as Map?)?['time'] as String? ?? '03:00',
-    );
-    final ok = await showDialog<bool>(
+  Future<void> _pickTime(String freq) async {
+    final sched = _schedule?['schedule'] as Map<String, dynamic>?;
+    final current = sched?['time'] as String? ?? '03:00';
+    final parts = current.split(':');
+    final picked = await showTimePicker(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(
-          'ערוך לוח זמנים',
-          style: TextStyle(fontFamily: 'Heebo'),
-        ),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(
-            controller: freqCtrl,
-            decoration: const InputDecoration(labelText: 'תדירות (daily / weekly)'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: timeCtrl,
-            decoration: const InputDecoration(labelText: 'שעה (HH:mm)'),
-          ),
-        ]),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('ביטול'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('שמור'),
-          ),
-        ],
+      initialTime: TimeOfDay(
+        hour:   int.tryParse(parts.firstOrNull ?? '3') ?? 3,
+        minute: int.tryParse(parts.elementAtOrNull(1) ?? '0') ?? 0,
       ),
     );
-    if (ok == true && mounted) {
-      await _api
-          .setE2eSchedule({'frequency': freqCtrl.text, 'time': timeCtrl.text})
-          .catchError((_) => false);
-      _load();
+    if (picked != null && mounted) {
+      final timeStr = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+      await _saveSchedule(freq, timeStr);
     }
+  }
+
+  Future<void> _saveSchedule(String freq, String time) async {
+    await _api
+        .setE2eSchedule({'frequency': freq, 'time': time})
+        .catchError((_) => false);
+    _load();
   }
 
   Widget _exportCard() {
@@ -238,16 +226,10 @@ class _TabTestsState extends State<TabTests>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'ייצוא סקרים',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Heebo'),
-                ),
-                Text(
-                  'הורד קובץ CSV של כל תשובות הסקרים',
-                  style: TextStyle(
-                    fontSize: 12, color: Colors.grey, fontFamily: 'Heebo',
-                  ),
-                ),
+                Text('ייצוא סקרים',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Heebo')),
+                Text('הורד קובץ CSV של כל תשובות הסקרים',
+                    style: TextStyle(fontSize: 12, color: Colors.grey, fontFamily: 'Heebo')),
               ],
             ),
           ),
@@ -266,15 +248,11 @@ class _TabTestsState extends State<TabTests>
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication)
         .catchError((_) => false);
     if (!launched && mounted) {
-      // Fallback: copy to clipboard and notify
       await Clipboard.setData(ClipboardData(text: url));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'הכתובת הועתקה ללוח',
-              style: TextStyle(fontFamily: 'Heebo'),
-            ),
+            content: Text('הכתובת הועתקה ללוח', style: TextStyle(fontFamily: 'Heebo')),
           ),
         );
       }

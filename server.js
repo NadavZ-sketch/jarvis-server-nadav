@@ -1598,16 +1598,46 @@ app.post('/test-cases/:id/run', _rl(5), async (req, res) => {
 // ─── Task 6: new backend endpoints ───────────────────────────────────────────
 
 // GET /stats/weekly-score — weekly quality score from feedback telemetry
-app.get('/stats/weekly-score', _rl(20), async (_req, res) => {
+app.get('/stats/weekly-score', _rl(20), async (req, res) => {
     try {
+        const weeksParam = parseInt(req.query.weeks, 10);
+        if (!isNaN(weeksParam) && weeksParam > 0 && weeksParam <= 52) {
+            // Multi-week history mode
+            const since = new Date(Date.now() - weeksParam * 7 * 24 * 60 * 60 * 1000).toISOString();
+            const { data } = await supabase.from('smart_telemetry_events')
+                .select('event_name, created_at')
+                .in('event_name', ['feedback_up', 'feedback_down'])
+                .gte('created_at', since);
+            const rows = data || [];
+            const now = new Date();
+            const history = [];
+            for (let w = weeksParam - 1; w >= 0; w--) {
+                const weekEnd = new Date(now.getTime() - w * 7 * 24 * 60 * 60 * 1000);
+                const weekStart = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+                const weekRows = rows.filter(r => {
+                    const t = new Date(r.created_at);
+                    return t >= weekStart && t < weekEnd;
+                });
+                const ups = weekRows.filter(r => r.event_name === 'feedback_up').length;
+                const downs = weekRows.filter(r => r.event_name === 'feedback_down').length;
+                const total = ups + downs;
+                const score = total === 0 ? null : Math.round((ups / total) * 1000) / 10;
+                const label = weekStart.toLocaleDateString('he-IL', {
+                    day: 'numeric', month: 'numeric', timeZone: 'Asia/Jerusalem',
+                });
+                history.push({ weekStart: weekStart.toISOString(), label, score, ups, downs, total });
+            }
+            return res.json({ history });
+        }
+        // Original single-week mode (backward compatible)
         const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const { data } = await supabase.from('smart_telemetry_events')
-            .select('event_type')
-            .in('event_type', ['feedback_up', 'feedback_down'])
+            .select('event_name')
+            .in('event_name', ['feedback_up', 'feedback_down'])
             .gte('created_at', since);
         const rows = data || [];
-        const ups   = rows.filter(r => r.event_type === 'feedback_up').length;
-        const downs = rows.filter(r => r.event_type === 'feedback_down').length;
+        const ups   = rows.filter(r => r.event_name === 'feedback_up').length;
+        const downs = rows.filter(r => r.event_name === 'feedback_down').length;
         const total = ups + downs;
         const score = total === 0 ? null : Math.round((ups / total) * 1000) / 10;
         res.json({ score, ups, downs, total });
@@ -4693,7 +4723,11 @@ function readBacklog() {
         if (!data.proposals) data.proposals = [];
         if (!data.proposals_history) data.proposals_history = [];
         if (!data.ranking_version) data.ranking_version = BACKLOG_RANKING_VERSION;
-        if (!data._nextId)   data._nextId   = (data.items.length > 0 ? Math.max(...data.items.map(i => i.id)) + 1 : 1);
+        if (!data._nextId) {
+            const maxItemId = data.items.length > 0 ? Math.max(...data.items.map(i => i.id)) : 0;
+            const maxProposalId = data.proposals?.length > 0 ? Math.max(...data.proposals.map(p => p.id)) : 0;
+            data._nextId = Math.max(maxItemId, maxProposalId) + 1;
+        }
         return data;
     } catch {
         return {
@@ -4798,6 +4832,8 @@ function resolveProposalActor(req) {
 }
 
 function normalizeProposalForMvp(p) {
+    if (typeof p.plan !== 'string') p.plan = '';
+    if (!['high', 'medium', 'low'].includes(p.priority)) p.priority = 'medium';
     if (!Array.isArray(p.auditTrail)) p.auditTrail = [];
     if (!Array.isArray(p.checklist)) p.checklist = [];
     if (!Array.isArray(p.blockers)) p.blockers = [];
@@ -5138,6 +5174,40 @@ app.get('/dashboard/backlog/schema', (_req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+app.post('/proposals', _rl(20), (req, res) => {
+    try {
+        const { title, type } = req.body || {};
+        if (!title?.trim()) return res.status(400).json({ error: 'title required' });
+        const data = readBacklog();
+        const id = (data._nextId || 1000);
+        data._nextId = id + 1;
+        const proposal = {
+            id,
+            title: title.trim(),
+            type: type === 'bug' ? 'bug' : 'feature',
+            status: 'proposal',
+            plan: '',
+            priority: 'medium',
+            createdAt: new Date().toISOString(),
+            auditTrail: [],
+            checklist: [],
+            blockers: [],
+            acceptanceCriteria: [],
+            owner: 'human',
+            estimation: 'MVP',
+            sprint: 'sprint-1',
+            privacyChecklist: {
+                permissionScopeChecked: false,
+                piiExposureChecked: false,
+                memoryRetentionReviewed: false,
+            },
+        };
+        data.proposals.push(proposal);
+        writeBacklog(data);
+        res.json({ proposal });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/dashboard/backlog', (_req, res) => {

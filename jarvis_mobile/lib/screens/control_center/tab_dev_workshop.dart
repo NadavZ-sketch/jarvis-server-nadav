@@ -30,10 +30,15 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
   List<Map<String, dynamic>> _changelog = [];
   bool _changelogLoading = false;
 
+  // Section 4 — Proposals
+  List<Map<String, dynamic>> _proposals = [];
+  bool _proposalsLoading = false;
+
   @override
   void initState() {
     super.initState();
     _loadPrompts();
+    _loadProposals();
   }
 
   @override
@@ -210,6 +215,58 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
     });
   }
 
+  // ── Proposals ───────────────────────────────────────────────────────────────
+
+  Future<void> _loadProposals() async {
+    if (!mounted) return;
+    setState(() => _proposalsLoading = true);
+    final proposals = await _api
+        .fetchProposals()
+        .catchError((_) => <Map<String, dynamic>>[]);
+    if (!mounted) return;
+    setState(() {
+      _proposals = proposals;
+      _proposalsLoading = false;
+    });
+  }
+
+  Future<void> _showCreateProposalDialog(String type) async {
+    final titleCtrl = TextEditingController();
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(type == 'bug' ? '🐛 דיווח באג' : '✨ הצעת פיצ\'ר',
+              style: const TextStyle(fontFamily: 'Heebo')),
+          content: TextField(
+            controller: titleCtrl,
+            autofocus: true,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: 'תאר את הבקשה...',
+              hintStyle: TextStyle(fontFamily: 'Heebo'),
+            ),
+            style: const TextStyle(fontFamily: 'Heebo'),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('ביטול', style: TextStyle(fontFamily: 'Heebo'))),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('שלח', style: TextStyle(fontFamily: 'Heebo'))),
+          ],
+        ),
+      );
+      if (ok == true && titleCtrl.text.isNotEmpty && mounted) {
+        await _api.createProposal(titleCtrl.text, type);
+        if (mounted) _loadProposals();
+      }
+    } finally {
+      titleCtrl.dispose();
+    }
+  }
+
   // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
@@ -223,6 +280,8 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
         _recorderCard(),
         const SizedBox(height: 16),
         _changelogCard(),
+        const SizedBox(height: 16),
+        _proposalsCard(),
         const SizedBox(height: 32),
       ],
     );
@@ -433,6 +492,77 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
                       ),
                     ),
                   ]),
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _proposalsCard() {
+    final statusLabel = {
+      'proposal': 'הצעה',
+      'accepted': 'מאושר',
+      'in_progress': 'בביצוע',
+      'done': 'הושלם',
+      'deferred': 'נדחה',
+    };
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Expanded(
+                child: Text('הצעות ובאגים',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Heebo')),
+              ),
+              IconButton(
+                icon: const Icon(Icons.bug_report, size: 20),
+                tooltip: 'דיווח באג',
+                onPressed: () => _showCreateProposalDialog('bug'),
+              ),
+              IconButton(
+                icon: const Icon(Icons.lightbulb_outline, size: 20),
+                tooltip: 'הצע פיצ\'ר',
+                onPressed: () => _showCreateProposalDialog('feature'),
+              ),
+            ]),
+            if (_proposalsLoading)
+              const Center(
+                  child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator()))
+            else if (_proposals.isEmpty)
+              const Text('אין הצעות עדיין',
+                  style: TextStyle(color: Colors.grey, fontFamily: 'Heebo'))
+            else
+              ..._proposals.take(10).map((p) {
+                final isFeature = (p['type'] as String?) != 'bug';
+                final status = p['status'] as String? ?? 'proposal';
+                final label = statusLabel[status] ?? status;
+                return ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Text(isFeature ? '✨' : '🐛',
+                      style: const TextStyle(fontSize: 18)),
+                  title: Text(
+                    p['title'] as String? ?? '—',
+                    style: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(label,
+                        style: const TextStyle(fontSize: 11, fontFamily: 'Heebo')),
+                  ),
                 );
               }),
           ],

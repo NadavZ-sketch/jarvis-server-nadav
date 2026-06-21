@@ -5399,7 +5399,11 @@ Always output the JSON block, even if nothing changed. Keep replies concise and 
 
         const msgs = [
             { role: 'system', content: systemPrompt },
-            ...(Array.isArray(history) ? history.slice(-10) : []),
+            ...(Array.isArray(history)
+                ? history.slice(-10)
+                    .filter(m => m && ['user', 'assistant'].includes(m.role) && typeof m.content === 'string')
+                    .map(m => ({ role: m.role, content: m.content.slice(0, 2000) }))
+                : []),
             { role: 'user', content: message.trim() },
         ];
 
@@ -5434,7 +5438,7 @@ Always output the JSON block, even if nothing changed. Keep replies concise and 
         if (!Array.isArray(proposal.workshopHistory)) proposal.workshopHistory = [];
         proposal.workshopHistory.push({ role: 'user', content: message.trim(), at: new Date().toISOString() });
         proposal.workshopHistory.push({ role: 'assistant', content: reply, at: new Date().toISOString() });
-        proposal.workshopHistory = proposal.workshopHistory.slice(-40); // keep last 20 turns
+        proposal.workshopHistory = proposal.workshopHistory.slice(-40); // 40 entries = 20 user+assistant turns
         writeBacklog(data);
 
         res.json({ reply, spec });

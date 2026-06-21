@@ -70,17 +70,16 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _sending) return;
 
+    final history = _messages
+        .map((m) => {'role': m['role'] as String, 'content': m['content'] as String})
+        .toList();
+
     setState(() {
       _messages = [..._messages, {'role': 'user', 'content': text}];
       _sending = true;
     });
     _inputCtrl.clear();
     _scrollToBottom();
-
-    final history = _messages
-        .take(_messages.length - 1)
-        .map((m) => {'role': m['role'] as String, 'content': m['content'] as String})
-        .toList();
 
     final result = await _api.workshopChat(
       proposalId: widget.proposal['id'] as int,
@@ -164,7 +163,7 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
     final proposalId = widget.proposal['id'] as int;
     final result = await _api.saveWorkshopSpec(proposalId: proposalId, spec: _spec ?? {});
     if (!mounted) return;
-    final msg = result != null ? 'ספק נשמר ב-docs/superpowers/specs/' : 'שגיאה בשמירת הספק';
+    final msg = result != null ? 'מפרט נשמר ב-docs/superpowers/specs/' : 'שגיאה בשמירת המפרט';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg, style: const TextStyle(fontFamily: 'Heebo'))),
     );
@@ -180,6 +179,7 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
   }
 
   Future<void> _createGitHubIssue() async {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('GitHub Integration כבר בקרוב', style: TextStyle(fontFamily: 'Heebo'))),
     );
@@ -206,7 +206,7 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
               Icons.description_outlined,
               color: _spec != null ? Theme.of(context).colorScheme.primary : null,
             ),
-            tooltip: 'ספק',
+            tooltip: 'מפרט',
             onPressed: () => setState(() => _specExpanded = !_specExpanded),
           ),
         ],
@@ -320,6 +320,7 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
             ),
             child: Text(
               msg['content'] as String? ?? '',
+              textDirection: TextDirection.rtl,
               style: TextStyle(
                 fontFamily: 'Heebo',
                 fontSize: 14,
@@ -338,7 +339,7 @@ class _WorkshopScreenState extends State<WorkshopScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _exportBtn(icon: Icons.description, label: 'ספק', onTap: _spec != null ? _exportSpec : null),
+          _exportBtn(icon: Icons.description, label: 'מפרט', onTap: _spec != null ? _exportSpec : null),
           _exportBtn(icon: Icons.smart_toy_outlined, label: 'AI Prompt', onTap: _copyAiPrompt),
           _exportBtn(icon: Icons.code, label: 'GitHub', onTap: _createGitHubIssue),
           _exportBtn(icon: Icons.copy, label: 'העתק', onTap: _spec != null ? _copyToClipboard : null),

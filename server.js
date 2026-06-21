@@ -5369,6 +5369,80 @@ app.post('/dashboard/backlog/proposals/:id/draft-plan', (req, res) => {
     }
 });
 
+// ── Workshop chat ─────────────────────────────────────────────────────────
+app.post('/workshop/:proposalId/chat', async (req, res) => {
+    try {
+        const id = parseInt(req.params.proposalId, 10);
+        if (isNaN(id)) return res.status(400).json({ error: 'invalid proposalId' });
+
+        const { message, history } = req.body || {};
+        if (!message?.trim()) return res.status(400).json({ error: 'message required' });
+
+        const data = readBacklog();
+        const proposal = data.proposals?.find(p => p.id === id);
+        if (!proposal) return res.status(404).json({ error: 'proposal not found' });
+
+        const systemPrompt = `You are a product development assistant helping refine a software proposal.
+Proposal: "${proposal.title}" (type: ${proposal.type || 'feature'})
+
+Your job:
+1. Have a natural conversation to clarify requirements
+2. At the end of EVERY reply, output a JSON block (fenced with \`\`\`json) containing the current best-guess spec:
+{
+  "name": "<feature name>",
+  "type": "<feature|fix|ux|infra>",
+  "description": "<1-3 sentence description>",
+  "acceptanceCriteria": ["<criterion 1>", "<criterion 2>"]
+}
+
+Always output the JSON block, even if nothing changed. Keep replies concise and in Hebrew.`;
+
+        const msgs = [
+            { role: 'system', content: systemPrompt },
+            ...(Array.isArray(history) ? history.slice(-10) : []),
+            { role: 'user', content: message.trim() },
+        ];
+
+        const raw = await callGemma4(msgs, false, 1200);
+
+        // Extract JSON spec block from reply
+        let spec = { name: proposal.title, type: proposal.type || 'feature', description: proposal.plan || '', acceptanceCriteria: proposal.acceptanceCriteria || [] };
+        const jsonMatch = raw.match(/```json\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+            try {
+                const parsed = JSON.parse(jsonMatch[1].trim());
+                if (parsed && typeof parsed === 'object') {
+                    spec = {
+                        name: parsed.name || spec.name,
+                        type: parsed.type || spec.type,
+                        description: parsed.description || spec.description,
+                        acceptanceCriteria: Array.isArray(parsed.acceptanceCriteria) ? parsed.acceptanceCriteria : spec.acceptanceCriteria,
+                    };
+                    // Persist updated spec fields back to proposal
+                    if (parsed.description) proposal.plan = parsed.description;
+                    if (Array.isArray(parsed.acceptanceCriteria) && parsed.acceptanceCriteria.length > 0) {
+                        proposal.acceptanceCriteria = parsed.acceptanceCriteria;
+                    }
+                }
+            } catch (_) { /* ignore JSON parse errors */ }
+        }
+
+        // Strip the JSON block from the user-visible reply
+        const reply = raw.replace(/```json[\s\S]*?```/g, '').trim();
+
+        // Persist conversation turn
+        if (!Array.isArray(proposal.workshopHistory)) proposal.workshopHistory = [];
+        proposal.workshopHistory.push({ role: 'user', content: message.trim(), at: new Date().toISOString() });
+        proposal.workshopHistory.push({ role: 'assistant', content: reply, at: new Date().toISOString() });
+        proposal.workshopHistory = proposal.workshopHistory.slice(-40); // keep last 20 turns
+        writeBacklog(data);
+
+        res.json({ reply, spec });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.delete('/dashboard/backlog/proposals/:id', (req, res) => {
     try {
         const id   = parseInt(req.params.id, 10);

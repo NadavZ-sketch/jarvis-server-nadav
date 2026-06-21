@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../app_settings.dart';
 import '../../services/api_service.dart';
+import 'workshop_screen.dart';
 
 class TabDevWorkshop extends StatefulWidget {
   final AppSettings settings;
@@ -265,6 +266,19 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
     } finally {
       titleCtrl.dispose();
     }
+  }
+
+  Future<void> _openWorkshop(Map<String, dynamic> proposal) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WorkshopScreen(
+          proposal: proposal,
+          settings: widget.settings,
+        ),
+      ),
+    );
+    if (mounted) _loadProposals();
   }
 
   // ── Build ───────────────────────────────────────────────────────────────────
@@ -546,6 +560,7 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
                 return ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
+                  onTap: () => _openWorkshop(p),
                   leading: Text(isFeature ? '✨' : '🐛',
                       style: const TextStyle(fontSize: 18)),
                   title: Text(

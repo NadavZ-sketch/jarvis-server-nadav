@@ -1598,8 +1598,38 @@ app.post('/test-cases/:id/run', _rl(5), async (req, res) => {
 // ─── Task 6: new backend endpoints ───────────────────────────────────────────
 
 // GET /stats/weekly-score — weekly quality score from feedback telemetry
-app.get('/stats/weekly-score', _rl(20), async (_req, res) => {
+app.get('/stats/weekly-score', _rl(20), async (req, res) => {
     try {
+        const weeksParam = parseInt(req.query.weeks, 10);
+        if (!isNaN(weeksParam) && weeksParam > 0 && weeksParam <= 52) {
+            // Multi-week history mode
+            const since = new Date(Date.now() - weeksParam * 7 * 24 * 60 * 60 * 1000).toISOString();
+            const { data } = await supabase.from('smart_telemetry_events')
+                .select('event_type, created_at')
+                .in('event_type', ['feedback_up', 'feedback_down'])
+                .gte('created_at', since);
+            const rows = data || [];
+            const now = new Date();
+            const history = [];
+            for (let w = weeksParam - 1; w >= 0; w--) {
+                const weekEnd = new Date(now.getTime() - w * 7 * 24 * 60 * 60 * 1000);
+                const weekStart = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+                const weekRows = rows.filter(r => {
+                    const t = new Date(r.created_at);
+                    return t >= weekStart && t < weekEnd;
+                });
+                const ups = weekRows.filter(r => r.event_type === 'feedback_up').length;
+                const downs = weekRows.filter(r => r.event_type === 'feedback_down').length;
+                const total = ups + downs;
+                const score = total === 0 ? null : Math.round((ups / total) * 1000) / 10;
+                const label = weekStart.toLocaleDateString('he-IL', {
+                    day: 'numeric', month: 'numeric', timeZone: 'Asia/Jerusalem',
+                });
+                history.push({ weekStart: weekStart.toISOString(), label, score, ups, downs, total });
+            }
+            return res.json({ history });
+        }
+        // Original single-week mode (backward compatible)
         const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const { data } = await supabase.from('smart_telemetry_events')
             .select('event_type')

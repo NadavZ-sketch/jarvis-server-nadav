@@ -988,6 +988,18 @@ class ApiService {
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
+  Future<List<Map<String, dynamic>>> fetchWeeklyHistory({int weeks = 6}) async {
+    try {
+      final res = await _client
+          .get(_uri('/stats/weekly-score?weeks=$weeks'), headers: _baseHeaders)
+          .timeout(_timeout);
+      final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+      return List<Map<String, dynamic>>.from(data['history'] ?? []);
+    } catch (_) {
+      return [];
+    }
+  }
+
   // ─── Prompt Library ───────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> fetchPrompts() async {

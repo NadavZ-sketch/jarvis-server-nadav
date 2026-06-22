@@ -956,6 +956,14 @@ async function askJarvisHandler(req, res) {
                     },
                 }).catch(() => {});
             }
+            // Router Trainer: record messages that default to chat for user review
+            if (agentName === 'chat' && routed.matches.length === 0) {
+                feedbackStore.recordEvent(repos, {
+                    eventName: 'router_chat_default',
+                    value: 1,
+                    metadata: { message: String(userMessage).slice(0, 500) },
+                }).catch(() => {});
+            }
             // Removed: the former `else if (agentName === 'chat' && length > 12)`
             // branch that called classifyIntentWithLLM a second time. If keywords
             // already returned 'chat', the LLM also returns 'chat' >90% of the time

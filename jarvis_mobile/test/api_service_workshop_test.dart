@@ -6,7 +6,7 @@ import 'package:jarvis_mobile/services/api_service.dart';
 import 'package:jarvis_mobile/app_settings.dart';
 
 void main() {
-  final settings = AppSettings()..serverUrl = 'http://localhost:3000';
+  final settings = AppSettings(useLocalServer: true, localServerUrl: 'http://localhost:3000');
 
   group('workshopChat', () {
     test('returns reply and spec on success', () async {

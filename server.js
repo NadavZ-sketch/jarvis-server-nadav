@@ -5412,21 +5412,18 @@ Always output the JSON block, even if nothing changed. Keep replies concise and 
         // Extract JSON spec block from reply
         let spec = { name: proposal.title, type: proposal.type || 'feature', description: proposal.plan || '', acceptanceCriteria: proposal.acceptanceCriteria || [] };
         const jsonMatch = raw.match(/```json\s*([\s\S]*?)```/);
+        let parsedSpec = null;
         if (jsonMatch) {
             try {
                 const parsed = JSON.parse(jsonMatch[1].trim());
                 if (parsed && typeof parsed === 'object') {
+                    parsedSpec = parsed;
                     spec = {
                         name: parsed.name || spec.name,
                         type: parsed.type || spec.type,
                         description: parsed.description || spec.description,
                         acceptanceCriteria: Array.isArray(parsed.acceptanceCriteria) ? parsed.acceptanceCriteria : spec.acceptanceCriteria,
                     };
-                    // Persist updated spec fields back to proposal
-                    if (parsed.description) proposal.plan = parsed.description;
-                    if (Array.isArray(parsed.acceptanceCriteria) && parsed.acceptanceCriteria.length > 0) {
-                        proposal.acceptanceCriteria = parsed.acceptanceCriteria;
-                    }
                 }
             } catch (_) { /* ignore JSON parse errors */ }
         }
@@ -5434,12 +5431,20 @@ Always output the JSON block, even if nothing changed. Keep replies concise and 
         // Strip the JSON block from the user-visible reply
         const reply = raw.replace(/```json[\s\S]*?```/g, '').trim();
 
-        // Persist conversation turn
-        if (!Array.isArray(proposal.workshopHistory)) proposal.workshopHistory = [];
-        proposal.workshopHistory.push({ role: 'user', content: message.trim(), at: new Date().toISOString() });
-        proposal.workshopHistory.push({ role: 'assistant', content: reply, at: new Date().toISOString() });
-        proposal.workshopHistory = proposal.workshopHistory.slice(-40); // 40 entries = 20 user+assistant turns
-        writeBacklog(data);
+        // Re-read backlog to pick up any concurrent writes before persisting
+        const freshData = readBacklog();
+        const freshProposal = freshData.proposals?.find(p => p.id === id);
+        if (freshProposal) {
+            if (parsedSpec?.description) freshProposal.plan = parsedSpec.description;
+            if (Array.isArray(parsedSpec?.acceptanceCriteria) && parsedSpec.acceptanceCriteria.length > 0) {
+                freshProposal.acceptanceCriteria = parsedSpec.acceptanceCriteria;
+            }
+            if (!Array.isArray(freshProposal.workshopHistory)) freshProposal.workshopHistory = [];
+            freshProposal.workshopHistory.push({ role: 'user', content: message.trim(), at: new Date().toISOString() });
+            freshProposal.workshopHistory.push({ role: 'assistant', content: reply, at: new Date().toISOString() });
+            freshProposal.workshopHistory = freshProposal.workshopHistory.slice(-40);
+            writeBacklog(freshData);
+        }
 
         res.json({ reply, spec });
     } catch (e) {
@@ -5449,13 +5454,16 @@ Always output the JSON block, even if nothing changed. Keep replies concise and 
 
 app.post('/workshop/:proposalId/save-spec', _rl(20), (req, res) => {
     try {
+        const proposalId = parseInt(req.params.proposalId, 10);
+        if (isNaN(proposalId)) return res.status(400).json({ error: 'invalid proposalId' });
+
         const { spec } = req.body || {};
         if (!spec || typeof spec !== 'object') return res.status(400).json({ error: 'spec required' });
 
         const name = String(spec.name || 'spec');
         const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         const today = new Date().toISOString().slice(0, 10);
-        const filename = `${today}-${slug || 'workshop-spec'}.md`;
+        const filename = `${today}-${slug || 'workshop-spec'}-${proposalId}.md`;
         const dirPath = path.join(__dirname, 'docs', 'superpowers', 'specs');
         const filePath = path.join(dirPath, filename);
 

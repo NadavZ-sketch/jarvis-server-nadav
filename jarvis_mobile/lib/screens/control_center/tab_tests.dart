@@ -119,7 +119,7 @@ class _TabTestsState extends State<TabTests>
                     const SizedBox(width: 8),
                     IconButton(
                       icon: const Icon(Icons.play_arrow, size: 18),
-                      onPressed: () => _runTest(tc['id'] as String),
+                      onPressed: () => _runTest(tc['id'].toString()),
                       tooltip: 'הרץ',
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(minWidth: 28, minHeight: 28),

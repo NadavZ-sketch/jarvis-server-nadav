@@ -46,11 +46,24 @@ jest.mock('fs', () => ({
 }));
 
 const request = require('supertest');
+const { createClient } = require('@supabase/supabase-js');
 
 let app;
+let supabaseClient;
 beforeAll(() => {
   ({ app } = require('../../server'));
+  supabaseClient = createClient.mock.results[0].value;
 });
+
+function makeChain(data = [], error = null) {
+  const chain = {
+    select: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    order: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockResolvedValue({ data, error }),
+  };
+  return chain;
+}
 
 beforeEach(() => {
   mockOverrides = [];
@@ -70,6 +83,8 @@ beforeEach(() => {
   // Reset overrides cache so endpoints read fresh
   const router = require('../../agents/router');
   if (router.invalidateOverridesCache) router.invalidateOverridesCache();
+  // Default supabase: return empty results
+  supabaseClient.from.mockImplementation(() => makeChain([], null));
 });
 
 describe('GET /router/keywords', () => {
@@ -160,5 +175,98 @@ describe('DELETE /router/keywords', () => {
       .set('x-user-plan', 'free')
       .send({ keyword: 'חלב' });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /router/training-events', () => {
+  it('returns mapped events list from supabase', async () => {
+    const fakeData = [
+      { id: 'uuid-1', metadata: { message: 'שלח לאמא שלום' }, created_at: '2026-06-22T10:00:00Z' },
+      { id: 'uuid-2', metadata: { message: 'מה מזג האוויר' }, created_at: '2026-06-22T09:00:00Z' },
+    ];
+    supabaseClient.from.mockReturnValue(makeChain(fakeData, null));
+
+    const res = await request(app)
+      .get('/router/training-events')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    expect(res.status).toBe(200);
+    expect(res.body.events).toHaveLength(2);
+    expect(res.body.events[0].id).toBe('uuid-1');
+    expect(res.body.events[0].message).toBe('שלח לאמא שלום');
+    expect(res.body.events[0].created_at).toBe('2026-06-22T10:00:00Z');
+    expect(res.body.events[1].message).toBe('מה מזג האוויר');
+  });
+
+  it('returns empty events array when supabase returns no rows', async () => {
+    supabaseClient.from.mockReturnValue(makeChain([], null));
+
+    const res = await request(app)
+      .get('/router/training-events')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    expect(res.status).toBe(200);
+    expect(res.body.events).toEqual([]);
+  });
+
+  it('maps missing metadata.message to empty string', async () => {
+    const fakeData = [
+      { id: 'uuid-3', metadata: {}, created_at: '2026-06-22T08:00:00Z' },
+      { id: 'uuid-4', metadata: null, created_at: '2026-06-22T07:00:00Z' },
+    ];
+    supabaseClient.from.mockReturnValue(makeChain(fakeData, null));
+
+    const res = await request(app)
+      .get('/router/training-events')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    expect(res.status).toBe(200);
+    expect(res.body.events[0].message).toBe('');
+    expect(res.body.events[1].message).toBe('');
+  });
+
+  it('returns 500 when supabase returns an error', async () => {
+    const chain = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue({ data: null, error: new Error('db connection failed') }),
+    };
+    supabaseClient.from.mockReturnValue(chain);
+
+    const res = await request(app)
+      .get('/router/training-events')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBeDefined();
+  });
+
+  it('respects the ?limit query parameter (up to 100)', async () => {
+    supabaseClient.from.mockReturnValue(makeChain([], null));
+
+    await request(app)
+      .get('/router/training-events?limit=10')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    const chain = supabaseClient.from.mock.results[0].value;
+    expect(chain.limit).toHaveBeenCalledWith(10);
+  });
+
+  it('caps limit at 100 even when higher value is requested', async () => {
+    supabaseClient.from.mockReturnValue(makeChain([], null));
+
+    await request(app)
+      .get('/router/training-events?limit=999')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    const chain = supabaseClient.from.mock.results[0].value;
+    expect(chain.limit).toHaveBeenCalledWith(100);
   });
 });

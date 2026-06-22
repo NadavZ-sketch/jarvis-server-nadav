@@ -36,6 +36,8 @@ jest.mock('../../agents/router', () => {
         }),
         classifyIntentWithLLM: jest.fn(),
         invalidateRouterCache: jest.fn(),
+        loadRouterOverrides: jest.fn().mockReturnValue([]),
+        invalidateOverridesCache: jest.fn(),
     };
 });
 jest.mock('../../agents/taskAgent', () => ({ runTaskAgent: jest.fn() }));

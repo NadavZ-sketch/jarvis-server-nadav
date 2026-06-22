@@ -26,7 +26,7 @@ jest.mock('../../services/obsidianSync', () => ({
 }));
 
 // Stub all agents so server.js loads without issues
-jest.mock('../../agents/router', () => ({ classifyIntent: jest.fn(), classifyIntentWithLLM: jest.fn(), invalidateRouterCache: jest.fn() }));
+jest.mock('../../agents/router', () => ({ classifyIntent: jest.fn(), classifyIntentWithLLM: jest.fn(), invalidateRouterCache: jest.fn(), loadRouterOverrides: jest.fn().mockReturnValue([]), invalidateOverridesCache: jest.fn() }));
 jest.mock('../../agents/taskAgent', () => ({ runTaskAgent: jest.fn() }));
 jest.mock('../../agents/reminderAgent', () => ({ runReminderAgent: jest.fn() }));
 jest.mock('../../agents/memoryAgent', () => ({ runMemoryAgent: jest.fn(), autoExtractMemory: jest.fn().mockResolvedValue(undefined) }));

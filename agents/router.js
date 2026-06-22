@@ -55,26 +55,32 @@ function loadRouterOverrides() {
     try {
         const parsed = JSON.parse(fs.readFileSync(OVERRIDES_PATH, 'utf8'));
         _overridesCache = Array.isArray(parsed.overrides) ? parsed.overrides : [];
-    } catch {
+        _overridesAt = Date.now();
+    } catch (e) {
+        console.warn('[router] failed to load router-overrides.json:', e.message);
         _overridesCache = [];
     }
-    _overridesAt = Date.now();
     return _overridesCache;
 }
 
 function invalidateOverridesCache() { _overridesAt = 0; }
 
-function classifyIntent(userMessage) {
-    const msg = userMessage.toLowerCase();
-
-    // User-defined substring overrides (hot-reload, checked first)
-    const overrides = loadRouterOverrides();
+function _findOverrideIntent(overrides, msg, userMessage) {
     for (const { keyword, intent } of overrides) {
-        if (keyword && intent && msg.includes(keyword.toLowerCase())) {
+        if (keyword && intent && VALID_INTENTS.has(intent) && msg.includes(keyword.toLowerCase())) {
             console.log(`🧭 Router (override): "${intent}" ← "${userMessage.slice(0, 50)}"`);
             return intent;
         }
     }
+    return null;
+}
+
+function classifyIntent(userMessage) {
+    const msg = userMessage.toLowerCase();
+
+    // User-defined substring overrides (hot-reload, checked first)
+    const overrideIntent = _findOverrideIntent(loadRouterOverrides(), msg, userMessage);
+    if (overrideIntent) return overrideIntent;
 
     // Fast path: static keyword match
     for (const [intent, pattern] of Object.entries(KEYWORDS)) {
@@ -107,13 +113,8 @@ function classifyIntentDetailed(userMessage) {
     const msg = userMessage.toLowerCase();
 
     // User-defined substring overrides — return immediately as non-ambiguous
-    const overrides = loadRouterOverrides();
-    for (const { keyword, intent } of overrides) {
-        if (keyword && intent && msg.includes(keyword.toLowerCase())) {
-            console.log(`🧭 Router (override): "${intent}" ← "${userMessage.slice(0, 50)}"`);
-            return { intent, matches: [intent], ambiguous: false };
-        }
-    }
+    const overrideIntent = _findOverrideIntent(loadRouterOverrides(), msg, userMessage);
+    if (overrideIntent) return { intent: overrideIntent, matches: [overrideIntent], ambiguous: false };
 
     const matches = [];
     for (const [intent, pattern] of Object.entries(KEYWORDS)) {

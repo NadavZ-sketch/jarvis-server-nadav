@@ -29,6 +29,8 @@ jest.mock('../../agents/router', () => {
         classifyIntentWithLLM: jest.fn(),
         invalidateRouterCache: jest.fn(),
         loadCustomRegistry: jest.fn().mockReturnValue([]),
+        loadRouterOverrides: jest.fn().mockReturnValue([]),
+        invalidateOverridesCache: jest.fn(),
     };
 });
 jest.mock('../../agents/models', () => ({

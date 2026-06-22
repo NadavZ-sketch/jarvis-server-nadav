@@ -22,10 +22,15 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
   List<Map<String, dynamic>> _prompts = [];
   bool _promptsLoading = true;
 
-  // Section 2 — Test Recorder
-  bool _recording = false;
-  List<dynamic> _recordedTurns = [];
-  final TextEditingController _saveNameCtrl = TextEditingController();
+  // Section 2 — Router Trainer
+  List<Map<String, dynamic>> _trainingEvents = [];
+  List<Map<String, dynamic>> _routerKeywords = [];
+  bool _routerLoading = false;
+  int? _openRowIndex;
+  final Set<String> _handledEventIds = {};
+  String? _selectedIntent;
+  final TextEditingController _kwCtrl = TextEditingController();
+  int _routerTabIndex = 0;
 
   // Section 3 — Changelog
   List<Map<String, dynamic>> _changelog = [];
@@ -39,12 +44,13 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
   void initState() {
     super.initState();
     _loadPrompts();
+    _loadRouterData();
     _loadProposals();
   }
 
   @override
   void dispose() {
-    _saveNameCtrl.dispose();
+    _kwCtrl.dispose();
     super.dispose();
   }
 
@@ -165,40 +171,68 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
     }
   }
 
-  // ── Test Recorder ───────────────────────────────────────────────────────────
+  // ── Router Trainer ──────────────────────────────────────────────────────────
 
-  Future<void> _startRecording() async {
-    await _api.startRecording('cc-session').catchError((_) => false);
+  Future<void> _loadRouterData() async {
+    if (!mounted) return;
+    setState(() => _routerLoading = true);
+    final results = await Future.wait([
+      _api.fetchRouterTrainingEvents().catchError((_) => <Map<String, dynamic>>[]),
+      _api.fetchRouterKeywords().catchError((_) => <Map<String, dynamic>>[]),
+    ]);
     if (!mounted) return;
     setState(() {
-      _recording = true;
-      _recordedTurns = [];
+      _trainingEvents = results[0] as List<Map<String, dynamic>>;
+      _routerKeywords = results[1] as List<Map<String, dynamic>>;
+      _routerLoading = false;
     });
   }
 
-  Future<void> _stopRecording() async {
-    final result =
-        await _api.stopRecording('cc-session').catchError((_) => null);
+  Future<void> _saveRouterKeyword(int rowIndex) async {
+    final kw = _kwCtrl.text.trim();
+    final intent = _selectedIntent;
+    if (kw.isEmpty || intent == null) return;
+    final event = _trainingEvents[rowIndex];
+    final ok = await _api
+        .addRouterKeyword(keyword: kw, intent: intent)
+        .catchError((_) => false);
     if (!mounted) return;
-    setState(() {
-      _recording = false;
-      _recordedTurns = (result?['turns'] as List?) ?? [];
-    });
+    if (ok) {
+      setState(() {
+        _handledEventIds.add(event['id']?.toString() ?? '');
+        _routerKeywords = [
+          ..._routerKeywords,
+          {'keyword': kw, 'intent': intent},
+        ];
+        _openRowIndex = null;
+        _selectedIntent = null;
+        _kwCtrl.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ "$kw" ← $intent — פעיל מיד',
+              style: const TextStyle(fontFamily: 'Heebo')),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
-  Future<void> _saveTestCase() async {
-    if (_saveNameCtrl.text.isEmpty) return;
-    final turns = _recordedTurns.cast<Map<String, dynamic>>();
-    await _api
-        .saveTestCase(_saveNameCtrl.text, turns)
-        .catchError((_) => null);
+  Future<void> _deleteRouterKeyword(Map<String, dynamic> kw) async {
+    final ok = await _api
+        .deleteRouterKeyword(
+          keyword: kw['keyword'] as String,
+          intent: kw['intent'] as String,
+        )
+        .catchError((_) => false);
     if (!mounted) return;
-    setState(() => _recordedTurns = []);
-    _saveNameCtrl.clear();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('נשמר!', style: TextStyle(fontFamily: 'Heebo'))),
-    );
+    if (ok) {
+      setState(() {
+        _routerKeywords = _routerKeywords
+            .where((k) => !(k['keyword'] == kw['keyword'] && k['intent'] == kw['intent']))
+            .toList();
+      });
+    }
   }
 
   // ── Changelog ───────────────────────────────────────────────────────────────
@@ -291,7 +325,7 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
       children: [
         _promptLibraryCard(),
         const SizedBox(height: 16),
-        _recorderCard(),
+        _routerTrainerCard(),
         const SizedBox(height: 16),
         _changelogCard(),
         const SizedBox(height: 16),
@@ -373,68 +407,299 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
     );
   }
 
-  Widget _recorderCard() {
+  static const _intentChips = [
+    ('📅', 'reminder'), ('✅', 'task'),       ('📈', 'stocks'),
+    ('🛒', 'shopping'), ('💬', 'messaging'),  ('⚽', 'sports'),
+    ('🌤', 'weather'),  ('📰', 'news'),       ('🌍', 'translate'),
+    ('🎵', 'music'),    ('📝', 'notes'),      ('🧠', 'memory'),
+  ];
+
+  Widget _routerTrainerCard() {
+    final unhandled = _trainingEvents
+        .where((e) => !_handledEventIds.contains(e['id']?.toString() ?? ''))
+        .toList();
+    final unhandledCount = unhandled.length;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('מקליט שיחה',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold, fontFamily: 'Heebo')),
-            const SizedBox(height: 12),
-            if (!_recording)
-              ElevatedButton.icon(
-                icon: const Icon(Icons.fiber_manual_record,
-                    color: Colors.red),
-                label: const Text('התחל הקלטה',
-                    style: TextStyle(fontFamily: 'Heebo')),
-                onPressed: _startRecording,
-              )
-            else ...[
-              Row(children: [
-                const Icon(Icons.fiber_manual_record,
-                    color: Colors.red, size: 14),
-                const SizedBox(width: 6),
-                const Text('מקליט...',
-                    style: TextStyle(
-                        fontFamily: 'Heebo', color: Colors.red)),
-                const Spacer(),
-                ElevatedButton(
-                  onPressed: _stopRecording,
-                  child: const Text('עצור',
-                      style: TextStyle(fontFamily: 'Heebo')),
-                ),
-              ]),
-            ],
-            if (_recordedTurns.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text('${_recordedTurns.length} תורות הוקלטו',
-                  style: const TextStyle(
-                      fontFamily: 'Heebo', fontSize: 13)),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(
-                  child: TextField(
-                    controller: _saveNameCtrl,
-                    decoration: const InputDecoration(
-                      hintText: 'שם מקרה הבדיקה',
-                      hintStyle: TextStyle(fontFamily: 'Heebo'),
-                    ),
+            // Header
+            Row(children: [
+              const Expanded(
+                child: Text('🧠 מאמן Router',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Heebo')),
+              ),
+              if (unhandledCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$unhandledCount פתוחות',
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontFamily: 'Heebo'),
                   ),
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _saveTestCase,
-                  child: const Text('שמור',
-                      style: TextStyle(fontFamily: 'Heebo')),
-                ),
-              ]),
-            ],
+              IconButton(
+                icon: const Icon(Icons.refresh, size: 18),
+                onPressed: _loadRouterData,
+                tooltip: 'רענן',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            // Inner tab row
+            Row(children: [
+              _routerTab('הודעות', 0),
+              const SizedBox(width: 8),
+              _routerTab('Keywords שלי', 1),
+            ]),
+            const Divider(height: 16),
+            // Content
+            if (_routerLoading)
+              const Center(child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(),
+              ))
+            else if (_routerTabIndex == 0)
+              _messagesTabContent(unhandled)
+            else
+              _keywordsTabContent(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _routerTab(String label, int index) {
+    final active = _routerTabIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _routerTabIndex = index;
+        _openRowIndex = null;
+        _selectedIntent = null;
+        _kwCtrl.clear();
+      }),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: active ? Theme.of(context).colorScheme.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Heebo',
+            fontSize: 12,
+            fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+            color: active ? Theme.of(context).colorScheme.primary : Colors.grey,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _messagesTabContent(List<Map<String, dynamic>> unhandled) {
+    if (unhandled.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Text('אין הודעות לטיפול',
+            style: TextStyle(color: Colors.grey, fontFamily: 'Heebo', fontSize: 13),
+            textAlign: TextAlign.center),
+      );
+    }
+    return Column(
+      children: List.generate(unhandled.length, (i) {
+        final event = unhandled[i];
+        final isOpen = _openRowIndex == i;
+        final msg = event['message'] as String? ?? '';
+        return _messageRow(event: event, index: i, isOpen: isOpen, msg: msg);
+      }),
+    );
+  }
+
+  Widget _messageRow({
+    required Map<String, dynamic> event,
+    required int index,
+    required bool isOpen,
+    required String msg,
+  }) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: () {
+            setState(() {
+              if (_openRowIndex == index) {
+                _openRowIndex = null;
+                _selectedIntent = null;
+                _kwCtrl.clear();
+              } else {
+                _openRowIndex = index;
+                _selectedIntent = null;
+                // Pre-fill keyword from first 3 words
+                final words = msg.split(' ').take(3).join(' ');
+                _kwCtrl.text = words;
+              }
+            });
+          },
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(children: [
+              Container(
+                width: 6, height: 6,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isOpen
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.grey.shade400,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  msg,
+                  style: TextStyle(
+                    fontFamily: 'Heebo',
+                    fontSize: 13,
+                    color: isOpen ? null : Colors.grey.shade600,
+                  ),
+                  maxLines: isOpen ? null : 1,
+                  overflow: isOpen ? null : TextOverflow.ellipsis,
+                ),
+              ),
+            ]),
+          ),
+        ),
+        if (isOpen) _expandedPanel(index),
+        if (index < _trainingEvents.length - 1)
+          const Divider(height: 1),
+      ],
+    );
+  }
+
+  Widget _expandedPanel(int rowIndex) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 4, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Intent chips
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: _intentChips.map(((emoji, name)) {
+              final selected = _selectedIntent == name;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedIntent = name),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: selected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey.shade300,
+                    ),
+                    color: selected
+                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+                        : null,
+                  ),
+                  child: Text(
+                    '$emoji $name',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'Heebo',
+                      color: selected ? Theme.of(context).colorScheme.primary : Colors.grey.shade600,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 10),
+          // Keyword input + save
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _kwCtrl,
+                textDirection: TextDirection.rtl,
+                style: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: 'keyword לזיהוי...',
+                  hintStyle: TextStyle(fontFamily: 'Heebo', fontSize: 13),
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: (_selectedIntent != null && _kwCtrl.text.trim().isNotEmpty)
+                  ? () => _saveRouterKeyword(rowIndex)
+                  : null,
+              child: const Text('שמור', style: TextStyle(fontFamily: 'Heebo')),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _keywordsTabContent() {
+    if (_routerKeywords.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Text('עדיין לא הוספת keywords',
+            style: TextStyle(color: Colors.grey, fontFamily: 'Heebo', fontSize: 13),
+            textAlign: TextAlign.center),
+      );
+    }
+    return Column(
+      children: _routerKeywords.map((kw) {
+        final keyword = kw['keyword'] as String? ?? '';
+        final intent = kw['intent'] as String? ?? '';
+        return ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(intent,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'Heebo',
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w700)),
+          ),
+          title: Text(keyword,
+              style: const TextStyle(fontFamily: 'Heebo', fontSize: 13)),
+          subtitle: const Text('←', style: TextStyle(color: Colors.grey)),
+          trailing: IconButton(
+            icon: const Icon(Icons.close, size: 16, color: Colors.grey),
+            onPressed: () => _deleteRouterKeyword(kw),
+            tooltip: 'מחק',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+          ),
+        );
+      }).toList(),
     );
   }
 

@@ -5369,6 +5369,118 @@ app.post('/dashboard/backlog/proposals/:id/draft-plan', (req, res) => {
     }
 });
 
+// ── Workshop chat ─────────────────────────────────────────────────────────
+app.post('/workshop/:proposalId/chat', _rl(10), async (req, res) => {
+    try {
+        const id = parseInt(req.params.proposalId, 10);
+        if (isNaN(id)) return res.status(400).json({ error: 'invalid proposalId' });
+
+        const { message, history } = req.body || {};
+        if (!message?.trim()) return res.status(400).json({ error: 'message required' });
+
+        const data = readBacklog();
+        const proposal = data.proposals?.find(p => p.id === id);
+        if (!proposal) return res.status(404).json({ error: 'proposal not found' });
+
+        const systemPrompt = `You are a product development assistant helping refine a software proposal.
+Proposal: "${proposal.title}" (type: ${proposal.type || 'feature'})
+
+Your job:
+1. Have a natural conversation to clarify requirements
+2. At the end of EVERY reply, output a JSON block (fenced with \`\`\`json) containing the current best-guess spec:
+{
+  "name": "<feature name>",
+  "type": "<feature|fix|ux|infra>",
+  "description": "<1-3 sentence description>",
+  "acceptanceCriteria": ["<criterion 1>", "<criterion 2>"]
+}
+
+Always output the JSON block, even if nothing changed. Keep replies concise and in Hebrew.`;
+
+        const msgs = [
+            { role: 'system', content: systemPrompt },
+            ...(Array.isArray(history)
+                ? history.slice(-10)
+                    .filter(m => m && ['user', 'assistant'].includes(m.role) && typeof m.content === 'string')
+                    .map(m => ({ role: m.role, content: m.content.slice(0, 2000) }))
+                : []),
+            { role: 'user', content: message.trim() },
+        ];
+
+        const raw = await callGemma4(msgs, false, 1200);
+
+        // Extract JSON spec block from reply
+        let spec = { name: proposal.title, type: proposal.type || 'feature', description: proposal.plan || '', acceptanceCriteria: proposal.acceptanceCriteria || [] };
+        const jsonMatch = raw.match(/```json\s*([\s\S]*?)```/);
+        let parsedSpec = null;
+        if (jsonMatch) {
+            try {
+                const parsed = JSON.parse(jsonMatch[1].trim());
+                if (parsed && typeof parsed === 'object') {
+                    parsedSpec = parsed;
+                    spec = {
+                        name: parsed.name || spec.name,
+                        type: parsed.type || spec.type,
+                        description: parsed.description || spec.description,
+                        acceptanceCriteria: Array.isArray(parsed.acceptanceCriteria) ? parsed.acceptanceCriteria : spec.acceptanceCriteria,
+                    };
+                }
+            } catch (_) { /* ignore JSON parse errors */ }
+        }
+
+        // Strip the JSON block from the user-visible reply
+        const reply = raw.replace(/```json[\s\S]*?```/g, '').trim();
+
+        // Re-read backlog to pick up any concurrent writes before persisting
+        const freshData = readBacklog();
+        const freshProposal = freshData.proposals?.find(p => p.id === id);
+        if (freshProposal) {
+            if (parsedSpec?.description) freshProposal.plan = parsedSpec.description;
+            if (Array.isArray(parsedSpec?.acceptanceCriteria) && parsedSpec.acceptanceCriteria.length > 0) {
+                freshProposal.acceptanceCriteria = parsedSpec.acceptanceCriteria;
+            }
+            if (!Array.isArray(freshProposal.workshopHistory)) freshProposal.workshopHistory = [];
+            freshProposal.workshopHistory.push({ role: 'user', content: message.trim(), at: new Date().toISOString() });
+            freshProposal.workshopHistory.push({ role: 'assistant', content: reply, at: new Date().toISOString() });
+            freshProposal.workshopHistory = freshProposal.workshopHistory.slice(-40);
+            writeBacklog(freshData);
+        }
+
+        res.json({ reply, spec });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/workshop/:proposalId/save-spec', _rl(20), (req, res) => {
+    try {
+        const proposalId = parseInt(req.params.proposalId, 10);
+        if (isNaN(proposalId)) return res.status(400).json({ error: 'invalid proposalId' });
+
+        const { spec } = req.body || {};
+        if (!spec || typeof spec !== 'object') return res.status(400).json({ error: 'spec required' });
+
+        const name = String(spec.name || 'spec');
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const today = new Date().toISOString().slice(0, 10);
+        const filename = `${today}-${slug || 'workshop-spec'}-${proposalId}.md`;
+        const dirPath = path.join(__dirname, 'docs', 'superpowers', 'specs');
+        const filePath = path.join(dirPath, filename);
+
+        const acLines = Array.isArray(spec.acceptanceCriteria)
+            ? spec.acceptanceCriteria.map(ac => `- ${ac}`).join('\n')
+            : '';
+        const markdown = `# ${name}\n\n**סוג:** ${spec.type || 'feature'}\n\n## תיאור\n${spec.description || ''}\n\n## קריטריוני קבלה\n${acLines}\n`;
+
+        if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+        fs.writeFileSync(filePath, markdown, 'utf8');
+
+        res.json({ path: `docs/superpowers/specs/${filename}` });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.delete('/dashboard/backlog/proposals/:id', (req, res) => {
     try {
         const id   = parseInt(req.params.id, 10);

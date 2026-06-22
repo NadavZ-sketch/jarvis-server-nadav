@@ -647,6 +647,68 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>?> workshopChat({
+    required int proposalId,
+    required String message,
+    required List<Map<String, dynamic>> history,
+  }) async {
+    try {
+      final res = await _client
+          .post(
+            _uri('/workshop/$proposalId/chat'),
+            headers: _headers({'Content-Type': 'application/json'}),
+            body: jsonEncode({'message': message, 'history': history}),
+          )
+          .timeout(const Duration(seconds: 45));
+      return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getWorkshopHistory({
+    required int proposalId,
+  }) async {
+    try {
+      final res = await _client
+          .get(_uri('/dashboard/backlog'), headers: _baseHeaders)
+          .timeout(_timeout);
+      final data = jsonDecode(_safeBody(res));
+      if (data is Map<String, dynamic>) {
+        final proposals = data['proposals'] as List? ?? [];
+        final proposal = proposals
+            .whereType<Map<String, dynamic>>()
+            .firstWhere(
+              (p) => p['id'] == proposalId,
+              orElse: () => <String, dynamic>{},
+            );
+        return List<Map<String, dynamic>>.from(
+            proposal['workshopHistory'] as List? ?? []);
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> saveWorkshopSpec({
+    required int proposalId,
+    required Map<String, dynamic> spec,
+  }) async {
+    try {
+      final res = await _client
+          .post(
+            _uri('/workshop/$proposalId/save-spec'),
+            headers: _headers({'Content-Type': 'application/json'}),
+            body: jsonEncode({'spec': spec}),
+          )
+          .timeout(_timeout);
+      return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<Map<String, dynamic>>> generateBacklog() async {
     final res = await _client.post(
       _uri('/dashboard/backlog/generate'),

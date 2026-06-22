@@ -1190,4 +1190,73 @@ class ApiService {
   /// Returns the URL for downloading the surveys CSV export.
   /// The caller is responsible for opening the URL in a browser or download manager.
   String surveysExportUrl() => '${settings.serverUrl}/surveys/export';
+
+  // ─── Router Trainer ───────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchRouterTrainingEvents() async {
+    try {
+      final res = await _client
+          .get(_uri('/router/training-events'), headers: _headers())
+          .timeout(_timeout);
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+      final events = data['events'];
+      if (events is List) {
+        return events.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchRouterKeywords() async {
+    try {
+      final res = await _client
+          .get(_uri('/router/keywords'), headers: _headers())
+          .timeout(_timeout);
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+      final overrides = data['overrides'];
+      if (overrides is List) {
+        return overrides.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<bool> addRouterKeyword({
+    required String keyword,
+    required String intent,
+  }) async {
+    try {
+      final res = await _client
+          .post(
+            _uri('/router/keywords'),
+            headers: _headers({'Content-Type': 'application/json'}),
+            body: jsonEncode({'keyword': keyword, 'intent': intent}),
+          )
+          .timeout(_timeout);
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteRouterKeyword({
+    required String keyword,
+    required String intent,
+  }) async {
+    try {
+      final request = http.Request('DELETE', _uri('/router/keywords'));
+      request.headers.addAll(_headers({'Content-Type': 'application/json'}));
+      request.body = jsonEncode({'keyword': keyword, 'intent': intent});
+      final streamedRes = await _client.send(request).timeout(_timeout);
+      return streamedRes.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 }

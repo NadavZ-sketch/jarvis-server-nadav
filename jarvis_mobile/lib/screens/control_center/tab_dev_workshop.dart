@@ -407,10 +407,12 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
   }
 
   static const _intentChips = [
-    ('📅', 'reminder'), ('✅', 'task'),       ('📈', 'stocks'),
+    ('📅', 'reminder'), ('✅', 'task'),       ('🧠', 'memory'),
     ('🛒', 'shopping'), ('💬', 'messaging'),  ('⚽', 'sports'),
     ('🌤', 'weather'),  ('📰', 'news'),       ('🌍', 'translate'),
-    ('🎵', 'music'),    ('📝', 'notes'),      ('🧠', 'memory'),
+    ('🎵', 'music'),    ('📝', 'notes'),      ('📈', 'stocks'),
+    ('🔁', 'habit'),    ('🗂', 'project'),    ('📆', 'calendar'),
+    ('✍️', 'draft'),
   ];
 
   Widget _routerTrainerCard() {

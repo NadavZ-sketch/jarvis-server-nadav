@@ -150,6 +150,16 @@ describe('POST /router/keywords', () => {
       .send({ keyword: 'חלב' });
     expect(res.status).toBe(400);
   });
+
+  it('returns 400 for unknown intent', async () => {
+    const res = await request(app)
+      .post('/router/keywords')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free')
+      .send({ keyword: 'בדיקה', intent: 'not_a_real_intent' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/unknown intent/);
+  });
 });
 
 describe('DELETE /router/keywords', () => {

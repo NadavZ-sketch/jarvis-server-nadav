@@ -43,7 +43,7 @@ async function sendEmail(to, body) {
     console.info(`[email] sent to ${to}`);
 }
 
-const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCustomRegistry, invalidateOverridesCache } = require('./agents/router');
+const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCustomRegistry, invalidateOverridesCache, VALID_INTENTS } = require('./agents/router');
 const routeTracker = require('./services/routeTracker');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
@@ -1956,6 +1956,7 @@ app.post('/router/keywords', _rl(20), (req, res) => {
         }
         const kw = keyword.trim();
         if (!kw) return res.status(400).json({ error: 'keyword must not be empty' });
+        if (!VALID_INTENTS.has(intent)) return res.status(400).json({ error: `unknown intent: ${intent}` });
         const overrides = readRouterOverrides();
         const deduped = overrides.filter(o => !(o.keyword === kw && o.intent === intent));
         deduped.push({ keyword: kw, intent });

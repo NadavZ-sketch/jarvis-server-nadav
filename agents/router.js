@@ -66,6 +66,12 @@ function loadRouterOverrides() {
 
 function invalidateOverridesCache() { _overridesAt = 0; }
 
+const VALID_INTENTS = new Set([
+    'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
+    'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
+    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'habit', 'insight', 'chat', 'project',
+]);
+
 function _findOverrideIntent(overrides, msg, userMessage) {
     for (const { keyword, intent } of overrides) {
         if (keyword && intent && VALID_INTENTS.has(intent) && msg.includes(keyword.toLowerCase())) {
@@ -146,12 +152,6 @@ function classifyIntentDetailed(userMessage) {
 // ─── LLM fallback classifier ──────────────────────────────────────────────────
 // Called only when keyword routing returns 'chat' and the message is long enough.
 // Uses a fast Groq model with a 3s timeout and strict JSON output.
-
-const VALID_INTENTS = new Set([
-    'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
-    'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'habit', 'insight', 'chat', 'project',
-]);
 
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
 Given a user message, classify it into exactly one of these intents:
@@ -249,4 +249,4 @@ function detectComplexTask(userMessage) {
     return COMPLEXITY_SIGNALS.some(pat => pat.test(userMessage));
 }
 
-module.exports = { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry, detectComplexTask, loadRouterOverrides, invalidateOverridesCache };
+module.exports = { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry, detectComplexTask, loadRouterOverrides, invalidateOverridesCache, VALID_INTENTS };

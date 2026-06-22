@@ -59,6 +59,7 @@ function loadRouterOverrides() {
     } catch (e) {
         console.warn('[router] failed to load router-overrides.json:', e.message);
         _overridesCache = [];
+        _overridesAt = Date.now();
     }
     return _overridesCache;
 }
@@ -149,7 +150,7 @@ function classifyIntentDetailed(userMessage) {
 const VALID_INTENTS = new Set([
     'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
     'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'habit', 'insight', 'chat',
+    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'habit', 'insight', 'chat', 'project',
 ]);
 
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.

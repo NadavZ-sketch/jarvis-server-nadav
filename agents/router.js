@@ -36,6 +36,7 @@ const KEYWORDS = {
 };
 
 const REGISTRY_PATH = path.join(__dirname, 'custom', 'registry.json');
+const OVERRIDES_PATH = path.join(__dirname, '..', 'config', 'router-overrides.json');
 
 let _registryCache = [], _registryAt = 0;
 function loadCustomRegistry() {
@@ -48,8 +49,32 @@ function loadCustomRegistry() {
 
 function invalidateRouterCache() { _registryAt = 0; }
 
+let _overridesCache = [], _overridesAt = 0;
+function loadRouterOverrides() {
+    if (Date.now() - _overridesAt < 5000) return _overridesCache;
+    try {
+        const parsed = JSON.parse(fs.readFileSync(OVERRIDES_PATH, 'utf8'));
+        _overridesCache = Array.isArray(parsed.overrides) ? parsed.overrides : [];
+    } catch {
+        _overridesCache = [];
+    }
+    _overridesAt = Date.now();
+    return _overridesCache;
+}
+
+function invalidateOverridesCache() { _overridesAt = 0; }
+
 function classifyIntent(userMessage) {
     const msg = userMessage.toLowerCase();
+
+    // User-defined substring overrides (hot-reload, checked first)
+    const overrides = loadRouterOverrides();
+    for (const { keyword, intent } of overrides) {
+        if (keyword && intent && msg.includes(keyword.toLowerCase())) {
+            console.log(`🧭 Router (override): "${intent}" ← "${userMessage.slice(0, 50)}"`);
+            return intent;
+        }
+    }
 
     // Fast path: static keyword match
     for (const [intent, pattern] of Object.entries(KEYWORDS)) {
@@ -80,6 +105,15 @@ function classifyIntent(userMessage) {
 // so callers that ignore the extra fields behave exactly like classifyIntent().
 function classifyIntentDetailed(userMessage) {
     const msg = userMessage.toLowerCase();
+
+    // User-defined substring overrides — return immediately as non-ambiguous
+    const overrides = loadRouterOverrides();
+    for (const { keyword, intent } of overrides) {
+        if (keyword && intent && msg.includes(keyword.toLowerCase())) {
+            console.log(`🧭 Router (override): "${intent}" ← "${userMessage.slice(0, 50)}"`);
+            return { intent, matches: [intent], ambiguous: false };
+        }
+    }
 
     const matches = [];
     for (const [intent, pattern] of Object.entries(KEYWORDS)) {
@@ -213,4 +247,4 @@ function detectComplexTask(userMessage) {
     return COMPLEXITY_SIGNALS.some(pat => pat.test(userMessage));
 }
 
-module.exports = { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry, detectComplexTask };
+module.exports = { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry, detectComplexTask, loadRouterOverrides, invalidateOverridesCache };

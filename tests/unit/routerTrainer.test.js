@@ -176,6 +176,18 @@ describe('DELETE /router/keywords', () => {
       .send({ keyword: 'חלב' });
     expect(res.status).toBe(400);
   });
+
+  it('returns 200 with unchanged list when pair does not exist', async () => {
+    mockOverrides = [{ keyword: 'חלב', intent: 'shopping' }];
+    const res = await request(app)
+      .delete('/router/keywords')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free')
+      .send({ keyword: 'לא קיים', intent: 'shopping' });
+    expect(res.status).toBe(200);
+    expect(res.body.overrides).toHaveLength(1);
+    expect(res.body.overrides[0].keyword).toBe('חלב');
+  });
 });
 
 describe('GET /router/training-events', () => {

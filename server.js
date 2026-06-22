@@ -1943,6 +1943,7 @@ app.get('/router/keywords', _rl(30), (req, res) => {
         const overrides = readRouterOverrides();
         res.json({ overrides });
     } catch (err) {
+        console.error('GET /router/keywords error:', err.message);
         res.status(500).json({ error: 'failed to read overrides' });
     }
 });
@@ -1969,11 +1970,13 @@ app.post('/router/keywords', _rl(20), (req, res) => {
 app.delete('/router/keywords', _rl(20), (req, res) => {
     try {
         const { keyword, intent } = req.body || {};
-        if (!keyword || !intent) {
-            return res.status(400).json({ error: 'keyword and intent are required' });
+        if (!keyword || typeof keyword !== 'string' || !intent || typeof intent !== 'string') {
+            return res.status(400).json({ error: 'keyword and intent are required strings' });
         }
+        const kwToDelete = keyword.trim();
+        const intentToDelete = intent.trim();
         const overrides = readRouterOverrides();
-        const updated = overrides.filter(o => !(o.keyword === keyword && o.intent === intent));
+        const updated = overrides.filter(o => !(o.keyword === kwToDelete && o.intent === intentToDelete));
         writeRouterOverrides(updated);
         res.json({ ok: true, overrides: updated });
     } catch (err) {

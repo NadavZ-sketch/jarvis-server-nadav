@@ -43,7 +43,7 @@ async function sendEmail(to, body) {
     console.info(`[email] sent to ${to}`);
 }
 
-const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCustomRegistry } = require('./agents/router');
+const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCustomRegistry, invalidateOverridesCache } = require('./agents/router');
 const routeTracker = require('./services/routeTracker');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
@@ -1896,6 +1896,90 @@ app.get('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
         sinceDays: Math.min(Number(req.query.days) || 30, 90),
     });
     res.json({ counts: r.counts, total: r.total });
+});
+
+// ── Router Trainer ────────────────────────────────────────────────────────────
+
+const ROUTER_OVERRIDES_PATH = path.join(__dirname, 'config', 'router-overrides.json');
+
+function readRouterOverrides() {
+    try {
+        const parsed = JSON.parse(fs.readFileSync(ROUTER_OVERRIDES_PATH, 'utf8'));
+        return Array.isArray(parsed.overrides) ? parsed.overrides : [];
+    } catch {
+        return [];
+    }
+}
+
+function writeRouterOverrides(overrides) {
+    fs.writeFileSync(ROUTER_OVERRIDES_PATH, JSON.stringify({ overrides }, null, 2), 'utf8');
+    invalidateOverridesCache();
+}
+
+app.get('/router/training-events', _rl(30), async (req, res) => {
+    try {
+        const limit = Math.min(Number(req.query.limit) || 50, 100);
+        const { data, error } = await supabase
+            .from('smart_telemetry_events')
+            .select('id, metadata, created_at')
+            .eq('event_name', 'router_chat_default')
+            .order('created_at', { ascending: false })
+            .limit(limit);
+        if (error) throw error;
+        const events = (data || []).map(row => ({
+            id: row.id,
+            message: (row.metadata && row.metadata.message) ? row.metadata.message : '',
+            created_at: row.created_at,
+        }));
+        res.json({ events });
+    } catch (err) {
+        console.error('GET /router/training-events error:', err.message);
+        res.status(500).json({ error: 'failed to fetch training events' });
+    }
+});
+
+app.get('/router/keywords', _rl(30), (req, res) => {
+    try {
+        const overrides = readRouterOverrides();
+        res.json({ overrides });
+    } catch (err) {
+        res.status(500).json({ error: 'failed to read overrides' });
+    }
+});
+
+app.post('/router/keywords', _rl(20), (req, res) => {
+    try {
+        const { keyword, intent } = req.body || {};
+        if (!keyword || typeof keyword !== 'string' || !intent || typeof intent !== 'string') {
+            return res.status(400).json({ error: 'keyword and intent are required strings' });
+        }
+        const kw = keyword.trim();
+        if (!kw) return res.status(400).json({ error: 'keyword must not be empty' });
+        const overrides = readRouterOverrides();
+        const deduped = overrides.filter(o => !(o.keyword === kw && o.intent === intent));
+        deduped.push({ keyword: kw, intent });
+        writeRouterOverrides(deduped);
+        res.json({ ok: true, overrides: deduped });
+    } catch (err) {
+        console.error('POST /router/keywords error:', err.message);
+        res.status(500).json({ error: 'failed to save override' });
+    }
+});
+
+app.delete('/router/keywords', _rl(20), (req, res) => {
+    try {
+        const { keyword, intent } = req.body || {};
+        if (!keyword || !intent) {
+            return res.status(400).json({ error: 'keyword and intent are required' });
+        }
+        const overrides = readRouterOverrides();
+        const updated = overrides.filter(o => !(o.keyword === keyword && o.intent === intent));
+        writeRouterOverrides(updated);
+        res.json({ ok: true, overrides: updated });
+    } catch (err) {
+        console.error('DELETE /router/keywords error:', err.message);
+        res.status(500).json({ error: 'failed to delete override' });
+    }
 });
 
 // Personalized control-center layout learned from tab-view telemetry. Returns a

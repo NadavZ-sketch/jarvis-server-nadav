@@ -600,7 +600,9 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: _intentChips.map(((emoji, name)) {
+            children: _intentChips.map((chip) {
+              final emoji = chip.$1;
+              final name = chip.$2;
               final selected = _selectedIntent == name;
               return GestureDetector(
                 onTap: () => setState(() => _selectedIntent = name),

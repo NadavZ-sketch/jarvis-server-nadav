@@ -17,6 +17,7 @@ void main() {
           ]
         }),
         200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       ));
       final api = ApiService(settings, client: client);
       final events = await api.fetchRouterTrainingEvents();
@@ -40,6 +41,7 @@ void main() {
           ]
         }),
         200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
       ));
       final api = ApiService(settings, client: client);
       final overrides = await api.fetchRouterKeywords();

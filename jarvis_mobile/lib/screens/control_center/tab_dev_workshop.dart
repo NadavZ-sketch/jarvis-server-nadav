@@ -188,11 +188,10 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
     });
   }
 
-  Future<void> _saveRouterKeyword(int rowIndex) async {
+  Future<void> _saveRouterKeyword(Map<String, dynamic> event) async {
     final kw = _kwCtrl.text.trim();
     final intent = _selectedIntent;
     if (kw.isEmpty || intent == null) return;
-    final event = _trainingEvents[rowIndex];
     final ok = await _api
         .addRouterKeyword(keyword: kw, intent: intent)
         .catchError((_) => false);
@@ -523,7 +522,7 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
         final event = unhandled[i];
         final isOpen = _openRowIndex == i;
         final msg = event['message'] as String? ?? '';
-        return _messageRow(event: event, index: i, isOpen: isOpen, msg: msg);
+        return _messageRow(event: event, index: i, isOpen: isOpen, msg: msg, isLast: i == unhandled.length - 1);
       }),
     );
   }
@@ -533,6 +532,7 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
     required int index,
     required bool isOpen,
     required String msg,
+    required bool isLast,
   }) {
     return Column(
       children: [
@@ -581,14 +581,14 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
             ]),
           ),
         ),
-        if (isOpen) _expandedPanel(index),
-        if (index < _trainingEvents.length - 1)
+        if (isOpen) _expandedPanel(event),
+        if (!isLast)
           const Divider(height: 1),
       ],
     );
   }
 
-  Widget _expandedPanel(int rowIndex) {
+  Widget _expandedPanel(Map<String, dynamic> event) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 4, 12),
       child: Column(
@@ -649,7 +649,7 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
             const SizedBox(width: 8),
             ElevatedButton(
               onPressed: (_selectedIntent != null && _kwCtrl.text.trim().isNotEmpty)
-                  ? () => _saveRouterKeyword(rowIndex)
+                  ? () => _saveRouterKeyword(event)
                   : null,
               child: const Text('שמור', style: TextStyle(fontFamily: 'Heebo')),
             ),

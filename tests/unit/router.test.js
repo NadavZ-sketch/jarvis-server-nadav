@@ -159,3 +159,73 @@ describe('detectComplexTask', () => {
         expect(detectComplexTask(msg)).toBe(true);
     });
 });
+
+describe('router overrides', () => {
+    // Re-import with fresh module state for each test block
+    let classifyIntentFn, classifyIntentDetailedFn, invalidateOverridesCacheFn;
+    const fs = require('fs');
+
+    beforeEach(() => {
+        jest.resetModules();
+        jest.clearAllMocks();
+        // classifyIntent is already imported at the top — use the module-level cache invalidation
+        const router = require('../../agents/router');
+        classifyIntentFn = router.classifyIntent;
+        classifyIntentDetailedFn = router.classifyIntentDetailed;
+        invalidateOverridesCacheFn = router.invalidateOverridesCache;
+        if (invalidateOverridesCacheFn) invalidateOverridesCacheFn();
+    });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    test('override substring match fires before KEYWORDS (Hebrew)', () => {
+        jest.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+            if (String(p).includes('router-overrides.json')) {
+                return JSON.stringify({ overrides: [{ keyword: 'חלב', intent: 'shopping' }] });
+            }
+            return '[]';
+        });
+        expect(classifyIntentFn('אני צריך חלב מהסופר')).toBe('shopping');
+    });
+
+    test('override match is case-insensitive (English keyword)', () => {
+        jest.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+            if (String(p).includes('router-overrides.json')) {
+                return JSON.stringify({ overrides: [{ keyword: 'buy Milk', intent: 'shopping' }] });
+            }
+            return '[]';
+        });
+        expect(classifyIntentFn('I need to buy milk today')).toBe('shopping');
+    });
+
+    test('KEYWORDS still work when overrides array is empty', () => {
+        jest.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+            if (String(p).includes('router-overrides.json')) {
+                return JSON.stringify({ overrides: [] });
+            }
+            return '[]';
+        });
+        expect(classifyIntentFn('מה מזג האוויר')).toBe('weather');
+    });
+
+    test('missing overrides file falls back to KEYWORDS (ENOENT swallowed)', () => {
+        jest.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+            if (String(p).includes('router-overrides.json')) throw new Error('ENOENT');
+            return '[]';
+        });
+        expect(classifyIntentFn('מה מזג האוויר')).toBe('weather');
+    });
+
+    test('classifyIntentDetailed with override returns non-ambiguous single-match', () => {
+        jest.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+            if (String(p).includes('router-overrides.json')) {
+                return JSON.stringify({ overrides: [{ keyword: 'תשלח לאמא', intent: 'messaging' }] });
+            }
+            return '[]';
+        });
+        const result = classifyIntentDetailedFn('תשלח לאמא שאני בדרך הביתה');
+        expect(result.intent).toBe('messaging');
+        expect(result.ambiguous).toBe(false);
+        expect(result.matches).toContain('messaging');
+    });
+});

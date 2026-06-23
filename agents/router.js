@@ -36,6 +36,7 @@ const KEYWORDS = {
 };
 
 const REGISTRY_PATH = path.join(__dirname, 'custom', 'registry.json');
+const OVERRIDES_PATH = path.join(__dirname, '..', 'config', 'router-overrides.json');
 
 let _registryCache = [], _registryAt = 0;
 function loadCustomRegistry() {
@@ -48,8 +49,45 @@ function loadCustomRegistry() {
 
 function invalidateRouterCache() { _registryAt = 0; }
 
+let _overridesCache = [], _overridesAt = 0;
+function loadRouterOverrides() {
+    if (Date.now() - _overridesAt < 5000) return _overridesCache;
+    try {
+        const parsed = JSON.parse(fs.readFileSync(OVERRIDES_PATH, 'utf8'));
+        _overridesCache = Array.isArray(parsed.overrides) ? parsed.overrides : [];
+        _overridesAt = Date.now();
+    } catch (e) {
+        console.warn('[router] failed to load router-overrides.json:', e.message);
+        _overridesCache = [];
+        _overridesAt = Date.now();
+    }
+    return _overridesCache;
+}
+
+function invalidateOverridesCache() { _overridesAt = 0; }
+
+const VALID_INTENTS = new Set([
+    'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
+    'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
+    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'habit', 'insight', 'chat', 'project',
+]);
+
+function _findOverrideIntent(overrides, msg, userMessage) {
+    for (const { keyword, intent } of overrides) {
+        if (keyword && intent && VALID_INTENTS.has(intent) && msg.includes(keyword.toLowerCase())) {
+            console.log(`🧭 Router (override): "${intent}" ← "${userMessage.slice(0, 50)}"`);
+            return intent;
+        }
+    }
+    return null;
+}
+
 function classifyIntent(userMessage) {
     const msg = userMessage.toLowerCase();
+
+    // User-defined substring overrides (hot-reload, checked first)
+    const overrideIntent = _findOverrideIntent(loadRouterOverrides(), msg, userMessage);
+    if (overrideIntent) return overrideIntent;
 
     // Fast path: static keyword match
     for (const [intent, pattern] of Object.entries(KEYWORDS)) {
@@ -81,6 +119,10 @@ function classifyIntent(userMessage) {
 function classifyIntentDetailed(userMessage) {
     const msg = userMessage.toLowerCase();
 
+    // User-defined substring overrides — return immediately as non-ambiguous
+    const overrideIntent = _findOverrideIntent(loadRouterOverrides(), msg, userMessage);
+    if (overrideIntent) return { intent: overrideIntent, matches: [overrideIntent], ambiguous: false };
+
     const matches = [];
     for (const [intent, pattern] of Object.entries(KEYWORDS)) {
         if (pattern.test(userMessage)) matches.push(intent);
@@ -110,12 +152,6 @@ function classifyIntentDetailed(userMessage) {
 // ─── LLM fallback classifier ──────────────────────────────────────────────────
 // Called only when keyword routing returns 'chat' and the message is long enough.
 // Uses a fast Groq model with a 3s timeout and strict JSON output.
-
-const VALID_INTENTS = new Set([
-    'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
-    'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'habit', 'insight', 'chat',
-]);
 
 const LLM_CLASSIFY_PROMPT = `You are an intent classifier for a Hebrew personal assistant named Jarvis.
 Given a user message, classify it into exactly one of these intents:
@@ -213,4 +249,4 @@ function detectComplexTask(userMessage) {
     return COMPLEXITY_SIGNALS.some(pat => pat.test(userMessage));
 }
 
-module.exports = { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry, detectComplexTask };
+module.exports = { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, invalidateRouterCache, loadCustomRegistry, detectComplexTask, loadRouterOverrides, invalidateOverridesCache, VALID_INTENTS };

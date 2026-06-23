@@ -49,16 +49,17 @@ const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
 const _memoryAgent = require('./agents/memoryAgent');
 const {
-    runMemoryAgent, autoExtractMemory, setMemoryCacheInvalidator,
+    runMemoryAgent, autoExtractMemory,
     saveSessionSummary,
 } = _memoryAgent;
-// Use module-level accessors so Jest spies can intercept in tests
-const getPendingMemory  = (...args) => _memoryAgent.getPendingMemory(...args);
+// Pending state is owned by memoryContext; memoryAgent re-exports as wrappers.
+const getPendingMemory   = (...args) => _memoryAgent.getPendingMemory(...args);
 const clearPendingMemory = (...args) => _memoryAgent.clearPendingMemory(...args);
+const memoryContext = require('./services/memoryContext');
 const { cleanupExpiredMemories } = require('./services/memoryCleanup');
 const { getAgentRegistry } = require('./services/agentRegistryService');
 const agentMetrics = require('./services/agentMetrics');
-const { runChatAgent, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, buildSystemPrompt } = require('./agents/chatAgent');
+const { runChatAgent, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, rankMemories, buildSystemPrompt } = require('./agents/chatAgent');
 const conversationSummary = require('./services/conversationSummary');
 const { runSportsAgent }      = require('./agents/sportsAgent');
 const { runMessagingAgent }   = require('./agents/messagingAgent');
@@ -434,14 +435,8 @@ function cacheSet(key, value, ttlMs) {
 
 function cacheInvalidate(key) { _cache.delete(key); }
 
-// Allow agents/memoryAgent to bust the memories cache after a successful save,
-// so the next fetchLongTermMemories sees the new row immediately. Guarded so
-// integration test mocks that omit this export don't fail at module load.
-if (typeof setMemoryCacheInvalidator === 'function') {
-    setMemoryCacheInvalidator(() => cacheInvalidate('memories'));
-}
+// TTL_MEMORIES and memory cache are now owned by memoryContext.
 
-const TTL_MEMORIES     = 30 * 1000;       // 30 sec — short, so newly-saved memories are immediately visible
 const TTL_CHAT_HISTORY = 30 * 1000;       // 30 sec
 const TTL_USER_PROFILE = 60 * 1000;       // 60 sec — profile changes rarely; invalidated on write
 
@@ -492,32 +487,8 @@ async function saveChatMessage(role, text, chatId = 'default-session') {
     if (chatMemoryFallback.length > 60) chatMemoryFallback = chatMemoryFallback.slice(-60);
 }
 
-// ─── Memories ─────────────────────────────────────────────────────────────────
-
-async function fetchLongTermMemories(query = null) {
-    // Semantic search via Pinecone when a query is provided and Pinecone is ready
-    if (query && pinecone.isReady()) {
-        try {
-            const hits = await pinecone.searchMemories(query, 12);
-            if (hits !== null) {
-                return hits.length === 0
-                    ? 'אין עדיין זיכרונות שמורים.'
-                    : hits.map(c => `- ${c}`).join('\n');
-            }
-        } catch { /* fall through to keyword search */ }
-    }
-
-    // Keyword fallback — use TTL cache
-    const cached = cacheGet('memories');
-    if (cached) return cached;
-
-    const contents = await repos.memories.allContents();
-    const result = contents.length === 0
-        ? 'אין עדיין זיכרונות שמורים.'
-        : contents.map(c => `- ${c}`).join('\n');
-    cacheSet('memories', result, TTL_MEMORIES);
-    return result;
-}
+// ─── Memories — delegated to memoryContext ────────────────────────────────────
+// fetchLongTermMemories removed: use memoryContext.loadForRequest() instead.
 
 // ─── Full history search ──────────────────────────────────────────────────────
 
@@ -606,21 +577,11 @@ app.post('/memories/confirm', async (req, res) => {
     if (!pending) return res.status(404).json({ error: 'no pending memory for this chat' });
 
     clearPendingMemory(chatId);
-
     if (action === 'discard') return res.json({ ok: true });
 
     try {
-        const inserted = await repos.memories.insert({ content: pending.content, scope: 'long_term' });
-        if (inserted?.[0]?.id) {
-            await pinecone.upsertMemory(inserted[0].id, pending.content).catch(() => {});
-        }
-        if (pending.replacesId) {
-            await repos.memories.updateById(pending.replacesId, { scope: 'archive' });
-            await pinecone.deleteMemory(pending.replacesId).catch(() => {});
-            console.log('🧠 Archived old memory:', pending.replacesId);
-        }
-        cacheInvalidate('memories');
-        res.json({ ok: true, saved: pending.content });
+        const result = await memoryContext.savePendingData(pending, repos);
+        res.json({ ok: true, saved: result.content });
     } catch (err) {
         console.error('❌ memories/confirm error:', err.message);
         res.status(500).json({ error: 'שגיאה בשמירת הזיכרון' });
@@ -1024,54 +985,52 @@ async function askJarvisHandler(req, res) {
         const needsHistory = ['chat', 'draft'].includes(agentName);
         let chatHistory = [], longTermMemories = '';
         if (needsHistory) {
-            [chatHistory, longTermMemories] = await Promise.all([
+            // loadForRequest fetches structured [{content}] array; chatAgent ranks internally (2א).
+            const [hist, { memories, pending }] = await Promise.all([
                 loadChatHistory(chatId),
-                // Pass userMessage for Pinecone semantic search; falls back to keyword filter
-                fetchLongTermMemories(userMessage)
+                memoryContext.loadForRequest(userMessage, chatId, repos),
             ]);
-            // When Pinecone returned the top-K relevant memories, keep as-is.
-            // Otherwise rank with embeddings if available, fall back to token ranking.
-            if (!pinecone.isReady()) {
-                longTermMemories = filterRelevantMemories(longTermMemories, userMessage);
-            } else {
-                longTermMemories = await filterRelevantMemoriesAsync(longTermMemories, userMessage, 8);
-            }
-            // Inject rolling conversation summary so agent remembers context beyond 20 msgs.
-            // Cap at 1500 chars (~500 tokens) so a long summary can't flood the context.
+            chatHistory     = hist;
+            longTermMemories = memories; // structured array — chatAgent ranks internally
+
             if (agentName === 'chat') {
+                // Inject rolling conversation summary so agent remembers context beyond 20 msgs.
                 const raw = await conversationSummary.getSummary(chatId, repos);
                 settings.chatSummary = raw && raw.length > 600 ? raw.slice(0, 600) + '…' : raw;
+
+                // Surface pending-memory question so chatAgent can ask the user.
+                if (pending) {
+                    const isUpdate = !!pending.replacesId;
+                    settings._pendingMemoryQuestion = isUpdate
+                        ? `שמתי לב שציינת "${pending.content.replace(/^\[\w+\]\s*/, '')}" — זה שונה ממה שרשמתי (${(pending.replacesContent || '?').replace(/^\[\w+\]\s*/, '')}). לעדכן?`
+                        : `שמתי לב שציינת "${pending.content.replace(/^\[\w+\]\s*/, '')}" — האם לשמור לזיכרון?`;
+                }
             }
         } else {
-            // All other agents get raw memories (TTL-cached — cheap)
-            longTermMemories = await fetchLongTermMemories();
-            // Inject last 4 turns so specialist agents (weather, news, sports, etc.) have conversation context.
-            // loadChatHistory is TTL-cached (30s) so this adds no extra network cost.
+            // Non-chat agents get a formatted text string (no ranking needed).
+            const { memories } = await memoryContext.loadForRequest(null, null, repos);
+            longTermMemories = memoryContext.formatAsText(memories);
+            // Inject last 4 turns so specialist agents have conversation context.
             const recentHist = await loadChatHistory(chatId).catch(() => []);
             settings.recentHistory = recentHist.slice(-4);
         }
 
         // Inject user context so every agent can personalize its response
-        settings.userMemories = longTermMemories
-            ? longTermMemories.slice(0, 500)
-            : '';
+        settings.userMemories = Array.isArray(longTermMemories)
+            ? memoryContext.formatAsText(longTermMemories).slice(0, 500)
+            : (longTermMemories || '').slice(0, 500);
         const tDb = Date.now();
 
-        // Check for a pending memory confirmation for this chatId.
-        const pendingMemory = chatId ? getPendingMemory(chatId) : null;
-        if (pendingMemory && agentName === 'chat') {
-            const isUpdate = !!pendingMemory.replacesId;
-            const question = isUpdate
-                ? `שמתי לב שציינת "${pendingMemory.content.replace(/^\[\w+\]\s*/, '')}" — זה שונה ממה שרשמתי (${(pendingMemory.replacesContent || '?').replace(/^\[\w+\]\s*/, '')}). לעדכן?`
-                : `שמתי לב שציינת "${pendingMemory.content.replace(/^\[\w+\]\s*/, '')}" — האם לשמור לזיכרון?`;
-            settings._pendingMemoryQuestion = question;
-        }
-
-        // ── Past-conv: inject relevant history snippets beyond last 20 msgs ──
+        // ── Past-conv: append relevant history snippets to memories ──────────
         if (agentName === 'chat' && PAST_CONV_PATTERN.test(userMessage)) {
             const historySnippet = await searchFullHistory(userMessage);
             if (historySnippet) {
-                longTermMemories = longTermMemories + '\n\n' + historySnippet;
+                // longTermMemories is a [{content}] array for chat; append as a pseudo-memory.
+                if (Array.isArray(longTermMemories)) {
+                    longTermMemories = [...longTermMemories, { content: historySnippet }];
+                } else {
+                    longTermMemories = longTermMemories + '\n\n' + historySnippet;
+                }
                 console.log('🔍 Past-conv context injected');
             }
         }
@@ -2700,7 +2659,7 @@ app.post('/memories', async (req, res) => {
             pinecone.upsertMemory(row.id, row.content).catch(() => {});
             obsidianSync.dbToVault('memories', row);
         }
-        cacheInvalidate('memories');
+        memoryContext.invalidateCache();
         res.json({ memory: row });
     } catch (err) {
         console.error('POST /memories error:', err.message);
@@ -2721,7 +2680,7 @@ app.put('/memories/:id', async (req, res) => {
         if (!data || data.length === 0) return res.status(404).json({ error: 'Memory not found' });
         pinecone.upsertMemory(data[0].id, data[0].content).catch(() => {});
         obsidianSync.dbToVault('memories', data[0]);
-        cacheInvalidate('memories');
+        memoryContext.invalidateCache();
         res.json({ memory: data[0] });
     } catch (err) {
         console.error('PUT /memories/:id error:', err.message);
@@ -2736,7 +2695,7 @@ app.delete('/memories/:id', async (req, res) => {
         if (!data || data.length === 0) return res.status(404).json({ error: 'Memory not found' });
         await pinecone.deleteMemory(id);
         obsidianSync.removeFromVault('memories', data[0]);
-        cacheInvalidate('memories');
+        memoryContext.invalidateCache();
         res.json({ deleted: true, memory: data[0] });
     } catch (err) {
         console.error('DELETE /memories/:id error:', err.message);
@@ -2800,7 +2759,7 @@ app.post('/memories/rebuild-from-chat', async (_req, res) => {
             } catch { /* skip failed extractions */ }
         }
 
-        cacheInvalidate('memories');
+        memoryContext.invalidateCache();
         res.json({ ok: true, saved, processed: toProcess.length });
     } catch (err) {
         console.error('POST /memories/rebuild-from-chat error:', err.message);
@@ -2824,7 +2783,7 @@ app.post('/memories/recover-from-pinecone', async (_req, res) => {
                 console.warn('[recover] insert failed:', e.message));
             recovered++;
         }
-        cacheInvalidate('memories');
+        memoryContext.invalidateCache();
         res.json({ ok: true, recovered, total: pineconeRecords.length });
     } catch (err) {
         console.error('POST /memories/recover-from-pinecone error:', err.message);
@@ -4202,10 +4161,11 @@ async function streamJarvisHandler(req, res) {
                 result = await dispatcher.dispatch(agentName, ctx, AGENTS);
                 if (syncEntry.cacheBust) cacheInvalidate(syncEntry.cacheBust);
             } else {
-                const [chatHistory, longTermMemories] = await Promise.all([
-                    loadChatHistory(chatId), fetchLongTermMemories()
+                const [chatHistory, { memories }] = await Promise.all([
+                    loadChatHistory(chatId),
+                    memoryContext.loadForRequest(null, null, repos),
                 ]);
-                result = await runChatAgent(userMessage, null, chatHistory, longTermMemories, settings);
+                result = await runChatAgent(userMessage, null, chatHistory, memories, settings);
             }
             const answer = result.answer || '';
 
@@ -4224,11 +4184,13 @@ async function streamJarvisHandler(req, res) {
         }
 
         // Chat streaming via Groq — same quality as /ask-jarvis
-        const [chatHistory, longTermMemories, chatSummary] = await Promise.all([
+        const [chatHistory, { memories: rawMemories }, chatSummary] = await Promise.all([
             loadChatHistory(chatId),
-            fetchLongTermMemories(userMessage),
+            memoryContext.loadForRequest(userMessage, chatId, repos),
             conversationSummary.getSummary(chatId, repos),
         ]);
+        // Rank memories before building the system prompt (ranking stays in chatAgent — 2א).
+        const longTermMemories = await rankMemories(rawMemories, userMessage, 8);
 
         settings.chatSummary = chatSummary && chatSummary.length > 600
             ? chatSummary.slice(0, 600) + '…'
@@ -4410,7 +4372,7 @@ if (!isTestEnv) scheduledJob('fire_reminders', '* * * * *', () => fireDueReminde
 // Hourly cleanup of expired session/recent memories (24h / 7d TTLs).
 if (!isTestEnv) scheduledJob('memory_cleanup_hourly', '17 * * * *', async () => {
     const res = await cleanupExpiredMemories(repos);
-    if (res.deleted > 0) cacheInvalidate('memories');
+    if (res.deleted > 0) memoryContext.invalidateCache();
     if (res.errors?.length) console.warn('🧹 memoryCleanup errors:', res.errors);
 });
 
@@ -4595,7 +4557,7 @@ if (!isTestEnv) scheduledJob('context_memory_expiry', '0 3 * * *', async () => {
         const ids = contextExpired.map(m => m.id);
         await repos.memories.deleteMany(ids);
         await Promise.allSettled(ids.map(id => pinecone.deleteMemory(id)));
-        cacheInvalidate('memories');
+        memoryContext.invalidateCache();
         console.log(`🧠 Expired ${ids.length} [context] memories older than 7 days`);
     } catch (err) {
         console.error('❌ context expiry cron error:', err.message);
@@ -4605,7 +4567,7 @@ if (!isTestEnv) scheduledJob('context_memory_expiry', '0 3 * * *', async () => {
 if (!isTestEnv) scheduledJob('memory_cleanup_nightly', '30 3 * * *', async () => {
     const res = await cleanupExpiredMemories(repos);
     if (res.deleted > 0) {
-        cacheInvalidate('memories');
+        memoryContext.invalidateCache();
         console.log(`🧹 nightly memoryCleanup: removed ${res.deleted} expired memories`);
     }
     if (res.errors?.length) console.warn('🧹 nightly memoryCleanup errors:', res.errors);

@@ -9,6 +9,7 @@ const { runFlutterScan }       = require('./e2e/flutterScan');
 const { runUxScan }            = require('./e2e/uxScan');
 const { runCodeErrorScanner }  = require('./e2e/codeErrorScanner');
 const { loadContext, computeDeltas, distill, fingerprint } = require('./e2e/learning');
+const { createE2eRepo } = require('../services/dataAccess/e2eRepo');
 
 const SEV_EMOJI = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢' };
 const STATUS_TAG = { regression: '🔁 רגרסיה', flaky: '📉 פלייקי', new: '🆕 חדש', known: '' };
@@ -273,8 +274,8 @@ function formatAnswer({ runId, findings, score, deltas, learnedContext, distillS
     ].filter(Boolean).join('\n');
 }
 
-async function persistFindings(supabase, runId, findings, kind = 'e2e') {
-    if (!supabase || !findings.length) return;
+async function persistFindings(repos, runId, findings, kind = 'e2e') {
+    if (!repos || !findings.length) return;
     const rows = findings.map(f => ({
         run_id: runId,
         kind,
@@ -289,26 +290,10 @@ async function persistFindings(supabase, runId, findings, kind = 'e2e') {
         status: f.status || 'new',
         source: normalizeSource(f.source),
     }));
-    // Insert in chunks of 50 to stay under request limits. supabase-js returns
-    // { error } rather than throwing, so we surface it to allow a graceful retry.
-    const insertChunks = async (rs) => {
-        for (let i = 0; i < rs.length; i += 50) {
-            const { error } = await supabase.from('e2e_reports').insert(rs.slice(i, i + 50));
-            if (error) throw new Error(error.message || 'insert failed');
-        }
-    };
     try {
-        await insertChunks(rows);
+        await repos.e2e.insertChunked(rows);
     } catch (err) {
-        // If a new optional column hasn't been migrated yet, strip it and retry so
-        // older deployments (missing `kind` or `source` columns) keep working.
-        const msg = err.message || '';
-        if (/kind|source|column/i.test(msg)) {
-            const stripped = rows.map(({ kind: _k, source: _s, ...r }) => r);
-            try { await insertChunks(stripped); return; }
-            catch (e2) { console.warn('e2eAgent: persistFindings retry failed:', e2.message); return; }
-        }
-        console.warn('e2eAgent: persistFindings failed:', msg);
+        console.warn('e2eAgent: persistFindings failed:', err.message);
     }
 }
 
@@ -366,7 +351,7 @@ async function _runE2EAgent(userMessage = '', supabase = null, useLocal = false,
     const runId = crypto.randomUUID();
 
     if (!settings.dryRun) {
-        await persistFindings(supabase, runId, allFindings);
+        await persistFindings(supabase ? { e2e: createE2eRepo(supabase) } : null, runId, allFindings);
     }
 
     const distillSummary = settings.disableLearning

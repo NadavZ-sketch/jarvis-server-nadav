@@ -31,6 +31,8 @@ const { createExecutionLogRepo } = require('./executionLogRepo');
 const { createPromptLibraryRepo } = require('./promptLibraryRepo');
 const { createTestCasesRepo } = require('./testCasesRepo');
 const { createTableRepo } = require('./tableRepo');
+const { createPlaylistRepo } = require('./playlistRepo');
+const { createUserPromptRepo } = require('./userPromptRepo');
 
 function createRepos(supabase) {
     const generic = {};
@@ -58,6 +60,8 @@ function createRepos(supabase) {
         executionLog: createExecutionLogRepo(supabase),
         promptLibrary: createPromptLibraryRepo(supabase),
         testCases: createTestCasesRepo(supabase),
+        playlist: createPlaylistRepo(supabase),
+        userPrompts: createUserPromptRepo(supabase),
         // Lazily-built, memoised generic repo for any other table.
         table(name) {
             return generic[name] || (generic[name] = createTableRepo(supabase, name));

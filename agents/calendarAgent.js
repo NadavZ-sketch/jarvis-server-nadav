@@ -9,19 +9,6 @@ const SCOPES = 'https://www.googleapis.com/auth/calendar';
 
 // ─── Token helpers ─────────────────────────────────────────────────────────────
 
-async function getStoredToken(supabase) {
-    try {
-        const { data } = await supabase
-            .from('user_profiles')
-            .select('google_calendar_token')
-            .limit(1)
-            .single();
-        return data?.google_calendar_token || null;
-    } catch {
-        return null;
-    }
-}
-
 async function refreshAccessToken(refreshToken) {
     const res = await axios.post('https://oauth2.googleapis.com/token', {
         client_id: process.env.GOOGLE_CLIENT_ID,
@@ -32,10 +19,10 @@ async function refreshAccessToken(refreshToken) {
     return res.data.access_token;
 }
 
-async function getAccessToken(supabase) {
-    const tokenData = await getStoredToken(supabase);
-    if (!tokenData) return null;
+async function getAccessToken(repos) {
     try {
+        const tokenData = await repos.profile.getCalendarToken();
+        if (!tokenData) return null;
         const parsed = typeof tokenData === 'string' ? JSON.parse(tokenData) : tokenData;
         if (!parsed.refresh_token) return null;
         return await refreshAccessToken(parsed.refresh_token);
@@ -125,7 +112,7 @@ function buildAuthUrl(redirectUri, state) {
 
 // ─── Main agent ───────────────────────────────────────────────────────────────
 
-async function runCalendarAgent(userMessage, supabase, settings = {}) {
+async function runCalendarAgent(userMessage, repos, settings = {}) {
     const hasCredentials = process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
 
     if (!hasCredentials) {
@@ -134,7 +121,7 @@ async function runCalendarAgent(userMessage, supabase, settings = {}) {
         };
     }
 
-    const accessToken = await getAccessToken(supabase);
+    const accessToken = await getAccessToken(repos);
 
     if (!accessToken) {
         const redirectUri = `${process.env.SERVER_URL || 'http://localhost:3000'}/auth/google/callback`;

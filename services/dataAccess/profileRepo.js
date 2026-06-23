@@ -30,6 +30,19 @@ function createProfileRepo(supabase) {
             return supabase.from(P).delete().eq('id', id);
         },
 
+        // Read the stored Google Calendar OAuth token; swallows errors → null.
+        async getCalendarToken() {
+            try {
+                const { data } = await supabase.from(P)
+                    .select('google_calendar_token')
+                    .limit(1)
+                    .single();
+                return data?.google_calendar_token || null;
+            } catch {
+                return null;
+            }
+        },
+
         // Upsert the Google Calendar OAuth token onto the default profile row.
         async saveCalendarToken(tokenJson) {
             return supabase.from(P).upsert(

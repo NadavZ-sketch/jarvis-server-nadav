@@ -201,30 +201,33 @@ function buildPeriodReportPrompt(stats, userName) {
 }
 
 // Fetch + assemble a weekly/monthly report. Tolerates missing habit tables.
-async function generatePeriodReport(supabase, period, settings) {
+async function generatePeriodReport(repos, period, settings) {
     const userName = settings.userName || 'נדב';
 
-    const [chatsRes, tasksRes, remindersRes, habitsRes] = await Promise.all([
-        supabase.from('chat_history').select('role,text,created_at').eq('role', 'user').order('created_at', { ascending: false }).limit(500),
-        supabase.from('tasks').select('content,created_at,done,due_date'),
-        supabase.from('reminders').select('text,scheduled_time,fired').limit(200),
-        supabase.from('habits').select('id,name').eq('active', true).then(
-            async res => {
-                if (res.error || !res.data) return { data: [] };
-                const withLogs = await Promise.all(res.data.map(async h => {
-                    const { data: logs } = await supabase.from('habit_logs').select('date').eq('habit_id', h.id).eq('done', true);
-                    return { name: h.name, logDates: (logs || []).map(l => l.date) };
-                }));
-                return { data: withLogs };
-            }
-        ).catch(() => ({ data: [] })),
+    const habitsWithLogs = async () => {
+        try {
+            const active = await repos.habits.listActive();
+            return await Promise.all(active.map(async h => ({
+                name: h.name,
+                logDates: await repos.habits.doneDates(h.id),
+            })));
+        } catch {
+            return [];
+        }
+    };
+
+    const [chats, tasks, reminders, habits] = await Promise.all([
+        repos.chat.recentForSearch(500),
+        repos.tasks.allForReport(),
+        repos.reminders.listForInsight(200),
+        habitsWithLogs(),
     ]);
 
     const data = {
-        chats:     chatsRes.data     || [],
-        tasks:     tasksRes.data     || [],
-        reminders: remindersRes.data || [],
-        habits:    habitsRes.data    || [],
+        chats,
+        tasks,
+        reminders,
+        habits,
     };
 
     const stats = buildPeriodStats(data, period);
@@ -249,7 +252,7 @@ async function generatePeriodReport(supabase, period, settings) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
+async function runInsightAgent(userMessage, repos, useLocal, settings = {}) {
     const userName = settings.userName || 'נדב';
 
     try {
@@ -257,31 +260,26 @@ async function runInsightAgent(userMessage, supabase, useLocal, settings = {}) {
         const period = detectReportPeriod(userMessage);
         if (period) {
             console.log(`🔍 InsightAgent: generating ${period} report...`);
-            return await generatePeriodReport(supabase, period, settings);
+            return await generatePeriodReport(repos, period, settings);
         }
 
         console.log('🔍 InsightAgent: fetching usage data...');
 
         // 1. Fetch all tables in parallel
-        const [chatsRes, tasksRes, memoriesRes, remindersRes, contactsRes] = await Promise.all([
-            supabase.from('chat_history').select('role,text,created_at').order('created_at', { ascending: false }).limit(200),
-            supabase.from('tasks').select('content,created_at'),
-            supabase.from('memories').select('content'),
-            supabase.from('reminders').select('text,scheduled_time,fired').limit(50),
-            supabase.from('contacts').select('name'),
+        const [chats, tasks, memories, reminders, contacts] = await Promise.all([
+            repos.chat.recentForSearch(200),
+            repos.tasks.allBasic(),
+            repos.memories.allForInsight(),
+            repos.reminders.listForInsight(50),
+            repos.contacts.listByName(),
         ]);
 
-        // Fail only if the two critical tables are unreachable
-        if (chatsRes.error || memoriesRes.error) {
-            return { answer: 'לא הצלחתי לגשת לנתונים. בדוק את חיבור Supabase.' };
-        }
-
         const data = {
-            chats:     chatsRes.data     || [],
-            tasks:     tasksRes.data     || [],
-            memories:  memoriesRes.data  || [],
-            reminders: remindersRes.data || [],
-            contacts:  contactsRes.data  || [],
+            chats,
+            tasks,
+            memories,
+            reminders,
+            contacts,
         };
 
         // 2. Analyze patterns (pure JS)

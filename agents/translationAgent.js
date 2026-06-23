@@ -10,7 +10,7 @@ const TRANSLATION_PROMPT = `אתה מתרגם מקצועי. תרגם את הטק
 
 הבקשה: `;
 
-async function runTranslationAgent(userMessage, supabase, useLocal = true) {
+async function runTranslationAgent(userMessage, useLocal = true) {
     try {
         const answer = await callGemma4(TRANSLATION_PROMPT + userMessage, useLocal);
         return { answer: answer || 'לא הצלחתי לתרגם.' };

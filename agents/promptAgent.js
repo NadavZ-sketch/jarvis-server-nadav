@@ -130,7 +130,7 @@ async function evaluatePrompt(userMessage, useLocal) {
 }
 
 // ── Save: extract and persist a prompt to Supabase ────────────────────────
-async function savePrompt(userMessage, supabase, useLocal) {
+async function savePrompt(userMessage, repos, useLocal) {
     const extractInstruction = `Extract the prompt title and the exact prompt text from the message below.
 Return ONLY valid JSON (no extra text):
 {"title": "short descriptive title in Hebrew", "prompt": "the exact prompt text", "category": "coding|writing|analysis|creative|general"}
@@ -156,7 +156,8 @@ Message: ${userMessage}`;
     }
 
     try {
-        await supabase.from('user_prompts').insert([{ title, prompt: promptText, category }]);
+        const { error } = await repos.userPrompts.add({ title, prompt: promptText, category });
+        if (error) throw error;
         return {
             answer: `✅ שמרתי את הפרומפט **"${title}"** בהצלחה!`,
             action: { type: 'navigate', target: 'prompts', label: 'פתח פרומפטים' },
@@ -170,16 +171,10 @@ Message: ${userMessage}`;
 }
 
 // ── List: show saved prompts from Supabase ────────────────────────────────
-async function listPrompts(supabase) {
+async function listPrompts(repos) {
     try {
-        const { data, error } = await supabase
-            .from('user_prompts')
-            .select('id, title, category, created_at')
-            .order('created_at', { ascending: false })
-            .limit(10);
-
-        if (error) throw error;
-        if (!data || data.length === 0) {
+        const data = await repos.userPrompts.listRecent(10);
+        if (!data.length) {
             return { answer: 'אין לך פרומפטים שמורים עדיין.\n\nתגיד לי "צור פרומפט ל..." ואבנה לך אחד!' };
         }
 
@@ -197,7 +192,7 @@ async function listPrompts(supabase) {
 }
 
 // ── Main entry point ───────────────────────────────────────────────────────
-async function runPromptAgent(userMessage, supabase, useLocal, settings = {}) {
+async function runPromptAgent(userMessage, repos, useLocal, settings = {}) {
     try {
         const useLocalModel = settings.useLocalModel ?? useLocal;
         const intent = detectIntent(userMessage);
@@ -205,8 +200,8 @@ async function runPromptAgent(userMessage, supabase, useLocal, settings = {}) {
         console.log(`🎨 PromptAgent: intent="${intent}" ← "${userMessage.slice(0, 60)}"`);
 
         switch (intent) {
-            case 'list':     return await listPrompts(supabase);
-            case 'save':     return await savePrompt(userMessage, supabase, useLocalModel);
+            case 'list':     return await listPrompts(repos);
+            case 'save':     return await savePrompt(userMessage, repos, useLocalModel);
             case 'evaluate': return await evaluatePrompt(userMessage, useLocalModel);
             case 'refine':   return await refinePrompt(userMessage, useLocalModel);
             default:         return await createPrompt(userMessage, useLocalModel);

@@ -24,6 +24,12 @@ function createMemoryRepo(supabase) {
             return data || [];
         },
 
+        // All memories as {content} objects for analytics (insight agent).
+        async allForInsight() {
+            const { data } = await supabase.from(M).select('content');
+            return data || [];
+        },
+
         // All stored memory contents (recall fallback when Pinecone is absent).
         async allContents() {
             const { data } = await supabase.from(M).select('content');

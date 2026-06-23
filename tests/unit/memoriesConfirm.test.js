@@ -18,6 +18,17 @@ jest.mock('../../services/pineconeMemory', () => ({
     syncFromSupabase: jest.fn(),
     initPinecone: jest.fn(),
 }));
+// memoryContext owns pending state; mock it so tests can control lookup results.
+jest.mock('../../services/memoryContext', () => ({
+    loadForRequest: jest.fn().mockResolvedValue({ memories: [], pending: null }),
+    formatAsText: jest.fn().mockReturnValue(''),
+    savePendingData: jest.fn().mockResolvedValue({ saved: true, content: '[fact] test' }),
+    confirmPending: jest.fn().mockResolvedValue({ saved: false }),
+    getPending: jest.fn().mockReturnValue(null),
+    clearPending: jest.fn(),
+    setPending: jest.fn(),
+    invalidateCache: jest.fn(),
+}));
 
 const request = require('supertest');
 const memoryAgent = require('../../agents/memoryAgent');

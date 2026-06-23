@@ -45,8 +45,10 @@ jest.mock('../../agents/chatAgent', () => ({
     detectFollowUp: jest.fn().mockReturnValue(false),
     filterRelevantMemories: jest.fn(m => m),
     filterRelevantMemoriesAsync: jest.fn(async m => m),
+    rankMemories: jest.fn().mockResolvedValue([]),
     buildSystemPrompt: jest.fn().mockReturnValue('SYSTEM'),
 }));
+jest.mock('../../services/memoryContext', () => ({ loadForRequest: jest.fn().mockResolvedValue({ memories: [], pending: null }), formatAsText: jest.fn().mockReturnValue(''), savePendingData: jest.fn().mockResolvedValue({ saved: true, content: '' }), confirmPending: jest.fn().mockResolvedValue({ saved: false }), getPending: jest.fn().mockReturnValue(null), clearPending: jest.fn(), setPending: jest.fn(), invalidateCache: jest.fn() }));
 jest.mock('../../agents/weatherAgent', () => ({ runWeatherAgent: jest.fn().mockResolvedValue({ answer: 'שמשי היום ☀️' }) }));
 
 const request = require('supertest');

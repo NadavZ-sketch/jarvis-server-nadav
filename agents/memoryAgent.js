@@ -2,6 +2,7 @@ require('dotenv').config();
 const { callGemma4 }   = require('./models');
 const obsidianSync     = require('../services/obsidianSync');
 const pinecone         = require('../services/pineconeMemory');
+const memoryContext    = require('../services/memoryContext');
 
 function buildSavePrompt(userName) {
     return `You are a memory manager. The user wants to save a personal fact about ${userName}.
@@ -13,12 +14,10 @@ User message: `;
 
 // ─── Deduplication ────────────────────────────────────────────────────────────
 
-// Cache invalidation hook installed by server.js so memory writes immediately
-// reflect in subsequent reads (no more 5-minute staleness).
-let _invalidateMemoryCache = () => {};
-function setMemoryCacheInvalidator(fn) {
-    if (typeof fn === 'function') _invalidateMemoryCache = fn;
-}
+// Delegate to memoryContext so all callers share the same cache.
+function _invalidateMemoryCache() { memoryContext.invalidateCache(); }
+// Kept for backward compatibility with existing test mocks.
+function setMemoryCacheInvalidator(_fn) { /* no-op: invalidation owned by memoryContext */ }
 
 /**
  * Check if `rawContent` is a duplicate of an existing memory.
@@ -75,21 +74,11 @@ async function withRetry(fn, { attempts = 2, baseMs = 400 } = {}) {
     throw lastErr;
 }
 
-// ─── Pending TTL cache ────────────────────────────────────────────────────────
+// ─── Pending TTL cache (delegated to memoryContext) ───────────────────────────
+// These wrappers keep existing test spies on memoryAgent working.
 
-const _pendingMemories = new Map();
-const PENDING_TTL_MS = 10 * 60 * 1000;
-
-function getPendingMemory(chatId) {
-    const entry = _pendingMemories.get(chatId);
-    if (!entry) return null;
-    if (Date.now() > entry.expiresAt) { _pendingMemories.delete(chatId); return null; }
-    return entry.data;
-}
-
-function clearPendingMemory(chatId) {
-    _pendingMemories.delete(chatId);
-}
+function getPendingMemory(chatId) { return memoryContext.getPending(chatId); }
+function clearPendingMemory(chatId) { return memoryContext.clearPending(chatId); }
 
 // ─── Passive auto-extraction (fire-and-forget) ────────────────────────────────
 
@@ -161,12 +150,11 @@ async function autoExtractMemory(userMessage, assistantAnswer, repos, settings =
             }
 
             if (chatId) {
-                _pendingMemories.set(chatId, {
-                    data: { content, type, ...( conflict.type === 'update' && {
+                memoryContext.setPending(chatId, {
+                    content, type, ...( conflict.type === 'update' && {
                         replacesId:      conflict.existingId,
                         replacesContent: conflict.existingContent,
-                    })},
-                    expiresAt: Date.now() + PENDING_TTL_MS,
+                    }),
                 });
                 console.log(`🧠 AutoExtract: pending [${type}] for chatId ${chatId}:`, content);
                 return { type: conflict.type, content, ...( conflict.type === 'update' && {

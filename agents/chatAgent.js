@@ -385,9 +385,48 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
     return messages;
 }
 
+// ─── Structured memory ranking (used when caller passes [{content}] array) ────
+// Same embed + cosine path as filterRelevantMemoriesAsync but operates on objects.
+
+async function _rankMemoryObjects(memories, userMessage, topK = 8) {
+    if (!memories || memories.length <= topK) return memories;
+    if (!pinecone.isReady()) {
+        memoryRecallStats.fallback++;
+        const lines = memories.map(m => m.content);
+        const ranked = new Set(_tokenRankMemories(lines, userMessage));
+        return memories.filter(m => ranked.has(m.content)).slice(0, topK);
+    }
+    try {
+        const queryVec = await pinecone.embed(userMessage);
+        const texts    = memories.map(m => m.content.replace(/^\[[^\]]+\]\s*/, ''));
+        const vecs     = await Promise.all(texts.map(t => _cachedEmbed(t)));
+        const scored   = memories.map((m, i) => ({ m, score: _cosine(queryVec, vecs[i]) }));
+        scored.sort((a, b) => b.score - a.score);
+        memoryRecallStats.semantic++;
+        return scored.slice(0, topK).map(s => s.m);
+    } catch (err) {
+        console.warn('⚠️ _rankMemoryObjects embedding failed, token fallback:', err.message);
+        memoryRecallStats.fallback++;
+        const lines  = memories.map(m => m.content);
+        const ranked = new Set(_tokenRankMemories(lines, userMessage));
+        return memories.filter(m => ranked.has(m.content)).slice(0, topK);
+    }
+}
+
+// Exported so stream-jarvis can rank before calling buildSystemPrompt directly.
+async function rankMemories(memories, userMessage, topK = 8) {
+    return _rankMemoryObjects(memories, userMessage, topK);
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemories, settings = {}) {
+    // When the caller passes a structured array from memoryContext, rank it here
+    // (2א: ranking stays in chatAgent; server only loads the raw list).
+    let resolvedMemories = longTermMemories;
+    if (Array.isArray(longTermMemories) && longTermMemories.length > 8) {
+        resolvedMemories = await _rankMemoryObjects(longTermMemories, userMessage, 8);
+    }
     try {
         const useLocal  = settings.useLocalModel === true;
         const voiceMode = settings.voiceMode === true;
@@ -415,19 +454,17 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
 
         if (imageBase64) {
             // Vision always uses Gemini cloud
-            const systemPrompt = buildSystemPrompt(chatHistory, longTermMemories, settings, followUpContext, userMessage);
+            const systemPrompt = buildSystemPrompt(chatHistory, resolvedMemories, settings, followUpContext, userMessage);
             answer = await callGeminiVision(systemPrompt + userMessage, imageBase64);
 
         } else if (useLocal) {
             // Local: proper system+history message array → Ollama (falls back to Groq)
-            const msgs = buildLocalMessages(userMessage, chatHistory, longTermMemories, settings, followUpContext, chatSummary);
+            const msgs = buildLocalMessages(userMessage, chatHistory, resolvedMemories, settings, followUpContext, chatSummary);
             answer = await callGemma4(msgs, true, maxTokens);
 
         } else {
             // Cloud: use the same structured message format as the local path.
-            // The old approach serialised all history into one giant user message
-            // string, burning ~5000 tokens/turn and exhausting Groq's TPM quota.
-            const msgs = buildLocalMessages(userMessage, chatHistory, longTermMemories, settings, followUpContext, chatSummary);
+            const msgs = buildLocalMessages(userMessage, chatHistory, resolvedMemories, settings, followUpContext, chatSummary);
             answer = await callGemma4(msgs, false, maxTokens);
         }
 
@@ -463,4 +500,4 @@ async function runChatAgent(userMessage, imageBase64, chatHistory, longTermMemor
     return { answer: 'סליחה, נתקלתי בבעיה. נסה שוב.' };
 }
 
-module.exports = { runChatAgent, buildSystemPrompt, buildLocalMessages, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, formatMemories, getMemoryRecallStats, analyzeUserStyle };
+module.exports = { runChatAgent, buildSystemPrompt, buildLocalMessages, detectFollowUp, filterRelevantMemories, filterRelevantMemoriesAsync, rankMemories, formatMemories, getMemoryRecallStats, analyzeUserStyle };

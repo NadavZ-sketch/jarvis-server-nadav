@@ -33,6 +33,7 @@ const KEYWORDS = {
     settings:  /שנה.*אישיות|שנה.*אופי|דבר.*יותר.*לאט|דבר.*יותר.*מהר|האט|האץ|בטל קול|כבה קול|הפעל קול|אפשר קול|תשובות קצרות|תשובות ארוכות|שנה.*שם.*ל|קרא לי |קרא לעצמך|מה.*הגדרות.*שלי|הגדרות.*נוכחיות|שנה.*הגדרות/i,
     calendar:  /יומן|פגישות.*היום|פגישות.*מחר|מה יש לי.*ביומן|מה ביומן|קבע פגישה|קבע אירוע|הוסף.*ליומן|תקבע.*פגישה|אירועים.*היום|google calendar/i,
     prompt:    /צור פרומפט|תכתוב פרומפט|בנה פרומפט|שפר פרומפט|שדרג פרומפט|הערך פרומפט|נתח פרומפט|שמור פרומפט|רשימת פרומפטים|הצג פרומפטים|פרומפטים שמורים|הפרומפטים שלי|הנדסת פרומפטים|prompt engineering|כתוב.*פרומפט|פרומפט ל[א-ת]/i,
+    factory:   /(?:צור|בנה|הוסף|מחק|הסר)\s+סוכן|רשימת סוכנים|הסוכנים שלי|הצג סוכנים|סוכנים מותאמים|agent factory|factory agent/i,
 };
 
 const REGISTRY_PATH = path.join(__dirname, 'custom', 'registry.json');
@@ -69,7 +70,7 @@ function invalidateOverridesCache() { _overridesAt = 0; }
 const VALID_INTENTS = new Set([
     'task', 'reminder', 'memory', 'weather', 'news', 'shopping', 'notes',
     'music', 'stocks', 'translate', 'sports', 'messaging', 'draft',
-    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'habit', 'insight', 'chat', 'project',
+    'security', 'code_error', 'e2e', 'manus', 'past_conv', 'calendar', 'prompt', 'settings', 'habit', 'insight', 'chat', 'project', 'factory',
 ]);
 
 function _findOverrideIntent(overrides, msg, userMessage) {

@@ -93,6 +93,7 @@ const { runPromptAgent }      = require('./agents/promptAgent');
 const { runSettingsAgent }    = require('./agents/settingsAgent');
 const { runProjectAgent, buildProjectsBriefing } = require('./agents/projectAgent');
 const { runHabitAgent }       = require('./agents/habitAgent');
+const { runAgentFactoryAgent } = require('./agents/agentFactoryAgent');
 const dispatcher              = require('./agents/dispatcher');
 
 // Single AGENTS map passed into the dispatcher so intent→agent wiring lives in
@@ -103,6 +104,7 @@ const AGENTS = {
     runSportsAgent, runMessagingAgent, runDraftAgent,
     runCalendarAgent, runPromptAgent, runSettingsAgent, runProjectAgent, runHabitAgent, runInsightAgent,
     runSecurityAgent, runCodeErrorAgent, runE2EAgent, runManusAgent,
+    runAgentFactoryAgent,
 };
 
 // MCP client manager — non-blocking init, guarded behind MCP_ENABLED flag.

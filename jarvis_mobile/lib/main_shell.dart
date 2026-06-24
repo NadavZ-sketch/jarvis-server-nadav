@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'main.dart' show JC, ChatScreen;
+import 'main.dart' show JC;
+import 'screens/chat/chat_screen.dart' show ChatScreen;
 import 'app_settings.dart';
 import 'widgets/animated_indexed_stack.dart';
 import 'screens/app_drawer.dart';

@@ -148,6 +148,47 @@ _modeAnim = CurvedAnimation(
 
 ---
 
+## Session & Memory Management
+
+זהו הGap המרכזי בין `screens/chat/ChatScreen` (הנוכחי) לבין `main.dart` — כל הלוגיקה הבאה **מועתקת** מ-`_ChatScreenState` ב-main.dart לתוך ה-ChatScreen החדש.
+
+### chatId — מחזור חיים
+
+```dart
+String _chatId = '';
+
+// ב-initState:
+await _loadChatHistory(); // טוען chatId מ-SharedPreferences או מייצר חדש
+```
+
+`chatId` מועבר ל-VoicePanel ו-TextPanel כ-prop. שניהם כבר שולחים אותו לserver עם כל קריאת API.
+
+### פונקציות שמועברות מ-main.dart
+
+| פונקציה | לוגיקה |
+|---------|---------|
+| `_loadChatHistory()` | (1) קורא `current_chat_id` מ-SharedPreferences, מייצר חדש אם לא קיים. (2) טוען `current_messages` מcache מיידית. (3) fetch מ-`GET /chat-history?chatId=…` בbackground, מעדכן cache. |
+| `_persistMessages()` | שומר `messages` ל-`current_messages` ב-SharedPreferences. מופעל אחרי כל `_addMessage()`. |
+| `_archiveSessionToHistory()` | שומר session ב-`chat_sessions` list ב-SharedPreferences (dedup על `chat_id`). מופעל על ידי `onRegisterArchive`. |
+| `_startNewChat()` | מייצר `chatId` חדש, שומר ב-SharedPreferences, מאפס `_messages`. |
+
+### שינוי ב-`_addMessage`
+
+```dart
+void _addMessage(ChatMessage msg) {
+  if (!mounted) return;
+  setState(() => _messages.add(msg));
+  _persistMessages(); // ← חדש: persist אחרי כל הודעה
+}
+```
+
+### ChatMessage → Map המרה
+
+`_loadChatHistory` טוען `Map<String, dynamic>` מהserver/cache.  
+`ChatMessage.fromLegacy()` כבר קיים ב-`screens/chat/chat_screen.dart` — משתמשים בו להמרה.
+
+---
+
 ## ChatScreen — Callbacks Migration
 
 `screens/chat/chat_screen.dart` מקבל את כל הprops שקיימים ב-`main.dart`:

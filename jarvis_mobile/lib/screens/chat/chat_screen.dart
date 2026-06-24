@@ -1,4 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app_settings.dart';
 import '../../main.dart' show JC;
@@ -39,15 +45,28 @@ enum ChatMode { voice, text }
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
 class ChatScreen extends StatefulWidget {
-  final String chatId;
-  final AppSettings settings;
+  // chatId is optional — if null, generated internally via SharedPreferences.
+  final String? chatId;
   final List<Map<String, dynamic>>? initialMessages;
+  final AppSettings? initialSettings;
+  final ValueChanged<AppSettings>? onSettingsChanged;
+  final VoidCallback? onOpenDrawer;
+  final String? pendingCommand;
+  final VoidCallback? onCommandConsumed;
+  final void Function(Future<void> Function())? onRegisterArchive;
+  final void Function(String target)? onNavigate;
 
   const ChatScreen({
     super.key,
-    required this.chatId,
-    required this.settings,
+    this.chatId,
     this.initialMessages,
+    this.initialSettings,
+    this.onSettingsChanged,
+    this.onOpenDrawer,
+    this.pendingCommand,
+    this.onCommandConsumed,
+    this.onRegisterArchive,
+    this.onNavigate,
   });
 
   @override
@@ -60,20 +79,141 @@ class _ChatScreenState extends State<ChatScreen>
   ChatMode _mode = ChatMode.voice;
   final GlobalKey<VoicePanelState> _voicePanelKey = GlobalKey();
 
+  // Session management
+  String _chatId = '';
+  AppSettings _settings = AppSettings();
+
   static const _voiceKey = ValueKey('voice');
   static const _textKey  = ValueKey('text');
 
   @override
   void initState() {
     super.initState();
+    _settings = widget.initialSettings ?? AppSettings();
     if (widget.initialMessages != null) {
       _messages.addAll(widget.initialMessages!.map(ChatMessage.fromLegacy));
+    }
+    _loadChatHistory();
+    if (widget.onRegisterArchive != null) {
+      widget.onRegisterArchive!(_archiveSessionToHistory);
     }
   }
 
   void _addMessage(ChatMessage msg) {
     if (!mounted) return;
     setState(() => _messages.add(msg));
+    _persistMessages();
+  }
+
+  Future<void> _loadChatHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 1. Load or generate chatId
+    final externalId = widget.chatId;
+    if (externalId != null && externalId.isNotEmpty) {
+      _chatId = externalId;
+    } else {
+      final saved = prefs.getString('current_chat_id');
+      if (saved != null && saved.isNotEmpty) {
+        _chatId = saved;
+      } else {
+        _chatId = 'chat-${DateTime.now().millisecondsSinceEpoch}-${math.Random().nextInt(100000)}';
+        await prefs.setString('current_chat_id', _chatId);
+      }
+    }
+
+    // 2. Load cached messages immediately (instant first paint)
+    final cached = prefs.getString('current_messages');
+    if (cached != null && cached.isNotEmpty && mounted) {
+      try {
+        final List decoded = jsonDecode(cached);
+        final loaded = decoded
+            .cast<Map<String, dynamic>>()
+            .map(ChatMessage.fromLegacy)
+            .toList();
+        if (loaded.isNotEmpty) {
+          setState(() { _messages.clear(); _messages.addAll(loaded); });
+        }
+      } catch (_) {}
+    }
+
+    // 3. Fetch fresh from server in background
+    if (_settings.serverUrl.isEmpty) return;
+    try {
+      final url = Uri.parse('${_settings.serverUrl}/chat-history?limit=60&chatId=$_chatId');
+      final response = await http.get(url).timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200 && mounted) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final List raw = (data['messages'] ?? data['history'] ?? []) as List;
+        if (raw.isNotEmpty) {
+          final serverMsgs = raw.map<ChatMessage>((m) {
+            final role = (m['role'] as String? ?? m['sender'] as String? ?? 'jarvis');
+            return ChatMessage(
+              id: UniqueKey().toString(),
+              sender: role == 'user' ? 'user' : 'jarvis',
+              text: (m['text'] as String? ?? m['content'] as String? ?? '').trim(),
+            );
+          }).where((m) => m.text.isNotEmpty).toList();
+          if (mounted) {
+            setState(() { _messages.clear(); _messages.addAll(serverMsgs); });
+            await _persistMessages();
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final serialized = _messages.map((m) => {
+        'sender': m.sender,
+        'text': m.text,
+        'fromVoice': m.fromVoice,
+      }).toList();
+      await prefs.setString('current_messages', jsonEncode(serialized));
+    } catch (_) {}
+  }
+
+  Future<void> _archiveSessionToHistory() async {
+    if (_messages.length <= 1) return;
+    if (_chatId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('chat_sessions') ?? '[]';
+      final List sessions = jsonDecode(raw) as List;
+      final serialized = _messages.map((m) => {'sender': m.sender, 'text': m.text}).toList();
+      sessions.removeWhere((s) => (s as Map)['chat_id'] == _chatId);
+      sessions.add({
+        'date': DateTime.now().toIso8601String(),
+        'messages': serialized,
+        'chat_id': _chatId,
+      });
+      final trimmed = sessions.length > 50
+          ? sessions.sublist(sessions.length - 50)
+          : sessions;
+      await prefs.setString('chat_sessions', jsonEncode(trimmed));
+    } catch (_) {}
+  }
+
+  Future<void> _startNewChat() async {
+    await _archiveSessionToHistory();
+    if (!mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    _chatId = 'chat-${DateTime.now().millisecondsSinceEpoch}-${math.Random().nextInt(100000)}';
+    await prefs.setString('current_chat_id', _chatId);
+    await prefs.remove('current_messages');
+    if (mounted) {
+      setState(() {
+        _messages.clear();
+        _messages.add(ChatMessage(
+          id: 'greeting-${DateTime.now().millisecondsSinceEpoch}',
+          sender: 'jarvis',
+          text: 'שיחה חדשה! מוכן לעזור.',
+        ));
+      });
+    }
+    await _persistMessages();
   }
 
   void _switchMode(ChatMode mode) {
@@ -154,8 +294,8 @@ class _ChatScreenState extends State<ChatScreen>
   Widget _buildVoicePanel() {
     return VoicePanel(
       key: _voicePanelKey,
-      chatId: widget.chatId,
-      settings: widget.settings,
+      chatId: _chatId,
+      settings: _settings,
       messages: _messages,
       onNewMessage: _addMessage,
     );
@@ -165,8 +305,8 @@ class _ChatScreenState extends State<ChatScreen>
     return TextPanel(
       key: const ValueKey('text'),
       messages: _messages,
-      settings: widget.settings,
-      chatId: widget.chatId,
+      settings: _settings,
+      chatId: _chatId,
       onNewMessage: _addMessage,
     );
   }

@@ -847,6 +847,40 @@ async function classifyRoute(userMessage, chatId, repos, { source = 'ask' } = {}
     return { agentName, intentMode, noKeywordMatch: routed.matches.length === 0 };
 }
 
+function classifyRequestError(err) {
+    const isRateLimit = err.response?.status === 429 || /429|rate.limit|quota/i.test(err.message);
+    const isDb = /supabase|PGRST|relation/i.test(err.message || '');
+    return { isRateLimit, isDb };
+}
+
+async function persistTurn(originalMessage, answer, chatId) {
+    await Promise.all([
+        saveChatMessage('user', originalMessage, chatId),
+        saveChatMessage('jarvis', answer, chatId),
+    ]);
+    cacheInvalidate(`chatHistory:${chatId}`);
+}
+
+// Schedules fire-and-forget post-turn work (memory extraction + summary update).
+// withMemory: include autoExtractMemory (stream path — ask-jarvis awaits it inline).
+// withSessionSummary: include saveSessionSummary (ask-jarvis only).
+function schedulePostTurnUpdates(chatId, repos, settings, { withMemory = false, withSessionSummary = false, originalMessage, answer } = {}) {
+    setImmediate(() => {
+        if (withMemory) {
+            autoExtractMemory(originalMessage, answer, repos, settings)
+                .catch(e => systemLog.logError('autoExtractMemory', e).catch(() => {}));
+        }
+        loadChatHistory(chatId).then(freshHistory => {
+            conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, repos, settings)
+                .catch(e => systemLog.logError('updateSummaryIfNeeded', e).catch(() => {}));
+            if (withSessionSummary) {
+                saveSessionSummary(chatId, repos, freshHistory)
+                    .catch(e => systemLog.logError('saveSessionSummary', e).catch(() => {}));
+            }
+        }).catch(e => systemLog.logError('loadChatHistory:postTurn', e).catch(() => {}));
+    });
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 async function askJarvisHandler(req, res) {
@@ -1183,14 +1217,8 @@ async function askJarvisHandler(req, res) {
         ]);
         cacheInvalidate(`chatHistory:${chatId}`); // history just updated
 
-        // Summary update (fire-and-forget after response)
         if (shouldExtract) {
-            setImmediate(() => {
-                loadChatHistory(chatId).then(freshHistory => {
-                    conversationSummary.updateSummaryIfNeeded(chatId, freshHistory, repos, settings).catch(e => systemLog.logError('updateSummaryIfNeeded', e).catch(() => {}));
-                    saveSessionSummary(chatId, repos, freshHistory).catch(e => systemLog.logError('saveSessionSummary', e).catch(() => {}));
-                }).catch(e => systemLog.logError('loadChatHistory:postChat', e).catch(() => {}));
-            });
+            schedulePostTurnUpdates(chatId, repos, settings, { withSessionSummary: true });
         }
 
         const tDone = Date.now();
@@ -1251,8 +1279,7 @@ async function askJarvisHandler(req, res) {
                 error:       err?.message,
             }).catch(() => {});
         } catch (_logErr) { /* never block error response */ }
-        const isRateLimit = err.response?.status === 429 || /429|rate.limit|quota/i.test(err.message);
-        const isDb = /supabase|PGRST|relation/i.test(err.message || '');
+        const { isRateLimit, isDb } = classifyRequestError(err);
         res.status(200).json({
             answer: isRateLimit
                 ? '⏳ כל ספקי ה-AI עמוסים כרגע (מגבלת קצב). נסה שוב בעוד כמה דקות.'
@@ -4235,11 +4262,7 @@ async function streamJarvisHandler(req, res) {
         // not to play the server-side Google TTS audio for this response.
         send({ done: true, chatId, skipAudio: voiceMode });
 
-        await Promise.all([
-            saveChatMessage('user', originalMessage, chatId),
-            saveChatMessage('jarvis', fullAnswer, chatId),
-        ]);
-        cacheInvalidate(`chatHistory:${chatId}`);
+        await persistTurn(originalMessage, fullAnswer, chatId);
 
         // Voice telemetry: record session activity (fire-and-forget, never throws).
         if (voiceMode) {
@@ -4250,13 +4273,7 @@ async function streamJarvisHandler(req, res) {
             }).catch(() => {});
         }
 
-        // Update rolling summary + passive memory extraction (fire-and-forget)
-        setImmediate(() => {
-            autoExtractMemory(originalMessage, fullAnswer, repos, settings).catch(e => systemLog.logError('autoExtractMemory:stream', e).catch(() => {}));
-            loadChatHistory(chatId).then(fresh => {
-                conversationSummary.updateSummaryIfNeeded(chatId, fresh, repos, settings).catch(e => systemLog.logError('updateSummaryIfNeeded:stream', e).catch(() => {}));
-            }).catch(e => systemLog.logError('loadChatHistory:stream', e).catch(() => {}));
-        });
+        schedulePostTurnUpdates(chatId, repos, settings, { withMemory: true, originalMessage, answer: fullAnswer });
         }); // end providerContext.run
     } catch (err) {
         if (err instanceof LocalModelError) {
@@ -4269,8 +4286,7 @@ async function streamJarvisHandler(req, res) {
             return res.end();
         }
         console.error('SSE error:', err.message);
-        const isRateLimit = err.response?.status === 429 || /429|rate.limit|quota/i.test(err.message);
-        const isDb = /supabase|PGRST|relation/i.test(err.message || '');
+        const { isRateLimit, isDb } = classifyRequestError(err);
         const userMsg = isRateLimit
             ? '⏳ כל ספקי ה-AI עמוסים כרגע (מגבלת קצב). נסה שוב בעוד כמה דקות.'
             : isDb

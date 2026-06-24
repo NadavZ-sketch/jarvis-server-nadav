@@ -78,17 +78,19 @@ class _ChatScreenState extends State<ChatScreen>
   final List<ChatMessage> _messages = [];
   ChatMode _mode = ChatMode.voice;
   final GlobalKey<VoicePanelState> _voicePanelKey = GlobalKey();
+  late final AnimationController _modeCtrl;
 
   // Session management
   String _chatId = '';
   AppSettings _settings = AppSettings();
 
-  static const _voiceKey = ValueKey('voice');
-  static const _textKey  = ValueKey('text');
-
   @override
   void initState() {
     super.initState();
+    _modeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
     _settings = widget.initialSettings ?? AppSettings();
     if (widget.initialMessages != null) {
       _messages.addAll(widget.initialMessages!.map(ChatMessage.fromLegacy));
@@ -97,6 +99,28 @@ class _ChatScreenState extends State<ChatScreen>
     if (widget.onRegisterArchive != null) {
       widget.onRegisterArchive!(_archiveSessionToHistory);
     }
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialSettings != null &&
+        widget.initialSettings != oldWidget.initialSettings) {
+      setState(() => _settings = widget.initialSettings!);
+    }
+    if (widget.pendingCommand != null &&
+        widget.pendingCommand != oldWidget.pendingCommand) {
+      if (_mode != ChatMode.text) _switchMode(ChatMode.text);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onCommandConsumed?.call();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _modeCtrl.dispose();
+    super.dispose();
   }
 
   void _addMessage(ChatMessage msg) {
@@ -218,14 +242,18 @@ class _ChatScreenState extends State<ChatScreen>
 
   void _switchMode(ChatMode mode) {
     if (mode == _mode) return;
+    HapticFeedback.mediumImpact();
     if (_mode == ChatMode.voice) {
       _voicePanelKey.currentState?.stopVoice();
     }
     setState(() => _mode = mode);
     if (mode == ChatMode.voice) {
+      _modeCtrl.reverse();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _voicePanelKey.currentState?.resumeVoice();
       });
+    } else {
+      _modeCtrl.forward();
     }
   }
 
@@ -245,40 +273,23 @@ class _ChatScreenState extends State<ChatScreen>
             fontFamily: 'Heebo',
           ),
         ),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: JC.textSecondary),
-          onPressed: () => Navigator.of(context)
-              .pop(_messages.map((m) => {'sender': m.sender, 'text': m.text}).toList()),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsetsDirectional.only(end: 12),
-            child: SegmentedButton<ChatMode>(
-              segments: const [
-                ButtonSegment(value: ChatMode.voice, label: Text('🎤 קול')),
-                ButtonSegment(value: ChatMode.text,  label: Text('💬 טקסט')),
-              ],
-              selected: {_mode},
-              onSelectionChanged: (s) => _switchMode(s.first),
-              style: ButtonStyle(
-                textStyle: WidgetStateProperty.all(const TextStyle(
-                  fontFamily: 'Heebo', fontSize: 12,
-                )),
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
-          ),
-        ],
+        leading: widget.onOpenDrawer != null
+            ? IconButton(
+                icon: Icon(Icons.menu_rounded, color: JC.textSecondary),
+                onPressed: widget.onOpenDrawer,
+              )
+            : null,
+        automaticallyImplyLeading: widget.onOpenDrawer == null,
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         switchInCurve: Curves.easeInOut,
         switchOutCurve: Curves.easeInOut,
         transitionBuilder: (child, animation) {
-          final isIncoming = child.key == (_mode == ChatMode.voice ? _voiceKey : _textKey);
-          final offset = isIncoming
-              ? Tween(begin: const Offset(0, 0.08), end: Offset.zero).animate(animation)
-              : Tween(begin: Offset.zero, end: const Offset(0, 0.08)).animate(animation);
+          final offset = Tween(
+            begin: const Offset(0, 0.08),
+            end: Offset.zero,
+          ).animate(animation);
           return FadeTransition(
             opacity: animation,
             child: SlideTransition(position: offset, child: child),
@@ -298,6 +309,7 @@ class _ChatScreenState extends State<ChatScreen>
       settings: _settings,
       messages: _messages,
       onNewMessage: _addMessage,
+      onOrbTap: () => _switchMode(ChatMode.text),
     );
   }
 
@@ -308,6 +320,9 @@ class _ChatScreenState extends State<ChatScreen>
       settings: _settings,
       chatId: _chatId,
       onNewMessage: _addMessage,
+      onSwitchToVoice: () => _switchMode(ChatMode.voice),
+      onNavigate: widget.onNavigate,
+      pendingCommand: widget.pendingCommand,
     );
   }
 }

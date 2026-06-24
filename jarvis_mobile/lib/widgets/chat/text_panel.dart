@@ -1,20 +1,25 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../app_settings.dart';
-import '../../main.dart' show JC;
+import '../../main.dart' show JC, JarvisState;
 import '../../services/api_service.dart';
 import '../../screens/chat/chat_screen.dart' show ChatMessage;
+import '../jarvis_orb.dart';
 
 class TextPanel extends StatefulWidget {
   final List<ChatMessage> messages;
   final AppSettings settings;
   final String chatId;
   final void Function(ChatMessage msg) onNewMessage;
+  final VoidCallback? onSwitchToVoice;
+  final void Function(String target)? onNavigate;
+  final String? pendingCommand;
 
   const TextPanel({
     super.key,
@@ -22,6 +27,9 @@ class TextPanel extends StatefulWidget {
     required this.settings,
     required this.chatId,
     required this.onNewMessage,
+    this.onSwitchToVoice,
+    this.onNavigate,
+    this.pendingCommand,
   });
 
   @override
@@ -43,6 +51,8 @@ class _TextPanelState extends State<TextPanel>
 
   bool _sending = false;
   int _prevCount = 0;
+
+  OverlayEntry? _fabTooltipEntry;
 
   String? _pendingFileName;
   List<int>? _pendingFileBytes;
@@ -74,6 +84,14 @@ class _TextPanelState extends State<TextPanel>
       }
       _prevCount = newCount;
       _scrollToBottom();
+    }
+    // Auto-send a pending command injected by parent
+    if (widget.pendingCommand != null && widget.pendingCommand != old.pendingCommand) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _textCtrl.text = widget.pendingCommand!;
+        _sendText();
+      });
     }
   }
 
@@ -113,6 +131,11 @@ class _TextPanelState extends State<TextPanel>
           sender: 'jarvis',
           text: answer,
         ));
+      }
+      final action = result['action'] as Map<String, dynamic>?;
+      if (action != null && action['type'] == 'navigate') {
+        final target = action['target'] as String? ?? '';
+        if (target.isNotEmpty) widget.onNavigate?.call(target);
       }
     } catch (_) {
       widget.onNewMessage(ChatMessage(
@@ -309,8 +332,46 @@ class _TextPanelState extends State<TextPanel>
     }
   }
 
+  void _showVoiceTooltip() {
+    _fabTooltipEntry?.remove();
+    final overlay = Overlay.of(context);
+    _fabTooltipEntry = OverlayEntry(
+      builder: (_) => Positioned(
+        bottom: 120,
+        left: 60,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: JC.surfaceAlt,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: JC.blue400.withValues(alpha: 0.4)),
+            ),
+            child: Text(
+              'חזרה לקול',
+              textDirection: TextDirection.rtl,
+              style: TextStyle(
+                color: JC.blue300,
+                fontSize: 11,
+                fontFamily: 'Heebo',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_fabTooltipEntry!);
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      _fabTooltipEntry?.remove();
+      _fabTooltipEntry = null;
+    });
+  }
+
   @override
   void dispose() {
+    _fabTooltipEntry?.remove();
     _textCtrl.dispose();
     _scrollCtrl.dispose();
     _micCtrl.dispose();
@@ -320,40 +381,70 @@ class _TextPanelState extends State<TextPanel>
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Stack(
       key: const ValueKey('text'),
       children: [
-        Expanded(
-          child: AnimatedList(
-            key: _listKey,
-            controller: _scrollCtrl,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            initialItemCount: widget.messages.length,
-            itemBuilder: (context, index, animation) {
-              final msg = widget.messages[index];
-              return _BubbleEntry(msg: msg, animation: animation, settings: widget.settings, chatId: widget.chatId);
-            },
+        Column(
+          children: [
+            Expanded(
+              child: AnimatedList(
+                key: _listKey,
+                controller: _scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                initialItemCount: widget.messages.length,
+                itemBuilder: (context, index, animation) {
+                  final msg = widget.messages[index];
+                  return _BubbleEntry(msg: msg, animation: animation, settings: widget.settings, chatId: widget.chatId);
+                },
+              ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              child: _pendingFileName == null
+                  ? const SizedBox.shrink()
+                  : _FilePreviewRow(
+                      fileName: _pendingFileName!,
+                      onDismiss: _clearPendingFile,
+                    ),
+            ),
+            _InputBar(
+              controller: _textCtrl,
+              micRecording: _micRecording,
+              micScale: _micScale,
+              sending: _sending,
+              onSend: _sendText,
+              onMic: _toggleMic,
+              onAttach: _showAttachmentSheet,
+            ),
+          ],
+        ),
+        // Mini-Orb FAB — switches to voice mode
+        if (widget.onSwitchToVoice != null)
+          Positioned(
+            bottom: 70,
+            left: 14,
+            child: GestureDetector(
+              key: const Key('mini_orb_fab'),
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                widget.onSwitchToVoice!();
+              },
+              onLongPress: _showVoiceTooltip,
+              child: JarvisOrb(
+                state: JarvisState.idle,
+                level: 0,
+                size: 42,
+                baseColorOverride: widget.settings.orbCustomColors
+                    ? Color(widget.settings.orbBaseColor) : null,
+                tipColorOverride: widget.settings.orbCustomColors
+                    ? Color(widget.settings.orbTipColor) : null,
+                voiceSensitivity: widget.settings.orbVoiceSensitivity,
+                rotationSensitivity: widget.settings.orbRotationSensitivity,
+                explosionEnabled: false,
+              ),
+            ),
           ),
-        ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-          child: _pendingFileName == null
-              ? const SizedBox.shrink()
-              : _FilePreviewRow(
-                  fileName: _pendingFileName!,
-                  onDismiss: _clearPendingFile,
-                ),
-        ),
-        _InputBar(
-          controller: _textCtrl,
-          micRecording: _micRecording,
-          micScale: _micScale,
-          sending: _sending,
-          onSend: _sendText,
-          onMic: _toggleMic,
-          onAttach: _showAttachmentSheet,
-        ),
       ],
     );
   }

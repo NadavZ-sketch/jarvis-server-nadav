@@ -13,6 +13,7 @@ class _OrbStubState extends State<_OrbStub> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: widget.onOrbTap,
       child: const SizedBox(key: Key('orb'), width: 100, height: 100),
     );

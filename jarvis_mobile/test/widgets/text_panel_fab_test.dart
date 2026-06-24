@@ -12,6 +12,7 @@ void main() {
               bottom: 70, left: 14,
               child: GestureDetector(
                 key: const Key('mini_orb_fab'),
+                behavior: HitTestBehavior.opaque,
                 onTap: () => switched = true,
                 child: const SizedBox(width: 42, height: 42),
               ),

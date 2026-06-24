@@ -52,6 +52,27 @@ function createE2eRepo(supabase) {
             return data || [];
         },
 
+        // Chunked insert with column-stripping retry for older schemas.
+        // Throws only after both insert attempts fail (caller decides how to surface).
+        async insertChunked(rows) {
+            const insert = async (rs) => {
+                for (let i = 0; i < rs.length; i += 50) {
+                    const { error } = await supabase.from(T).insert(rs.slice(i, i + 50));
+                    if (error) throw new Error(error.message || 'insert failed');
+                }
+            };
+            try {
+                await insert(rows);
+            } catch (err) {
+                if (/kind|source|column/i.test(err.message || '')) {
+                    const stripped = rows.map(({ kind: _k, source: _s, ...r }) => r);
+                    await insert(stripped);
+                } else {
+                    throw err;
+                }
+            }
+        },
+
         async recentFailures(limit = 3) {
             const { data } = await supabase.from(T)
                 .select('summary, created_at')

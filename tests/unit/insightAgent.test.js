@@ -1,12 +1,3 @@
-const mockSupabase = {
-    from: jest.fn().mockReturnThis(),
-    select: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
-    order: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockResolvedValue({ data: [], error: null }),
-};
-mockSupabase.from.mockReturnValue(mockSupabase);
-
 jest.mock('../../agents/models', () => ({ callGemma4: jest.fn() }));
 
 const { callGemma4 } = require('../../agents/models');
@@ -19,6 +10,19 @@ beforeEach(() => jest.clearAllMocks());
 
 function daysAgoISO(n) {
     return new Date(Date.now() - n * 86400000).toISOString();
+}
+
+// Minimal repos mock for runInsightAgent (main path).
+function makeRepos(overrides = {}) {
+    return {
+        chat:      { recentForSearch: jest.fn().mockResolvedValue([]) },
+        tasks:     { allBasic: jest.fn().mockResolvedValue([]), allForReport: jest.fn().mockResolvedValue([]) },
+        memories:  { allForInsight: jest.fn().mockResolvedValue([]) },
+        reminders: { listForInsight: jest.fn().mockResolvedValue([]) },
+        contacts:  { listByName: jest.fn().mockResolvedValue([]) },
+        habits:    { listActive: jest.fn().mockResolvedValue([]), doneDates: jest.fn().mockResolvedValue([]) },
+        ...overrides,
+    };
 }
 
 describe('analyzePatterns', () => {
@@ -74,21 +78,30 @@ describe('analyzePatterns', () => {
 describe('runInsightAgent', () => {
     it('returns insights with empty data', async () => {
         callGemma4.mockResolvedValue('אין מספיק נתונים לניתוח עדיין.');
-        const result = await runInsightAgent('תן לי תובנות', mockSupabase, false, {});
+        const result = await runInsightAgent('תן לי תובנות', makeRepos(), false, {});
         expect(result).toHaveProperty('answer');
         expect(typeof result.answer).toBe('string');
     });
 
-    it('handles DB error gracefully', async () => {
-        mockSupabase.limit.mockResolvedValue({ data: null, error: new Error('DB error') });
+    it('handles repo errors gracefully', async () => {
+        const repos = makeRepos({
+            chat: { recentForSearch: jest.fn().mockRejectedValue(new Error('DB error')) },
+        });
         callGemma4.mockResolvedValue('לא ניתן לטעון נתונים.');
-        const result = await runInsightAgent('דוח שימוש', mockSupabase, false, {});
+        const result = await runInsightAgent('דוח שימוש', repos, false, {});
         expect(result).toHaveProperty('answer');
     });
 
     it('handles LLM failure', async () => {
         callGemma4.mockRejectedValue(new Error('LLM unavailable'));
-        const result = await runInsightAgent('תובנות', mockSupabase, false, {});
+        const repos = makeRepos({
+            chat: { recentForSearch: jest.fn().mockResolvedValue([
+                { role: 'user', text: 'שלום', created_at: '2026-05-21T09:00:00Z' },
+                { role: 'user', text: 'מה קורה', created_at: '2026-05-21T10:00:00Z' },
+                { role: 'user', text: 'ספר לי', created_at: '2026-05-21T11:00:00Z' },
+            ]) },
+        });
+        const result = await runInsightAgent('תובנות', repos, false, {});
         expect(result).toHaveProperty('answer');
         expect(typeof result.answer).toBe('string');
     });
@@ -132,30 +145,32 @@ describe('buildPeriodStats', () => {
 });
 
 describe('generatePeriodReport', () => {
-    // Thenable per-table mock (mirrors the Supabase query-builder contract).
-    function makeChain(data) {
+    function makeReposForReport(tableData) {
         return {
-            then(res) { return Promise.resolve({ data, error: null }).then(res); },
-            catch(rej) { return Promise.resolve({ data, error: null }).catch(rej); },
-            select: jest.fn().mockReturnThis(),
-            eq:     jest.fn().mockReturnThis(),
-            order:  jest.fn().mockReturnThis(),
-            limit:  jest.fn().mockReturnThis(),
+            chat: {
+                recentForSearch: jest.fn().mockResolvedValue(tableData.chat_history || []),
+            },
+            tasks: {
+                allForReport: jest.fn().mockResolvedValue(tableData.tasks || []),
+            },
+            reminders: {
+                listForInsight: jest.fn().mockResolvedValue(tableData.reminders || []),
+            },
+            habits: {
+                listActive: jest.fn().mockResolvedValue([]),
+                doneDates: jest.fn().mockResolvedValue([]),
+            },
         };
-    }
-    function makeSupabase(tableData) {
-        return { from: jest.fn(t => makeChain(tableData[t] || [])) };
     }
 
     test('assembles a weekly report with facts and narrative', async () => {
         callGemma4.mockResolvedValue('שבוע מצוין, המשך כך!');
-        const supabase = makeSupabase({
+        const repos = makeReposForReport({
             chat_history: [{ role: 'user', text: 'היי', created_at: daysAgoISO(1) }],
             tasks: [{ content: 'a', done: true, created_at: daysAgoISO(1) }],
             reminders: [],
-            habits: [],
         });
-        const result = await generatePeriodReport(supabase, 'week', { userName: 'נדב' });
+        const result = await generatePeriodReport(repos, 'week', { userName: 'נדב' });
         expect(result.answer).toContain('הסיכום השבועי');
         expect(result.answer).toContain('שבוע מצוין');
     });

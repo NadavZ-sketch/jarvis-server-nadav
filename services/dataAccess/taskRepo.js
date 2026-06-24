@@ -146,6 +146,13 @@ function createTaskRepo(supabase) {
             return data || [];
         },
 
+        // content + created_at + done + due_date for period-report analytics.
+        async allForReport() {
+            const { data } = await supabase.from(T)
+                .select('content, created_at, done, due_date');
+            return data || [];
+        },
+
         // Open tasks (oldest first) for the proactive-nudge engine.
         async openForNudge(limit = 50) {
             const { data } = await supabase.from(T)

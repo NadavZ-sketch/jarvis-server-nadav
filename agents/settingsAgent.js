@@ -46,7 +46,7 @@ function parseSettingsIntent(msg) {
     return { updates, summary: parts.join(', ') };
 }
 
-async function runSettingsAgent(userMessage, supabase, useLocal, settings) {
+async function runSettingsAgent(userMessage, useLocal, settings) {
     const parsed = parseSettingsIntent(userMessage);
 
     if (parsed) {

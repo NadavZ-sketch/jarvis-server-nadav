@@ -3767,7 +3767,7 @@ app.post('/scan/errors/run', _rl(5), async (_req, res) => {
         let persisted = false;
         if (findings.length) {
             try {
-                await persistFindings(supabase, runId, findings, 'code_scan');
+                await persistFindings(repos, runId, findings, 'code_scan');
                 persisted = true;
             } catch (pe) {
                 console.error('❌ /scan/errors/run: persist failed:', pe.message);

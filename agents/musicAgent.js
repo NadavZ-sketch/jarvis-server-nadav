@@ -2,7 +2,7 @@ const { sanitizeLike } = require('./utils');
 require('dotenv').config();
 const { callGemma4 } = require('./models');
 
-async function runMusicAgent(userMessage, supabase, useLocal = false, settings = {}) {
+async function runMusicAgent(userMessage, repos, useLocal = false, settings = {}) {
     const userName = settings.userName || 'נדב';
 
     try {
@@ -11,13 +11,8 @@ async function runMusicAgent(userMessage, supabase, useLocal = false, settings =
         const isDeletePlaylist = /מחק.*שיר|הסר.*שיר|מחק.*מהפלייליסט|הסר.*מהפלייליסט/i.test(userMessage);
 
         if (isListPlaylist) {
-            const { data, error } = await supabase
-                .from('playlist')
-                .select('title, artist')
-                .order('created_at', { ascending: false })
-                .limit(20);
-            if (error) throw error;
-            if (!data || data.length === 0) {
+            const data = await repos.playlist.list(20);
+            if (!data.length) {
                 return { answer: `אין לך עדיין שירים שמורים בפלייליסט, ${userName}.` };
             }
             const list = data.map((s, i) => `${i + 1}. ${s.title}${s.artist ? ` — ${s.artist}` : ''}`).join('\n');
@@ -29,10 +24,9 @@ async function runMusicAgent(userMessage, supabase, useLocal = false, settings =
                 .replace(/מחק|הסר|שיר|מהפלייליסט|מהמועדפים|פלייליסט|מועדפים/g, '')
                 .trim();
             if (!term) return { answer: 'מה למחוק? נסה: "מחק שיר [שם]"' };
-            const { data, error } = await supabase.from('playlist').delete().ilike('title', `%${term}%`).select();
-            if (error) throw error;
-            if (!data?.length) return { answer: `לא מצאתי "${term}" בפלייליסט.` };
-            return { answer: `✅ הסרתי "${data[0].title}" מהפלייליסט.` };
+            const deleted = await repos.playlist.deleteByTitle(term);
+            if (!deleted.length) return { answer: `לא מצאתי "${term}" בפלייליסט.` };
+            return { answer: `✅ הסרתי "${deleted[0].title}" מהפלייליסט.` };
         }
 
         if (isSavePlaylist) {
@@ -40,7 +34,7 @@ async function runMusicAgent(userMessage, supabase, useLocal = false, settings =
                 .replace(/הוסף|שמור|לפלייליסט|למועדפים|פלייליסט|מועדפים/g, '')
                 .trim();
             if (!term) return { answer: 'מה להוסיף? נסה: "הוסף לפלייליסט [שם השיר]"' };
-            await supabase.from('playlist').insert([{ title: term, artist: '' }]);
+            await repos.playlist.add(term);
             return { answer: `✅ הוספתי "${term}" לפלייליסט שלך.` };
         }
 

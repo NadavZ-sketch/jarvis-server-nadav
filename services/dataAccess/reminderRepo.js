@@ -69,6 +69,14 @@ function createReminderRepo(supabase) {
             return data || [];
         },
 
+        // text + scheduled_time + fired for analytics (insight agent, period report).
+        async listForInsight(limit = 200) {
+            const { data } = await supabase.from(R)
+                .select('text, scheduled_time, fired')
+                .limit(limit);
+            return data || [];
+        },
+
         // Unfired reminders inside a day window [startISO, endISO) (briefing).
         async inWindow(startISO, endISO) {
             const { data } = await supabase.from(R)

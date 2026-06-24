@@ -21,6 +21,7 @@ class VoicePanel extends StatefulWidget {
   final AppSettings settings;
   final void Function(ChatMessage msg) onNewMessage;
   final List<ChatMessage> messages;
+  final VoidCallback? onOrbTap;
 
   const VoicePanel({
     super.key,
@@ -28,6 +29,7 @@ class VoicePanel extends StatefulWidget {
     required this.settings,
     required this.onNewMessage,
     required this.messages,
+    this.onOrbTap,
   });
 
   @override
@@ -402,6 +404,31 @@ class VoicePanelState extends State<VoicePanel>
     }
   }
 
+  void _handleOrbTap() {
+    switch (_state) {
+      case JarvisState.listening:
+      case JarvisState.idle:
+        _hardCapTimer?.cancel();
+        _speech.stop();
+        widget.onOrbTap?.call();
+        break;
+      case JarvisState.speaking:
+        _flutterTts.stop();
+        _audioPlayer.stop();
+        _sendWs({'type': 'barge_in'});
+        _bargeInFrames = 0;
+        widget.onOrbTap?.call();
+        break;
+      case JarvisState.thinking:
+        _sendWs({'type': 'abort'});
+        setState(() { _streamingReply = ''; _state = JarvisState.idle; });
+        widget.onOrbTap?.call();
+        break;
+      default:
+        widget.onOrbTap?.call();
+    }
+  }
+
   /// Called by ChatScreen when switching away from voice mode.
   void stopVoice() {
     _hardCapTimer?.cancel();
@@ -460,17 +487,41 @@ class VoicePanelState extends State<VoicePanel>
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: Column(
                 children: [
-                  JarvisOrb(
-                    state: _state,
-                    level: _soundLevel,
-                    size: 220,
-                    baseColorOverride: widget.settings.orbCustomColors
-                        ? Color(widget.settings.orbBaseColor) : null,
-                    tipColorOverride: widget.settings.orbCustomColors
-                        ? Color(widget.settings.orbTipColor) : null,
-                    voiceSensitivity: widget.settings.orbVoiceSensitivity,
-                    rotationSensitivity: widget.settings.orbRotationSensitivity,
-                    explosionEnabled: widget.settings.orbExplosionEnabled,
+                  GestureDetector(
+                    onTap: _handleOrbTap,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        JarvisOrb(
+                          state: _state,
+                          level: _soundLevel,
+                          size: 220,
+                          baseColorOverride: widget.settings.orbCustomColors
+                              ? Color(widget.settings.orbBaseColor) : null,
+                          tipColorOverride: widget.settings.orbCustomColors
+                              ? Color(widget.settings.orbTipColor) : null,
+                          voiceSensitivity: widget.settings.orbVoiceSensitivity,
+                          rotationSensitivity: widget.settings.orbRotationSensitivity,
+                          explosionEnabled: widget.settings.orbExplosionEnabled,
+                        ),
+                        // Hint overlay — visible only when idle or listening
+                        if (_state == JarvisState.idle || _state == JarvisState.listening)
+                          IgnorePointer(
+                            child: Text(
+                              'הקש\nלטקסט',
+                              textAlign: TextAlign.center,
+                              textDirection: TextDirection.rtl,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.55),
+                                fontSize: 10,
+                                fontFamily: 'Heebo',
+                                fontWeight: FontWeight.w600,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Text(

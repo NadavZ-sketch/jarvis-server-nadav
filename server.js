@@ -799,15 +799,61 @@ function applySaverMode(settings) {
     return settings;
 }
 
+// ─── Shared request helpers ───────────────────────────────────────────────────
+
+function parseRequestBody(req) {
+    const originalMessage = req.body.command || '';
+    const chatId = req.body.chatId || req.body.chat_id
+        || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const settings = req.body.settings || {};
+    applySaverMode(settings);
+    const useLocal = settings.useLocalModel === true;
+    return { originalMessage, chatId, settings, useLocal };
+}
+
+function buildProviderOpts(settings) {
+    return {
+        cloudProvider:   settings.cloudProvider,
+        openrouterModel: settings.openrouterModel,
+        temperature:     settings.temperature,
+        localServerUrl:  settings.localServerUrl,
+        localModelName:  settings.localModelName,
+    };
+}
+
+// Core intent classification shared by both handlers.
+// routeTracker.setLastRoute is intentionally NOT called here — callers do it
+// after any post-classify adjustments (Manus guard, follow-up override, etc.).
+async function classifyRoute(userMessage, chatId, repos, { source = 'ask' } = {}) {
+    const routed = classifyIntentDetailed(userMessage);
+    let agentName = routed.intent;
+    const intentMode = routed.ambiguous ? 'llm' : 'fast';
+    if (routed.ambiguous) {
+        const llmIntent = await classifyIntentWithLLM(userMessage);
+        if (routed.matches.includes(llmIntent)) agentName = llmIntent;
+        feedbackStore.recordEvent(repos, {
+            eventName: 'route_ambiguous',
+            value: 1,
+            metadata: {
+                chatId: String(chatId),
+                snippet: String(userMessage).slice(0, 200),
+                candidates: routed.matches,
+                llm: llmIntent,
+                chosen: agentName,
+                ...(source !== 'ask' && { source }),
+            },
+        }).catch(() => {});
+    }
+    return { agentName, intentMode, noKeywordMatch: routed.matches.length === 0 };
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 async function askJarvisHandler(req, res) {
     try {
-        const originalMessage = req.body.command || '';
+        const { originalMessage, chatId, settings, useLocal } = parseRequestBody(req);
         let userMessage = originalMessage; // may be rewritten by reference resolution
         const imageBase64 = req.body.image;
-        // Extract chat_id from request, or generate one if not provided
-        const chatId = req.body.chatId || req.body.chat_id || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         if (userMessage.length > 5000) {
             return res.status(400).json({ answer: 'ההודעה ארוכה מדי. נסה בקצר יותר.', chatId });
@@ -816,11 +862,8 @@ async function askJarvisHandler(req, res) {
         console.log(`\n--- Incoming: "${userMessage.slice(0, 60)}" | Image: ${!!imageBase64} | Chat: ${chatId.slice(0, 20)} ---`);
         const t0 = Date.now();
 
-        const settings  = req.body.settings || {};
-        applySaverMode(settings);
         const userProfile = await getUserProfile();
         settings.userProfile = userProfile;
-        const useLocal  = settings.useLocalModel === true;
 
         // ── Optional PDF/document context ─────────────────────────────────────
         // When a PDF is attached, extract its text and fold it into the message
@@ -885,51 +928,24 @@ async function askJarvisHandler(req, res) {
         const FORCEABLE_INTENTS = ['chat', 'weather', 'news', 'stocks', 'sports', 'translate'];
         const forcedIntent = typeof req.body.intent === 'string' ? req.body.intent.trim() : '';
 
-        let intentMode = 'fast';
-        let agentName;
+        let intentMode, agentName;
         if (FORCEABLE_INTENTS.includes(forcedIntent)) {
             agentName = forcedIntent;
             intentMode = 'forced';
         } else if (imageBase64 || documentContext) {
             agentName = 'chat';
+            intentMode = 'fast';
         } else {
-            const routed = classifyIntentDetailed(userMessage);
-            agentName = routed.intent;
-
-            if (routed.ambiguous) {
-                // Collision: several keyword intents matched. Disambiguate with
-                // the LLM, but only trust it if it picks one of the candidates —
-                // otherwise keep the first keyword match as the best guess.
-                const llmIntent = await classifyIntentWithLLM(userMessage);
-                if (routed.matches.includes(llmIntent)) agentName = llmIntent;
-                intentMode = 'llm';
-
-                // Telemetry: record only ambiguous routing decisions.
-                feedbackStore.recordEvent(repos, {
-                    eventName: 'route_ambiguous',
-                    value: 1,
-                    metadata: {
-                        chatId: String(chatId),
-                        snippet: String(userMessage).slice(0, 200),
-                        candidates: routed.matches,
-                        llm: llmIntent,
-                        chosen: agentName,
-                    },
-                }).catch(() => {});
-            }
-            // Router Trainer: record messages that default to chat for user review
-            if (agentName === 'chat' && routed.matches.length === 0) {
+            const route = await classifyRoute(userMessage, chatId, repos);
+            agentName = route.agentName;
+            intentMode = route.intentMode;
+            if (agentName === 'chat' && route.noKeywordMatch) {
                 feedbackStore.recordEvent(repos, {
                     eventName: 'router_chat_default',
                     value: 1,
                     metadata: { message: String(userMessage).slice(0, 500) },
                 }).catch(() => {});
             }
-            // Removed: the former `else if (agentName === 'chat' && length > 12)`
-            // branch that called classifyIntentWithLLM a second time. If keywords
-            // already returned 'chat', the LLM also returns 'chat' >90% of the time
-            // — it's ~820 wasted tokens per request. Ambiguous collisions (multiple
-            // keyword matches) are still disambiguated by the block above.
         }
 
         // Guard: if LLM or keyword classified as manus but Manus is not configured, fall back to chat
@@ -1044,13 +1060,7 @@ async function askJarvisHandler(req, res) {
         // getCurrentProvider() and surface to the client.
         let result;
         let llmProvider = null;
-        const providerOpts = {
-            cloudProvider:   settings.cloudProvider,
-            openrouterModel: settings.openrouterModel,
-            temperature:     settings.temperature,
-            localServerUrl:  settings.localServerUrl,
-            localModelName:  settings.localModelName,
-        };
+        const providerOpts = buildProviderOpts(settings);
         await providerContext.run({ opts: providerOpts }, async () => {
         // Build the per-request context once. The dispatcher's per-entry
         // adapters destructure what each agent actually needs.
@@ -4043,12 +4053,8 @@ async function streamJarvisHandler(req, res) {
     req.on('close', () => controller.abort());
 
     try {
-        const originalMessage = req.body.command || '';
+        const { originalMessage, chatId, settings, useLocal } = parseRequestBody(req);
         let userMessage = originalMessage; // may be rewritten by reference resolution
-        const chatId = req.body.chatId || req.body.chat_id || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const settings    = req.body.settings || {};
-        applySaverMode(settings);
-        const useLocal    = settings.useLocalModel === true;
 
         if (userMessage.length > 5000) {
             send({ error: 'ההודעה ארוכה מדי.', chatId });
@@ -4065,43 +4071,15 @@ async function streamJarvisHandler(req, res) {
             if (didResolve) userMessage = resolved;
         }
 
-        // Per-request opts: cloudProvider, temperature, local url/model from the
-        // mobile app's settings. AsyncLocalStorage propagates these to all
-        // callGemma4* sites without touching individual agents.
-        const providerOpts = {
-            cloudProvider:   settings.cloudProvider,
-            openrouterModel: settings.openrouterModel,
-            temperature:     settings.temperature,
-            localServerUrl:  settings.localServerUrl,
-            localModelName:  settings.localModelName,
-        };
+        const providerOpts = buildProviderOpts(settings);
 
         // Wrap the whole dispatch in providerContext.run so provider tracking
         // (telemetry / provider badge) works for streaming too, and so opts
         // propagate to all callGemma4* calls inside agents.
         return await providerContext.run({ opts: providerOpts }, async () => {
 
-        const _routed = classifyIntentDetailed(userMessage);
-        let agentName = _routed.intent;
-        if (_routed.ambiguous) {
-            // Collision: disambiguate with the LLM, trusting it only if it picks
-            // one of the matched candidates; otherwise keep the best keyword guess.
-            const _llmIntent = await classifyIntentWithLLM(userMessage);
-            if (_routed.matches.includes(_llmIntent)) agentName = _llmIntent;
-            feedbackStore.recordEvent(repos, {
-                eventName: 'route_ambiguous',
-                value: 1,
-                metadata: {
-                    chatId: String(chatId),
-                    snippet: String(userMessage).slice(0, 200),
-                    candidates: _routed.matches,
-                    llm: _llmIntent,
-                    chosen: agentName,
-                    source: 'stream',
-                },
-            }).catch(() => {});
-        }
-        routeTracker.setLastRoute(chatId, { intent: agentName, mode: _routed.ambiguous ? 'llm' : 'fast' });
+        const { agentName, intentMode: _intentMode } = await classifyRoute(userMessage, chatId, repos, { source: 'stream' });
+        routeTracker.setLastRoute(chatId, { intent: agentName, mode: _intentMode });
 
         // Signal to client that processing has begun — reduces perceived latency before first token.
         send({ thinking: true, agent: agentName });

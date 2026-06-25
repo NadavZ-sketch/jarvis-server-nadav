@@ -540,7 +540,7 @@ class VoicePanelState extends State<VoicePanel>
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 22),
               child: GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
+                onTap: _handleOrbTap,
                 child: Container(
                   width: 64, height: 64,
                   decoration: BoxDecoration(

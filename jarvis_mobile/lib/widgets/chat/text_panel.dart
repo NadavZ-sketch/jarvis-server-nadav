@@ -391,6 +391,28 @@ class _TextPanelState extends State<TextPanel>
     super.dispose();
   }
 
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.auto_awesome_rounded, size: 48, color: JC.textMuted.withValues(alpha: 0.35)),
+          const SizedBox(height: 14),
+          Text(
+            'שלום! איך אוכל לעזור?',
+            textDirection: TextDirection.rtl,
+            style: TextStyle(
+              color: JC.textMuted,
+              fontSize: 15,
+              fontFamily: 'Heebo',
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -399,16 +421,19 @@ class _TextPanelState extends State<TextPanel>
         Column(
           children: [
             Expanded(
-              child: AnimatedList(
-                key: _listKey,
-                controller: _scrollCtrl,
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                initialItemCount: widget.messages.length,
-                itemBuilder: (context, index, animation) {
-                  final msg = widget.messages[index];
-                  return _BubbleEntry(msg: msg, animation: animation, settings: widget.settings, chatId: widget.chatId);
-                },
-              ),
+              child: widget.messages.isEmpty
+                  ? _buildEmptyState()
+                  : AnimatedList(
+                      key: _listKey,
+                      controller: _scrollCtrl,
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      initialItemCount: widget.messages.length,
+                      itemBuilder: (context, index, animation) {
+                        if (index >= widget.messages.length) return const SizedBox.shrink();
+                        final msg = widget.messages[index];
+                        return _BubbleEntry(msg: msg, animation: animation, settings: widget.settings, chatId: widget.chatId);
+                      },
+                    ),
             ),
             AnimatedSize(
               duration: const Duration(milliseconds: 250),

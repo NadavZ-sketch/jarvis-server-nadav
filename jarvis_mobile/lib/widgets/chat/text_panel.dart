@@ -98,7 +98,6 @@ class _TextPanelState extends State<TextPanel>
         _prevCount = newCount;
       });
     }
-    // Auto-send a pending command injected by parent
     if (widget.pendingCommand != null && widget.pendingCommand != old.pendingCommand) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;

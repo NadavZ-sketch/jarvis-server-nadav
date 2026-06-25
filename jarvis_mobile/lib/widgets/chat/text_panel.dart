@@ -461,17 +461,20 @@ class _TextPanelState extends State<TextPanel>
           Positioned(
             bottom: 70,
             left: 14,
+            width: 42,
+            height: 42,
             child: GestureDetector(
               key: const Key('mini_orb_fab'),
-              onTap: () {
-                HapticFeedback.mediumImpact();
-                widget.onSwitchToVoice!();
-              },
+              behavior: HitTestBehavior.opaque,
               onLongPress: _showVoiceTooltip,
               child: JarvisOrb(
                 state: JarvisState.idle,
                 level: 0,
                 size: 42,
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  widget.onSwitchToVoice!();
+                },
                 baseColorOverride: widget.settings.orbCustomColors
                     ? Color(widget.settings.orbBaseColor) : null,
                 tipColorOverride: widget.settings.orbCustomColors

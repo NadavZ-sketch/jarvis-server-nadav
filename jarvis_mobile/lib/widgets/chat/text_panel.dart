@@ -52,8 +52,6 @@ class _TextPanelState extends State<TextPanel>
   bool _sending = false;
   int _prevCount = 0;
 
-  OverlayEntry? _fabTooltipEntry;
-
   String? _pendingFileName;
   List<int>? _pendingFileBytes;
   String? _pendingFileType; // 'image' | 'pdf' | 'docx' | 'audio:<ext>'
@@ -344,46 +342,8 @@ class _TextPanelState extends State<TextPanel>
     }
   }
 
-  void _showVoiceTooltip() {
-    _fabTooltipEntry?.remove();
-    final overlay = Overlay.of(context);
-    _fabTooltipEntry = OverlayEntry(
-      builder: (_) => Positioned(
-        bottom: 120,
-        left: 60,
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: JC.surfaceAlt,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: JC.blue400.withValues(alpha: 0.4)),
-            ),
-            child: Text(
-              'חזרה לקול',
-              textDirection: TextDirection.rtl,
-              style: TextStyle(
-                color: JC.blue300,
-                fontSize: 11,
-                fontFamily: 'Heebo',
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    overlay.insert(_fabTooltipEntry!);
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      _fabTooltipEntry?.remove();
-      _fabTooltipEntry = null;
-    });
-  }
-
   @override
   void dispose() {
-    _fabTooltipEntry?.remove();
     _textCtrl.dispose();
     _scrollCtrl.dispose();
     _micCtrl.dispose();
@@ -415,76 +375,67 @@ class _TextPanelState extends State<TextPanel>
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return Column(
       key: const ValueKey('text'),
       children: [
-        Column(
-          children: [
-            Expanded(
-              child: widget.messages.isEmpty
-                  ? _buildEmptyState()
-                  : AnimatedList(
-                      key: _listKey,
-                      controller: _scrollCtrl,
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                      initialItemCount: widget.messages.length,
-                      itemBuilder: (context, index, animation) {
-                        if (index >= widget.messages.length) return const SizedBox.shrink();
-                        final msg = widget.messages[index];
-                        return _BubbleEntry(msg: msg, animation: animation, settings: widget.settings, chatId: widget.chatId);
-                      },
-                    ),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              child: _pendingFileName == null
-                  ? const SizedBox.shrink()
-                  : _FilePreviewRow(
-                      fileName: _pendingFileName!,
-                      onDismiss: _clearPendingFile,
-                    ),
-            ),
-            _InputBar(
-              controller: _textCtrl,
-              micRecording: _micRecording,
-              micScale: _micScale,
-              sending: _sending,
-              onSend: _sendText,
-              onMic: _toggleMic,
-              onAttach: _showAttachmentSheet,
-            ),
-          ],
-        ),
-        // Mini-Orb FAB — switches to voice mode
-        if (widget.onSwitchToVoice != null)
-          Positioned(
-            bottom: 70,
-            left: 14,
-            width: 42,
-            height: 42,
-            child: GestureDetector(
-              key: const Key('mini_orb_fab'),
-              behavior: HitTestBehavior.opaque,
-              onLongPress: _showVoiceTooltip,
-              child: JarvisOrb(
-                state: JarvisState.idle,
-                level: 0,
-                size: 42,
-                onTap: () {
-                  HapticFeedback.mediumImpact();
-                  widget.onSwitchToVoice!();
-                },
-                baseColorOverride: widget.settings.orbCustomColors
-                    ? Color(widget.settings.orbBaseColor) : null,
-                tipColorOverride: widget.settings.orbCustomColors
-                    ? Color(widget.settings.orbTipColor) : null,
-                voiceSensitivity: widget.settings.orbVoiceSensitivity,
-                rotationSensitivity: widget.settings.orbRotationSensitivity,
-                explosionEnabled: false,
-              ),
+        // Center orb — tappable to switch to voice mode
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Center(
+            child: JarvisOrb(
+              state: JarvisState.idle,
+              level: 0,
+              size: 100,
+              onTap: widget.onSwitchToVoice == null
+                  ? null
+                  : () {
+                      HapticFeedback.mediumImpact();
+                      widget.onSwitchToVoice!();
+                    },
+              baseColorOverride: widget.settings.orbCustomColors
+                  ? Color(widget.settings.orbBaseColor) : null,
+              tipColorOverride: widget.settings.orbCustomColors
+                  ? Color(widget.settings.orbTipColor) : null,
+              voiceSensitivity: widget.settings.orbVoiceSensitivity,
+              rotationSensitivity: widget.settings.orbRotationSensitivity,
+              explosionEnabled: widget.settings.orbExplosionEnabled,
             ),
           ),
+        ),
+        Expanded(
+          child: widget.messages.isEmpty
+              ? _buildEmptyState()
+              : AnimatedList(
+                  key: _listKey,
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  initialItemCount: widget.messages.length,
+                  itemBuilder: (context, index, animation) {
+                    if (index >= widget.messages.length) return const SizedBox.shrink();
+                    final msg = widget.messages[index];
+                    return _BubbleEntry(msg: msg, animation: animation, settings: widget.settings, chatId: widget.chatId);
+                  },
+                ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          child: _pendingFileName == null
+              ? const SizedBox.shrink()
+              : _FilePreviewRow(
+                  fileName: _pendingFileName!,
+                  onDismiss: _clearPendingFile,
+                ),
+        ),
+        _InputBar(
+          controller: _textCtrl,
+          micRecording: _micRecording,
+          micScale: _micScale,
+          sending: _sending,
+          onSend: _sendText,
+          onMic: _toggleMic,
+          onAttach: _showAttachmentSheet,
+        ),
       ],
     );
   }

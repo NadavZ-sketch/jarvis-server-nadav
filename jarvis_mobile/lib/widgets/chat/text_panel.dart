@@ -40,7 +40,7 @@ class _TextPanelState extends State<TextPanel>
     with SingleTickerProviderStateMixin {
   final TextEditingController _textCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
-  final GlobalKey<AnimatedListState> _listKey = GlobalKey();
+  GlobalKey<AnimatedListState> _listKey = GlobalKey();
   late final ApiService _api;
 
   // Mic animation
@@ -71,6 +71,14 @@ class _TextPanelState extends State<TextPanel>
     );
     _micScale = Tween<double>(begin: 1.0, end: 1.3)
         .animate(CurvedAnimation(parent: _micCtrl, curve: Curves.easeInOut));
+
+    if (widget.pendingCommand != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _textCtrl.text = widget.pendingCommand!;
+        _sendText();
+      });
+    }
   }
 
   @override
@@ -84,8 +92,12 @@ class _TextPanelState extends State<TextPanel>
       }
       _prevCount = newCount;
       _scrollToBottom();
+    } else if (newCount < _prevCount) {
+      setState(() {
+        _listKey = GlobalKey<AnimatedListState>();
+        _prevCount = newCount;
+      });
     }
-    // Auto-send a pending command injected by parent
     if (widget.pendingCommand != null && widget.pendingCommand != old.pendingCommand) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;

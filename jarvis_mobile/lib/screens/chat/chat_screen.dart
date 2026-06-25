@@ -76,7 +76,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen>
     with SingleTickerProviderStateMixin {
   final List<ChatMessage> _messages = [];
-  ChatMode _mode = ChatMode.voice;
+  ChatMode _mode = ChatMode.text;
   final GlobalKey<VoicePanelState> _voicePanelKey = GlobalKey();
   late final AnimationController _modeCtrl;
 
@@ -281,24 +281,9 @@ class _ChatScreenState extends State<ChatScreen>
             : null,
         automaticallyImplyLeading: widget.onOpenDrawer == null,
       ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        switchInCurve: Curves.easeInOut,
-        switchOutCurve: Curves.easeInOut,
-        transitionBuilder: (child, animation) {
-          final offset = Tween(
-            begin: const Offset(0, 0.08),
-            end: Offset.zero,
-          ).animate(animation);
-          return FadeTransition(
-            opacity: animation,
-            child: SlideTransition(position: offset, child: child),
-          );
-        },
-        child: _mode == ChatMode.voice
-            ? _buildVoicePanel()
-            : _buildTextPanel(),
-      ),
+      body: _mode == ChatMode.voice
+          ? _buildVoicePanel()
+          : _buildTextPanel(),
     );
   }
 

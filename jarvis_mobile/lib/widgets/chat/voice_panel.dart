@@ -63,7 +63,10 @@ class VoicePanelState extends State<VoicePanel>
   int _bargeInFrames = 0;
   static const double _kBargeInThreshold = 4.0;
   static const int _kBargeInFramesRequired = 4;
-  static const int _kPostTtsCooldownMs = 500;
+  static const int _kPostTtsCooldownMs = 1500;
+
+  // True for a short window after TTS ends — requires longer utterance to avoid echo
+  bool _postTtsGuard = false;
 
   late final AnimationController _waveController;
 
@@ -118,6 +121,7 @@ class VoicePanelState extends State<VoicePanel>
     _bargeInFrames = 0;
     if (!mounted) return;
     setState(() => _state = JarvisState.idle);
+    _postTtsGuard = true;
     Future.delayed(const Duration(milliseconds: _kPostTtsCooldownMs), () {
       if (mounted && !_disposed) _listen();
     });
@@ -249,6 +253,10 @@ class VoicePanelState extends State<VoicePanel>
     );
     if (!available || _disposed || !mounted) return;
     setState(() { _state = JarvisState.listening; _hint = 'מקשיב...'; _partialUser = ''; });
+    // Clear the post-TTS noise guard after 2s of active listening
+    if (_postTtsGuard) {
+      Future.delayed(const Duration(milliseconds: 2000), () => _postTtsGuard = false);
+    }
     _speech.listen(
       onResult: (val) {
         if (!mounted || _disposed) return;
@@ -295,6 +303,11 @@ class VoicePanelState extends State<VoicePanel>
   void _onUtteranceFinal(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty || trimmed.replaceAll(' ', '').length < 2) { _listen(); return; }
+    // Right after TTS: require at least 2 words to filter echo/background noise
+    if (_postTtsGuard) {
+      final wordCount = trimmed.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+      if (wordCount < 2) { _listen(); return; }
+    }
     HapticFeedback.lightImpact();
     _hardCapTimer?.cancel();
     widget.onNewMessage(ChatMessage(

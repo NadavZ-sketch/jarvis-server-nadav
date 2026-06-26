@@ -68,6 +68,8 @@ class VoicePanelState extends State<VoicePanel>
   // True for a short window after TTS ends — requires longer utterance to avoid echo
   bool _postTtsGuard = false;
 
+  final ScrollController _voiceScrollCtrl = ScrollController();
+
   late final AnimationController _waveController;
 
   @override
@@ -462,6 +464,30 @@ class VoicePanelState extends State<VoicePanel>
     if (!_disposed && mounted) _listen();
   }
 
+  int _prevMsgCount = 0;
+
+  @override
+  void didUpdateWidget(covariant VoicePanel old) {
+    super.didUpdateWidget(old);
+    final newCount = widget.messages.length;
+    if (newCount > _prevMsgCount) {
+      _prevMsgCount = newCount;
+      _scrollToBottom();
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_voiceScrollCtrl.hasClients) {
+        _voiceScrollCtrl.animateTo(
+          _voiceScrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
     _disposed = true;
@@ -469,6 +495,7 @@ class VoicePanelState extends State<VoicePanel>
     _ttsTimeoutTimer?.cancel();
     _wsAckTimer?.cancel();
     _waveController.dispose();
+    _voiceScrollCtrl.dispose();
     _speech.stop();
     _flutterTts.stop();
     _audioPlayer.stop();
@@ -480,105 +507,91 @@ class VoicePanelState extends State<VoicePanel>
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return Container(
       key: const ValueKey('voice'),
-      children: [
-        Positioned(
-          bottom: -60, left: -40, right: -40,
-          child: Container(
-            height: 320,
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.center,
-                radius: 0.8,
-                colors: [JC.blue500.withValues(alpha: 0.2), JC.bg.withValues(alpha: 0)],
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [JC.bg, const Color(0xFF0D1B3E)],
+        ),
+      ),
+      child: Column(
+        children: [
+          // Message history
+          Expanded(
+            child: widget.messages.isEmpty
+                ? const SizedBox.shrink()
+                : ListView.builder(
+                    controller: _voiceScrollCtrl,
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    itemCount: widget.messages.length,
+                    itemBuilder: (context, index) {
+                      return _VoiceBubble(msg: widget.messages[index]);
+                    },
+                  ),
+          ),
+          // In-flight partial transcript
+          if (_partialUser.isNotEmpty || _streamingReply.isNotEmpty)
+            _InFlightCard(partialUser: _partialUser, streamingReply: _streamingReply),
+          // Orb + hint
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Column(
+              children: [
+                GestureDetector(
+                  onTap: _handleOrbTap,
+                  child: JarvisOrb(
+                    state: _state,
+                    level: _soundLevel,
+                    size: 120,
+                    baseColorOverride: widget.settings.orbCustomColors
+                        ? Color(widget.settings.orbBaseColor) : null,
+                    tipColorOverride: widget.settings.orbCustomColors
+                        ? Color(widget.settings.orbTipColor) : null,
+                    voiceSensitivity: widget.settings.orbVoiceSensitivity,
+                    rotationSensitivity: widget.settings.orbRotationSensitivity,
+                    explosionEnabled: widget.settings.orbExplosionEnabled,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _hint,
+                  style: TextStyle(
+                    color: _state == JarvisState.listening ? JC.blue400 : JC.textMuted,
+                    fontSize: 13,
+                    fontFamily: 'Heebo',
+                    fontWeight: _state == JarvisState.listening
+                        ? FontWeight.w500 : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // End-call button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: GestureDetector(
+              onTap: _handleOrbTap,
+              child: Container(
+                width: 44, height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFEF4444), Color(0xFFB91C1C)],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [BoxShadow(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.35),
+                    blurRadius: 8, offset: const Offset(0, 2),
+                  )],
+                ),
+                child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 20),
               ),
             ),
           ),
-        ),
-        Column(
-          children: [
-            Expanded(child: const SizedBox.shrink()),
-            if (_partialUser.isNotEmpty || _streamingReply.isNotEmpty)
-              _InFlightCard(partialUser: _partialUser, streamingReply: _streamingReply),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: _handleOrbTap,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        JarvisOrb(
-                          state: _state,
-                          level: _soundLevel,
-                          size: 220,
-                          baseColorOverride: widget.settings.orbCustomColors
-                              ? Color(widget.settings.orbBaseColor) : null,
-                          tipColorOverride: widget.settings.orbCustomColors
-                              ? Color(widget.settings.orbTipColor) : null,
-                          voiceSensitivity: widget.settings.orbVoiceSensitivity,
-                          rotationSensitivity: widget.settings.orbRotationSensitivity,
-                          explosionEnabled: widget.settings.orbExplosionEnabled,
-                        ),
-                        // Hint overlay — visible only when idle or listening
-                        if (_state == JarvisState.idle || _state == JarvisState.listening)
-                          IgnorePointer(
-                            child: Text(
-                              'הקש\nלטקסט',
-                              textAlign: TextAlign.center,
-                              textDirection: TextDirection.rtl,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.55),
-                                fontSize: 10,
-                                fontFamily: 'Heebo',
-                                fontWeight: FontWeight.w600,
-                                height: 1.3,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _hint,
-                    style: TextStyle(
-                      color: _state == JarvisState.listening ? JC.blue400 : JC.textMuted,
-                      fontSize: 13,
-                      fontFamily: 'Heebo',
-                      fontWeight: _state == JarvisState.listening
-                          ? FontWeight.w500 : FontWeight.normal,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 22),
-              child: GestureDetector(
-                onTap: _handleOrbTap,
-                child: Container(
-                  width: 64, height: 64,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFEF4444), Color(0xFFB91C1C)],
-                      begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [BoxShadow(
-                      color: const Color(0xFFEF4444).withValues(alpha: 0.45),
-                      blurRadius: 18, offset: const Offset(0, 4),
-                    )],
-                  ),
-                  child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 28),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -607,6 +620,54 @@ class _InFlightCard extends StatelessWidget {
           if (streamingReply.isNotEmpty) Text(streamingReply, textDirection: TextDirection.rtl,
             style: TextStyle(color: JC.textPrimary, fontSize: 14.5, height: 1.55, fontFamily: 'Heebo')),
         ],
+      ),
+    );
+  }
+}
+
+class _VoiceBubble extends StatelessWidget {
+  final dynamic msg;
+  const _VoiceBubble({required this.msg});
+
+  @override
+  Widget build(BuildContext context) {
+    final isUser = msg.sender == 'user';
+    return Align(
+      alignment: isUser
+          ? AlignmentDirectional.centerStart
+          : AlignmentDirectional.centerEnd,
+      child: Container(
+        margin: EdgeInsetsDirectional.only(
+          bottom: 8,
+          start: isUser ? 0 : 40,
+          end: isUser ? 40 : 0,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isUser ? JC.userBubble : JC.jarvisBubble,
+          borderRadius: BorderRadiusDirectional.only(
+            topStart: const Radius.circular(18),
+            topEnd: const Radius.circular(18),
+            bottomStart: Radius.circular(isUser ? 6 : 18),
+            bottomEnd: Radius.circular(isUser ? 18 : 6),
+          ),
+          border: Border.all(
+            color: isUser
+                ? JC.blue400.withValues(alpha: 0.4)
+                : JC.border.withValues(alpha: 0.6),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          msg.text as String,
+          textDirection: TextDirection.rtl,
+          style: TextStyle(
+            color: JC.textPrimary,
+            fontSize: 14.5,
+            height: 1.55,
+            fontFamily: 'Heebo',
+          ),
+        ),
       ),
     );
   }

@@ -257,11 +257,16 @@ class VoicePanelState extends State<VoicePanel>
           return;
         }
         final text = val.recognizedWords.trim();
-        if (text.isNotEmpty) _onUtteranceFinal(text);
+        if (text.isNotEmpty) {
+          _onUtteranceFinal(text);
+        } else {
+          // Silence timeout — mic closed, restart immediately
+          _listen();
+        }
       },
       localeId: 'he_IL',
       listenFor: const Duration(seconds: 60),
-      pauseFor: const Duration(milliseconds: 2500),
+      pauseFor: const Duration(milliseconds: 3500),
       onSoundLevelChange: (level) {
         if (!mounted || _disposed) return;
         setState(() => _soundLevel = level);

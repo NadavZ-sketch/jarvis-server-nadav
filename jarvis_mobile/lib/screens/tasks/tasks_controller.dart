@@ -348,6 +348,11 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// True while a fetch is in progress OR queued for this task.
+  /// Use this to show a loading indicator in the panel before the fetch starts.
+  bool isSuggestionInFlight(String id) =>
+      suggestionLoading.contains(id) || _pendingSuggestions.containsKey(id);
+
   Future<void> acceptSuggestionAsSubtask(
       Map<String, dynamic> task, String text) async {
     final id = task['id'].toString();

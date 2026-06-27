@@ -199,8 +199,6 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                           Text(
                             _title,
                             textDirection: TextDirection.rtl,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: _isDone ? JC.textMuted : JC.textPrimary,
                               fontSize: 14.5,

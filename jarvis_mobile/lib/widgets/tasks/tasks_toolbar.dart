@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../app_settings.dart';
 import '../../main.dart' show JC;
+import '../../screens/projects_hub_screen.dart';
 import '../../screens/tasks/tasks_controller.dart';
 import 'group_mode_bar.dart';
 import 'task_category.dart';
@@ -14,12 +16,14 @@ class TasksToolbar extends StatelessWidget {
   final TasksController controller;
   final String groupMode;
   final ValueChanged<String> onGroupChange;
+  final AppSettings settings;
 
   const TasksToolbar({
     super.key,
     required this.controller,
     required this.groupMode,
     required this.onGroupChange,
+    required this.settings,
   });
 
   @override
@@ -31,6 +35,8 @@ class TasksToolbar extends StatelessWidget {
           Expanded(
             child: GroupModeBar(current: groupMode, onChange: onGroupChange),
           ),
+          _ProjectsButton(settings: settings),
+          const SizedBox(width: 6),
           _FilterButton(
             active: controller.hasActiveFilters,
             onTap: () => _openFilterSheet(context),
@@ -53,6 +59,34 @@ class TasksToolbar extends StatelessWidget {
         searchCtrl: searchCtrl,
       ),
     ).whenComplete(searchCtrl.dispose);
+  }
+}
+
+// ─── Projects shortcut button ────────────────────────────────────────────────
+
+class _ProjectsButton extends StatelessWidget {
+  final AppSettings settings;
+  const _ProjectsButton({required this.settings});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProjectsHubScreen(settings: settings),
+        ),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: JC.surfaceAlt,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: JC.border, width: 0.8),
+        ),
+        child: Icon(Icons.folder_outlined, size: 18, color: JC.textSecondary),
+      ),
+    );
   }
 }
 

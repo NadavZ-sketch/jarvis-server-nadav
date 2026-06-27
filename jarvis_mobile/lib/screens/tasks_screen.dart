@@ -103,6 +103,7 @@ class _TasksScreenState extends State<TasksScreen> {
           controller: _c,
           groupMode: _groupMode,
           onGroupChange: _setGroupMode,
+          settings: widget.settings,
         ),
         Expanded(
           child: RefreshIndicator(

@@ -39,8 +39,11 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
   @override
   void initState() {
     super.initState();
-    // Pre-fetch so suggestions are ready when the card is expanded
-    if (!_isDone) widget.controller.fetchSuggestions(widget.task);
+    if (!_isDone) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.controller.fetchSuggestions(widget.task);
+      });
+    }
   }
 
   String get _title {

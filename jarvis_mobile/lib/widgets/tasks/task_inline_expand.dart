@@ -156,6 +156,16 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
       try { due = DateTime.parse(dueIso).toLocal(); } catch (_) {}
     }
 
+    // Extract description (everything after first line, before AI separator)
+    final rawContent = _t['content']?.toString() ?? '';
+    final withoutAI = rawContent.contains('\n<<<AI_PROMPT>>>\n')
+        ? rawContent.split('\n<<<AI_PROMPT>>>\n').first
+        : rawContent;
+    final contentLines = withoutAI.split('\n');
+    final description = contentLines.length > 1
+        ? contentLines.skip(1).join('\n').trim()
+        : '';
+
     return Container(
       decoration: BoxDecoration(
         color: JC.surface,
@@ -167,6 +177,31 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ── Full description ───────────────────────────────────────────────
+          if (description.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: JC.surfaceAlt,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: JC.border, width: 0.6),
+                ),
+                child: Text(
+                  description,
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                    color: JC.textSecondary,
+                    fontSize: 12.5,
+                    fontFamily: 'Heebo',
+                    height: 1.55,
+                  ),
+                ),
+              ),
+            ),
+
           // ── Properties ────────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),

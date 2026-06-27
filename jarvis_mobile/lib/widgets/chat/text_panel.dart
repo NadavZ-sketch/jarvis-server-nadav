@@ -50,6 +50,8 @@ class _TextPanelState extends State<TextPanel>
   late final stt.SpeechToText _speech;
 
   bool _sending = false;
+  bool _justCompleted = false;
+  Timer? _completeTimer;
   int _prevCount = 0;
 
   String? _pendingFileName;
@@ -141,6 +143,13 @@ class _TextPanelState extends State<TextPanel>
           sender: 'jarvis',
           text: answer,
         ));
+        if (mounted) {
+          setState(() => _justCompleted = true);
+          _completeTimer?.cancel();
+          _completeTimer = Timer(const Duration(milliseconds: 1500), () {
+            if (mounted) setState(() => _justCompleted = false);
+          });
+        }
       }
       final action = result['action'] as Map<String, dynamic>?;
       if (action != null && action['type'] == 'navigate') {
@@ -344,6 +353,7 @@ class _TextPanelState extends State<TextPanel>
 
   @override
   void dispose() {
+    _completeTimer?.cancel();
     _textCtrl.dispose();
     _scrollCtrl.dispose();
     _micCtrl.dispose();
@@ -383,7 +393,9 @@ class _TextPanelState extends State<TextPanel>
           padding: const EdgeInsets.symmetric(vertical: 16),
           child: Center(
             child: JarvisOrb(
-              state: JarvisState.idle,
+              state: _justCompleted
+                  ? JarvisState.complete
+                  : (_sending ? JarvisState.thinking : JarvisState.idle),
               level: 0,
               size: 100,
               onTap: widget.onSwitchToVoice == null

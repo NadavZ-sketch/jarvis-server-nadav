@@ -113,10 +113,11 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
 
     final hasChips = dueLabel.isNotEmpty || projectName != null || tags.isNotEmpty;
 
+    final cardColor = _isDone ? JC.surface.withValues(alpha: 0.6) : JC.surfaceAlt;
+
     return Container(
       margin: EdgeInsets.only(bottom: widget.dense ? 4 : 8),
       decoration: BoxDecoration(
-        color: _isDone ? JC.surface.withValues(alpha: 0.6) : JC.surfaceAlt,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: _overdue
@@ -125,7 +126,9 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
           width: 0.8,
         ),
       ),
-      child: _SwipeableCard(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(13.4),
+        child: _SwipeableCard(
         onPostpone: () => widget.controller.postpone(widget.task),
         onDelete: () {
           final task = widget.task;
@@ -149,7 +152,9 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
             widget.controller.commitDelete(task);
           });
         },
-        child: Column(
+        child: ColoredBox(
+          color: cardColor,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // ── Card body ──────────────────────────────────────────────────
@@ -194,8 +199,6 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                           Text(
                             _title,
                             textDirection: TextDirection.rtl,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: _isDone ? JC.textMuted : JC.textPrimary,
                               fontSize: 14.5,
@@ -249,15 +252,13 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
 
             // ── Inline expand panel ────────────────────────────────────────
             if (_expanded)
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(14)),
-                child: TaskInlineExpand(
-                  controller: widget.controller,
-                  task: widget.task,
-                ),
+              TaskInlineExpand(
+                controller: widget.controller,
+                task: widget.task,
               ),
           ],
+        ),
+        ),
         ),
       ),
     );

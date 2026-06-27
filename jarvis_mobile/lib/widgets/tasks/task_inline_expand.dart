@@ -70,7 +70,10 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
     setState(() => _enhancing = true);
     try {
       final enhanced = await _c.api.enhanceSubtask(_taskTitle, text);
-      if (mounted && enhanced.trim() != text.trim()) {
+      // Discard stale response if the field changed or was cleared since the call
+      if (mounted &&
+          _addSubCtrl.text.trim() == text.trim() &&
+          enhanced.trim() != text.trim()) {
         setState(() => _enhancedText = enhanced.trim());
       }
     } catch (_) {}
@@ -321,69 +324,80 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
           ),
 
           // ── AI subtask suggestions ────────────────────────────────────────
-          if (suggestionsLoading)
+          if (suggestionsLoading || suggestions.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-              child: Row(children: [
-                SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 1.5, color: JC.indigo300),
-                ),
-                const SizedBox(width: 8),
-                Text('מייצר תת-משימות...',
-                    style: TextStyle(
-                        color: JC.textMuted, fontSize: 11, fontFamily: 'Heebo')),
-              ]),
-            )
-          else if (suggestions.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 2, 14, 8),
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('הצעות AI',
-                      style: TextStyle(
-                          color: JC.textMuted,
-                          fontSize: 10,
-                          fontFamily: 'Heebo',
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (var i = 0; i < suggestions.length && i < 5; i++)
-                        GestureDetector(
-                          onTap: () async {
-                            final s = suggestions[i];
-                            await _c.acceptSuggestionAsSubtask(
-                                _t, s['text'] as String? ?? '');
-                            await _loadSubtasks();
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 9, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: JC.indigo500.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                  color: JC.indigo300.withValues(alpha: 0.35),
-                                  width: 0.8),
-                            ),
-                            child: Text(
-                              '＋ ${suggestions[i]['text'] ?? ''}',
-                              style: TextStyle(
-                                  color: JC.indigo300,
-                                  fontSize: 11.5,
-                                  fontFamily: 'Heebo',
-                                  fontWeight: FontWeight.w600),
+                  Row(children: [
+                    Text('✨',
+                        style: const TextStyle(fontSize: 11)),
+                    const SizedBox(width: 5),
+                    Text('הצעות לתת-משימות',
+                        style: TextStyle(
+                            color: JC.indigo300,
+                            fontSize: 10.5,
+                            fontFamily: 'Heebo',
+                            fontWeight: FontWeight.w700)),
+                    if (suggestionsLoading) ...[
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 10,
+                        height: 10,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 1.5, color: JC.indigo300),
+                      ),
+                    ],
+                  ]),
+                  const SizedBox(height: 7),
+                  if (suggestions.isNotEmpty)
+                    Column(
+                      children: [
+                        for (var i = 0; i < suggestions.length && i < 5; i++)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 5),
+                            child: GestureDetector(
+                              onTap: () async {
+                                final s = suggestions[i];
+                                await _c.acceptSuggestionAsSubtask(
+                                    _t, s['text'] as String? ?? '');
+                                await _loadSubtasks();
+                              },
+                              behavior: HitTestBehavior.opaque,
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: JC.indigo500.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(9),
+                                  border: Border.all(
+                                      color: JC.indigo300.withValues(alpha: 0.3),
+                                      width: 0.7),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.add_circle_outline_rounded,
+                                        size: 13, color: JC.indigo300),
+                                    const SizedBox(width: 7),
+                                    Expanded(
+                                      child: Text(
+                                        suggestions[i]['text']?.toString() ?? '',
+                                        textDirection: TextDirection.rtl,
+                                        style: TextStyle(
+                                            color: JC.textSecondary,
+                                            fontSize: 12,
+                                            fontFamily: 'Heebo'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
+                      ],
+                    ),
                 ],
               ),
             ),

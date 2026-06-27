@@ -36,6 +36,13 @@ class SmartTaskCard extends StatefulWidget {
 class _SmartTaskCardState extends State<SmartTaskCard> {
   bool _expanded = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fetch so suggestions are ready when the card is expanded
+    if (!_isDone) widget.controller.fetchSuggestions(widget.task);
+  }
+
   String get _title {
     final raw = widget.task['content']?.toString() ?? '';
     final withoutAI = raw.contains('\n<<<AI_PROMPT>>>\n')

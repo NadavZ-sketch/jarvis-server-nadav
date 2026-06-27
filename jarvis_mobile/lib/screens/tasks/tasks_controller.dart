@@ -320,9 +320,13 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
 
   // ── AI suggestions ────────────────────────────────────────────────────────
 
+  static const _maxConcurrentSuggestions = 3;
+
   Future<void> fetchSuggestions(Map<String, dynamic> task) async {
     final id = task['id'].toString();
     if (suggestionLoading.contains(id)) return;
+    if (suggestions.containsKey(id)) return; // already cached
+    if (suggestionLoading.length >= _maxConcurrentSuggestions) return;
     suggestionLoading.add(id);
     notifyListeners();
     try {

@@ -72,6 +72,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   : CalendarFormat.week),
             onRefresh: _loadEvents,
           ),
+          if (!_loading && _events.isNotEmpty)
+            _SmartCalendarBanner(events: _events, settings: widget.settings),
           Container(
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 0),
             decoration: BoxDecoration(
@@ -744,6 +746,184 @@ class _PickerTile extends StatelessWidget {
               child: Text(label, style: TextStyle(
                   color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13)),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Smart Calendar Banner ────────────────────────────────────────────────────
+
+class _SmartCalendarBanner extends StatefulWidget {
+  final Map<DateTime, List<Map<String, dynamic>>> events;
+  final AppSettings settings;
+
+  const _SmartCalendarBanner({required this.events, required this.settings});
+
+  @override
+  State<_SmartCalendarBanner> createState() => _SmartCalendarBannerState();
+}
+
+class _SmartCalendarBannerState extends State<_SmartCalendarBanner> {
+  bool _expanded = false;
+  bool _aiLoading = false;
+  String? _aiAnalysis;
+
+  String _computeSummary() {
+    final now = DateTime.now();
+    final todayKey = DateTime.utc(now.year, now.month, now.day);
+    final weekEndKey = todayKey.add(const Duration(days: 7));
+    int tasks = 0, reminders = 0;
+    for (final entry in widget.events.entries) {
+      final d = entry.key;
+      if (!d.isBefore(todayKey) && d.isBefore(weekEndKey)) {
+        for (final e in entry.value) {
+          if (e['type'] == 'task' && e['done'] != true) tasks++;
+          if (e['type'] == 'reminder') reminders++;
+        }
+      }
+    }
+    if (tasks == 0 && reminders == 0) return 'שבוע פנוי — זמן מצוין לתכנון';
+    final parts = <String>[];
+    if (tasks > 0) parts.add('$tasks משימות');
+    if (reminders > 0) parts.add('$reminders תזכורות');
+    return '${tasks > 3 ? "⚠️ " : "📅 "}${parts.join(" ו")} השבוע';
+  }
+
+  Future<void> _fetchAI() async {
+    if (_aiLoading || _aiAnalysis != null) return;
+    setState(() => _aiLoading = true);
+    try {
+      final now = DateTime.now();
+      final todayKey = DateTime.utc(now.year, now.month, now.day);
+      final cutoffKey = todayKey.add(const Duration(days: 14));
+      final lines = <String>[];
+      for (final entry in widget.events.entries) {
+        final d = entry.key;
+        if (!d.isBefore(todayKey) && !d.isAfter(cutoffKey)) {
+          for (final e in entry.value) {
+            if (e['done'] == true) continue;
+            final dateStr = '${d.day}/${d.month}';
+            final typeHe = e['type'] == 'task'
+                ? 'משימה'
+                : e['type'] == 'reminder'
+                    ? 'תזכורת'
+                    : 'אירוע';
+            lines.add('$dateStr: ${e['title']} ($typeHe)');
+          }
+        }
+      }
+      final schedule = lines.isEmpty
+          ? 'אין פריטים בשבועיים הקרובים'
+          : lines.take(15).join('\n');
+      final resp = await ApiService(widget.settings).askJarvis(
+        'אתה עוזר תכנון אישי. הנה לוח הזמנים שלי לשבועיים הקרובים:\n$schedule\n\nבבקשה תן 2-3 המלצות תכנון קצרות ופרקטיות בעברית.',
+        widget.settings,
+      );
+      final answer = resp['answer']?.toString() ?? '';
+      if (mounted) setState(() { _aiAnalysis = answer; _aiLoading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _aiLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = _computeSummary();
+
+    return GestureDetector(
+      onTap: () {
+        setState(() => _expanded = !_expanded);
+        if (_expanded) _fetchAI();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              JC.indigo500.withOpacity(0.14),
+              JC.blue500.withOpacity(0.08),
+            ],
+            begin: Alignment.centerRight,
+            end: Alignment.centerLeft,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: JC.indigo500.withOpacity(0.22), width: 0.8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                Icon(Icons.auto_awesome_rounded, size: 15, color: JC.indigo500),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    summary,
+                    textDirection: TextDirection.rtl,
+                    style: TextStyle(
+                      color: JC.textPrimary,
+                      fontFamily: 'Heebo',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                AnimatedRotation(
+                  duration: const Duration(milliseconds: 200),
+                  turns: _expanded ? 0.5 : 0.0,
+                  child: Icon(Icons.keyboard_arrow_down_rounded,
+                      size: 18, color: JC.textMuted),
+                ),
+              ],
+            ),
+            if (_expanded) ...[
+              const SizedBox(height: 10),
+              Divider(color: JC.border, height: 1),
+              const SizedBox(height: 10),
+              if (_aiLoading)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                          color: JC.indigo500, strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('מנתח לוח זמנים...',
+                        style: TextStyle(
+                            color: JC.textMuted,
+                            fontFamily: 'Heebo',
+                            fontSize: 12)),
+                  ],
+                )
+              else if (_aiAnalysis != null && _aiAnalysis!.isNotEmpty)
+                Text(
+                  _aiAnalysis!,
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                    color: JC.textSecondary,
+                    fontFamily: 'Heebo',
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                )
+              else
+                Text(
+                  'לא הצלחתי לטעון ניתוח. נסה שנית.',
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                      color: JC.textMuted,
+                      fontFamily: 'Heebo',
+                      fontSize: 12),
+                ),
+            ],
           ],
         ),
       ),

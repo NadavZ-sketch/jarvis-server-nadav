@@ -320,20 +320,32 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
 
   // ── AI suggestions ────────────────────────────────────────────────────────
 
+  static const _maxConcurrentSuggestions = 3;
+  final _pendingSuggestions = <String, Map<String, dynamic>>{};
+
   Future<void> fetchSuggestions(Map<String, dynamic> task) async {
     final id = task['id'].toString();
     if (suggestionLoading.contains(id)) return;
+    if (suggestions.containsKey(id)) return; // already cached
+    if (suggestionLoading.length >= _maxConcurrentSuggestions) {
+      _pendingSuggestions[id] = task; // queue for when a slot opens
+      return;
+    }
+    _pendingSuggestions.remove(id);
     suggestionLoading.add(id);
     notifyListeners();
     try {
       final list = await api.getTaskSuggestions(id);
       suggestions[id] = list;
-    } catch (e) {
+    } catch (_) {
       suggestions[id] = [];
-      showSnack('הצעות AI לא זמינות כרגע');
     }
     suggestionLoading.remove(id);
     notifyListeners();
+    // Drain one pending request now that a slot is free
+    if (_pendingSuggestions.isNotEmpty) {
+      fetchSuggestions(_pendingSuggestions.values.first);
+    }
   }
 
   Future<void> acceptSuggestionAsSubtask(

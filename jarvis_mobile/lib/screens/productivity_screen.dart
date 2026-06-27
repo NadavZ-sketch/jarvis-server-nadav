@@ -13,6 +13,7 @@ class ProductivityScreen extends StatefulWidget {
   final ValueChanged<int>? onRemindersCountUpdate;
   final VoidCallback? onOpenDrawer;
   final ValueListenable<int>? jumpToTab;
+  final void Function(String)? onAskJarvis;
 
   const ProductivityScreen({
     super.key,
@@ -21,6 +22,7 @@ class ProductivityScreen extends StatefulWidget {
     this.onRemindersCountUpdate,
     this.onOpenDrawer,
     this.jumpToTab,
+    this.onAskJarvis,
   });
 
   @override
@@ -189,6 +191,7 @@ class _ProductivityScreenState extends State<ProductivityScreen>
             settings: widget.settings,
             onCountUpdate: widget.onTasksCountUpdate,
             addTrigger: _addTaskNotifier,
+            onAskJarvis: widget.onAskJarvis,
           ),
           RemindersScreen(
             settings: widget.settings,

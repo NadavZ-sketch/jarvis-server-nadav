@@ -502,6 +502,150 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
     return null;
   }
 
+  // ── Phase 5 view mode ─────────────────────────────────────────────────────
+
+  static const _kViewModes = ['today', 'week', 'all', 'project'];
+
+  String _viewMode = 'today';
+  String get viewMode => _viewMode;
+
+  void setViewMode(String v) {
+    if (!_kViewModes.contains(v) || v == _viewMode) return;
+    _viewMode = v;
+    notifyListeners();
+  }
+
+  /// True when the advisor ✨ button should show a red badge.
+  bool get advisorHasBadge {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    // Any task overdue by more than 2 days
+    final overdueBy2 = tasks.any((t) {
+      if (t['done'] == true) return false;
+      final d = _parseDate(t['due_date']);
+      return d != null && d.isBefore(today.subtract(const Duration(days: 2)));
+    });
+    if (overdueBy2) return true;
+    // More than 3 high-priority tasks with no due date
+    final highNoDue = tasks.where((t) =>
+        t['done'] != true &&
+        t['priority'] == 'high' &&
+        t['due_date'] == null);
+    return highNoDue.length > 3;
+  }
+
+  /// Grouped sections for the Phase 5 view pills.
+  /// Respects [filteredTasks] (honours active filters).
+  List<TaskSection> groupedSectionsForView(String view) {
+    switch (view) {
+      case 'today':
+        return _sectionsForTodayView();
+      case 'week':
+        return _sectionsForWeekView();
+      case 'project':
+        return _sectionsByProject();
+      case 'all':
+      default:
+        final src = filteredTasks.where((t) => t['done'] != true).toList();
+        src.sort((a, b) => (b['created_at'] as String? ?? '')
+            .compareTo(a['created_at'] as String? ?? ''));
+        return src.isEmpty ? [] : [(key: 'all', label: 'כל המשימות', tasks: src)];
+    }
+  }
+
+  /// Today view: overdue → morning → afternoon → evening → no-date.
+  List<TaskSection> _sectionsForTodayView() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final src = filteredTasks.where((t) => t['done'] != true).toList();
+    final overdue = <Map<String, dynamic>>[];
+    final morning = <Map<String, dynamic>>[];
+    final afternoon = <Map<String, dynamic>>[];
+    final evening = <Map<String, dynamic>>[];
+    final noDate = <Map<String, dynamic>>[];
+    for (final t in src) {
+      final iso = t['due_date'];
+      if (iso == null) { noDate.add(t); continue; }
+      DateTime dt;
+      try { dt = DateTime.parse(iso.toString()).toLocal(); } catch (_) { noDate.add(t); continue; }
+      final day = DateTime(dt.year, dt.month, dt.day);
+      if (day.isBefore(today)) { overdue.add(t); continue; }
+      if (!day.isBefore(tomorrow)) { noDate.add(t); continue; } // future
+      final h = dt.hour;
+      if (h < 12) morning.add(t);
+      else if (h < 18) afternoon.add(t);
+      else evening.add(t);
+    }
+    return [
+      if (overdue.isNotEmpty) (key: 'overdue', label: '⚠ פג תוקף', tasks: overdue),
+      if (morning.isNotEmpty) (key: 'morning', label: 'בוקר', tasks: morning),
+      if (afternoon.isNotEmpty) (key: 'afternoon', label: 'אחה"צ', tasks: afternoon),
+      if (evening.isNotEmpty) (key: 'evening', label: 'ערב', tasks: evening),
+      if (noDate.isNotEmpty) (key: 'no_date', label: 'ללא תאריך', tasks: noDate),
+    ];
+  }
+
+  /// Week view: overdue → each day of the coming 7 days → no-date.
+  List<TaskSection> _sectionsForWeekView() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final weekEnd = today.add(const Duration(days: 7));
+    final src = filteredTasks.where((t) => t['done'] != true).toList();
+    final overdue = <Map<String, dynamic>>[];
+    final byDay = <String, List<Map<String, dynamic>>>{};
+    final noDate = <Map<String, dynamic>>[];
+    const dayNames = ['', 'ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+    for (final t in src) {
+      final iso = t['due_date'];
+      if (iso == null) { noDate.add(t); continue; }
+      DateTime dt;
+      try { dt = DateTime.parse(iso.toString()).toLocal(); } catch (_) { noDate.add(t); continue; }
+      final day = DateTime(dt.year, dt.month, dt.day);
+      if (day.isBefore(today)) { overdue.add(t); continue; }
+      if (day.isAfter(weekEnd)) { noDate.add(t); continue; }
+      // Group by date string key (for ordering) and Hebrew day name for label
+      final key = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+      final wd = day.weekday == 7 ? 7 : day.weekday; // weekday: Mon=1..Sun=7
+      final heDow = dayNames[wd];
+      final label = day == today ? 'היום' : heDow;
+      byDay[key] ??= [];
+      (byDay[key])!.add(t..['_dayLabel'] = label);
+    }
+    final sortedKeys = byDay.keys.toList()..sort();
+    return [
+      if (overdue.isNotEmpty) (key: 'overdue', label: '⚠ פג תוקף', tasks: overdue),
+      for (final k in sortedKeys)
+        if (byDay[k]!.isNotEmpty)
+          (key: k, label: byDay[k]!.first['_dayLabel'] as String? ?? k, tasks: byDay[k]!),
+      if (noDate.isNotEmpty) (key: 'no_date', label: 'ללא תאריך', tasks: noDate),
+    ];
+  }
+
+  /// Project view: one section per project; a "ללא פרויקט" section for the rest.
+  List<TaskSection> _sectionsByProject() {
+    final src = filteredTasks.where((t) => t['done'] != true).toList();
+    final projectMap = {for (final p in projects) p['id'].toString(): p['name']?.toString() ?? '—'};
+    final byProject = <String, List<Map<String, dynamic>>>{};
+    final noProject = <Map<String, dynamic>>[];
+    for (final t in src) {
+      final pid = t['project_id']?.toString();
+      if (pid == null || pid.isEmpty) {
+        noProject.add(t);
+      } else {
+        byProject[pid] ??= [];
+        byProject[pid]!.add(t);
+      }
+    }
+    return [
+      for (final pid in byProject.keys)
+        if (byProject[pid]!.isNotEmpty)
+          (key: 'project_$pid', label: projectMap[pid] ?? '—', tasks: byProject[pid]!),
+      if (noProject.isNotEmpty)
+        (key: 'no_project', label: 'ללא פרויקט', tasks: noProject),
+    ];
+  }
+
   static DateTime? _parseDate(dynamic iso) {
     if (iso == null) return null;
     try {

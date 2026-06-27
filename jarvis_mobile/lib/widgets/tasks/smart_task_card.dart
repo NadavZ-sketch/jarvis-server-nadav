@@ -146,6 +146,10 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
     // Hide the 'general' category chip — it carries no signal and adds noise.
     final cat = categoryById(widget.task['category']?.toString());
     final showCat = cat != null && cat.id != 'general';
+    final rawTags = widget.task['tags'];
+    final tags = rawTags is List
+        ? List<String>.from(rawTags).take(3).toList()
+        : <String>[];
 
     return Container(
       margin: EdgeInsets.only(bottom: widget.dense ? 6 : 10),
@@ -227,7 +231,8 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                             (quad?.isNotEmpty ?? false) ||
                             (col?.isNotEmpty ?? false) ||
                             pts != null ||
-                            showCat)
+                            showCat ||
+                            tags.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Wrap(
@@ -237,6 +242,10 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                                 if (showCat)
                                   _chip('${cat.emoji} ${cat.label}',
                                       color: cat.color()),
+                                for (final tag in tags)
+                                  _chip('#$tag',
+                                      color: JC.indigo300,
+                                      icon: Icons.local_offer_outlined),
                                 if (dueLabel.isNotEmpty)
                                   _chip(dueLabel,
                                       color: _overdue

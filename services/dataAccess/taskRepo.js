@@ -169,8 +169,8 @@ function createTaskRepo(supabase) {
         async addGraceful(row) {
             const { error } = await supabase.from(T).insert([row]);
             if (error) {
-                if (/column "(category|recurrence)"/.test(error.message || '')) {
-                    const { category, recurrence, ...minimal } = row;
+                if (/column "(category|recurrence|tags)"/.test(error.message || '')) {
+                    const { category, recurrence, tags, ...minimal } = row;
                     await supabase.from(T).insert([minimal]);
                 } else {
                     console.error('taskRepo.addGraceful error:', error.message);

@@ -160,6 +160,7 @@ class ApiService {
       String? sprintId,
       int? storyPoints,
       String? recurrence,
+      List<String>? tags,
       String? dueDate}) async {
     final body = <String, dynamic>{'content': content, 'priority': priority};
     if (category != null) body['category'] = category;
@@ -169,6 +170,7 @@ class ApiService {
     if (sprintId != null) body['sprint_id'] = sprintId;
     if (storyPoints != null) body['story_points'] = storyPoints;
     if (recurrence != null) body['recurrence'] = recurrence;
+    if (tags != null) body['tags'] = tags;
     if (dueDate != null) body['due_date'] = dueDate;
     final res = await _client.post(
       _uri('/tasks'),
@@ -188,6 +190,7 @@ class ApiService {
        String? category,
        String? kanbanColumn, String? eisenhowerQuad, String? sprintId,
        int? storyPoints, String? taskStartDate, String? recurrence,
+       List<String>? tags,
        String? projectId, bool clearProject = false,
        bool clearDueDate = false}) async {
     final body = <String, dynamic>{};
@@ -204,6 +207,7 @@ class ApiService {
     if (taskStartDate  != null) body['task_start_date'] = taskStartDate;
     // Pass 'none' (or any non-daily/weekly/monthly value) to clear recurrence.
     if (recurrence     != null) body['recurrence']      = recurrence;
+    if (tags           != null) body['tags']            = tags;
     if (clearProject)           body['project_id']      = null;
     else if (projectId != null) body['project_id']      = projectId;
     final res = await _client.put(

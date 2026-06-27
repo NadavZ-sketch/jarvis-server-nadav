@@ -46,11 +46,14 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
   late final TextEditingController _ctrl =
       TextEditingController(text: widget.task['content']?.toString() ?? '');
   final TextEditingController _addCtrl = TextEditingController();
+  final TextEditingController _tagInputCtrl = TextEditingController();
   late String _priority = widget.task['priority']?.toString() ?? 'medium';
   late String _category = widget.task['category']?.toString() ?? 'general';
   // 'none' | 'daily' | 'weekly' | 'monthly'
   late String _recurrence =
       _normalizeRecurrence(widget.task['recurrence']?.toString());
+  late List<String> _tags =
+      List<String>.from(widget.task['tags'] as List? ?? []);
   DateTime? _dueDate;
   String? _projectId;
 
@@ -96,6 +99,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
   void dispose() {
     _ctrl.dispose();
     _addCtrl.dispose();
+    _tagInputCtrl.dispose();
     super.dispose();
   }
 
@@ -117,6 +121,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
         priority: _priority,
         category: _category,
         recurrence: _recurrence, // 'none' clears it server-side
+        tags: _tags,
         dueDate: iso,
         clearDueDate: clearDueDate,
         projectId: _projectId,
@@ -126,6 +131,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
       widget.task['priority'] = _priority;
       widget.task['category'] = _category;
       widget.task['recurrence'] = _recurrence == 'none' ? null : _recurrence;
+      widget.task['tags'] = List<String>.from(_tags);
       widget.task['due_date'] = iso;
       widget.task['project_id'] = _projectId;
       widget.onChanged?.call();
@@ -179,6 +185,15 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
     } catch (_) {}
   }
 
+  void _addTag(String v) {
+    final t = v.trim().toLowerCase();
+    if (t.isEmpty || t.length > 30 || _tags.length >= 10 || _tags.contains(t)) return;
+    setState(() {
+      _tags.add(t);
+      _tagInputCtrl.clear();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -214,6 +229,8 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
               _dueDateRow(),
               const SizedBox(height: 10),
               _recurrenceRow(),
+              const SizedBox(height: 10),
+              _tagsRow(),
               const SizedBox(height: 10),
               _projectRow(),
               const SizedBox(height: 14),
@@ -423,6 +440,91 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
               ),
           ],
         ),
+      ],
+    );
+  }
+
+  Widget _tagsRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.local_offer_outlined, size: 15, color: JC.textSecondary),
+              const SizedBox(width: 6),
+              Text('תגיות',
+                  style: TextStyle(
+                      color: JC.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Heebo')),
+            ],
+          ),
+        ),
+        if (_tags.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            textDirection: TextDirection.rtl,
+            children: [
+              for (final tag in _tags)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: JC.indigo300.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: JC.indigo300, width: 0.8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('#$tag',
+                          style: TextStyle(
+                              color: JC.indigo300,
+                              fontSize: 12,
+                              fontFamily: 'Heebo')),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: () => setState(() => _tags.remove(tag)),
+                        child: Icon(Icons.close_rounded,
+                            size: 13, color: JC.indigo300),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _tagInputCtrl,
+              textDirection: TextDirection.rtl,
+              style: TextStyle(
+                  color: JC.textPrimary, fontFamily: 'Heebo', fontSize: 13),
+              decoration: _decoration('הוסף תגית...'),
+              onSubmitted: (v) => _addTag(v),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => _addTag(_tagInputCtrl.text),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: JC.indigo300.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: JC.indigo300, width: 0.8),
+              ),
+              child: Icon(Icons.add_rounded, color: JC.indigo300, size: 18),
+            ),
+          ),
+        ]),
       ],
     );
   }

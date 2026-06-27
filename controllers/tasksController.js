@@ -16,7 +16,7 @@ function createTasksController({ repos }) {
         const {
           content, priority, category, project_id, kanban_column,
           eisenhower_quad, sprint_id, story_points, task_start_date, due_date,
-          recurrence,
+          recurrence, tags,
         } = req.body;
         if (!content) return res.status(400).json({ error: 'content required' });
         const row = { content };
@@ -31,6 +31,11 @@ function createTasksController({ repos }) {
         if (story_points    !== undefined) row.story_points    = story_points;
         if (task_start_date !== undefined) row.task_start_date = task_start_date;
         if (due_date        !== undefined) row.due_date        = due_date;
+        if (Array.isArray(tags))
+          row.tags = [...new Set(
+            tags.filter(t => typeof t === 'string' && t.trim())
+                .map(t => t.trim().slice(0, 30))
+          )].slice(0, 10);
         const { data, error } = await tasks.create(row);
         if (error) throw error;
         res.json({ task: data });
@@ -43,7 +48,7 @@ function createTasksController({ repos }) {
       try {
         const {
           done, due_date, content, priority, category, project_id, kanban_column,
-          eisenhower_quad, sprint_id, story_points, task_start_date, recurrence,
+          eisenhower_quad, sprint_id, story_points, task_start_date, recurrence, tags,
         } = req.body;
         const updates = {};
         if (done     !== undefined) updates.done     = done;
@@ -61,6 +66,11 @@ function createTasksController({ repos }) {
         if (sprint_id       !== undefined) updates.sprint_id       = sprint_id;
         if (story_points    !== undefined) updates.story_points    = story_points;
         if (task_start_date !== undefined) updates.task_start_date = task_start_date;
+        if (Array.isArray(tags))
+          updates.tags = [...new Set(
+            tags.filter(t => typeof t === 'string' && t.trim())
+                .map(t => t.trim().slice(0, 30))
+          )].slice(0, 10);
         if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'no fields to update' });
         const { data, error } = await tasks.update(req.params.id, updates);
         if (error) throw error;

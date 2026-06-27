@@ -92,6 +92,51 @@ describe('tasksController.update', () => {
   });
 });
 
+describe('tasksController.tags', () => {
+  test('persists a valid string array on create', async () => {
+    const repo = makeTaskRepo({ rows: [{ id: 1 }] });
+    const res = makeRes();
+    await ctrlWith(repo).create({ body: { content: 'x', tags: ['urgent', 'work'] } }, res);
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ['urgent', 'work'] })
+    );
+  });
+
+  test('strips non-string items and deduplicates on create', async () => {
+    const repo = makeTaskRepo({ rows: [{ id: 1 }] });
+    const res = makeRes();
+    await ctrlWith(repo).create({ body: { content: 'x', tags: ['a', 42, null, 'a', 'b'] } }, res);
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ['a', 'b'] })
+    );
+  });
+
+  test('truncates tags to 30 chars and caps at 10 on create', async () => {
+    const repo = makeTaskRepo({ rows: [{ id: 1 }] });
+    const res = makeRes();
+    const longTag = 'a'.repeat(50);
+    const manyTags = Array.from({ length: 15 }, (_, i) => `tag${i}`);
+    await ctrlWith(repo).create({ body: { content: 'x', tags: [longTag, ...manyTags] } }, res);
+    const calledTags = repo.create.mock.calls[0][0].tags;
+    expect(calledTags.length).toBeLessThanOrEqual(10);
+    expect(calledTags[0].length).toBeLessThanOrEqual(30);
+  });
+
+  test('clears tags when passed empty array on update', async () => {
+    const repo = makeTaskRepo({ rows: [{ id: 1 }] });
+    const res = makeRes();
+    await ctrlWith(repo).update({ params: { id: '1' }, body: { tags: [] } }, res);
+    expect(repo.update).toHaveBeenCalledWith('1', { tags: [] });
+  });
+
+  test('persists tags on update', async () => {
+    const repo = makeTaskRepo({ rows: [{ id: 1 }] });
+    const res = makeRes();
+    await ctrlWith(repo).update({ params: { id: '1' }, body: { tags: ['work', 'focus'] } }, res);
+    expect(repo.update).toHaveBeenCalledWith('1', { tags: ['work', 'focus'] });
+  });
+});
+
 describe('tasksController.remove', () => {
   test('deletes by id', async () => {
     const repo = makeTaskRepo();

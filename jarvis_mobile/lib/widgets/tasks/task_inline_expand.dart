@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../main.dart' show JC;
 import '../../screens/tasks/tasks_controller.dart';
@@ -31,6 +32,10 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
   final _addSubCtrl = TextEditingController();
   bool _addingSubtask = false;
 
+  Timer? _enhanceDebounce;
+  String? _enhancedText;
+  bool _enhancing = false;
+
   @override
   void initState() {
     super.initState();
@@ -40,8 +45,36 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
 
   @override
   void dispose() {
+    _enhanceDebounce?.cancel();
     _addSubCtrl.dispose();
     super.dispose();
+  }
+
+  String get _taskTitle {
+    final raw = _t['content']?.toString() ?? '';
+    final withoutAI = raw.contains('\n<<<AI_PROMPT>>>\n')
+        ? raw.split('\n<<<AI_PROMPT>>>\n').first
+        : raw;
+    return withoutAI.split('\n').first.trim();
+  }
+
+  void _onSubtaskChanged(String text) {
+    _enhanceDebounce?.cancel();
+    if (_enhancedText != null) setState(() => _enhancedText = null);
+    if (text.trim().length < 4) return;
+    _enhanceDebounce = Timer(const Duration(milliseconds: 700), () => _enhance(text));
+  }
+
+  Future<void> _enhance(String text) async {
+    if (!mounted) return;
+    setState(() => _enhancing = true);
+    try {
+      final enhanced = await _c.api.enhanceSubtask(_taskTitle, text);
+      if (mounted && enhanced.trim() != text.trim()) {
+        setState(() => _enhancedText = enhanced.trim());
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _enhancing = false);
   }
 
   Future<void> _loadSubtasks() async {
@@ -68,10 +101,11 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
     }
   }
 
-  Future<void> _addSubtask() async {
-    final text = _addSubCtrl.text.trim();
+  Future<void> _addSubtask([String? overrideText]) async {
+    final text = (overrideText ?? _addSubCtrl.text).trim();
     if (text.isEmpty || _addingSubtask) return;
-    setState(() => _addingSubtask = true);
+    setState(() { _addingSubtask = true; _enhancedText = null; _enhancing = false; });
+    _enhanceDebounce?.cancel();
     try {
       final r = await _c.api.addSubtask(_t['id'].toString(), text);
       final sub = r['subtask'] as Map<String, dynamic>?;
@@ -373,7 +407,7 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
 
           // ── Add subtask field ─────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(14, 4, 14, 8),
+            padding: const EdgeInsetsDirectional.fromSTEB(14, 4, 14, 4),
             child: Row(
               children: [
                 Icon(Icons.add_rounded, size: 16, color: JC.textMuted),
@@ -394,6 +428,7 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                     ),
+                    onChanged: _onSubtaskChanged,
                     onSubmitted: (_) => _addSubtask(),
                   ),
                 ),
@@ -403,6 +438,12 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
                       height: 16,
                       child: CircularProgressIndicator(
                           strokeWidth: 1.5, color: JC.blue400))
+                else if (_enhancing)
+                  SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 1.5, color: JC.indigo300))
                 else
                   GestureDetector(
                     onTap: _addSubtask,
@@ -412,6 +453,48 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
               ],
             ),
           ),
+
+          // ── AI-enhanced suggestion chip ────────────────────────────────────
+          if (_enhancedText != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(14, 0, 14, 8),
+              child: GestureDetector(
+                onTap: () => _addSubtask(_enhancedText),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: JC.indigo500.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: JC.indigo300.withValues(alpha: 0.4), width: 0.8),
+                  ),
+                  child: Row(
+                    children: [
+                      Text('✨', style: const TextStyle(fontSize: 12)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _enhancedText!,
+                          textDirection: TextDirection.rtl,
+                          style: TextStyle(
+                              color: JC.indigo300,
+                              fontSize: 12,
+                              fontFamily: 'Heebo',
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('הוסף',
+                          style: TextStyle(
+                              color: JC.indigo300,
+                              fontSize: 10.5,
+                              fontFamily: 'Heebo',
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           // ── Action row ────────────────────────────────────────────────────
           Container(

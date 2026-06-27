@@ -237,6 +237,12 @@ class _MainShellState extends State<MainShell> {
                 settings: _settings,
                 onOpenDrawer: _openDrawer,
                 jumpToTab: _productivityTab,
+                onAskJarvis: (msg) {
+                  setState(() {
+                    _pendingChatCommand = msg;
+                    _selectedIndex = 1;
+                  });
+                },
               ),
               // 3 — Control Center (unified status + control area)
               ProgressMapScreen(

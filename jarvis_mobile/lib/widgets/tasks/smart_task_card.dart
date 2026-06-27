@@ -20,6 +20,7 @@ class SmartTaskCard extends StatefulWidget {
   final Map<String, dynamic> task;
   final bool dense;
   final bool draggableMode;
+  final void Function(String)? onAskJarvis;
 
   const SmartTaskCard({
     super.key,
@@ -27,6 +28,7 @@ class SmartTaskCard extends StatefulWidget {
     required this.task,
     this.dense = false,
     this.draggableMode = false,
+    this.onAskJarvis,
   });
 
   @override
@@ -265,6 +267,7 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
               TaskInlineExpand(
                 controller: widget.controller,
                 task: widget.task,
+                onAskJarvis: widget.onAskJarvis,
               ),
           ],
         ),

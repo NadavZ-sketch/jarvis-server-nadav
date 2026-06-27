@@ -21,12 +21,14 @@ class TasksScreen extends StatefulWidget {
   final AppSettings settings;
   final ValueChanged<int>? onCountUpdate;
   final ValueListenable<int>? addTrigger;
+  final void Function(String)? onAskJarvis;
 
   const TasksScreen({
     super.key,
     required this.settings,
     this.onCountUpdate,
     this.addTrigger,
+    this.onAskJarvis,
   });
 
   @override
@@ -345,6 +347,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     onToggle: () => setState(() {
                       if (!_collapsed.remove(s.key)) _collapsed.add(s.key);
                     }),
+                    onAskJarvis: widget.onAskJarvis,
                   );
                 },
               ),
@@ -676,12 +679,14 @@ class _TaskSection extends StatelessWidget {
   final TaskSection section;
   final bool collapsed;
   final VoidCallback onToggle;
+  final void Function(String)? onAskJarvis;
 
   const _TaskSection({
     required this.controller,
     required this.section,
     required this.collapsed,
     required this.onToggle,
+    this.onAskJarvis,
   });
 
   @override
@@ -743,7 +748,7 @@ class _TaskSection extends StatelessWidget {
               child: SmartTaskCard(
                 controller: controller,
                 task: tasks[i],
-                // Long-press to open full edit sheet
+                onAskJarvis: onAskJarvis,
               ),
             ),
       ],

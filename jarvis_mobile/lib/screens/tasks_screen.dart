@@ -5,12 +5,10 @@ import '../app_settings.dart';
 import '../widgets/animated_list_item.dart';
 import '../widgets/delete_snackbar.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/jarvis_search_bar.dart';
 import '../widgets/loading_skeleton.dart';
-import '../widgets/tasks/group_mode_bar.dart';
 import '../widgets/tasks/smart_day_header.dart';
 import '../widgets/tasks/smart_task_card.dart';
-import '../widgets/tasks/task_category.dart';
+import '../widgets/tasks/tasks_toolbar.dart';
 import 'tasks/tasks_controller.dart';
 
 const _kGroupModes = ['time', 'priority', 'category', 'flat'];
@@ -38,7 +36,6 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   late final TasksController _c;
-  late final TextEditingController _searchCtrl;
   late String _groupMode;
   final Set<String> _collapsed = {};
 
@@ -48,8 +45,6 @@ class _TasksScreenState extends State<TasksScreen> {
     _groupMode = _validMode(widget.settings.tasksGroupMode);
     _c = TasksController(settings: widget.settings)..start();
     _c.addListener(_pushCount);
-    _searchCtrl = TextEditingController(text: _c.searchQuery);
-    _searchCtrl.addListener(() => _c.setSearchQuery(_searchCtrl.text));
     widget.addTrigger?.addListener(_onAddTrigger);
   }
 
@@ -58,7 +53,6 @@ class _TasksScreenState extends State<TasksScreen> {
     widget.addTrigger?.removeListener(_onAddTrigger);
     _c.removeListener(_pushCount);
     _c.dispose();
-    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -100,31 +94,16 @@ class _TasksScreenState extends State<TasksScreen> {
       );
     }
     final sections = _c.groupedSections(_groupMode);
-    final hasOpenTasks = _c.openCount > 0 || _c.tasks.isNotEmpty;
     return Column(
       children: [
-        // ── Global search bar (filters the list via TasksController) ─────────
-        Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 16, 2),
-          child: JarvisSearchBar(
-            controller: _searchCtrl,
-            hint: 'חיפוש משימות...',
-          ),
-        ),
         SmartDayHeader(controller: _c),
-        GroupModeBar(current: _groupMode, onChange: _setGroupMode),
-        if (hasOpenTasks)
-          _FilterBar(
-            filter: _c.filterPriority,
-            sort: _c.filterSort,
-            catFilter: _c.filterCategory,
-            showDone: _c.showDone,
-            doneCount: _c.doneCount,
-            onFilter: _c.setFilterPriority,
-            onSort: _c.setFilterSort,
-            onCatFilter: _c.setFilterCategory,
-            onToggleDone: _c.toggleShowDone,
-          ),
+        // One compact toolbar: group-mode + a filter button that opens a sheet
+        // holding search / priority / category / sort / show-done.
+        TasksToolbar(
+          controller: _c,
+          groupMode: _groupMode,
+          onGroupChange: _setGroupMode,
+        ),
         Expanded(
           child: RefreshIndicator(
             color: JC.blue400,
@@ -742,153 +721,3 @@ Widget _dismissBg() => Container(
       ),
       child: Icon(Icons.delete_outline_rounded, color: JC.cancelRed),
     );
-
-// ─── Filter / sort bar ───────────────────────────────────────────────────────
-
-class _FilterBar extends StatelessWidget {
-  final String filter;
-  final String sort;
-  final String catFilter;
-  final bool showDone;
-  final int doneCount;
-  final ValueChanged<String> onFilter;
-  final ValueChanged<String> onSort;
-  final ValueChanged<String> onCatFilter;
-  final VoidCallback onToggleDone;
-  const _FilterBar({
-    required this.filter,
-    required this.sort,
-    required this.catFilter,
-    required this.showDone,
-    required this.doneCount,
-    required this.onFilter,
-    required this.onSort,
-    required this.onCatFilter,
-    required this.onToggleDone,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 36,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsetsDirectional.fromSTEB(16, 4, 16, 4),
-        child: Row(
-          children: [
-            _chip('הכל', filter == 'all', JC.blue400, () => onFilter('all')),
-            const SizedBox(width: 6),
-            _chip('🔴 גבוה', filter == 'high', JC.cancelRed,
-                () => onFilter('high')),
-            const SizedBox(width: 6),
-            _chip('🟡 בינוני', filter == 'medium', JC.amber400,
-                () => onFilter('medium')),
-            const SizedBox(width: 6),
-            _chip('🟢 נמוך', filter == 'low', JC.green500,
-                () => onFilter('low')),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Container(
-                width: 1, height: 16,
-                color: JC.border.withValues(alpha: 0.5),
-              ),
-            ),
-            _chip('הכל', catFilter == 'all', JC.indigo300,
-                () => onCatFilter('all')),
-            for (final c in kTaskCategories) ...[
-              const SizedBox(width: 6),
-              _chip('${c.emoji} ${c.label}', catFilter == c.id, c.color(),
-                  () => onCatFilter(c.id)),
-            ],
-            if (doneCount > 0) ...[
-              const SizedBox(width: 8),
-              _chip(showDone ? 'הסתר בוצעו' : 'בוצעו ($doneCount)',
-                  showDone, JC.green500, onToggleDone),
-            ],
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              onSelected: onSort,
-              color: JC.surfaceAlt,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: JC.surface,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: JC.border, width: 0.8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.sort_rounded, size: 14,
-                        color: JC.textSecondary),
-                    const SizedBox(width: 4),
-                    Text(
-                      switch (sort) {
-                        'due_date' => 'תאריך',
-                        'created'  => 'יצירה',
-                        _          => 'עדיפות'
-                      },
-                      style: TextStyle(
-                          color: JC.textSecondary,
-                          fontSize: 12,
-                          fontFamily: 'Heebo'),
-                    ),
-                  ],
-                ),
-              ),
-              itemBuilder: (_) => [
-                _menu('priority', 'לפי עדיפות', sort),
-                _menu('due_date', 'לפי תאריך', sort),
-                _menu('created', 'לפי יצירה', sort),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _chip(String label, bool active, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: active ? color.withValues(alpha: 0.15) : JC.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: active ? color : JC.border,
-              width: active ? 1.2 : 0.8),
-        ),
-        child: Text(label,
-            style: TextStyle(
-              color: active ? color : JC.textMuted,
-              fontSize: 12,
-              fontFamily: 'Heebo',
-              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-            )),
-      ),
-    );
-  }
-
-  PopupMenuItem<String> _menu(String value, String label, String cur) =>
-      PopupMenuItem<String>(
-        value: value,
-        child: Row(
-          children: [
-            if (cur == value)
-              Icon(Icons.check_rounded, size: 14, color: JC.blue400),
-            const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(
-                    color: JC.textPrimary,
-                    fontFamily: 'Heebo',
-                    fontSize: 13)),
-          ],
-        ),
-      );
-}

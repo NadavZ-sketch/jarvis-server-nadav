@@ -51,6 +51,17 @@ describe('tasksController.create', () => {
       expect.objectContaining({ content: 'x', priority: 'high', category: 'work', due_date: '2026-06-10' })
     );
   });
+
+  test('persists a valid recurrence and nulls an invalid one', async () => {
+    const repo = makeTaskRepo({ rows: [{ id: 1 }] });
+    const res = makeRes();
+    await ctrlWith(repo).create({ body: { content: 'x', recurrence: 'weekly' } }, res);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ recurrence: 'weekly' }));
+
+    repo.create.mockClear();
+    await ctrlWith(repo).create({ body: { content: 'y', recurrence: 'none' } }, res);
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ recurrence: null }));
+  });
 });
 
 describe('tasksController.update', () => {
@@ -67,6 +78,17 @@ describe('tasksController.update', () => {
     const res = makeRes();
     await ctrlWith(repo).update({ params: { id: '3' }, body: { done: true, priority: 'low' } }, res);
     expect(repo.update).toHaveBeenCalledWith('3', { done: true, priority: 'low' });
+  });
+
+  test('updates recurrence, coercing invalid values to null', async () => {
+    const repo = makeTaskRepo({ rows: [{ id: 1 }] });
+    const res = makeRes();
+    await ctrlWith(repo).update({ params: { id: '3' }, body: { recurrence: 'monthly' } }, res);
+    expect(repo.update).toHaveBeenCalledWith('3', { recurrence: 'monthly' });
+
+    repo.update.mockClear();
+    await ctrlWith(repo).update({ params: { id: '3' }, body: { recurrence: 'none' } }, res);
+    expect(repo.update).toHaveBeenCalledWith('3', { recurrence: null });
   });
 });
 

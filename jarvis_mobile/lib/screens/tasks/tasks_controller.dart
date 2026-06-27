@@ -55,6 +55,23 @@ class TasksController extends ChangeNotifier with WidgetsBindingObserver {
   String searchQuery    = '';
   bool   showDone       = false;
 
+  /// True when any narrowing filter (priority / category / search / show-done)
+  /// is active — drives the toolbar's "active filter" dot. Sort is excluded as
+  /// it reorders rather than narrows.
+  bool get hasActiveFilters =>
+      filterPriority != 'all' ||
+      filterCategory != 'all' ||
+      searchQuery.isNotEmpty ||
+      showDone;
+
+  void clearFilters() {
+    filterPriority = 'all';
+    filterCategory = 'all';
+    searchQuery = '';
+    showDone = false;
+    notifyListeners();
+  }
+
   void setFilterPriority(String v) { filterPriority = v; notifyListeners(); }
   void setFilterCategory(String v) { filterCategory = v; notifyListeners(); }
   void setFilterSort(String v)     { filterSort     = v; notifyListeners(); }

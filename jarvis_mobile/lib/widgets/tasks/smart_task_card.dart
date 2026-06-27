@@ -135,9 +135,14 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
   @override
   Widget build(BuildContext context) {
     final dueLabel = _formatDue(widget.task['due_date']);
-    final quad = widget.task['eisenhower_quad']?.toString();
-    final col = widget.task['kanban_column']?.toString();
-    final pts = widget.task['story_points'];
+    // Kanban / Eisenhower / story-points are project-methodology concepts.
+    // On a standalone personal task they are pure noise, so only surface them
+    // when the task actually belongs to a project.
+    final inProject =
+        (widget.task['project_id']?.toString().isNotEmpty ?? false);
+    final quad = inProject ? widget.task['eisenhower_quad']?.toString() : null;
+    final col = inProject ? widget.task['kanban_column']?.toString() : null;
+    final pts = inProject ? widget.task['story_points'] : null;
     // Hide the 'general' category chip — it carries no signal and adds noise.
     final cat = categoryById(widget.task['category']?.toString());
     final showCat = cat != null && cat.id != 'general';

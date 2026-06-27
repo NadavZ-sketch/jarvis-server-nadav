@@ -48,8 +48,21 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
   final TextEditingController _addCtrl = TextEditingController();
   late String _priority = widget.task['priority']?.toString() ?? 'medium';
   late String _category = widget.task['category']?.toString() ?? 'general';
+  // 'none' | 'daily' | 'weekly' | 'monthly'
+  late String _recurrence =
+      _normalizeRecurrence(widget.task['recurrence']?.toString());
   DateTime? _dueDate;
   String? _projectId;
+
+  static const _recurrenceOptions = [
+    ('none',    'חד-פעמי', Icons.looks_one_rounded),
+    ('daily',   'יומי',    Icons.today_rounded),
+    ('weekly',  'שבועי',   Icons.date_range_rounded),
+    ('monthly', 'חודשי',   Icons.calendar_month_rounded),
+  ];
+
+  static String _normalizeRecurrence(String? r) =>
+      (r == 'daily' || r == 'weekly' || r == 'monthly') ? r! : 'none';
 
   List<Map<String, dynamic>> _projects = [];
   bool _saving = false;
@@ -103,6 +116,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
         content: text,
         priority: _priority,
         category: _category,
+        recurrence: _recurrence, // 'none' clears it server-side
         dueDate: iso,
         clearDueDate: clearDueDate,
         projectId: _projectId,
@@ -111,6 +125,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
       widget.task['content'] = text;
       widget.task['priority'] = _priority;
       widget.task['category'] = _category;
+      widget.task['recurrence'] = _recurrence == 'none' ? null : _recurrence;
       widget.task['due_date'] = iso;
       widget.task['project_id'] = _projectId;
       widget.onChanged?.call();
@@ -197,6 +212,8 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
               _categoryRow(),
               const SizedBox(height: 10),
               _dueDateRow(),
+              const SizedBox(height: 10),
+              _recurrenceRow(),
               const SizedBox(height: 10),
               _projectRow(),
               const SizedBox(height: 14),
@@ -343,6 +360,73 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
     );
   }
 
+  Widget _recurrenceRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.repeat_rounded, size: 15, color: JC.textSecondary),
+              const SizedBox(width: 6),
+              Text('חזרתיות',
+                  style: TextStyle(
+                      color: JC.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Heebo')),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          textDirection: TextDirection.rtl,
+          children: [
+            for (final opt in _recurrenceOptions)
+              GestureDetector(
+                onTap: () => setState(() => _recurrence = opt.$1),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _recurrence == opt.$1
+                        ? JC.blue500.withValues(alpha: 0.18)
+                        : JC.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: _recurrence == opt.$1 ? JC.blue500 : JC.border,
+                        width: _recurrence == opt.$1 ? 1.2 : 0.8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(opt.$3,
+                          size: 13,
+                          color: _recurrence == opt.$1
+                              ? JC.blue400
+                              : JC.textMuted),
+                      const SizedBox(width: 5),
+                      Text(opt.$2,
+                          style: TextStyle(
+                              color: _recurrence == opt.$1
+                                  ? JC.textPrimary
+                                  : JC.textSecondary,
+                              fontSize: 12,
+                              fontFamily: 'Heebo')),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _projectRow() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -406,32 +490,7 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   fontFamily: 'Heebo')),
-          const Spacer(),
-          GestureDetector(
-            onTap: () => showTaskSuggestionsSheet(
-              context,
-              settings: widget.settings,
-              taskId: _taskId,
-              onAddSubtask: _addSubtask,
-            ),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: JC.indigo500.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.auto_awesome_rounded, size: 13, color: JC.indigo300),
-                const SizedBox(width: 4),
-                Text('הצעות חכמות',
-                    style: TextStyle(
-                        color: JC.indigo300,
-                        fontSize: 11,
-                        fontFamily: 'Heebo',
-                        fontWeight: FontWeight.w600)),
-              ]),
-            ),
-          ),
+          // AI suggestions live on the card itself (✨) — single surface.
         ]),
         const SizedBox(height: 8),
         ...subs.map((s) => _subtaskRow(s)),
@@ -515,253 +574,4 @@ class _TaskEditSheetState extends State<TaskEditSheet> {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       );
-}
-
-/// AI suggestions sheet. Each suggestion can be added as a subtask (via
-/// [onAddSubtask]) and/or as a standalone task (via [onAddStandalone]). At least
-/// one callback should be provided.
-Future<void> showTaskSuggestionsSheet(
-  BuildContext context, {
-  required AppSettings settings,
-  required String taskId,
-  Future<void> Function(String text)? onAddSubtask,
-  Future<void> Function(String text)? onAddStandalone,
-}) {
-  return showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: JC.surfaceAlt,
-    shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-    builder: (_) => _SuggestionsSheet(
-      settings: settings,
-      taskId: taskId,
-      onAddSubtask: onAddSubtask,
-      onAddStandalone: onAddStandalone,
-    ),
-  );
-}
-
-class _SuggestionsSheet extends StatefulWidget {
-  final AppSettings settings;
-  final String taskId;
-  final Future<void> Function(String text)? onAddSubtask;
-  final Future<void> Function(String text)? onAddStandalone;
-
-  const _SuggestionsSheet({
-    required this.settings,
-    required this.taskId,
-    this.onAddSubtask,
-    this.onAddStandalone,
-  });
-
-  @override
-  State<_SuggestionsSheet> createState() => _SuggestionsSheetState();
-}
-
-class _SuggestionsSheetState extends State<_SuggestionsSheet> {
-  List<Map<String, dynamic>> _suggestions = [];
-  bool _loading = true;
-  String? _error;
-  final Set<int> _added = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _fetch();
-  }
-
-  Future<void> _fetch() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final list =
-          await ApiService(widget.settings).getTaskSuggestions(widget.taskId);
-      if (mounted) {
-        setState(() {
-          _suggestions = list;
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = ApiService.friendlyError(e);
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _add(int idx, {required bool asSubtask}) async {
-    final text = _suggestions[idx]['text']?.toString() ?? '';
-    if (text.isEmpty) return;
-    setState(() => _added.add(idx));
-    if (asSubtask) {
-      await widget.onAddSubtask?.call(text);
-    } else {
-      await widget.onAddStandalone?.call(text);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final canSub = widget.onAddSubtask != null;
-    final canStandalone = widget.onAddStandalone != null;
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Padding(
-        padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(children: [
-                Icon(Icons.auto_awesome_rounded, color: JC.indigo300, size: 16),
-                const SizedBox(width: 8),
-                Text('הצעות ג׳ארביס',
-                    style: TextStyle(
-                        color: JC.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Heebo')),
-              ]),
-              const SizedBox(height: 4),
-              Text(
-                  canSub && canStandalone
-                      ? 'הוסף כל הצעה כתת-משימה או כמשימה עצמאית'
-                      : canSub
-                          ? 'הוסף הצעה כתת-משימה'
-                          : 'הוסף הצעה כמשימה',
-                  style: TextStyle(
-                      color: JC.textMuted, fontSize: 12, fontFamily: 'Heebo')),
-              const SizedBox(height: 14),
-              if (_loading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: Column(children: [
-                      CircularProgressIndicator(
-                          strokeWidth: 2, color: JC.indigo300),
-                      const SizedBox(height: 12),
-                      Text('ג׳ארביס מנתח את המשימה...',
-                          style: TextStyle(
-                              color: JC.textMuted,
-                              fontFamily: 'Heebo',
-                              fontSize: 13)),
-                    ]),
-                  ),
-                )
-              else if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                      child: Text(_error!,
-                          style: TextStyle(
-                              color: JC.cancelRed,
-                              fontFamily: 'Heebo',
-                              fontSize: 13))),
-                )
-              else if (_suggestions.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Center(
-                      child: Text('אין הצעות זמינות',
-                          style: TextStyle(
-                              color: JC.textMuted,
-                              fontFamily: 'Heebo',
-                              fontSize: 13))),
-                )
-              else
-                ..._suggestions.asMap().entries.map((e) {
-                  final idx = e.key;
-                  final sugg = e.value;
-                  final done = _added.contains(idx);
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                    decoration: BoxDecoration(
-                      color: done
-                          ? JC.blue500.withValues(alpha: 0.1)
-                          : JC.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: done
-                              ? JC.blue400.withValues(alpha: 0.4)
-                              : JC.border,
-                          width: 0.8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(sugg['text']?.toString() ?? '',
-                            style: TextStyle(
-                                color: done ? JC.textSecondary : JC.textPrimary,
-                                fontSize: 14,
-                                fontFamily: 'Heebo')),
-                        if ((sugg['reason']?.toString() ?? '').isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(sugg['reason'].toString(),
-                                style: TextStyle(
-                                    color: JC.textMuted,
-                                    fontSize: 11,
-                                    fontFamily: 'Heebo')),
-                          ),
-                        const SizedBox(height: 8),
-                        if (done)
-                          Text('נוסף ✓',
-                              style: TextStyle(
-                                  color: JC.blue400,
-                                  fontSize: 12,
-                                  fontFamily: 'Heebo',
-                                  fontWeight: FontWeight.w600))
-                        else
-                          Row(children: [
-                            if (canSub)
-                              _addBtn('תת-משימה', JC.indigo500,
-                                  () => _add(idx, asSubtask: true)),
-                            if (canSub && canStandalone)
-                              const SizedBox(width: 8),
-                            if (canStandalone)
-                              _addBtn('משימה', JC.blue500,
-                                  () => _add(idx, asSubtask: false)),
-                          ]),
-                      ],
-                    ),
-                  );
-                }),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _addBtn(String label, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(label,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontFamily: 'Heebo',
-                fontWeight: FontWeight.w600)),
-      ),
-    );
-  }
 }

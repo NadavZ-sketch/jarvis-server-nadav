@@ -331,6 +331,50 @@ class ApiService {
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }
 
+  /// Parse a natural-language task string into structured fields via AI.
+  /// Returns a map that may contain: title, date (ISO), time (HH:MM),
+  /// priority ('high'|'medium'|'low'), project (name string).
+  Future<Map<String, dynamic>> parseTaskNL(String text) async {
+    if (text.trim().isEmpty) return {'title': text};
+    try {
+      final prompt = 'נתח את הטקסט הבא כמשימה. החזר JSON בלבד ללא הסבר. '
+          'מפתחות: title (string), date (ISO date string or null), '
+          'time (HH:MM string or null), priority (high/medium/low), '
+          'project (string or null). '
+          'טקסט: "$text"';
+      final res = await askJarvis(prompt, settings, intent: 'task_parse');
+      final answer = (res['answer'] as String? ?? '').trim();
+      final clean = answer
+          .replaceAll(RegExp(r'^```(?:json)?\s*', multiLine: true), '')
+          .replaceAll(RegExp(r'```\s*$', multiLine: true), '')
+          .trim();
+      if (clean.startsWith('{')) {
+        return jsonDecode(clean) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return {'title': text, 'priority': 'medium'};
+  }
+
+  /// Analyse the user's open task list and return AI planning insights.
+  Future<String> getTaskInsights(List<Map<String, dynamic>> tasks) async {
+    if (tasks.isEmpty) return 'אין משימות פתוחות כרגע.';
+    final summary = tasks.take(30).map((t) {
+      final title = (t['content'] as String? ?? '').split('\n<<<AI_PROMPT>>>\n').first;
+      final due   = t['due_date'] as String?;
+      final pri   = t['priority']?.toString() ?? 'medium';
+      return '- $title (עדיפות: $pri${due != null ? ", תאריך: $due" : ""})';
+    }).join('\n');
+    final prompt = 'נתח את רשימת המשימות הבאה ותן 3-4 תובנות קצרות בעברית '
+        'על עומס, עדיפויות, ומשימות הדחופות ביותר. כל תובנה — שורה אחת, '
+        'מקסימום 12 מילים.\n\nמשימות:\n$summary';
+    try {
+      final res = await askJarvis(prompt, settings, intent: 'task');
+      return (res['answer'] as String? ?? '').trim();
+    } catch (_) {
+      return 'לא ניתן לטעון ניתוח כרגע.';
+    }
+  }
+
   Future<Map<String, dynamic>> askJarvisWithImage(
       String command, String imageBase64, AppSettings settings) async {
     final body = <String, dynamic>{

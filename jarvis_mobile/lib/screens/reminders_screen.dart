@@ -156,13 +156,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
     );
   }
 
-  Future<void> _showReminderSheet({Map<String, dynamic>? existing}) async {
+  Future<void> _showReminderSheet({
+    Map<String, dynamic>? existing,
+    String? initialText,
+    String? initialRecurrence,
+  }) async {
     final isEdit = existing != null;
     final textCtrl = TextEditingController(
-        text: isEdit ? (existing['text']?.toString() ?? '') : '');
+        text: isEdit ? (existing['text']?.toString() ?? '') : (initialText ?? ''));
     DateTime selectedDate;
     String? selectedRecurrence =
-        isEdit ? (existing['recurrence'] as String?) : null;
+        isEdit ? (existing['recurrence'] as String?) : initialRecurrence;
 
     if (isEdit && existing['scheduled_time'] != null) {
       try {
@@ -471,14 +475,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       ),
                     Expanded(
                       child: _filtered.isEmpty
-                          ? EmptyState(
-                              icon: Icons.notifications_none_rounded,
-                              title: _searchQuery.isEmpty
-                                  ? 'אין תזכורות'
-                                  : 'לא נמצאו תוצאות',
-                              subtitle: _searchQuery.isEmpty
-                                  ? 'לחץ + להוספת תזכורת'
-                                  : '')
+                          ? _searchQuery.isNotEmpty
+                              ? const EmptyState(
+                                  icon: Icons.search_off_rounded,
+                                  title: 'לא נמצאו תוצאות',
+                                  subtitle: '')
+                              : _RemindersEmptyState(
+                                  onAdd: _showReminderSheet,
+                                  onTemplate: (text, rec) => _showReminderSheet(
+                                      initialText: text,
+                                      initialRecurrence: rec),
+                                )
                           : RefreshIndicator(
                               color: JC.blue400,
                               backgroundColor: JC.surfaceAlt,
@@ -706,6 +713,230 @@ class _ReminderCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Rich empty state ─────────────────────────────────────────────────────────
+
+class _RemindersEmptyState extends StatelessWidget {
+  final VoidCallback onAdd;
+  final void Function(String text, String? recurrence) onTemplate;
+
+  const _RemindersEmptyState({required this.onAdd, required this.onTemplate});
+
+  static const _templates = [
+    ('💊', 'תרופות',        'תרופות'),
+    ('💧', 'לשתות מים',    'לשתות מים'),
+    ('📞', 'שיחת טלפון',   'שיחת טלפון'),
+    ('🏃', 'פעילות גופנית', 'פעילות גופנית'),
+    ('🛒', 'קניות',         'קניות'),
+    ('☀️', 'בוקר טוב',     'בוקר טוב'),
+  ];
+
+  static const _ideas = [
+    ('💧', 'שתיית מים',     'לשתות מים',      'daily'),
+    ('💊', 'ויטמינים',      'ויטמינים',       'daily'),
+    ('🏃', 'פעילות גופנית', 'פעילות גופנית',  'weekly'),
+  ];
+
+  static String _recLabel(String rec) => switch (rec) {
+        'daily'   => 'יומי',
+        'weekly'  => 'שבועי',
+        'monthly' => 'חודשי',
+        _         => rec,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── 1. Banner ──────────────────────────────────────────────────
+            Container(
+              height: 130,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    JC.indigo500.withValues(alpha: 0.15),
+                    JC.blue500.withValues(alpha: 0.08),
+                  ],
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border:
+                    Border.all(color: JC.indigo300.withValues(alpha: 0.2)),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.notifications_none_rounded,
+                      size: 44, color: JC.indigo300),
+                  const SizedBox(height: 8),
+                  Text('אין תזכורות עדיין',
+                      style: TextStyle(
+                          color: JC.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: 'Heebo')),
+                  const SizedBox(height: 4),
+                  Text('הוסף את הראשונה שלך או בחר רעיון',
+                      style: TextStyle(
+                          color: JC.textSecondary,
+                          fontSize: 13,
+                          fontFamily: 'Heebo')),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── 2. Primary CTA ─────────────────────────────────────────────
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: JC.blue500,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              onPressed: onAdd,
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: const Text('הוסף תזכורת',
+                  style: TextStyle(
+                      fontFamily: 'Heebo',
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15)),
+            ),
+            const SizedBox(height: 20),
+
+            // ── 3. Quick-template chips ────────────────────────────────────
+            Text('תבניות מהירות',
+                style: TextStyle(
+                    color: JC.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Heebo')),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (emoji, label, prefill) in _templates)
+                  GestureDetector(
+                    onTap: () => onTemplate(prefill, null),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: JC.surfaceAlt,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: JC.border, width: 0.8),
+                      ),
+                      child: Text('$emoji $label',
+                          style: TextStyle(
+                              color: JC.textPrimary,
+                              fontSize: 13,
+                              fontFamily: 'Heebo')),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // ── 4. Smart-idea cards ────────────────────────────────────────
+            Text('רעיונות',
+                style: TextStyle(
+                    color: JC.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Heebo')),
+            const SizedBox(height: 8),
+            for (final (emoji, title, prefill, rec) in _ideas)
+              GestureDetector(
+                onTap: () => onTemplate(prefill, rec),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: JC.surfaceAlt,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: JC.border, width: 0.8),
+                  ),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      textDirection: TextDirection.rtl,
+                      children: [
+                        Container(
+                          width: 4,
+                          decoration: BoxDecoration(
+                            color: JC.indigo300,
+                            borderRadius: const BorderRadius.only(
+                              topRight: Radius.circular(14),
+                              bottomRight: Radius.circular(14),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 12),
+                            child: Row(
+                              textDirection: TextDirection.rtl,
+                              children: [
+                                Text(emoji,
+                                    style: const TextStyle(fontSize: 20)),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.end,
+                                    children: [
+                                      Text(title,
+                                          style: TextStyle(
+                                              color: JC.textPrimary,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              fontFamily: 'Heebo')),
+                                      const SizedBox(height: 2),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.repeat_rounded,
+                                              size: 11,
+                                              color: JC.indigo300),
+                                          const SizedBox(width: 3),
+                                          Text(_recLabel(rec),
+                                              style: TextStyle(
+                                                  color: JC.indigo300,
+                                                  fontSize: 11,
+                                                  fontFamily: 'Heebo',
+                                                  fontWeight:
+                                                      FontWeight.w600)),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(Icons.chevron_left_rounded,
+                                    color:
+                                        JC.textMuted.withValues(alpha: 0.4),
+                                    size: 18),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

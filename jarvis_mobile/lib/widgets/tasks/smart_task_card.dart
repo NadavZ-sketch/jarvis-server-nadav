@@ -38,8 +38,10 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
 
   String get _title {
     final raw = widget.task['content']?.toString() ?? '';
-    final sepIdx = raw.indexOf('\n<<<AI_PROMPT>>>\n');
-    return sepIdx == -1 ? raw : raw.substring(0, sepIdx);
+    final withoutAI = raw.contains('\n<<<AI_PROMPT>>>\n')
+        ? raw.split('\n<<<AI_PROMPT>>>\n').first
+        : raw;
+    return withoutAI.split('\n').first.trim();
   }
 
   bool get _isDone => widget.task['done'] == true;
@@ -192,6 +194,8 @@ class _SmartTaskCardState extends State<SmartTaskCard> {
                           Text(
                             _title,
                             textDirection: TextDirection.rtl,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: _isDone ? JC.textMuted : JC.textPrimary,
                               fontSize: 14.5,
@@ -383,9 +387,9 @@ class _SwipeableCardState extends State<_SwipeableCard>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Action buttons (behind, on the left side)
+        // Action buttons revealed on right when card slides left (RTL swipe)
         Positioned(
-          left: 0,
+          right: 0,
           top: 0,
           bottom: 0,
           width: _maxReveal,

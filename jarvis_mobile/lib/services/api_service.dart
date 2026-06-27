@@ -375,6 +375,23 @@ class ApiService {
     }
   }
 
+  /// Ask the LLM to sharpen a subtask based on the parent task context.
+  Future<String> enhanceSubtask(String parentTitle, String subtaskText) async {
+    if (subtaskText.trim().length < 3) return subtaskText;
+    final prompt = 'המשימה הראשית: "$parentTitle"\n'
+        'תת-משימה שהמשתמש הקליד: "$subtaskText"\n'
+        'שפר את ניסוח תת-המשימה: הפוך אותה לספציפית, ברורה וניתנת לביצוע '
+        'בהתאם להקשר המשימה הראשית. '
+        'ענה אך ורק עם הטקסט המשופר — ללא הסבר, ללא פיסוק מיותר.';
+    try {
+      final res = await askJarvis(prompt, settings, intent: 'task');
+      final answer = (res['answer'] as String? ?? '').trim();
+      return answer.isNotEmpty ? answer : subtaskText;
+    } catch (_) {
+      return subtaskText;
+    }
+  }
+
   Future<Map<String, dynamic>> askJarvisWithImage(
       String command, String imageBase64, AppSettings settings) async {
     final body = <String, dynamic>{

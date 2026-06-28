@@ -258,7 +258,7 @@ class _TaskInlineExpandState extends State<TaskInlineExpand> {
   Widget build(BuildContext context) {
     final id = _t['id'].toString();
     final suggestions = _c.suggestions[id] ?? [];
-    final suggestionsLoading = _c.suggestionLoading.contains(id);
+    final suggestionsLoading = _c.isSuggestionInFlight(id);
     final priority = _t['priority']?.toString() ?? 'medium';
     final dueIso = _t['due_date'] as String?;
     DateTime? due;

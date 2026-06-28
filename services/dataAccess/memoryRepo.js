@@ -31,9 +31,14 @@ function createMemoryRepo(supabase) {
         },
 
         // All stored memory contents (recall fallback when Pinecone is absent).
+        // Excludes pending memories — they are a privacy gate and must not appear
+        // in recall until approved.
         async allContents() {
-            const { data } = await supabase.from(M).select('content');
-            return (data || []).map(m => m.content);
+            const { data, error } = await supabase.from(M).select('content').neq('status', 'pending');
+            if (!error) return (data || []).map(m => m.content);
+            // Column may not exist yet (pre-migration) — fall back to the plain select.
+            const { data: data2 } = await supabase.from(M).select('content');
+            return (data2 || []).map(m => m.content);
         },
 
         // Recent memory rows, newest first (proposal/context builder).
@@ -136,13 +141,27 @@ function createMemoryRepo(supabase) {
         },
 
         // Insert one memory, returning [{ id }] so the caller can embed it.
-        // Falls back to insert without scope if the scope column doesn't exist.
+        // Falls back to insert without scope if the scope column doesn't exist,
+        // then without status if that column doesn't exist yet (pre-migration).
         async insert(row) {
             const { data, error } = await supabase.from(M).insert([row]).select('id').limit(1);
             if (!error) return data || [];
             if (error.message?.includes('scope') || error.code === '42703') {
                 const { scope: _s, ...rowWithoutScope } = row;
-                const { data: d2 } = await supabase.from(M).insert([rowWithoutScope]).select('id').limit(1);
+                const { data: d2, error: err2 } = await supabase.from(M).insert([rowWithoutScope]).select('id').limit(1);
+                if (!err2) return d2 || [];
+                // status column may also be missing — try without it too
+                if (err2.message?.includes('status') || err2.code === '42703') {
+                    const { status: _st, ...rowMinimal } = rowWithoutScope;
+                    const { data: d3 } = await supabase.from(M).insert([rowMinimal]).select('id').limit(1);
+                    return d3 || [];
+                }
+                throw err2;
+            }
+            // status column may not exist yet — retry without it
+            if (error.message?.includes('status')) {
+                const { status: _st, ...rowWithoutStatus } = row;
+                const { data: d2 } = await supabase.from(M).insert([rowWithoutStatus]).select('id').limit(1);
                 return d2 || [];
             }
             throw error;
@@ -150,6 +169,39 @@ function createMemoryRepo(supabase) {
 
         async update(id, content) {
             return supabase.from(M).update({ content }).eq('id', id);
+        },
+
+        // List memories by status (e.g. 'pending', 'approved'), newest first.
+        // Returns [] on error or when the column doesn't exist yet.
+        async listByStatus(status, limit = 50) {
+            try {
+                const { data, error } = await supabase.from(M)
+                    .select('id, content, scope, created_at, status')
+                    .eq('status', status)
+                    .order('created_at', { ascending: false })
+                    .limit(limit);
+                if (error) return [];
+                return data || [];
+            } catch {
+                return [];
+            }
+        },
+
+        // Set the status of a memory by id. Returns the updated row (including
+        // content so callers can upsert to Pinecone on approval). Defensive on
+        // missing column — returns null on any error.
+        async setStatus(id, status) {
+            try {
+                const { data, error } = await supabase.from(M)
+                    .update({ status })
+                    .eq('id', id)
+                    .select('id, content, scope, created_at, status')
+                    .limit(1);
+                if (error) return null;
+                return (data && data[0]) || null;
+            } catch {
+                return null;
+            }
         },
 
         // Delete memories whose content matches; returns the deleted rows.

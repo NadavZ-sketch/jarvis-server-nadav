@@ -1,0 +1,1151 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>מוקאפ מרכז שליטה חכם - 4 טאבים</title>
+  <style>
+    :root {
+      --bg: #070b13;
+      --bar: #0b1220;
+      --surface: #101a2b;
+      --surface2: #152238;
+      --line: #27364f;
+      --text: #eef4fb;
+      --muted: #94a3b8;
+      --gold: #d6aa4f;
+      --blue: #5ea1ff;
+      --green: #4ade80;
+      --red: #fb7185;
+      --amber: #f59e0b;
+      --violet: #a78bfa;
+      --cyan: #22d3ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+    button, input { font: inherit; }
+    .phone {
+      width: min(440px, 100vw);
+      min-height: 100vh;
+      margin: 0 auto;
+      background: radial-gradient(circle at 50% -10%, rgba(94,161,255,.14), transparent 38%), #070b13;
+      border-inline: 1px solid rgba(255,255,255,.05);
+      padding-bottom: 86px;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(10,16,28,.96);
+      border-bottom: 1px solid rgba(214,170,79,.18);
+      backdrop-filter: blur(16px);
+    }
+    .top {
+      display: grid;
+      grid-template-columns: 82px 1fr 82px;
+      align-items: center;
+      padding: 14px 16px 8px;
+    }
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .top-actions.left { justify-content: flex-end; }
+    .icon-btn {
+      width: 35px;
+      height: 35px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #0a1120;
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+    }
+    .icon-btn.web {
+      color: var(--blue);
+      border-color: rgba(94,161,255,.38);
+      background: rgba(94,161,255,.08);
+    }
+    .web-shortcut {
+      position: absolute;
+      left: 58px;
+      top: 14px;
+      width: 35px;
+      height: 35px;
+      border: 1px solid rgba(94,161,255,.38);
+      border-radius: 11px;
+      background: rgba(94,161,255,.08);
+      color: var(--blue);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 900;
+    }
+    h1 {
+      margin: 0;
+      text-align: center;
+      font-size: 17px;
+      color: var(--gold);
+      line-height: 1.2;
+    }
+    h1 span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      margin-top: 2px;
+    }
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2px;
+      padding: 0 10px;
+    }
+    .tab {
+      border: 0;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 10px 4px 12px;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tab.active {
+      color: var(--gold);
+      border-bottom-color: var(--blue);
+    }
+    main { padding: 16px; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .section {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 900;
+      margin: 18px 2px 8px;
+    }
+    .section:after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(214,170,79,.34), transparent);
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid rgba(148,163,184,.15);
+      border-radius: 15px;
+      padding: 15px;
+      margin-bottom: 12px;
+      box-shadow: 0 18px 40px rgba(0,0,0,.18);
+      animation: cardIn .22s ease both;
+    }
+    .card.soft { background: var(--surface2); }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .between { justify-content: space-between; }
+    .stack { display: grid; gap: 9px; }
+    .headline { font-size: 16px; font-weight: 900; }
+    .sub { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .tiny { color: var(--muted); font-size: 10px; }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 16px rgba(74,222,128,.55);
+      animation: pulseOk 2.4s ease-in-out infinite;
+    }
+    .dot.warn { background: var(--amber); box-shadow: 0 0 16px rgba(245,158,11,.45); }
+    .dot.bad { background: var(--red); box-shadow: 0 0 16px rgba(251,113,133,.45); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: #0b1220;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .pill.gold { color: var(--gold); border-color: rgba(214,170,79,.42); background: rgba(214,170,79,.08); }
+    .pill.green { color: var(--green); border-color: rgba(74,222,128,.4); background: rgba(74,222,128,.08); }
+    .pill.blue { color: var(--blue); border-color: rgba(94,161,255,.42); background: rgba(94,161,255,.08); }
+    .pill.red { color: var(--red); border-color: rgba(251,113,133,.42); background: rgba(251,113,133,.08); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .metric {
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 84px;
+    }
+    .metric strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1;
+      color: var(--blue);
+      margin: 8px 0 5px;
+    }
+    .event {
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-inline-start: 4px solid var(--blue);
+      border-radius: 12px;
+      padding: 10px;
+    }
+    .event.good { border-inline-start-color: var(--green); }
+    .event.warn { border-inline-start-color: var(--amber); }
+    .event.bad { border-inline-start-color: var(--red); }
+    .btn-row {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .btn {
+      border: 1px solid rgba(214,170,79,.42);
+      color: var(--gold);
+      background: rgba(214,170,79,.08);
+      border-radius: 10px;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 900;
+      text-align: center;
+      flex: 1 1 auto;
+      min-width: 88px;
+    }
+    .btn.blue { color: var(--blue); border-color: rgba(94,161,255,.42); background: rgba(94,161,255,.08); }
+    .btn.green { color: var(--green); border-color: rgba(74,222,128,.4); background: rgba(74,222,128,.08); }
+    .btn.red { color: var(--red); border-color: rgba(251,113,133,.42); background: rgba(251,113,133,.08); }
+    .flow { display: grid; gap: 8px; }
+    .trace-flow {
+      position: relative;
+      padding-inline-start: 0;
+    }
+    .trace-flow:before {
+      content: "";
+      position: absolute;
+      top: 24px;
+      bottom: 24px;
+      right: 23px;
+      width: 2px;
+      border-radius: 999px;
+      background: rgba(94,161,255,.18);
+    }
+    .trace-flow:after {
+      content: "";
+      position: absolute;
+      top: 24px;
+      right: 23px;
+      width: 2px;
+      height: calc(100% - 48px);
+      border-radius: 999px;
+      background: linear-gradient(var(--blue), var(--green));
+      transform-origin: top;
+      animation: traceLine 1.15s ease both;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      align-items: start;
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px;
+      position: relative;
+      z-index: 1;
+    }
+    .trace-flow .step {
+      opacity: 0;
+      transform: translateY(8px);
+      animation: stepIn .28s ease forwards;
+    }
+    .trace-flow .step:nth-child(1) { animation-delay: .08s; }
+    .trace-flow .step:nth-child(2) { animation-delay: .18s; }
+    .trace-flow .step:nth-child(3) { animation-delay: .28s; }
+    .trace-flow .step:nth-child(4) { animation-delay: .38s; }
+    .trace-flow .step:nth-child(5) { animation-delay: .48s; }
+    .step-no {
+      width: 25px;
+      height: 25px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(94,161,255,.12);
+      color: var(--blue);
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .model-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 7px;
+    }
+    .model {
+      min-height: 54px;
+      border-radius: 11px;
+      border: 1px solid rgba(148,163,184,.25);
+      display: grid;
+      place-items: center;
+      background: #0b1220;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 900;
+    }
+    .model.active {
+      color: #092214;
+      background: #d9fbd7;
+      border-color: #86efac;
+    }
+    .agent {
+      display: grid;
+      grid-template-columns: 38px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 11px;
+    }
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      background: rgba(94,161,255,.1);
+      color: var(--blue);
+      font-weight: 900;
+    }
+    .toggle {
+      width: 42px;
+      height: 24px;
+      border-radius: 999px;
+      background: rgba(74,222,128,.17);
+      border: 1px solid rgba(74,222,128,.45);
+      position: relative;
+    }
+    .toggle:before {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    .agent.expandable {
+      cursor: pointer;
+      transition: border-color .18s ease, background .18s ease, transform .18s ease;
+    }
+    .agent.expandable:hover {
+      border-color: rgba(94,161,255,.45);
+      background: #0d1628;
+      transform: translateY(-1px);
+    }
+    .agent-detail {
+      display: none;
+      margin-top: -3px;
+      border: 1px solid rgba(94,161,255,.2);
+      background: rgba(94,161,255,.055);
+      border-radius: 13px;
+      padding: 12px;
+      animation: expandIn .22s ease both;
+    }
+    .agent-detail.open { display: block; }
+    .permission-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 9px;
+    }
+    .memory {
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px;
+      display: grid;
+      gap: 5px;
+    }
+    .input {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #0b1220;
+      color: var(--text);
+      border-radius: 11px;
+      padding: 11px;
+      margin-bottom: 10px;
+    }
+    .interview-card {
+      background: #0b1220;
+      border: 1px solid rgba(94,161,255,.22);
+      border-radius: 13px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .question {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 9px;
+      align-items: start;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(148,163,184,.12);
+    }
+    .question:last-child { border-bottom: 0; }
+    .q-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(94,161,255,.12);
+      color: var(--blue);
+      font-size: 10px;
+      font-weight: 900;
+    }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 7px;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(148,163,184,.06);
+      color: var(--muted);
+      padding: 5px 8px;
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .chip.selected {
+      color: var(--gold);
+      border-color: rgba(214,170,79,.42);
+      background: rgba(214,170,79,.08);
+    }
+    .prompt-preview {
+      border: 1px solid rgba(74,222,128,.28);
+      background: rgba(74,222,128,.06);
+      border-radius: 13px;
+      padding: 12px;
+      margin-top: 10px;
+      animation: cardIn .22s ease both;
+    }
+    .feedback-item {
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .sentiment {
+      display: inline-grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 9px;
+      background: rgba(251,113,133,.1);
+      color: var(--red);
+      font-weight: 900;
+    }
+    .sentiment.good {
+      background: rgba(74,222,128,.1);
+      color: var(--green);
+    }
+    .survey-score {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(214,170,79,.1);
+      border: 1px solid rgba(214,170,79,.42);
+      color: var(--gold);
+      font-size: 21px;
+      font-weight: 900;
+    }
+    .source-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(3,7,18,.78);
+      z-index: 30;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 14px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .survey-modal {
+      width: min(408px, 100%);
+      max-height: 88vh;
+      overflow: auto;
+      background: var(--surface);
+      border: 1px solid rgba(214,170,79,.28);
+      border-radius: 18px 18px 14px 14px;
+      padding: 14px;
+      box-shadow: 0 -22px 80px rgba(0,0,0,.45);
+      animation: sheetIn .22s ease both;
+    }
+    .handle {
+      width: 38px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(148,163,184,.45);
+      margin: 0 auto 14px;
+    }
+    .survey-q {
+      border: 1px solid var(--line);
+      background: #0b1220;
+      border-radius: 13px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+    .textarea {
+      width: 100%;
+      min-height: 76px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #08101d;
+      color: var(--text);
+      padding: 10px;
+      margin-top: 8px;
+    }
+    @keyframes sheetIn {
+      from { opacity: 0; transform: translateY(26px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .intent-strip {
+      display: grid;
+      gap: 8px;
+      background: rgba(94,161,255,.07);
+      border: 1px solid rgba(94,161,255,.24);
+      border-radius: 13px;
+      padding: 12px;
+      margin: 11px 0;
+    }
+    .fallback-note {
+      border: 1px dashed rgba(245,158,11,.45);
+      color: var(--muted);
+      background: rgba(245,158,11,.06);
+      border-radius: 12px;
+      padding: 10px;
+      font-size: 11px;
+      line-height: 1.5;
+      margin-top: 10px;
+    }
+    .backlog-list {
+      display: grid;
+      gap: 9px;
+    }
+    .backlog-item {
+      background: #0b1220;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    .backlog-item.newly-added:before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(74,222,128,.12);
+      animation: addedFlash 1.2s ease both;
+      pointer-events: none;
+    }
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      margin-top: 10px;
+    }
+    .stepper span {
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(148,163,184,.18);
+    }
+    .stepper span.done { background: var(--green); }
+    .stepper span.active { background: var(--gold); box-shadow: 0 0 12px rgba(214,170,79,.35); }
+    .bottom {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      width: min(440px, 100vw);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      background: rgba(10,16,28,.97);
+      border-top: 1px solid var(--line);
+      padding: 9px 8px 12px;
+    }
+    .nav {
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+      border-radius: 16px;
+      padding: 7px 4px;
+    }
+    .nav.active {
+      color: var(--blue);
+      background: rgba(94,161,255,.14);
+      font-weight: 900;
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulseOk {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.28); opacity: .72; }
+    }
+    @keyframes stepIn {
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes traceLine {
+      from { transform: scaleY(0); }
+      to { transform: scaleY(1); }
+    }
+    @keyframes expandIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes addedFlash {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    .view.active {
+      animation: cardIn .2s ease both;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *:before, *:after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+    @media (max-width: 360px) {
+      .grid2, .model-row { grid-template-columns: 1fr; }
+      .tab { font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="phone">
+    <header>
+      <a class="web-shortcut" href="/progress-map" title="פתח מרכז שליטה ויזואלי בווב" aria-label="פתח מרכז שליטה ויזואלי בווב">↗</a>
+      <div class="top">
+        <button class="icon-btn">↻</button>
+        <h1>ג'רוויס<span>מרכז שליטה חכם</span></h1>
+        <button class="icon-btn">☰</button>
+      </div>
+      <nav class="tabs">
+        <button class="tab active" data-tab="overview">סקירה</button>
+        <button class="tab" data-tab="brain">מוח</button>
+        <button class="tab" data-tab="agents">סוכנים</button>
+        <button class="tab" data-tab="improve">שיפור</button>
+      </nav>
+    </header>
+
+    <main>
+      <section id="overview" class="view active">
+        <div class="card">
+          <div class="row between">
+            <div>
+              <div class="headline">ג'רוויס פעיל ובריא</div>
+              <div class="sub">שרת, DB וספקי מודלים זמינים · 184ms</div>
+            </div>
+            <div class="dot"></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn blue">פתח לוג</button>
+            <button class="btn">הסבר מצב</button>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="metric"><span class="sub">ציון בריאות</span><strong style="color:var(--green)">94</strong><span class="tiny">בעיה אחת לא קריטית</span></div>
+          <div class="metric"><span class="sub">מודל פעיל</span><strong>Gemini</strong><span class="tiny">fallback מוכן</span></div>
+        </div>
+
+        <div class="section">דורש פעולה</div>
+        <div class="stack">
+          <div class="event warn">
+            <b>זיכרון חדש ממתין לאישור</b>
+            <div class="sub">"מעדיף תשובות קצרות" נשמר משיחה אחרונה.</div>
+            <div class="btn-row"><button class="btn green">אשר</button><button class="btn">הסבר למה</button><button class="btn red">דחה</button></div>
+          </div>
+          <div class="event">
+            <b>סוכן איטי מהרגיל</b>
+            <div class="sub">newsAgent ענה ב־3.4s, מעל הממוצע השבועי.</div>
+            <div class="btn-row"><button class="btn">בדוק</button><button class="btn blue">פתח סוכן</button></div>
+          </div>
+        </div>
+
+        <div class="section">פעולות אחרונות</div>
+        <div class="card">
+          <div class="event good"><b>19:42</b> · Router בחר reminderAgent ויצר תזכורת</div>
+          <div class="event"><b>19:41</b> · Gemini ניסח תשובה בעברית</div>
+          <div class="event"><b>19:38</b> · memoryAgent קרא 2 זיכרונות מאושרים</div>
+        </div>
+      </section>
+
+      <section id="brain" class="view">
+        <div class="section">איך ג'רוויס החליט</div>
+        <div class="card">
+          <div class="flow trace-flow">
+            <div class="step"><div class="step-no">1</div><div><b>קלט</b><div class="sub">"תזכיר לי מחר לשלם חשבון"</div></div></div>
+            <div class="step"><div class="step-no">2</div><div><b>כוונה</b><div class="sub">reminder · ביטחון 96% · ללא fallback</div></div></div>
+            <div class="step"><div class="step-no">3</div><div><b>סוכן</b><div class="sub">reminderAgent נבחר בגלל הרשאת כתיבה לתזכורות</div></div></div>
+            <div class="step"><div class="step-no">4</div><div><b>כלים וזיכרון</b><div class="sub">קרא אזור זמן · כתב ל־Supabase · לא שמר זיכרון</div></div></div>
+            <div class="step"><div class="step-no">5</div><div><b>תשובה</b><div class="sub">Gemini ניסח תשובה קצרה</div></div></div>
+          </div>
+          <div class="btn-row"><button class="btn">הסבר למה</button><button class="btn red">תקן החלטה</button></div>
+        </div>
+
+        <div class="section">מודלים ו־fallback</div>
+        <div class="card">
+          <div class="model-row">
+            <div class="model active">Gemini</div>
+            <div class="model">DeepSeek</div>
+            <div class="model">Groq</div>
+            <div class="model">Ollama</div>
+          </div>
+          <div class="btn-row"><button class="btn">היסטוריית fallback</button><button class="btn">עלות וטוקנים</button></div>
+        </div>
+
+        <div class="section">זיכרון בשימוש</div>
+        <div class="stack">
+          <div class="memory">
+            <b>עיר: תל אביב</b>
+            <div class="sub">נקרא על ידי weatherAgent · מאושר</div>
+            <div><span class="pill green">מאושר</span> <span class="pill blue">3 שימושים</span></div>
+          </div>
+          <div class="memory">
+            <b>מעדיף תשובות קצרות</b>
+            <div class="sub">נוצר משיחה · ממתין לאישור</div>
+            <div class="btn-row"><button class="btn green">אשר</button><button class="btn red">שכח</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="agents" class="view">
+        <div class="section">סוכנים חיים</div>
+        <div class="stack">
+          <div class="agent">
+            <div class="avatar">C</div>
+            <div><b>chatAgent</b><div class="sub">שיחה ראשית · 82 קריאות · 420ms</div></div>
+            <div class="toggle"></div>
+          </div>
+          <div class="agent">
+            <div class="avatar">T</div>
+            <div><b>taskAgent</b><div class="sub">משימות · הרשאת כתיבה · סיכון בינוני</div></div>
+            <div class="toggle"></div>
+          </div>
+          <div class="agent expandable" onclick="toggleAgentDetail()">
+            <div class="avatar">N</div>
+            <div><b>newsAgent</b><div class="sub">חדשות · איטי מהרגיל · 3.4s</div></div>
+            <span class="pill gold">בדיקה</span>
+          </div>
+          <div class="agent-detail" id="newsAgentDetail">
+            <div class="row between">
+              <div>
+                <b>newsAgent · פירוט מהיר</b>
+                <div class="sub">מביא חדשות עדכניות, משתמש בחיפוש רשת, ולא כותב לזיכרון.</div>
+              </div>
+              <span class="pill gold">איטי</span>
+            </div>
+            <div class="permission-grid">
+              <span class="pill blue">רשת</span>
+              <span class="pill green">קריאה בלבד</span>
+              <span class="pill red">ללא כתיבה</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn">בדוק עם קלט</button>
+              <button class="btn blue">פתח לוג</button>
+              <button class="btn red">השבת</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">כרטיס סוכן</div>
+        <div class="card">
+          <div class="row between">
+            <div>
+              <div class="headline">reminderAgent</div>
+              <div class="sub">יוצר, מעדכן ומוחק תזכורות. כותב ל־DB.</div>
+            </div>
+            <span class="pill green">פעיל</span>
+          </div>
+          <div style="height:10px"></div>
+          <div class="grid2">
+            <div class="metric"><span class="sub">הצלחה</span><strong style="color:var(--green)">98%</strong><span class="tiny">30 ימים</span></div>
+            <div class="metric"><span class="sub">תגובה</span><strong>280ms</strong><span class="tiny">ממוצע</span></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn">בדוק סוכן</button>
+            <button class="btn">פרומפט</button>
+            <button class="btn blue">חיבורים</button>
+            <button class="btn red">השבת</button>
+          </div>
+        </div>
+
+        <div class="section">הרשאות וסיכונים</div>
+        <div class="card soft">
+          <span class="pill blue">קורא reminders</span>
+          <span class="pill gold">כותב reminders</span>
+          <span class="pill red">מחיקה דורשת אישור</span>
+        </div>
+      </section>
+
+      <section id="improve" class="view">
+        <div class="section">בריאות ובדיקות</div>
+        <div class="grid2">
+          <div class="metric"><span class="sub">E2E</span><strong style="color:var(--green)">24/25</strong><span class="tiny">ממצא אחד</span></div>
+          <div class="metric"><span class="sub">ספקים</span><strong style="color:var(--green)">4/4</strong><span class="tiny">זמינים</span></div>
+        </div>
+        <div class="card">
+          <div class="event warn"><b>P1</b> · לוג ביצוע לא מתמלא אחרי פעולה</div>
+          <div class="event"><b>P2</b> · טקסט ישן: "לוח ניהול"</div>
+          <div class="btn-row"><button class="btn green">הרץ בדיקות</button><button class="btn">סרוק קוד</button><button class="btn blue">שלח לקודקס</button></div>
+        </div>
+
+        <div class="section">סקרים ופידבקים</div>
+        <div class="card">
+          <div class="row between">
+            <div>
+              <div class="headline">תמונת קול המשתמש</div>
+              <div class="sub">ג'רוויס מאחד סקרים, thumbs down, הערות חופשיות ותוצאות שימוש לאותות שיפור.</div>
+            </div>
+            <div class="survey-score">72</div>
+          </div>
+          <div class="source-row" style="margin-top:10px">
+            <span class="pill blue">8 סקרים</span>
+            <span class="pill red">3 פידבקים שליליים</span>
+            <span class="pill gold">2 נושאים חוזרים</span>
+          </div>
+          <div class="btn-row">
+            <button class="btn">פתח סיכום</button>
+            <button class="btn blue" onclick="openSurvey()">התחל סקר חכם</button>
+            <button class="btn green">הפק הצעות</button>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="feedback-item">
+            <div class="row">
+              <div class="sentiment">!</div>
+              <div>
+                <b>"לא ברור למה נבחר מודל מסוים"</b>
+                <div class="sub">מקור: סקר חכם · חזר 3 פעמים · קשור לטאב מוח</div>
+              </div>
+            </div>
+            <div class="source-row">
+              <span class="pill red">כאב: שקיפות</span>
+              <span class="pill gold">Impact 5/5</span>
+              <span class="pill blue">Confidence 4/5</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn">פתח מקור</button>
+              <button class="btn blue">התחל תחקיר</button>
+              <button class="btn green" onclick="addBacklogItem()">הוסף ל־Backlog</button>
+            </div>
+          </div>
+
+          <div id="surveySignalTarget"></div>
+
+          <div class="feedback-item">
+            <div class="row">
+              <div class="sentiment good">✓</div>
+              <div>
+                <b>"כפתורי אשר/דחה לזיכרונות מאוד עוזרים"</b>
+                <div class="sub">מקור: פידבק חיובי · לשימור בתכנון הבא</div>
+              </div>
+            </div>
+            <div class="source-row">
+              <span class="pill green">לשמר</span>
+              <span class="pill blue">אמון</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn">סמן כעיקרון UX</button>
+              <button class="btn blue">פתח מקור</button>
+            </div>
+          </div>
+
+          <div class="card soft">
+            <div class="row between"><div><b>Decision Trace לכל תשובה</b><div class="sub">מקור: סקר + שימוש · Impact 5/5 · Effort 3/5</div></div><span class="pill green">מומלץ</span></div>
+            <div class="btn-row"><button class="btn green" onclick="addBacklogItem()">הוסף ל־Backlog</button><button class="btn blue">צור פרומפט</button></div>
+          </div>
+        </div>
+
+        <div class="section">Backlog שיפור</div>
+        <div class="card">
+          <div class="backlog-list" id="backlogList">
+            <div class="backlog-item">
+              <div class="row between">
+                <div>
+                  <b>לוג ביצוע אמיתי לכל פעולה</b>
+                  <div class="sub">מקור: בדיקות · סטטוס: בביצוע</div>
+                </div>
+                <span class="pill gold">בביצוע</span>
+              </div>
+              <div class="stepper" aria-label="סטטוס">
+                <span class="done"></span><span class="done"></span><span class="active"></span><span></span><span></span>
+              </div>
+              <div class="btn-row"><button class="btn blue">פתח</button><button class="btn">צור פרומפט</button><button class="btn green">סמן לבדיקה</button></div>
+            </div>
+            <div class="backlog-item">
+              <div class="row between">
+                <div>
+                  <b>אישור זיכרונות לפני הטמעה</b>
+                  <div class="sub">מקור: פרטיות ואמון · סטטוס: תכנון</div>
+                </div>
+                <span class="pill blue">תכנון</span>
+              </div>
+              <div class="stepper" aria-label="סטטוס">
+                <span class="done"></span><span class="active"></span><span></span><span></span><span></span>
+              </div>
+              <div class="btn-row"><button class="btn blue">פתח</button><button class="btn">צור פרומפט</button><button class="btn green">התחל ביצוע</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">יצירת שיפור</div>
+        <div class="card">
+          <div class="row between">
+            <div>
+              <div class="headline">תחקיר שיפור עם ג'רוויס</div>
+              <div class="sub">המשתמש מכניס מטרה ראשית, ואז ג'רוויס שואל שאלות דינמיות שמבוססות על המטרה ועל כל תשובה שניתנת בדרך.</div>
+            </div>
+            <span class="pill blue">דינמי</span>
+          </div>
+          <div class="intent-strip">
+            <div class="row between">
+              <div>
+                <b>המטרה הראשית שהוזנה</b>
+                <div class="sub">"אני רוצה שהמשתמש יבין למה ג'רוויס בחר סוכן, מודל או זיכרון מסוים"</div>
+              </div>
+              <span class="pill green">בסיס לתחקיר</span>
+            </div>
+            <div>
+              <span class="pill blue">ג'רוויס הסיק: שקיפות</span>
+              <span class="pill gold">אזור משוער: מוח</span>
+              <span class="pill">פלט רצוי: פרומפט פיתוח</span>
+            </div>
+          </div>
+          <div class="interview-card">
+            <div class="question">
+              <div class="q-num">1</div>
+              <div>
+                <b>איזה רגע בהחלטה של ג'רוויס הכי חשוב לחשוף למשתמש?</b>
+                <div class="sub">שאלה ראשונה שנוצרה מתוך המטרה הראשית.</div>
+                <div class="chips"><span class="chip selected">שקיפות</span><span class="chip">מהירות</span><span class="chip">אמון</span><span class="chip">אוטומציה</span></div>
+              </div>
+            </div>
+            <div class="question">
+              <div class="q-num">2</div>
+              <div>
+                <b>מה המשתמש צריך להבין בלי להיכנס לפרטים טכניים?</b>
+                <div class="sub">שאלה שנוצרה אחרי שהתשובה הראשונה הדגישה אמון ושקיפות.</div>
+              </div>
+            </div>
+            <div class="question">
+              <div class="q-num">3</div>
+              <div>
+                <b>איזו פעולה המשתמש צריך לקבל אחרי ההסבר?</b>
+                <div class="sub">שאלה שנוצרה אחרי שהתשובה השנייה הגדירה שההסבר צריך להיות שימושי ולא רק אינפורמטיבי.</div>
+              </div>
+            </div>
+            <div class="question">
+              <div class="q-num">4</div>
+              <div>
+                <b>איזה מידע רגיש אסור להציג אוטומטית ב־Trace?</b>
+                <div class="sub">שאלה שנוצרה בעקבות אזכור זיכרונות וכלים בתשובות הקודמות.</div>
+              </div>
+            </div>
+          </div>
+          <div class="fallback-note">
+            אם אין תקשורת עם ג'רוויס או שמודל התחקיר לא זמין, המשתמש יוכל למלא שאלון בסיס קבוע. זה fallback בלבד, לא הזרימה הראשית.
+          </div>
+          <div class="prompt-preview">
+            <div class="row between">
+              <div>
+                <b>פרומפט מדויק מוכן</b>
+                <div class="sub">נוצר מתוך מטרות, כאבים, מדדי הצלחה ומגבלות.</div>
+              </div>
+              <span class="pill green">מוכן</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn blue">פתח וערוך</button>
+              <button class="btn green">שלח לקודקס</button>
+              <button class="btn">שמור ל־Backlog</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="modal-backdrop" id="surveyModal" role="dialog" aria-modal="true" aria-label="סקר חכם">
+      <div class="survey-modal">
+        <div class="handle"></div>
+        <div class="row between">
+          <div>
+            <div class="headline">סקר חכם</div>
+            <div class="sub">השאלות נבחרו לפי השימוש האחרון שלך בג'רוויס ולפי נושאים שחוזרים בפידבק.</div>
+          </div>
+          <button class="icon-btn" onclick="closeSurvey()">×</button>
+        </div>
+
+        <div class="survey-q">
+          <b>מה היה פחות ברור בשימוש האחרון?</b>
+          <div class="chips">
+            <span class="chip selected">בחירת מודל</span>
+            <span class="chip">בחירת סוכן</span>
+            <span class="chip">זיכרון</span>
+            <span class="chip">תוצאה לא צפויה</span>
+          </div>
+        </div>
+
+        <div class="survey-q">
+          <b>איזה הסבר היה עוזר לך בזמן אמת?</b>
+          <div class="chips">
+            <span class="chip">למה נבחר הסוכן</span>
+            <span class="chip selected">למה נבחר המודל</span>
+            <span class="chip">איזה זיכרון השפיע</span>
+          </div>
+        </div>
+
+        <div class="survey-q">
+          <b>מה היית רוצה שג'רוויס יעשה אחרי שהוא מסביר?</b>
+          <div class="chips">
+            <span class="chip selected">אפשרות לתקן החלטה</span>
+            <span class="chip">אישור זיכרון</span>
+            <span class="chip">בדיקת סוכן</span>
+          </div>
+        </div>
+
+        <div class="survey-q">
+          <b>הערה חופשית</b>
+          <textarea class="textarea">אני רוצה להבין למה Gemini נבחר ולא Groq, בלי לפתוח לוג טכני.</textarea>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn" onclick="closeSurvey()">שמור להמשך</button>
+          <button class="btn blue" onclick="closeSurvey()">דלג</button>
+          <button class="btn green" onclick="submitSurvey()">שלח תשובות</button>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bottom">
+      <div class="nav">בית</div>
+      <div class="nav">שיחה</div>
+      <div class="nav">משימות</div>
+      <div class="nav active">מרכז שליטה</div>
+    </nav>
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll(".tab");
+    const views = document.querySelectorAll(".view");
+    tabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        tabs.forEach(t => t.classList.remove("active"));
+        views.forEach(v => v.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      });
+    });
+
+    function toggleAgentDetail() {
+      const detail = document.getElementById("newsAgentDetail");
+      if (detail) detail.classList.toggle("open");
+    }
+
+    function addBacklogItem() {
+      const list = document.getElementById("backlogList");
+      if (!list) return;
+      const item = document.createElement("div");
+      item.className = "backlog-item newly-added";
+      item.innerHTML = `
+        <div class="row between">
+          <div>
+            <b>Decision Trace לכל תשובה</b>
+            <div class="sub">מקור: סקר + שימוש · סטטוס: הצעה חדשה</div>
+          </div>
+          <span class="pill green">חדש</span>
+        </div>
+        <div class="stepper" aria-label="סטטוס">
+          <span class="active"></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div class="btn-row"><button class="btn blue">פתח</button><button class="btn">צור פרומפט</button><button class="btn green">שלח לתכנון</button></div>
+      `;
+      list.prepend(item);
+    }
+
+    function openSurvey() {
+      const modal = document.getElementById("surveyModal");
+      if (modal) modal.classList.add("open");
+    }
+
+    function closeSurvey() {
+      const modal = document.getElementById("surveyModal");
+      if (modal) modal.classList.remove("open");
+    }
+
+    function submitSurvey() {
+      closeSurvey();
+      const target = document.getElementById("surveySignalTarget");
+      if (!target) return;
+      target.innerHTML = `
+        <div class="feedback-item">
+          <div class="row">
+            <div class="sentiment">!</div>
+            <div>
+              <b>"רוצה להבין למה Gemini נבחר בלי לפתוח לוג טכני"</b>
+              <div class="sub">מקור: סקר חכם · נוצר עכשיו · קשור לטאב מוח</div>
+            </div>
+          </div>
+          <div class="source-row">
+            <span class="pill red">כאב: הסבר מודלים</span>
+            <span class="pill gold">Impact 4/5</span>
+            <span class="pill blue">Confidence 5/5</span>
+          </div>
+          <div class="btn-row">
+            <button class="btn">פתח מקור</button>
+            <button class="btn blue">התחל תחקיר</button>
+            <button class="btn green" onclick="addBacklogItem()">הוסף ל־Backlog</button>
+          </div>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>

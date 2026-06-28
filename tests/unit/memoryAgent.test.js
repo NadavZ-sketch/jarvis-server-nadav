@@ -240,7 +240,7 @@ describe('autoExtractMemory', () => {
         expect(result).toBeNull();
     });
 
-    test('saves up to 3 context items max (auto-save for context type)', async () => {
+    test('saves up to 3 context items max as pending (no Pinecone upsert)', async () => {
         callGemma4.mockResolvedValue(JSON.stringify({ memories: [
             { type: 'context', content: '[context] א' },
             { type: 'context', content: '[context] ב' },
@@ -250,6 +250,9 @@ describe('autoExtractMemory', () => {
         const repos = makeRepos({ memories: [{ id: 1 }] });
         await autoExtractMemory('יש לי הרבה מידע חשוב לשמור היום לגבי הפרויקט החדש', 'כן', repos, {});
         expect(repos.memories.insert).toHaveBeenCalledTimes(3);
+        // All three must be status:'pending' and NOT upserted to Pinecone
+        expect(repos.memories.insert).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
+        expect(pinecone.upsertMemory).not.toHaveBeenCalled();
     });
 
     test('does not throw when LLM returns invalid JSON', async () => {
@@ -316,12 +319,18 @@ describe('autoExtractMemory — 3-type extraction', () => {
         expect(result).toMatchObject({ type: 'new', content: '[fact] גר בירושלים' });
     });
 
-    test('[context] type is saved directly (no confirmation needed)', async () => {
+    test('[context] type is saved as pending (privacy gate — no Pinecone upsert)', async () => {
         pinecone.findSimilarMemory.mockResolvedValue(null);
         callGemma4.mockResolvedValue('{"memories":[{"type":"context","content":"[context] עובד על מצגת"}]}');
         const repos = makeRepos({ memories: [{ id: 9 }] });
         await autoExtractMemory('מחר יש לי הצגה של המצגת לצוות', 'בהצלחה!', repos, {}, 'chat-2');
-        expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[context] עובד על מצגת', scope: 'session' });
+        // Must insert with status:'pending' and NOT upsert to Pinecone
+        expect(repos.memories.insert).toHaveBeenCalledWith({
+            content: '[context] עובד על מצגת',
+            scope: 'session',
+            status: 'pending',
+        });
+        expect(pinecone.upsertMemory).not.toHaveBeenCalled();
     });
 });
 

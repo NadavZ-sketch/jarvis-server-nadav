@@ -2735,6 +2735,33 @@ app.post('/memories', async (req, res) => {
     }
 });
 
+// ─── GET /memories/pending — list pending (unapproved) auto-extracted memories ──
+app.get('/memories/pending', async (req, res) => {
+    try {
+        const data = await repos.memories.listByStatus('pending', 50);
+        res.json({ memories: data });
+    } catch (err) {
+        console.error('GET /memories/pending error:', err.message);
+        res.json({ memories: [] });
+    }
+});
+
+// ─── POST /memories/:id/approve — approve a pending memory → enters Pinecone ──
+app.post('/memories/:id/approve', async (req, res) => {
+    try {
+        const row = await repos.memories.setStatus(req.params.id, 'approved');
+        if (!row) return res.status(404).json({ error: 'Memory not found or status column missing' });
+        if (row.content) {
+            pinecone.upsertMemory(row.id, row.content).catch(() => {});
+        }
+        memoryContext.invalidateCache();
+        res.json({ ok: true, memory: row });
+    } catch (err) {
+        console.error('POST /memories/:id/approve error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 app.put('/memories/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -4028,6 +4055,29 @@ app.get('/control-center/events', async (req, res) => {
                 badges.agents += disabled.length;
             }
         } catch (_) {}
+
+        // 6) Pending memories awaiting approval — surfaced as overview alerts.
+        try {
+            const pend = await repos.memories.listByStatus('pending', 5).catch(() => []);
+            if (pend.length > 0) {
+                badges.overview += pend.length;
+                for (const m of pend) {
+                    alerts.push({
+                        id: `mem_pending:${m.id}`,
+                        type: 'memory_pending',
+                        severity: 'info',
+                        title: 'זיכרון חדש ממתין לאישור',
+                        message: (m.content || '').slice(0, 80),
+                        tabHint: 'overview',
+                        actionHint: 'approve_memory',
+                        actionPayload: { memoryId: m.id },
+                        createdAt: m.created_at,
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('control-center events: pending memories error:', e.message);
+        }
 
         res.json({
             generatedAt: new Date().toISOString(),

@@ -135,10 +135,14 @@ async function autoExtractMemory(userMessage, assistantAnswer, repos, settings =
             if (type === 'context') {
                 const dup = await checkDuplicate(content, memories);
                 if (dup.duplicate) continue;
-                const inserted = await memories.insert({ content, scope: 'session' });
+                // Context items become pending — they are NOT upserted to Pinecone
+                // until a user approves them (privacy gate). The DB column default
+                // ensures non-context paths remain 'approved'.
+                await memories.insert({ content, scope: 'session', status: 'pending' });
                 obsidianSync.dbToVault('memories', { content, scope: 'session' });
-                if (inserted?.[0]?.id) pinecone.upsertMemory(inserted[0].id, content).catch(() => {});
-                console.log('🧠 AutoExtract [context] saved:', content);
+                // NOTE: intentionally NO pinecone.upsertMemory here — pending memories
+                // must not enter Pinecone until approved via POST /memories/:id/approve.
+                console.log('🧠 AutoExtract [context] pending (awaiting approval):', content);
                 _invalidateMemoryCache();
                 continue;
             }

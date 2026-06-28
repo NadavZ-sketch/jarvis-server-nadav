@@ -78,10 +78,10 @@ function makeReminderRepo(opts = {}) {
 }
 
 function makeMemoryRepo(opts = {}) {
-    const { rows = [], insertResult, updateResult, updateByIdResult } = opts;
+    const { rows = [], insertResult, updateResult, updateByIdResult, byStatus = {} } = opts;
     return {
         findByContent:   jest.fn(async () => rows),
-        allContents:     jest.fn(async () => rows.map(r => r.content)),
+        allContents:     jest.fn(async () => rows.filter(r => r.status !== 'pending').map(r => r.content)),
         recentByCreated: jest.fn(async () => rows),
         listAll:         jest.fn(async () => rows),
         create:          jest.fn(async () => rows),
@@ -93,6 +93,11 @@ function makeMemoryRepo(opts = {}) {
         findByScope:     jest.fn(async () => rows),
         expiredByScope:  jest.fn(async () => rows),
         deleteMany:      jest.fn(async () => ({ error: null })),
+        listByStatus:    jest.fn(async (status) => (byStatus[status] || rows.filter(r => r.status === status))),
+        setStatus:       jest.fn(async (id, status) => {
+            const row = rows.find(r => r.id === id || String(r.id) === String(id));
+            return row ? { ...row, status } : null;
+        }),
     };
 }
 

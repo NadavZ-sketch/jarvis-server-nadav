@@ -85,3 +85,93 @@ describe('memoryRepo.findByScope', () => {
         expect(rows).toEqual([]);
     });
 });
+
+describe('memoryRepo.listByStatus', () => {
+    test('filters memories by status', async () => {
+        const rows = [{ id: 1, content: 'test', scope: 'session', status: 'pending' }];
+        const chain = makeChain(rows);
+        const repo = createMemoryRepo({ from: () => chain });
+        const result = await repo.listByStatus('pending', 50);
+        expect(chain.eq).toHaveBeenCalledWith('status', 'pending');
+        expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
+        expect(chain.limit).toHaveBeenCalledWith(50);
+        expect(result).toEqual(rows);
+    });
+
+    test('returns [] on error (defensive — column may not exist)', async () => {
+        const chain = makeChain(null, { message: 'column "status" does not exist', code: '42703' });
+        const repo = createMemoryRepo({ from: () => chain });
+        const result = await repo.listByStatus('pending');
+        expect(result).toEqual([]);
+    });
+});
+
+describe('memoryRepo.setStatus', () => {
+    test('updates status and returns the row including content', async () => {
+        const updated = [{ id: 5, content: 'hello', scope: 'session', status: 'approved' }];
+        const chain = makeChain(updated);
+        const repo = createMemoryRepo({ from: () => chain });
+        const row = await repo.setStatus(5, 'approved');
+        expect(chain.update).toHaveBeenCalledWith({ status: 'approved' });
+        expect(chain.eq).toHaveBeenCalledWith('id', 5);
+        expect(row).toEqual(updated[0]);
+    });
+
+    test('returns null when no row is found', async () => {
+        const chain = makeChain([]);
+        const repo = createMemoryRepo({ from: () => chain });
+        const row = await repo.setStatus(999, 'approved');
+        expect(row).toBeNull();
+    });
+
+    test('returns null on error (defensive — column may not exist)', async () => {
+        const chain = makeChain(null, { message: 'column "status" does not exist', code: '42703' });
+        const repo = createMemoryRepo({ from: () => chain });
+        const row = await repo.setStatus(1, 'approved');
+        expect(row).toBeNull();
+    });
+});
+
+describe('memoryRepo.allContents — excludes pending', () => {
+    test('filters out pending memories via .neq', async () => {
+        const rows = [{ content: 'approved fact' }];
+        const chain = makeChain(rows);
+        const repo = createMemoryRepo({ from: () => chain });
+        const contents = await repo.allContents();
+        expect(chain.neq).toHaveBeenCalledWith('status', 'pending');
+        expect(contents).toEqual(['approved fact']);
+    });
+
+    test('falls back to plain select when status column is missing', async () => {
+        // First call fails with column-missing error; second succeeds
+        const failChain = makeChain(null, { message: 'column "status" does not exist', code: '42703' });
+        const successChain = makeChain([{ content: 'fallback' }]);
+        let call = 0;
+        const repo = createMemoryRepo({ from: () => (call++ === 0 ? failChain : successChain) });
+        const contents = await repo.allContents();
+        expect(contents).toEqual(['fallback']);
+    });
+});
+
+describe('memoryRepo.insert — status column fallback', () => {
+    test('inserts with status when column exists', async () => {
+        const chain = makeChain([{ id: 10 }]);
+        const repo = createMemoryRepo({ from: () => chain });
+        const rows = await repo.insert({ content: 'c', scope: 'session', status: 'pending' });
+        expect(chain.insert).toHaveBeenCalledWith([{ content: 'c', scope: 'session', status: 'pending' }]);
+        expect(rows).toEqual([{ id: 10 }]);
+    });
+
+    test('retries without status when status column is missing', async () => {
+        // First call fails with scope error; second call fails with status error;
+        // third call (without both) succeeds.
+        const scopeErrChain  = makeChain(null, { message: 'scope column missing', code: '42703' });
+        const statusErrChain = makeChain(null, { message: 'status column missing', code: '42703' });
+        const okChain        = makeChain([{ id: 20 }]);
+        let call = 0;
+        const chains = [scopeErrChain, statusErrChain, okChain];
+        const repo = createMemoryRepo({ from: () => chains[call++] });
+        const rows = await repo.insert({ content: 'c', scope: 'session', status: 'pending' });
+        expect(rows).toEqual([{ id: 20 }]);
+    });
+});

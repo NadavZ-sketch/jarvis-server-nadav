@@ -1359,4 +1359,61 @@ class ApiService {
       return false;
     }
   }
+
+  // ─── Brain Tab ────────────────────────────────────────────────────────────
+
+  /// Fetches the decision trace log. Returns a list of trace entries from
+  /// GET /decision-trace?limit=N → { trace: [...] }.
+  /// `candidates` in each entry may arrive as a JSON string; parse defensively.
+  Future<List<Map<String, dynamic>>> fetchDecisionTrace({int limit = 20}) async {
+    final res = await _client
+        .get(_uri('/decision-trace?limit=$limit'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['trace'] ?? []);
+  }
+
+  /// Fetches the health status of all LLM providers.
+  /// GET /health/providers → flat map of { providerKey: statusString }.
+  /// NOTE: this endpoint probes providers over the network — uses a long
+  /// timeout (20 s) instead of the default 30 s one because providers
+  /// themselves can be slow to respond.
+  Future<Map<String, dynamic>> fetchHealthProviders() async {
+    final res = await _client
+        .get(_uri('/health/providers'), headers: _baseHeaders)
+        .timeout(const Duration(seconds: 20));
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
+  /// Fetches memories that are pending user approval.
+  /// GET /memories/pending → { memories: [...] }.
+  Future<List<Map<String, dynamic>>> fetchPendingMemories() async {
+    final res = await _client
+        .get(_uri('/memories/pending'), headers: _baseHeaders)
+        .timeout(_timeout);
+    final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['memories'] ?? []);
+  }
+
+  /// Approves a pending memory by id.
+  /// POST /memories/{id}/approve → returns true on 200.
+  Future<bool> approveMemory(String id) async {
+    final res = await _client
+        .post(
+          _uri('/memories/$id/approve'),
+          headers: _headers({'Content-Type': 'application/json'}),
+          body: jsonEncode({}),
+        )
+        .timeout(_timeout);
+    return res.statusCode == 200;
+  }
+
+  /// Deletes a memory by id.
+  /// DELETE /memories/{id} → returns true on 200.
+  Future<bool> deleteMemory(String id) async {
+    final res = await _client
+        .delete(_uri('/memories/$id'), headers: _baseHeaders)
+        .timeout(_timeout);
+    return res.statusCode == 200;
+  }
 }

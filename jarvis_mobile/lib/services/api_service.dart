@@ -1110,6 +1110,18 @@ class ApiService {
     return List<Map<String, dynamic>>.from(data['log'] ?? []);
   }
 
+  // ─── Control Center Events ────────────────────────────────────────────────
+
+  /// Fetches the control-center event feed from GET /control-center/events.
+  /// Returns the raw decoded JSON map, which includes an `alerts` array and
+  /// optional `badges` map. Throws on network/parse errors (caller handles).
+  Future<Map<String, dynamic>> getControlCenterEvents() async {
+    final res = await _client
+        .get(_uri('/control-center/events'), headers: _baseHeaders)
+        .timeout(_timeout);
+    return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+  }
+
   // ─── Weekly Score ─────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> fetchWeeklyScore() async {

@@ -368,7 +368,7 @@ class ApiService {
         'על עומס, עדיפויות, ומשימות הדחופות ביותר. כל תובנה — שורה אחת, '
         'מקסימום 12 מילים.\n\nמשימות:\n$summary';
     try {
-      final res = await askJarvis(prompt, settings, intent: 'task');
+      final res = await askJarvis(prompt, settings, intent: 'chat');
       return (res['answer'] as String? ?? '').trim();
     } catch (_) {
       return 'לא ניתן לטעון ניתוח כרגע.';

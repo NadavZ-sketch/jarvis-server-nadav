@@ -21,6 +21,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet> {
   bool _analysisLoading = true;
   String? _analysisText;
   String? _actionResult;
+  String? _actionLabel;
   bool _actionLoading = false;
   final _askCtrl = TextEditingController();
   bool _askLoading = false;
@@ -49,14 +50,20 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet> {
     if (mounted) setState(() => _analysisLoading = false);
   }
 
-  Future<void> _runAction(String prompt) async {
-    setState(() { _actionLoading = true; _actionResult = null; });
+  String _buildTaskContext() {
+    final openTasks = _c.tasks.where((t) => t['done'] != true).toList();
+    return openTasks.take(20).map((t) {
+      final title = (t['content'] as String? ?? '').split('\n<<<AI_PROMPT>>>\n').first;
+      final cat = t['category']?.toString() ?? '';
+      final pri = t['priority']?.toString() ?? 'medium';
+      return '- $title ($pri${cat.isNotEmpty ? ', $cat' : ''})';
+    }).join('\n');
+  }
+
+  Future<void> _runAction(String prompt, String label) async {
+    setState(() { _actionLoading = true; _actionResult = null; _actionLabel = label; });
     try {
-      final openTasks = _c.tasks.where((t) => t['done'] != true).toList();
-      final taskList = openTasks.take(20).map((t) {
-        final title = (t['content'] as String? ?? '').split('\n<<<AI_PROMPT>>>\n').first;
-        return '- $title (${t['priority'] ?? 'medium'})';
-      }).join('\n');
+      final taskList = _buildTaskContext();
       final fullPrompt = '$prompt\n\nמשימות:\n$taskList';
       final res = await _c.api.askJarvis(fullPrompt, _c.settings, intent: 'task');
       _actionResult = (res['answer'] as String? ?? '').trim();
@@ -72,7 +79,9 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet> {
     FocusScope.of(context).unfocus();
     setState(() { _askLoading = true; _askResult = null; });
     try {
-      final res = await _c.api.askJarvis(q, _c.settings, intent: 'task');
+      final taskList = _buildTaskContext();
+      final fullPrompt = '$q\n\nמשימות:\n$taskList';
+      final res = await _c.api.askJarvis(fullPrompt, _c.settings, intent: 'task');
       _askResult = (res['answer'] as String? ?? '').trim();
     } catch (_) {
       _askResult = 'שגיאה. נסה שוב.';
@@ -179,31 +188,37 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet> {
                       emoji: '🎯',
                       title: 'סדר עדיפויות מחדש',
                       subtitle: 'AI מסדר לפי דחיפות + חשיבות',
-                      loading: _actionLoading,
+                      active: _actionLabel == 'priorities',
+                      loading: _actionLoading && _actionLabel == 'priorities',
                       onTap: () => _runAction(
                           'בהינתן רשימת המשימות הבאה, מהן 5 המשימות שכדאי לטפל בהן קודם ולמה? '
-                          'ענה בעברית, כל שורה — משימה אחת עם הנמקה קצרה.'),
+                          'ענה בעברית, כל שורה — משימה אחת עם הנמקה קצרה.',
+                          'priorities'),
                     ),
                     const SizedBox(height: 6),
                     _ActionCard(
                       emoji: '📆',
                       title: 'הצע חלוקה לשבוע',
                       subtitle: 'מחלק משימות פתוחות לימים',
-                      loading: _actionLoading,
+                      active: _actionLabel == 'week',
+                      loading: _actionLoading && _actionLabel == 'week',
                       onTap: () => _runAction(
                           'חלק את המשימות הפתוחות לימות השבוע הקרוב (ראשון עד שישי). '
-                          'כל יום — 2-3 משימות מתאימות. ענה בעברית בפורמט ברור.'),
+                          'כל יום — 2-3 משימות מתאימות. ענה בעברית בפורמט ברור.',
+                          'week'),
                     ),
                     const SizedBox(height: 6),
                     _ActionCard(
                       emoji: '🗑',
                       title: 'מצא משימות לדחייה',
                       subtitle: 'low priority + לא נגעת שבועיים',
-                      loading: _actionLoading,
+                      active: _actionLabel == 'defer',
+                      loading: _actionLoading && _actionLabel == 'defer',
                       onTap: () => _runAction(
                           'מהן המשימות שניתן לדחות או למחוק? '
                           'חפש עדיפות נמוכה, משימות ישנות, ומשימות לא ברורות. '
-                          'ענה בעברית עם הנמקה קצרה לכל אחת.'),
+                          'ענה בעברית עם הנמקה קצרה לכל אחת.',
+                          'defer'),
                     ),
                     if (_actionResult != null) ...[
                       const SizedBox(height: 12),
@@ -214,14 +229,36 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: JC.indigo500.withValues(alpha: 0.3), width: 0.8),
                         ),
-                        child: Text(
-                          _actionResult!,
-                          textDirection: TextDirection.rtl,
-                          style: TextStyle(
-                              color: JC.textPrimary,
-                              fontSize: 13,
-                              fontFamily: 'Heebo',
-                              height: 1.6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_actionLabel != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  switch (_actionLabel) {
+                                    'priorities' => '🎯 סדר עדיפויות',
+                                    'week'       => '📆 חלוקה לשבוע',
+                                    'defer'      => '🗑 משימות לדחייה',
+                                    _            => '',
+                                  },
+                                  style: TextStyle(
+                                      color: JC.indigo300,
+                                      fontSize: 11,
+                                      fontFamily: 'Heebo',
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            Text(
+                              _actionResult!,
+                              textDirection: TextDirection.rtl,
+                              style: TextStyle(
+                                  color: JC.textPrimary,
+                                  fontSize: 13,
+                                  fontFamily: 'Heebo',
+                                  height: 1.6),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -391,6 +428,7 @@ class _ActionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool loading;
+  final bool active;
   final VoidCallback onTap;
 
   const _ActionCard({
@@ -399,19 +437,26 @@ class _ActionCard extends StatelessWidget {
     required this.subtitle,
     required this.loading,
     required this.onTap,
+    this.active = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: loading ? null : onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
         padding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: JC.surface,
+          color: active
+              ? JC.indigo500.withValues(alpha: 0.08)
+              : JC.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: JC.border, width: 0.7),
+          border: Border.all(
+            color: active ? JC.indigo300.withValues(alpha: 0.5) : JC.border,
+            width: active ? 1.0 : 0.7,
+          ),
         ),
         child: Row(
           children: [
@@ -423,7 +468,7 @@ class _ActionCard extends StatelessWidget {
                 children: [
                   Text(title,
                       style: TextStyle(
-                          color: JC.textPrimary,
+                          color: active ? JC.indigo300 : JC.textPrimary,
                           fontSize: 13,
                           fontFamily: 'Heebo',
                           fontWeight: FontWeight.w600)),
@@ -440,9 +485,10 @@ class _ActionCard extends StatelessWidget {
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(
-                      strokeWidth: 1.5, color: JC.textMuted))
+                      strokeWidth: 1.5, color: JC.indigo300))
             else
-              Icon(Icons.chevron_left_rounded, color: JC.textMuted, size: 20),
+              Icon(Icons.chevron_left_rounded,
+                  color: active ? JC.indigo300 : JC.textMuted, size: 20),
           ],
         ),
       ),

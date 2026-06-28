@@ -812,6 +812,25 @@ class ApiService {
     return List<Map<String, dynamic>>.from(data['questions'] ?? []);
   }
 
+  Future<Map<String, dynamic>> submitSurvey({
+    required Map<String, dynamic> responses,
+    required String userName,
+  }) async {
+    try {
+      final res = await _client
+          .post(
+            _uri('/survey-submit'),
+            headers: _headers({'Content-Type': 'application/json'}),
+            body: jsonEncode({'responses': responses, 'userName': userName}),
+          )
+          .timeout(_timeout);
+      return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('[ApiService] submitSurvey error (suppressed): $e');
+      return {};
+    }
+  }
+
   // ─── User Profile ─────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>?> getUserProfile() async {

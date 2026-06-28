@@ -846,7 +846,7 @@ async function classifyRoute(userMessage, chatId, repos, { source = 'ask' } = {}
             },
         }).catch(() => {});
     }
-    return { agentName, intentMode, noKeywordMatch: routed.matches.length === 0 };
+    return { agentName, intentMode, noKeywordMatch: routed.matches.length === 0, candidates: routed.matches, ambiguous: routed.ambiguous };
 }
 
 function classifyRequestError(err) {
@@ -964,7 +964,7 @@ async function askJarvisHandler(req, res) {
         const FORCEABLE_INTENTS = ['chat', 'weather', 'news', 'stocks', 'sports', 'translate'];
         const forcedIntent = typeof req.body.intent === 'string' ? req.body.intent.trim() : '';
 
-        let intentMode, agentName;
+        let intentMode, agentName, routeCandidates = [], routeAmbiguous = false;
         if (FORCEABLE_INTENTS.includes(forcedIntent)) {
             agentName = forcedIntent;
             intentMode = 'forced';
@@ -975,6 +975,8 @@ async function askJarvisHandler(req, res) {
             const route = await classifyRoute(userMessage, chatId, repos);
             agentName = route.agentName;
             intentMode = route.intentMode;
+            routeCandidates = route.candidates || [];
+            routeAmbiguous = route.ambiguous || false;
             if (agentName === 'chat' && route.noKeywordMatch) {
                 feedbackStore.recordEvent(repos, {
                     eventName: 'router_chat_default',
@@ -1245,6 +1247,21 @@ async function askJarvisHandler(req, res) {
             }).catch(() => {});
         } catch (_logErr) { /* never block response */ }
 
+        // ── Decision trace (fire-and-forget, never blocks response) ────────────
+        try {
+            repos.decisionTrace.insert({
+                chatId,
+                input:       String(originalMessage || userMessage),
+                intent:      agentName,
+                candidates:  routeCandidates,
+                ambiguous:   routeAmbiguous,
+                route_mode:  intentMode || 'keyword',
+                agent:       agentName,
+                model:       llmProvider || getLastKnownProvider() || 'unknown',
+                duration_ms: tDone - t0,
+            }).catch(() => {});
+        } catch (_traceErr) { /* never block response */ }
+
         // ── Test recorder: append turn if a recording is active for this chat ───
         if (_recordings.has(chatId)) {
             _recordings.get(chatId).turns.push({
@@ -1496,6 +1513,18 @@ app.get('/execution-log', _rl(30), async (req, res) => {
         res.json({ log: rows });
     } catch (err) {
         console.error('GET /execution-log error:', err.message);
+        res.status(500).json({ error: 'internal server error' });
+    }
+});
+
+// ─── Decision trace ───────────────────────────────────────────────────────
+app.get('/decision-trace', _rl(30), async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+        const rows = await repos.decisionTrace.recent(limit);
+        res.json({ trace: rows });
+    } catch (err) {
+        console.error('GET /decision-trace error:', err.message);
         res.status(500).json({ error: 'internal server error' });
     }
 });

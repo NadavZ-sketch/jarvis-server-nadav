@@ -28,6 +28,7 @@ const { createDeviceRepo } = require('./deviceRepo');
 const { createStatsRepo } = require('./statsRepo');
 const { createE2eRepo } = require('./e2eRepo');
 const { createExecutionLogRepo } = require('./executionLogRepo');
+const { createDecisionTraceRepo } = require('./decisionTraceRepo');
 const { createPromptLibraryRepo } = require('./promptLibraryRepo');
 const { createTestCasesRepo } = require('./testCasesRepo');
 const { createTableRepo } = require('./tableRepo');
@@ -58,6 +59,7 @@ function createRepos(supabase) {
         stats: createStatsRepo(supabase),
         e2e: createE2eRepo(supabase),
         executionLog: createExecutionLogRepo(supabase),
+        decisionTrace: createDecisionTraceRepo(supabase),
         promptLibrary: createPromptLibraryRepo(supabase),
         testCases: createTestCasesRepo(supabase),
         playlist: createPlaylistRepo(supabase),

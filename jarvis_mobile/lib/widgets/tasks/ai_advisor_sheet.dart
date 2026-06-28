@@ -65,7 +65,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet> {
     try {
       final taskList = _buildTaskContext();
       final fullPrompt = '$prompt\n\nמשימות:\n$taskList';
-      final res = await _c.api.askJarvis(fullPrompt, _c.settings, intent: 'task');
+      final res = await _c.api.askJarvis(fullPrompt, _c.settings, intent: 'chat');
       _actionResult = (res['answer'] as String? ?? '').trim();
     } catch (_) {
       _actionResult = 'שגיאה. נסה שוב.';
@@ -81,7 +81,7 @@ class _AiAdvisorSheetState extends State<AiAdvisorSheet> {
     try {
       final taskList = _buildTaskContext();
       final fullPrompt = '$q\n\nמשימות:\n$taskList';
-      final res = await _c.api.askJarvis(fullPrompt, _c.settings, intent: 'task');
+      final res = await _c.api.askJarvis(fullPrompt, _c.settings, intent: 'chat');
       _askResult = (res['answer'] as String? ?? '').trim();
     } catch (_) {
       _askResult = 'שגיאה. נסה שוב.';

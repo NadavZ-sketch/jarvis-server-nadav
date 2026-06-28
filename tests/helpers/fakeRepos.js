@@ -262,6 +262,14 @@ function makeExecutionLogRepo(opts = {}) {
     };
 }
 
+function makeDecisionTraceRepo(opts = {}) {
+    const { rows = [] } = opts;
+    return {
+        recent: jest.fn(async () => rows),
+        insert: jest.fn(async () => {}),
+    };
+}
+
 function makePromptLibraryRepo(opts = {}) {
     const { rows = [] } = opts;
     const first = rows[0] || { id: 'p1', name: 'x', content: 'y', version: 1, is_active: true };
@@ -353,6 +361,7 @@ function makeRepos(tableData = {}) {
         metrics: makeMetricsRepo({ rows: tableData.agent_metrics || [] }),
         devices: makeDeviceRepo({ rows: tableData.device_tokens || [] }),
         executionLog: makeExecutionLogRepo({ rows: tableData.execution_log || [] }),
+        decisionTrace: makeDecisionTraceRepo({ rows: tableData.decision_trace || [] }),
         promptLibrary: makePromptLibraryRepo({ rows: tableData.prompt_library || [] }),
         testCases: makeTestCasesRepo({ rows: tableData.test_cases || [] }),
         e2e: {
@@ -376,4 +385,4 @@ function makeRepos(tableData = {}) {
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTelemetryRepo, makeMetricsRepo, makeDeviceRepo, makeExecutionLogRepo, makePromptLibraryRepo, makeTestCasesRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTelemetryRepo, makeMetricsRepo, makeDeviceRepo, makeExecutionLogRepo, makeDecisionTraceRepo, makePromptLibraryRepo, makeTestCasesRepo, makeTableRepo };

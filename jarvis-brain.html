@@ -187,6 +187,32 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
 .sk-label{font-size:.6rem;color:var(--muted);margin-bottom:2px;font-weight:500}
 .sk-val{font-size:.85rem;font-weight:800;margin-bottom:3px;font-variant-numeric:tabular-nums}
 
+/* KNOWLEDGE TAB */
+.know-tab-layout{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.cat-filter-bar{display:flex;align-items:center;gap:6px;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+.cat-filter-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:var(--tx-xs);font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:500}
+.cat-filter-btn.on{color:var(--accent2);border-color:rgba(200,145,58,.45);background:rgba(200,145,58,.08);font-weight:700}
+.cat-filter-btn .cf-count{font-size:.58rem;background:rgba(255,255,255,.06);border-radius:8px;padding:1px 5px;margin-right:2px}
+.know-grid{flex:1;overflow-y:auto;padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;align-content:start}
+.know-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:11px 12px;display:flex;flex-direction:column;gap:7px;border-right:3px solid var(--border);transition:border-color .2s,background .15s;cursor:default}
+.know-card:hover{background:var(--surface)}
+.know-card.cat-עבודה{border-right-color:var(--blue)}
+.know-card.cat-משפחה{border-right-color:var(--green)}
+.know-card.cat-בריאות{border-right-color:var(--amber)}
+.know-card.cat-תחביב{border-right-color:var(--purple)}
+.know-card.cat-כללי{border-right-color:var(--accent)}
+.kc-cat{display:inline-flex;align-items:center;gap:4px;font-size:.6rem;font-weight:700;padding:2px 8px;border-radius:10px;align-self:flex-start}
+.kc-text{font-size:var(--tx-sm);color:var(--text);line-height:1.5}
+.kc-date{font-size:.58rem;color:var(--muted)}
+.know-empty{grid-column:1/-1;display:flex;align-items:center;justify-content:center;padding:60px 0;color:var(--muted);font-size:var(--tx-sm)}
+
+/* PROFILE SETTINGS */
+.prof-settings{display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
+.prof-row{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r4);min-height:34px}
+.prof-key{font-size:var(--tx-xs);color:var(--muted);font-weight:600}
+.prof-val{font-size:var(--tx-sm);color:var(--text);font-weight:600;text-align:left}
+.prof-val.accent{color:var(--accent2)}
+
 /* SKELETON */
 .skel{display:inline-block;background:linear-gradient(90deg,rgba(48,54,61,.8) 25%,rgba(48,54,61,.4) 50%,rgba(48,54,61,.8) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:3px;color:transparent;min-width:40px}
 @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
@@ -247,6 +273,7 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
   <div class="tab active" onclick="switchTab('constellation',this)"><svg class="icon icon-sm"><use href="#ic-stars"/></svg> קונסטלציה</div>
   <div class="tab" onclick="switchTab('thinking',this)"><svg class="icon icon-sm"><use href="#ic-bolt"/></svg> חשיבה</div>
   <div class="tab" onclick="switchTab('profile',this)"><svg class="icon icon-sm"><use href="#ic-user"/></svg> פרופיל</div>
+  <div class="tab" onclick="switchTab('knowledge',this)"><svg class="icon icon-sm"><use href="#ic-book"/></svg> ידע</div>
 </div>
 
 <!-- KPI: CONSTELLATION -->
@@ -304,6 +331,30 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
     <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-check"/></svg></span>
     <span class="kv green" id="kpi-errors"><span class="skel">0</span></span>
     <span class="kl">כמה שיחות נכשלו ולא קיבלו תשובה תקינה</span>
+  </div>
+</div>
+
+<!-- KPI: KNOWLEDGE -->
+<div class="kpi-strip" id="kpi-knowledge" style="display:none">
+  <div class="kpi-chip up">
+    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-book"/></svg> סה״כ זיכרונות</span>
+    <span class="kv green" id="kpi-know-total"><span class="skel">00</span></span>
+    <span class="kl">כמה דברים ג׳רוויס יודע עלייך</span>
+  </div>
+  <div class="kpi-chip">
+    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-tag"/></svg> קטגוריה מובילה</span>
+    <span class="kv" id="kpi-know-top-cat"><span class="skel">——</span></span>
+    <span class="kl">נושא הנפוץ ביותר בזיכרונות</span>
+  </div>
+  <div class="kpi-chip warn">
+    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> ממתינים לאישור</span>
+    <span class="kv warn" id="kpi-know-pending"><span class="skel">0</span></span>
+    <span class="kl">זיכרונות שחולצו אוטומטית וטרם אושרו</span>
+  </div>
+  <div class="kpi-chip">
+    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-stars"/></svg> אחרון שנשמר</span>
+    <span class="kv" id="kpi-know-last"><span class="skel">——</span></span>
+    <span class="kl">הזיכרון האחרון שנוסף לבסיס הידע</span>
   </div>
 </div>
 
@@ -482,8 +533,15 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
       </div>
     </div>
     <div class="pc">
-      <div class="pc-head"><svg class="icon icon-sm"><use href="#ic-light"/></svg> מה ג׳רוויס יודע עלייך</div>
-      <div class="know-list" id="knowList"><div class="mp-empty">טוען...</div></div>
+      <div class="pc-head"><svg class="icon icon-sm"><use href="#ic-settings"/></svg> פרופיל אישי</div>
+      <div class="prof-settings" id="profSettings">
+        <div class="prof-row"><span class="prof-key">שם</span><span class="prof-val accent" id="pf-name">—</span></div>
+        <div class="prof-row"><span class="prof-key">שם עוזר</span><span class="prof-val" id="pf-assistant">—</span></div>
+        <div class="prof-row"><span class="prof-key">אישיות</span><span class="prof-val" id="pf-personality">—</span></div>
+        <div class="prof-row"><span class="prof-key">פנייה</span><span class="prof-val" id="pf-gender">—</span></div>
+        <div class="prof-row"><span class="prof-key">מצב קול</span><span class="prof-val" id="pf-voice">—</span></div>
+        <div class="prof-row"><span class="prof-key">מודל מקומי</span><span class="prof-val" id="pf-local">—</span></div>
+      </div>
     </div>
     <div class="pc" style="border-bottom:none">
       <div class="pc-head"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> פעילות 24 שעות</div>
@@ -510,6 +568,23 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
         <div class="sc-head" style="margin-bottom:5px"><svg class="icon icon-sm"><use href="#ic-chart"/></svg> ציר למידה — זיכרונות לפי שבוע</div>
         <svg id="learnSvg" width="100%" height="48"></svg>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB 4: KNOWLEDGE ══ -->
+<div class="tab-panel" id="panel-knowledge">
+  <div class="know-tab-layout">
+    <div class="cat-filter-bar" id="catFilterBar">
+      <button class="cat-filter-btn on" onclick="filterKnow('הכל',this)">הכל <span class="cf-count" id="cf-all">0</span></button>
+      <button class="cat-filter-btn" onclick="filterKnow('עבודה',this)" style="--cc:var(--blue)">עבודה <span class="cf-count" id="cf-עבודה">0</span></button>
+      <button class="cat-filter-btn" onclick="filterKnow('משפחה',this)" style="--cc:var(--green)">משפחה <span class="cf-count" id="cf-משפחה">0</span></button>
+      <button class="cat-filter-btn" onclick="filterKnow('בריאות',this)" style="--cc:var(--amber)">בריאות <span class="cf-count" id="cf-בריאות">0</span></button>
+      <button class="cat-filter-btn" onclick="filterKnow('תחביב',this)" style="--cc:var(--purple)">תחביב <span class="cf-count" id="cf-תחביב">0</span></button>
+      <button class="cat-filter-btn" onclick="filterKnow('כללי',this)" style="--cc:var(--accent)">כללי <span class="cf-count" id="cf-כללי">0</span></button>
+    </div>
+    <div class="know-grid" id="knowGrid">
+      <div class="know-empty">טוען זיכרונות...</div>
     </div>
   </div>
 </div>
@@ -870,20 +945,7 @@ function renderProviders() {
 
 // ── Profile Rendering ──────────────────────────────────────────────────────
 function renderProfile() {
-  // Know list from top memories
-  const knowEl = document.getElementById('knowList');
-  if (S.memories.length) {
-    const colors = ['blue', 'green', 'amber', 'purple', ''];
-    knowEl.innerHTML = S.memories.slice(0, 5).map((m, i) =>
-      `<div class="know-item ${colors[i % colors.length]}">
-        <svg class="icon icon-sm"><use href="#ic-${getKnowIcon(m.content)}"/></svg>
-        ${esc(m.content)}
-      </div>`
-    ).join('');
-  } else {
-    knowEl.innerHTML = '<div class="mp-empty">אין זיכרונות עדיין</div>';
-  }
-
+  renderProfileSettings();
   // 24H clock
   const hourCounts = new Array(24).fill(0);
   S.log.forEach(l => { if (l.created_at) hourCounts[new Date(l.created_at).getHours()]++; });
@@ -945,6 +1007,75 @@ function getKnowIcon(text) {
   if (/בריאות|ספורט|ריצה|health|sport/i.test(text)) return 'fire';
   return 'light';
 }
+
+// ── Profile Settings Rendering ──────────────────────────────────────────────
+function renderProfileSettings() {
+  const p = S.profile;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val || '—'; };
+  set('pf-name', p.userName);
+  set('pf-assistant', p.assistantName);
+  set('pf-personality', p.personality);
+  set('pf-gender', p.gender === 'female' ? 'נקבה' : p.gender === 'male' ? 'זכר' : p.gender);
+  set('pf-voice', p.voiceMode ? 'פעיל' : 'כבוי');
+  set('pf-local', p.useLocalModel ? 'כן (Ollama)' : 'לא');
+}
+
+// ── Knowledge Tab ───────────────────────────────────────────────────────────
+let _knowFilter = 'הכל';
+
+function updateKnowledgeKpi() {
+  const all = S.memories;
+  document.getElementById('kpi-know-total').textContent = all.length;
+  document.getElementById('kpi-know-pending').textContent = S.pending.length || '0';
+  const cats = {};
+  all.forEach(m => { const c = inferCat(m.content); cats[c] = (cats[c] || 0) + 1; });
+  const top = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
+  document.getElementById('kpi-know-top-cat').textContent = top ? `${top[0]} (${top[1]})` : '—';
+  const sorted = [...all].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  document.getElementById('kpi-know-last').textContent = sorted[0] ? relTime(sorted[0].created_at) : '—';
+
+  // Update filter counts
+  const countEls = { הכל: 'cf-all', עבודה: 'cf-עבודה', משפחה: 'cf-משפחה', בריאות: 'cf-בריאות', תחביב: 'cf-תחביב', כללי: 'cf-כללי' };
+  const counts = { הכל: all.length };
+  all.forEach(m => { const c = inferCat(m.content); counts[c] = (counts[c] || 0) + 1; });
+  for (const [k, elId] of Object.entries(countEls)) {
+    const el = document.getElementById(elId);
+    if (el) el.textContent = counts[k] || 0;
+  }
+}
+
+function renderKnowledge(filter) {
+  _knowFilter = filter || _knowFilter;
+  updateKnowledgeKpi();
+  const grid = document.getElementById('knowGrid');
+  const mems = _knowFilter === 'הכל'
+    ? S.memories
+    : S.memories.filter(m => inferCat(m.content) === _knowFilter);
+
+  if (!mems.length) {
+    grid.innerHTML = `<div class="know-empty">אין זיכרונות בקטגוריה זו</div>`;
+    return;
+  }
+
+  const sorted = [...mems].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const CAT_BG = { עבודה: 'rgba(96,165,250,.12)', משפחה: 'rgba(34,197,94,.12)', בריאות: 'rgba(245,158,11,.12)', תחביב: 'rgba(167,139,250,.12)', כללי: 'rgba(200,145,58,.12)' };
+  const CAT_FG = { עבודה: 'var(--blue)', משפחה: 'var(--green)', בריאות: 'var(--amber)', תחביב: 'var(--purple)', כללי: 'var(--accent)' };
+
+  grid.innerHTML = sorted.map(m => {
+    const cat = inferCat(m.content);
+    return `<div class="know-card cat-${esc(cat)}">
+      <span class="kc-cat" style="background:${CAT_BG[cat]};color:${CAT_FG[cat]}">${esc(cat)}</span>
+      <div class="kc-text">${esc(m.content)}</div>
+      <div class="kc-date">${relTime(m.created_at)}</div>
+    </div>`;
+  }).join('');
+}
+
+window.filterKnow = function(cat, btn) {
+  document.querySelectorAll('.cat-filter-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  renderKnowledge(cat);
+};
 
 // ── Charts ─────────────────────────────────────────────────────────────────
 function renderDonut() {
@@ -1269,6 +1400,7 @@ window.switchTab = function(name, btn) {
   document.getElementById('panel-' + name).classList.add('active');
   document.getElementById('kpi-' + name).style.display = 'flex';
   if (name === 'thinking' && !S.pollTimer) startPolling();
+  if (name === 'knowledge') renderKnowledge('הכל');
 };
 
 function mpTab(name, btn) {

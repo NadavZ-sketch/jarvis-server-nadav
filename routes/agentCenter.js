@@ -135,6 +135,7 @@ function createAgentCenterRouter({ callGemma4, agentMetrics }) {
       err => { if (err && !res.headersSent) res.status(404).send('jarvis-brain.html not found'); });
   });
 
+
   router.get('/agents', async (_req, res) => {
     try {
       const agents = await getAgentRegistry();

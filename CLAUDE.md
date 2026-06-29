@@ -99,7 +99,7 @@ Each agent exports a single `run*Agent(userMessage, supabase, useLocal, settings
 |------|----------|---------|
 | `router.js` | `classifyIntent`, `classifyIntentWithLLM` | Intent classification only |
 | `chatAgent.js` | `runChatAgent` | Main conversational AI; builds rich Hebrew system prompt with memories, history, personality |
-| `memoryAgent.js` | `runMemoryAgent`, `autoExtractMemory` | Save/recall/delete personal facts; passive extraction after every turn |
+| `memoryAgent.js` | `runMemoryAgent`, `autoExtractMemory` | Save/recall/delete personal facts; passive extraction after every turn. Passively-extracted `context` memories save as `status='pending'` and are **withheld from Pinecone/recall until approved** via `POST /memories/:id/approve` (privacy gate). Explicit saves and confirmed facts stay `approved`. |
 | `taskAgent.js` | `runTaskAgent` | Manage task creation, completion, listing |
 | `reminderAgent.js` | `runReminderAgent` | Set/recall/snooze/delete reminders with recurring support |
 | `shoppingAgent.js` | `runShoppingAgent` | Shopping list CRUD |
@@ -169,7 +169,7 @@ Recurring tasks: `taskAgent` reuses `parseRecurrence` from `reminderAgent`; on c
 
 | Store | Used for |
 |-------|----------|
-| **Supabase** | `chat_history`, `tasks`, `reminders`, `notes`, `memories`, `contacts`, `shopping_items`, `habits`, `habit_logs`, `projects`, `project_milestones`, `e2e_reports`, `user_surveys` |
+| **Supabase** | `chat_history`, `tasks`, `reminders`, `notes`, `memories` (has a `status` column: `pending`\|`approved`), `contacts`, `shopping_items`, `habits`, `habit_logs`, `projects`, `project_milestones`, `e2e_reports`, `user_surveys`, `execution_log`, `decision_trace`, `prompt_library`, `test_cases` |
 | **Pinecone** | Semantic vector search over memories (optional; falls back to keyword matching if unavailable) |
 | **In-process TTL cache** | Memories (5 min), chat history per `chatId` (30 s) |
 | **Local filesystem** | `backlog.json`, `features.json`, `notes.json`, `agents/custom/registry.json` |
@@ -237,6 +237,22 @@ Example gated endpoints:
 | `GET` | `/agent-center` | Dashboard HTML | Redirects to `/progress-map`. Control center served from `progress-map.html` (6 tabs: overview, agents, analytics, dev, qa, settings). Role-gated via `preferences.role` — regular users see overview+settings, admins see all. Includes NL command bar (`POST /progress-map/command`), smart alerts (`/control-center/events`), proactive insights, and learned tab ordering (`/control-center/layout`). |
 | `POST` | `/progress-map/command` | NL control bar | Hebrew text → action. Deterministic-first (toggle agent / navigate / scan / e2e), LLM fallback for free-form metrics questions. |
 | `GET` | `/control-center/layout` | Learned tab order | `dashboardLearner` derives most-used-first ordering from `dashboard_tab_view` telemetry. |
+| `GET` | `/control-center/events` | Live alerts + per-tab badges | Cheap (no LLM); polled by the mobile control center. Includes `memory_pending` alerts. |
+| `GET/POST/PUT/DELETE` | `/memories`, `/memories/:id` | Memory CRUD | Pinecone search + keyword fallback. `DELETE /memories/:id` = "forget". |
+| `GET` | `/memories/pending` | Pending memories awaiting approval | Returns `{ memories: [] }`. Passively-extracted `context` memories land here until approved. |
+| `POST` | `/memories/:id/approve` | Approve a pending memory | Sets `status='approved'` and upserts it to Pinecone (only then does it enter recall). |
+| `GET` | `/decision-trace` | Recent routing decisions | Returns `{ trace: [] }` — `input`, `intent`, `candidates` (JSON string), `ambiguous`, `route_mode`, `agent`, `model`, `duration_ms`. Backs the מוח tab. **No numeric confidence** — honesty over a fake %. |
+| `GET` | `/execution-log` | Recent `/ask-jarvis` executions | Returns `{ log: [] }` — `cmd`, `agent`, `model`, `duration_ms`, `status`. Backs the סקירה tab. |
+| `GET` | `/health/providers` | Per-provider availability | Probes each LLM provider live (slow, ~20s). Flat map `{ groq, deepseek, gemini_google, ollama, ... }`. Backs the מוח models/fallback row. |
+| `GET` | `/stats/weekly-score` | Weekly feedback score | `{ score, ups, downs, total }`; `?weeks=N` → `{ history: [] }`. Backs the שיפור tab. |
+
+#### Mobile Control Center (Flutter, 4-tab redesign)
+
+The mobile control center (`jarvis_mobile/lib/screens/control_center/`) is a 4-tab shell — **סקירה** (overview), **מוח** (brain), **סוכנים** (agents), **שיפור** (improve) — distinct from the 6-tab web dashboard in `progress-map.html`. Role-gated: non-admins see סקירה + שיפור; admins see all four. Each tab is wired to real endpoints (no mock data, no dead buttons):
+- **סקירה** → `/health`, `/control-center/events`, `/execution-log`
+- **מוח** → `/decision-trace`, `/health/providers`, `/memories/pending` (+ approve / `DELETE /memories/:id`)
+- **סוכנים** → `/progress-map/agents` (+ toggle / risk), `/progress-map/metrics`
+- **שיפור** → `/e2e-reports`, `/stats/weekly-score`, `/dashboard/backlog`, `/proposals`, `/survey-check` + `/survey-submit`, `/workshop/:id/chat` + `/save-spec`
 | `ws` | `/ws-jarvis` | WebSocket stream | Real-time bidirectional agent chat |
 
 ## Development Workflows
@@ -404,6 +420,8 @@ jarvis-server-nadav/
 ## Known API Gotchas
 
 - **`/memories` CRUD exists** — `GET/POST/PUT/DELETE /memories` are implemented in `server.js` (Pinecone search with keyword fallback). (Earlier docs claimed only a rate-limiter existed; that is outdated.)
+- **Memory approval gate** — the `memories` table has a `status` column (`pending`\|`approved`, default `approved`). Only **passively auto-extracted `context` memories** become `pending`; they are NOT upserted to Pinecone (so excluded from recall) until approved via `POST /memories/:id/approve`. `allContents()` (keyword-recall fallback) also excludes `pending`. Existing rows are backfilled to `approved` by the column default. Repo methods defend against the column not existing (pre-migration). Migration: `docs/superpowers/migrations/memory_status.sql`.
+- **Decision trace** — every `/ask-jarvis` routing decision is recorded fire-and-forget to `decision_trace` (`input`, `intent`, `candidates`, `ambiguous`, `route_mode`, `agent`, `model`, `duration_ms`). `candidates` is stored as a JSON string in a `jsonb` column, so readers must `JSON.parse`/`jsonDecode` it. The router exposes no numeric confidence — none is fabricated. Migration: `docs/superpowers/migrations/decision_trace.sql`.
 - **Tasks field name is `content`**, not `title`. The `tasks` table has `content`, `priority`, `done`, `created_at`, `due_date`, `category`, and `recurrence` (`daily|weekly|monthly|NULL`).
 - **Reminders field names**: `text` (not `title`), `scheduled_time` (ISO string, not `remind_at`), `fired` (boolean). `GET /reminders` only returns unfired reminders.
 - **Response wrappers**: `/tasks` → `{ tasks: [] }`, `/reminders` → `{ reminders: [] }`, `/chat-history` → `{ history: [] }`. Don't assume a bare array.

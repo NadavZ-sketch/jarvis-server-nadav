@@ -120,11 +120,8 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .usage-count{font-size:.72rem;color:var(--muted);width:38px;flex-shrink:0;text-align:center}
 .usage-ms{font-size:.68rem;color:var(--muted);width:52px;flex-shrink:0;text-align:left;direction:ltr}
 
-/* ── Sparklines ── */
-.sparkline-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
-.spark-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px}
+/* ── Sparklines (base, enhanced in KPI section below) ── */
 .spark-name{font-size:.76rem;font-weight:700;color:var(--accent2);margin-bottom:6px}
-.spark-stats{display:flex;gap:10px;font-size:.68rem;color:var(--muted);margin-top:4px}
 
 /* ── Insight cards ── */
 .insight-cards{display:flex;flex-direction:column;gap:10px}
@@ -154,6 +151,28 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty-state{text-align:center;padding:32px;color:var(--muted);font-size:.82rem}
 .empty-state .es-icon{font-size:2rem;display:block;margin-bottom:8px;opacity:.5}
+
+/* ── KPI Strip ── */
+.kpi-strip{display:flex;align-items:center;gap:6px;padding:6px 14px;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(0,0,0,.18);overflow-x:auto}
+.kpi-strip::-webkit-scrollbar{display:none}
+.kpi-chip{display:flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 10px;white-space:nowrap;flex-shrink:0;transition:border-color .15s}
+.kpi-chip:hover{border-color:rgba(200,145,58,.25)}
+.kpi-lbl{font-size:.66rem;color:var(--muted)}
+.kpi-val{font-size:.78rem;font-weight:700;color:var(--accent2)}
+.kpi-val.up{color:var(--green)} .kpi-val.warn{color:var(--amber)} .kpi-val.bad{color:var(--red)}
+.kpi-sep{width:1px;height:16px;background:var(--border);flex-shrink:0;margin:0 2px}
+
+/* ── Skeleton loader ── */
+.skel-wrap{display:flex;flex-direction:column;gap:10px;padding:18px}
+.skel-line{border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 100%);background-size:200% 100%;animation:shimmer 1.6s infinite}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ── Sparklines (enlarged) ── */
+.sparkline-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px}
+.spark-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;transition:border-color .15s}
+.spark-card:hover{border-color:rgba(200,145,58,.25)}
+.spark-name{font-size:.76rem;font-weight:700;color:var(--accent2);margin-bottom:6px}
+.spark-stats{display:flex;gap:10px;font-size:.68rem;color:var(--muted);margin-top:5px}
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar{width:4px;height:4px}
@@ -251,6 +270,15 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
         <div class="subtab" onclick="stab('brain','cloud',this)">ענן מילים</div>
         <div class="subtab" onclick="stab('brain','timeline',this)">ציר למידה</div>
       </div>
+      <div class="kpi-strip" id="kpi-brain">
+        <div class="kpi-chip"><span class="kpi-lbl">🧠 זיכרונות</span><span class="kpi-val" id="kpi-b-total">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">📁 קטגוריה מובילה</span><span class="kpi-val" id="kpi-b-cat">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">🕒 נוסף לאחרונה</span><span class="kpi-val" id="kpi-b-last">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">🔗 קשרים</span><span class="kpi-val" id="kpi-b-edges">—</span></div>
+      </div>
       <div class="content">
         <!-- Graph -->
         <div id="brain-graph" class="subpanel active graph-wrap">
@@ -297,6 +325,15 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
         <div class="subtab" onclick="stab('activity','clock',this)">שעון 24H</div>
         <div class="subtab" onclick="stab('activity','heatmap',this)">רשת חום</div>
       </div>
+      <div class="kpi-strip" id="kpi-activity">
+        <div class="kpi-chip"><span class="kpi-lbl">💬 הודעות/30י</span><span class="kpi-val" id="kpi-a-msgs">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">⏰ שעת שיא</span><span class="kpi-val" id="kpi-a-peak">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">🔥 רצף</span><span class="kpi-val" id="kpi-a-streak">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">📅 ממוצע יומי</span><span class="kpi-val" id="kpi-a-avg">—</span></div>
+      </div>
       <div class="content">
         <div id="activity-timeline" class="subpanel active" style="overflow-y:auto">
           <div id="eventListWrap">
@@ -330,6 +367,15 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
         <div class="subtab active" onclick="stab('insights','findings',this)">ממצאים</div>
         <div class="subtab" onclick="stab('insights','profile',this)">פרופיל</div>
       </div>
+      <div class="kpi-strip" id="kpi-insights">
+        <div class="kpi-chip"><span class="kpi-lbl">✅ השלמת משימות</span><span class="kpi-val" id="kpi-i-rate">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">🤖 סוכן מוביל</span><span class="kpi-val" id="kpi-i-agent">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">💡 תובנות</span><span class="kpi-val" id="kpi-i-count">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">📊 קריאות סוכן/30י</span><span class="kpi-val" id="kpi-i-calls">—</span></div>
+      </div>
       <div class="content">
         <div id="insights-findings" class="subpanel active">
           <div class="panel">
@@ -361,6 +407,15 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
         <div class="subtab active" onclick="stab('data','agents',this)">סוכנים</div>
         <div class="subtab" onclick="stab('data','sankey',this)">זרימה</div>
         <div class="subtab" onclick="stab('data','tasks',this)">משימות</div>
+      </div>
+      <div class="kpi-strip" id="kpi-data">
+        <div class="kpi-chip"><span class="kpi-lbl">📞 קריאות/30י</span><span class="kpi-val" id="kpi-d-calls">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">⚡ ממוצע תגובה</span><span class="kpi-val" id="kpi-d-ms">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">🤖 סוכנים פעילים</span><span class="kpi-val" id="kpi-d-agents">—</span></div>
+        <div class="kpi-sep"></div>
+        <div class="kpi-chip"><span class="kpi-lbl">📋 משימות הושלמו</span><span class="kpi-val" id="kpi-d-tasks">—</span></div>
       </div>
       <div class="content">
         <div id="data-agents" class="subpanel active">
@@ -537,6 +592,7 @@ async function loadMemories() {
     const bnavCnt = document.getElementById('bnav-cnt');
     if (bnavCnt && S.memories.length) { bnavCnt.textContent = S.memories.length; bnavCnt.style.display = ''; }
     setUpdated();
+    updateKpiBrain();
     if (!S.memories.length && gw) gw.innerHTML = `<div class="empty-state" style="padding-top:80px">
       <span class="es-icon">🧠</span>
       <div style="margin-bottom:8px">אין זיכרונות עדיין</div>
@@ -567,6 +623,9 @@ async function loadAnalytics() {
     S.analytics = SAMPLE_AN;
     S.loaded.analytics = true;
   }
+  updateKpiActivity();
+  updateKpiInsights();
+  updateKpiData();
   if (S.currentSection==='data') buildAgentUsage();
   if (S.currentSection==='activity') buildRadialClock();
   if (S.currentSection==='insights') buildInsightFindings();
@@ -591,6 +650,8 @@ async function loadStats() {
     S.stats = SAMPLE_STATS;
     S.loaded.stats = true;
   }
+  updateKpiData();
+  updateKpiInsights();
   if (S.currentSection==='data') buildTasksViz();
   if (S.currentSection==='insights') buildInsightFindings();
 }
@@ -688,6 +749,21 @@ const CAT_KEYS = {
   'תחביב':  ['מוזיקה','ספר','סרט','משחק','גיטרה','תמונה','אמנות','יצירה','קריאה','טיול'],
 };
 const COLORS = ['#C8913A','#60a5fa','#22c55e','#a78bfa','#f59e0b','#ec4899','#14b8a6','#f97316'];
+
+// Semantic color per agent intent
+const AGENT_PALETTE = {
+  chat:'#60a5fa', task:'#22c55e', reminder:'#f59e0b', memory:'#C8913A',
+  weather:'#14b8a6', news:'#a78bfa', shopping:'#ec4899', habit:'#f97316',
+  notes:'#38bdf8', stocks:'#4ade80', music:'#c084fc', project:'#6366f1',
+  calendar:'#fb7185', translate:'#34d399', draft:'#fbbf24', insight:'#818cf8',
+  security:'#ef4444', code:'#84cc16',
+};
+function agentColor(name, idx) {
+  const k = String(name).toLowerCase();
+  for (const [key, col] of Object.entries(AGENT_PALETTE))
+    if (k.includes(key)) return col;
+  return COLORS[idx % COLORS.length];
+}
 const CAT_COLOR = { 'עבודה':'#60a5fa','משפחה':'#22c55e','בריאות':'#f59e0b','תחביב':'#a78bfa','כללי':'#C8913A' };
 
 function inferCat(ws) {
@@ -1036,6 +1112,7 @@ function buildInsightFindings() {
   const wrap=document.getElementById('insightCards');
   if(!wrap) return;
   const ins=computeInsights();
+  document.getElementById('kpi-i-count').textContent = ins.length || '0';
   if(!ins.length){ wrap.innerHTML='<div class="empty-state"><span class="es-icon">💡</span>אין מספיק נתונים</div>'; return; }
   wrap.innerHTML=ins.map(f=>`
     <div class="insight-card">
@@ -1105,8 +1182,9 @@ function buildTrend() {
   svg.innerHTML=h; svg.setAttribute('height',H);
   if(barsEl&&S.analytics?.system?.topAgents){
     const agents=S.analytics.system.topAgents.slice(0,6), maxC=agents[0]?.count||1;
-    barsEl.innerHTML=agents.map((a,i)=>`<div class="usage-row"><div class="usage-label">${a.agent}</div><div class="usage-track"><div class="usage-bar" style="width:${Math.round(a.count/maxC*100)}%;background:${COLORS[i%COLORS.length]}"></div></div><div class="usage-count">${a.count}</div></div>`).join('');
+    barsEl.innerHTML=agents.map((a,i)=>`<div class="usage-row"><div class="usage-label">${a.agent}</div><div class="usage-track"><div class="usage-bar" style="width:${Math.round(a.count/maxC*100)}%;background:${agentColor(a.agent,i)}"></div></div><div class="usage-count">${a.count}</div></div>`).join('');
   }
+  updateKpiInsights();
 }
 
 // ═══════════════════════════════════════════════
@@ -1116,14 +1194,37 @@ function buildAgentUsage() {
   const barsEl=document.getElementById('agentUsageBars'), sparkEl=document.getElementById('sparklineGrid');
   if(!barsEl) return;
   const agents=S.analytics?.system?.topAgents||SAMPLE_AN.system.topAgents, maxC=agents[0]?.count||1;
-  barsEl.innerHTML=agents.slice(0,8).map((a,i)=>`<div class="usage-row"><div class="usage-label">${a.agent}</div><div class="usage-track"><div class="usage-bar" style="width:${Math.round(a.count/maxC*100)}%;background:${COLORS[i%COLORS.length]}"></div></div><div class="usage-count">${a.count}</div><div class="usage-ms">${a.avgMs}ms</div></div>`).join('');
-  if(sparkEl) sparkEl.innerHTML=agents.slice(0,8).map(a=>{
-    const seed=a.agent.charCodeAt(0);
-    const pts=Array.from({length:14},(_,i)=>Math.max(10,(a.avgMs||100)+((seed*(i+1)*7)%40)-20));
-    const maxP=Math.max(...pts,1), W2=120, H2=26;
-    const poly=pts.map((v,i)=>`${((i/(pts.length-1))*W2).toFixed(1)},${(H2-(v/maxP)*H2).toFixed(1)}`).join(' ');
-    return `<div class="spark-card"><div class="spark-name">${a.agent}</div><svg width="${W2}" height="${H2}" style="overflow:visible"><polyline points="${poly}" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round"/></svg><div class="spark-stats"><span>${a.count} קריאות</span><span>${a.avgMs}ms</span></div></div>`;
+  barsEl.innerHTML=agents.slice(0,8).map((a,i)=>{
+    const col=agentColor(a.agent,i);
+    return `<div class="usage-row">
+      <div class="usage-label">${a.agent}</div>
+      <div class="usage-track"><div class="usage-bar" style="width:${Math.round(a.count/maxC*100)}%;background:${col}"></div></div>
+      <div class="usage-count">${a.count}</div>
+      <div class="usage-ms">${a.avgMs}ms</div>
+    </div>`;
   }).join('');
+  if(sparkEl) sparkEl.innerHTML=agents.slice(0,8).map((a,i)=>{
+    const col=agentColor(a.agent,i), seed=a.agent.charCodeAt(0);
+    const pts=Array.from({length:14},(_,j)=>Math.max(10,(a.avgMs||100)+((seed*(j+1)*7)%40)-20));
+    const maxP=Math.max(...pts,1), W2=140, H2=46, id='sp'+i;
+    const pArr=pts.map((v,j)=>`${((j/(pts.length-1))*W2).toFixed(1)},${(H2-4-(v/maxP)*(H2-10)).toFixed(1)}`);
+    const poly=pArr.join(' ');
+    const fillPath=`M${pArr[0]} ${pArr.slice(1).map(p=>'L'+p).join(' ')} L${W2},${H2-4} L0,${H2-4} Z`;
+    return `<div class="spark-card">
+      <div class="spark-name" style="color:${col}">${a.agent}</div>
+      <svg width="${W2}" height="${H2}" style="overflow:visible" id="${id}">
+        <defs><linearGradient id="g${i}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${col}" stop-opacity=".18"/>
+          <stop offset="100%" stop-color="${col}" stop-opacity="0"/>
+        </linearGradient></defs>
+        <path d="${fillPath}" fill="url(#g${i})"/>
+        <polyline points="${poly}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        ${pts.map((v,j)=>{ const vx=(j/(pts.length-1))*W2, vy=H2-4-(v/maxP)*(H2-10); return v===Math.max(...pts)||v===Math.min(...pts)?`<circle cx="${vx.toFixed(1)}" cy="${vy.toFixed(1)}" r="3" fill="${col}"/>`:''}).join('')}
+      </svg>
+      <div class="spark-stats"><span>${a.count} קריאות</span><span>${a.avgMs}ms</span></div>
+    </div>`;
+  }).join('');
+  updateKpiData();
 }
 
 // ═══════════════════════════════════════════════
@@ -1137,7 +1238,7 @@ function buildSankey() {
   const totalV=agents.reduce((s,a)=>s+a.count,0)||1, lx=55, rx=W-130;
   let h='', lOffset=20;
   agents.forEach((a,i)=>{
-    const color=COLORS[i%COLORS.length], ry=(i+1)*(H/(agents.length+1));
+    const color=agentColor(a.agent,i), ry=(i+1)*(H/(agents.length+1));
     const rh=Math.max(4,a.count/totalV*H*.75), flowH=a.count/totalV*H*.72;
     const lTop=lOffset, lBot=lOffset+flowH; lOffset+=flowH;
     const rTop=ry-rh/2, rBot=ry+rh/2, mx=(lx+rx)/2;
@@ -1183,6 +1284,87 @@ function buildHourHeatmap() {
     if(i%4===0) h+=`<text x="${x+bW/2}" y="40" text-anchor="middle" font-size="8" fill="#6E7F96" font-family="Heebo">${i}:00</text>`;
   });
   svg.innerHTML=h; svg.setAttribute('height',H);
+}
+
+// ═══════════════════════════════════════════════
+// KPI STRIPS
+// ═══════════════════════════════════════════════
+function relativeTime(iso) {
+  if (!iso) return '—';
+  const diff = (Date.now() - new Date(iso)) / 1000;
+  if (diff < 60) return 'הרגע';
+  if (diff < 3600) return `לפני ${Math.round(diff/60)} דק\'`;
+  if (diff < 86400) return `לפני ${Math.round(diff/3600)} שע\'`;
+  return `לפני ${Math.round(diff/86400)} ימים`;
+}
+
+function updateKpiBrain() {
+  if (!S.loaded.memories) return;
+  const mems = S.memories;
+  document.getElementById('kpi-b-total').textContent = mems.length || '0';
+  if (mems.length) {
+    const cats = {};
+    mems.forEach(m => { const c = inferCat(getWords(m.content)); cats[c] = (cats[c]||0)+1; });
+    const top = Object.entries(cats).sort(([,a],[,b])=>b-a)[0];
+    if (top) document.getElementById('kpi-b-cat').textContent = `${top[0]} (${top[1]})`;
+    const latest = mems.slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+    document.getElementById('kpi-b-last').textContent = relativeTime(latest?.created_at);
+    // edges count from graph
+    const lim = mems.slice(0,55);
+    const wsets = lim.map(m => new Set(getWords(m.content)));
+    let edgeCount = 0;
+    for (let i=0;i<lim.length;i++)
+      for (let j=i+1;j<lim.length;j++)
+        if ([...wsets[i]].filter(w=>wsets[j].has(w)).length>=2) edgeCount++;
+    document.getElementById('kpi-b-edges').textContent = edgeCount;
+  }
+}
+
+function updateKpiActivity() {
+  const an = S.analytics || SAMPLE_AN;
+  const vol = an.personal?.chatVolume || [];
+  const total = vol.reduce((s,v)=>s+v,0);
+  document.getElementById('kpi-a-msgs').textContent = total || '—';
+  const hours = an.personal?.activeHours || [];
+  const peakH = hours.indexOf(Math.max(...hours));
+  document.getElementById('kpi-a-peak').textContent = peakH >= 0 ? `${peakH}:00` : '—';
+  const avg = vol.length ? (total/vol.length).toFixed(1) : '—';
+  document.getElementById('kpi-a-avg').textContent = avg;
+  // streak from heatmap data
+  const axis = an.axis || [];
+  let streak = 0;
+  for (let i=axis.length-1;i>=0;i--) { if ((vol[i]||0)>0) streak++; else break; }
+  const streakEl = document.getElementById('kpi-a-streak');
+  streakEl.textContent = streak + ' יום';
+  streakEl.className = 'kpi-val' + (streak>=7?' up':streak===0?' bad':'');
+}
+
+function updateKpiInsights() {
+  const an = S.analytics || SAMPLE_AN, s = S.stats || SAMPLE_STATS;
+  const rate = an.kpis?.completionRate ?? an.personal?.completionRate ?? 0;
+  const rateEl = document.getElementById('kpi-i-rate');
+  rateEl.textContent = `${rate}%`;
+  rateEl.className = 'kpi-val' + (rate>=70?' up':rate<40?' bad':' warn');
+  const top = an.system?.topAgents?.[0];
+  document.getElementById('kpi-i-agent').textContent = top ? `${top.agent} (${top.count})` : '—';
+  const ins = computeInsights();
+  document.getElementById('kpi-i-count').textContent = ins.length || '—';
+  document.getElementById('kpi-i-calls').textContent = an.kpis?.agentCalls ?? '—';
+}
+
+function updateKpiData() {
+  const an = S.analytics || SAMPLE_AN, s = S.stats || SAMPLE_STATS;
+  document.getElementById('kpi-d-calls').textContent = an.kpis?.agentCalls ?? '—';
+  const agents = an.system?.topAgents || [];
+  const avgMs = agents.length
+    ? Math.round(agents.reduce((sum,a)=>sum+a.avgMs,0)/agents.length)
+    : '—';
+  const msEl = document.getElementById('kpi-d-ms');
+  msEl.textContent = avgMs !== '—' ? avgMs + 'ms' : '—';
+  if (avgMs !== '—') msEl.className = 'kpi-val' + (avgMs<300?' up':avgMs>600?' bad':' warn');
+  document.getElementById('kpi-d-agents').textContent = agents.length || '—';
+  const done = s.tasks?.done || 0, total = s.tasks?.total || 0;
+  document.getElementById('kpi-d-tasks').textContent = total ? `${done}/${total}` : '—';
 }
 
 // ═══════════════════════════════════════════════

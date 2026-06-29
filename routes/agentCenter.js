@@ -125,6 +125,16 @@ function createAgentCenterRouter({ callGemma4, agentMetrics }) {
       err => { if (err && !res.headersSent) res.status(404).send('memory-explorer.html not found'); });
   });
 
+  // Brain — unified visualization center (replaces progress-map + memory-explorer)
+  router.get('/brain', (_req, res) => {
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:",
+    );
+    res.sendFile(path.join(__dirname, '..', 'jarvis-brain.html'),
+      err => { if (err && !res.headersSent) res.status(404).send('jarvis-brain.html not found'); });
+  });
+
   router.get('/agents', async (_req, res) => {
     try {
       const agents = await getAgentRegistry();

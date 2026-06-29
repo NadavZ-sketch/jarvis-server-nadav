@@ -67,7 +67,7 @@ class _ControlCenterShellState extends State<ControlCenterShell>
       };
 
   Future<void> _openVisualControlCenter() async {
-    final url = Uri.parse('${widget.settings.serverUrl}/progress-map');
+    final url = Uri.parse('${widget.settings.serverUrl}/progress-map/brain');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }

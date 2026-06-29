@@ -115,8 +115,12 @@ function createAgentCenterRouter({ callGemma4, agentMetrics }) {
       err => { if (err && !res.headersSent) res.status(404).send('progress-map.html not found'); });
   });
 
-  // Memory explorer — standalone memory browser
+  // Memory explorer — standalone memory browser (inline scripts + Google Fonts, same pattern as /)
   router.get('/memory-explorer', (_req, res) => {
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src fonts.gstatic.com; connect-src 'self'; img-src 'self' data:",
+    );
     res.sendFile(path.join(__dirname, '..', 'memory-explorer.html'),
       err => { if (err && !res.headersSent) res.status(404).send('memory-explorer.html not found'); });
   });

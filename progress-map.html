@@ -375,7 +375,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 // STATE
 // ═══════════════════════════════════════════════
 const S = {
-  analytics:null, stats:null, telemetry:null,
+  analytics:null, stats:null, telemetry:null, tasks:[],
   currentSection:'activity',
   subtabs:{ activity:'timeline', insights:'findings', data:'agents' },
   loaded:{},
@@ -478,6 +478,13 @@ async function loadTelemetry() {
   if (S.currentSection==='activity' && S.subtabs.activity==='timeline') buildActivityTimeline();
 }
 
+async function loadTasks() {
+  try {
+    const r = await api('/tasks');
+    S.tasks = r.tasks || [];
+  } catch { S.tasks = []; }
+}
+
 async function loadStats() {
   try {
     S.stats = await api('/stats');
@@ -486,6 +493,7 @@ async function loadStats() {
     S.stats = SAMPLE_STATS;
     S.loaded.stats = true;
   }
+  await loadTasks();
   updateKpiData();
   updateKpiInsights();
   if (S.currentSection==='data') buildTasksViz();

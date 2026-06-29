@@ -6068,7 +6068,43 @@ cron.schedule('17 2 * * *', async () => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-module.exports = { app, cacheInvalidate, evaluatePolicy, requirePolicy, fireDueReminders };
+function getWsFetchLongTermMemories() {
+    if (typeof fetchLongTermMemories === 'function') return fetchLongTermMemories;
+    console.error('[startup] fetchLongTermMemories is unavailable; WS memory context disabled.');
+    return async () => 'אין עדיין זיכרונות שמורים.';
+}
+
+function createLiveTalkDeps() {
+    return {
+        classifyIntent,
+        contextResolver,
+        loadChatHistory,
+        fetchLongTermMemories: getWsFetchLongTermMemories(),
+        conversationSummary,
+        buildSystemPrompt,
+        callGemma4Stream,
+        runChatAgent,
+        runWeatherAgent,
+        runNewsAgent,
+        runStocksAgent,
+        runTranslationAgent,
+        saveChatMessage,
+        cacheInvalidate,
+        autoExtractMemory,
+        generateSpeech,
+        supabase,
+    };
+}
+
+module.exports = {
+    app,
+    cacheInvalidate,
+    evaluatePolicy,
+    requirePolicy,
+    fireDueReminders,
+    fetchLongTermMemories: getWsFetchLongTermMemories(),
+    createLiveTalkDeps,
+};
 
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
@@ -6098,25 +6134,7 @@ if (require.main === module) {
             return _wsAllowedOrigins.includes(origin);
         },
     });
-    const wsHandler = createWsHandler({
-        classifyIntent,
-        contextResolver,
-        loadChatHistory,
-        fetchLongTermMemories,
-        conversationSummary,
-        buildSystemPrompt,
-        callGemma4Stream,
-        runChatAgent,
-        runWeatherAgent,
-        runNewsAgent,
-        runStocksAgent,
-        runTranslationAgent,
-        saveChatMessage,
-        cacheInvalidate,
-        autoExtractMemory,
-        generateSpeech,
-        supabase,
-    });
+    const wsHandler = createWsHandler(createLiveTalkDeps());
     wss.on('connection', wsHandler);
     console.log(`🔊 Live talk WebSocket mounted at /ws-jarvis`);
 

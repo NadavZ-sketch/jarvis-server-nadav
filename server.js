@@ -4671,6 +4671,7 @@ const { createAgentCenterRouter } = require('./routes/agentCenter');
 app.use('/progress-map', _rl(20), createAgentCenterRouter({ callGemma4, agentMetrics }));
 app.get('/agent-center', (_req, res) => res.redirect(301, '/progress-map'));
 app.get('/control-center', (_req, res) => res.redirect(301, '/progress-map'));
+app.get('/memory-explorer', (_req, res) => res.redirect(301, '/progress-map/memory-explorer'));
 
 app.get('/design-preview', (_req, res) => {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src fonts.gstatic.com; connect-src 'none'; img-src 'self' data:");

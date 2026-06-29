@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>🧠 סייר זיכרונות — ג'רוויס</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#070b12;--surface:#0c1018;--card:#0f1724;--text:#E0D4BE;--muted:#6E7F96;
+  --accent:#C8913A;--accent2:#E8B96A;
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--blue:#60a5fa;--purple:#a78bfa;
+  --border:rgba(255,255,255,.08);--radius:12px;--radius-sm:8px
+}
+body{font-family:'Heebo',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(rgba(255,255,255,.018) 1px,transparent 1px);background-size:28px 28px;pointer-events:none}
+
+/* ── Toast ── */
+.toast-container{position:fixed;bottom:16px;left:16px;z-index:9999;display:flex;flex-direction:column;gap:6px}
+.toast{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 14px;font-size:.8rem;max-width:280px;opacity:1;transition:opacity .3s;animation:fadeUp .25s ease}
+.toast.error{border-color:var(--red);color:var(--red)}
+.toast.success{border-color:var(--green);color:var(--green)}
+.toast.info{border-color:var(--accent);color:var(--accent2)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Topbar ── */
+.topbar{height:50px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;z-index:10;position:relative}
+.topbar-brand{font-weight:800;font-size:1rem;color:var(--accent2);white-space:nowrap}
+.topbar-badge{background:rgba(200,145,58,.15);border:1px solid rgba(200,145,58,.3);border-radius:20px;padding:2px 10px;font-size:.7rem;color:var(--accent);white-space:nowrap}
+.topbar-search{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-size:.78rem;color:var(--text);font-family:inherit;outline:none;width:200px;margin-right:auto}
+.topbar-search::placeholder{color:var(--muted)}
+.topbar-search:focus{border-color:rgba(200,145,58,.4)}
+.tbtn{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:5px 11px;font-size:.74rem;color:var(--muted);cursor:pointer;font-family:inherit;transition:color .15s,border-color .15s;white-space:nowrap}
+.tbtn:hover{color:var(--text);border-color:rgba(200,145,58,.3)}
+.back-link{font-size:.74rem;color:var(--muted);text-decoration:none;transition:color .15s;white-space:nowrap}
+.back-link:hover{color:var(--accent2)}
+
+/* ── Subtabs (horizontal, top) ── */
+.subtabs-bar{display:flex;align-items:center;gap:3px;padding:10px 16px 0;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg);overflow-x:auto}
+.subtabs-bar::-webkit-scrollbar{display:none}
+.subtab{padding:7px 14px;border-radius:7px 7px 0 0;font-size:.78rem;cursor:pointer;color:var(--muted);border:1px solid transparent;border-bottom:none;transition:all .15s;white-space:nowrap;user-select:none;position:relative}
+.subtab:hover{color:var(--text)}
+.subtab.active{background:var(--card);color:var(--accent2);border-color:var(--border);font-weight:600}
+.subtab-badge{display:inline-block;background:rgba(200,145,58,.18);color:var(--accent);border-radius:10px;padding:0 6px;font-size:.64rem;font-weight:700;margin-right:4px;vertical-align:middle}
+
+/* ── KPI Strip ── */
+.kpi-strip{display:flex;align-items:center;gap:6px;padding:6px 14px;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(0,0,0,.18);overflow-x:auto}
+.kpi-strip::-webkit-scrollbar{display:none}
+.kpi-chip{display:flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 10px;white-space:nowrap;flex-shrink:0;transition:border-color .15s}
+.kpi-chip:hover{border-color:rgba(200,145,58,.25)}
+.kpi-lbl{font-size:.66rem;color:var(--muted)}
+.kpi-val{font-size:.78rem;font-weight:700;color:var(--accent2)}
+.kpi-sep{width:1px;height:16px;background:var(--border);flex-shrink:0;margin:0 2px}
+
+/* ── Category filter pills ── */
+.filter-strip{display:flex;align-items:center;gap:6px;padding:7px 14px;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;background:var(--bg)}
+.filter-strip::-webkit-scrollbar{display:none}
+.cat-pill{padding:3px 12px;border-radius:20px;font-size:.72rem;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:var(--surface);transition:all .15s;white-space:nowrap;user-select:none}
+.cat-pill:hover{border-color:rgba(200,145,58,.3);color:var(--text)}
+.cat-pill.active{color:#000;font-weight:700;border-color:transparent}
+
+/* ── Content area ── */
+.content-area{flex:1;overflow:hidden;background:var(--card);position:relative}
+
+/* ── Subpanels ── */
+.subpanel{display:none;width:100%;height:100%;position:absolute;top:0;right:0;bottom:0;left:0}
+.subpanel.active{display:block}
+.panel-scroll{width:100%;height:100%;overflow-y:auto;padding:18px}
+
+/* ── Graph ── */
+.graph-wrap{position:relative;width:100%;height:100%}
+.graph-toolbar{position:absolute;top:10px;right:10px;display:flex;gap:6px;z-index:5}
+.gbtn{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:5px 11px;font-size:.74rem;color:var(--text);cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s}
+.gbtn:hover,.gbtn.primary{background:rgba(200,145,58,.12);color:var(--accent2);border-color:rgba(200,145,58,.3)}
+.graph-svg{width:100%;height:100%;cursor:grab}
+.graph-svg:active{cursor:grabbing}
+
+/* ── Side Panel ── */
+.side-panel{position:absolute;top:0;left:0;width:310px;height:100%;background:var(--surface);border-left:1px solid var(--border);transform:translateX(-100%);transition:transform .22s;z-index:10;display:flex;flex-direction:column}
+.side-panel.open{transform:translateX(0)}
+.sp-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.sp-title{font-size:.84rem;font-weight:700;color:var(--accent2)}
+.sp-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;line-height:1;padding:4px}
+.sp-body{padding:14px;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.sp-field-label{font-size:.7rem;color:var(--muted);margin-bottom:4px}
+.sp-textarea{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-family:inherit;font-size:.82rem;min-height:90px;resize:vertical;outline:none}
+.sp-textarea:focus{border-color:rgba(200,145,58,.4)}
+.sp-meta{font-size:.7rem;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.sp-cat-badge{padding:2px 8px;border-radius:10px;font-size:.68rem;font-weight:700}
+.sp-actions{display:flex;gap:8px}
+.sp-btn{flex:1;padding:7px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:inherit;font-size:.78rem;cursor:pointer;transition:background .15s}
+.sp-btn:hover{background:var(--surface)}
+.sp-btn.danger{color:var(--red);border-color:rgba(239,68,68,.25)}
+.sp-btn.danger:hover{background:rgba(239,68,68,.08)}
+.sp-btn.primary{background:rgba(200,145,58,.12);color:var(--accent2);border-color:rgba(200,145,58,.25)}
+.sp-btn.primary:hover{background:rgba(200,145,58,.2)}
+
+/* ── Clusters ── */
+.clusters-wrap{display:flex;flex-wrap:wrap;gap:10px;padding:18px;align-content:flex-start;overflow-y:auto;height:100%}
+.cluster-bubble{border-radius:var(--radius);border:1px solid var(--border);padding:12px 14px;cursor:pointer;transition:all .2s;min-width:160px;max-width:230px}
+.cluster-bubble:hover{transform:translateY(-2px)}
+.cb-label{font-size:.84rem;font-weight:700;margin-bottom:5px}
+.cb-count{font-size:.72rem;color:var(--muted);margin-top:4px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cluster-items{display:none;flex-direction:column;gap:5px;margin-top:8px;border-top:1px solid var(--border);padding-top:7px}
+.cluster-items.open{display:flex}
+.cluster-item{font-size:.74rem;color:var(--text);padding:5px 8px;background:var(--card);border-radius:5px;line-height:1.4}
+
+/* ── Word Cloud ── */
+.cloud-wrap{position:relative;width:100%;height:100%;overflow:auto}
+.cloud-word{cursor:pointer;transition:opacity .2s;font-family:'Heebo',sans-serif;font-weight:700;white-space:nowrap}
+.cloud-word:hover{opacity:.5!important}
+
+/* ── Skeleton loader ── */
+.skel-wrap{display:flex;flex-direction:column;gap:12px;padding:18px}
+.skel-line{border-radius:4px;background:linear-gradient(90deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 100%);background-size:200% 100%;animation:shimmer 1.6s infinite}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* ── Loading / empty ── */
+.loading-state{display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:8px;color:var(--muted);font-size:.82rem}
+.spinner{width:28px;height:28px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Empty state (full) ── */
+.empty-full{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:32px;gap:20px}
+.empty-full .es-title{font-size:1rem;font-weight:700;color:var(--text)}
+.empty-full .es-sub{font-size:.8rem;color:var(--muted);text-align:center;max-width:300px;line-height:1.6}
+.action-cards{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:600px}
+.action-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;cursor:pointer;transition:all .2s;width:170px;text-align:center}
+.action-card:hover{border-color:rgba(200,145,58,.35);transform:translateY(-2px);background:rgba(200,145,58,.06)}
+.ac-icon{font-size:1.6rem;margin-bottom:8px}
+.ac-title{font-size:.82rem;font-weight:700;color:var(--accent2);margin-bottom:4px}
+.ac-desc{font-size:.71rem;color:var(--muted);line-height:1.45}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(200,145,58,.2);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:rgba(200,145,58,.35)}
+
+/* ── Bottom Nav (mobile) ── */
+.bottom-nav{display:none}
+
+/* ── Mobile ── */
+@media(max-width:768px){
+  body{padding-bottom:56px}
+  .topbar-search{width:110px}
+  .side-panel{width:min(310px,92vw)}
+  .back-link span{display:none}
+  .bottom-nav{
+    display:flex;position:fixed;bottom:0;left:0;right:0;height:56px;
+    background:var(--surface);border-top:1px solid var(--border);z-index:200;
+    align-items:stretch;justify-content:space-around;
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  .bnav-item{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:1;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent}
+  .bnav-item::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:32px;height:2px;background:var(--accent);border-radius:0 0 3px 3px;opacity:0;transition:opacity .15s}
+  .bnav-item.active::before{opacity:1}
+  .bnav-item .bico{font-size:20px;line-height:1}
+  .bnav-item .blbl{font-size:10px;color:var(--muted);font-weight:600;transition:color .15s}
+  .bnav-item.active .blbl{color:var(--accent2)}
+}
+</style>
+</head>
+<body>
+<div id="toast-container" class="toast-container"></div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <span class="topbar-brand">🧠 זיכרונות</span>
+  <span class="topbar-badge" id="memBadge">טוען...</span>
+  <input class="topbar-search" id="globalSearch" placeholder="חיפוש בזיכרונות..." oninput="handleSearch(this.value)">
+  <button class="tbtn" onclick="refreshAll()">⟳ רענן</button>
+  <a class="back-link" href="/progress-map">← <span>ג'רוויס</span></a>
+</div>
+
+<!-- SUBTABS -->
+<div class="subtabs-bar">
+  <div class="subtab active" id="stab-graph" onclick="switchTab('graph',this)">גרף קשרים <span class="subtab-badge" id="graph-badge">0</span></div>
+  <div class="subtab" id="stab-clusters" onclick="switchTab('clusters',this)">קלאסטרים</div>
+  <div class="subtab" id="stab-cloud" onclick="switchTab('cloud',this)">ענן מילים</div>
+  <div class="subtab" id="stab-timeline" onclick="switchTab('timeline',this)">ציר למידה</div>
+</div>
+
+<!-- KPI STRIP -->
+<div class="kpi-strip">
+  <div class="kpi-chip"><span class="kpi-lbl">🧠 סה"כ</span><span class="kpi-val" id="kpi-total">—</span></div>
+  <div class="kpi-sep"></div>
+  <div class="kpi-chip"><span class="kpi-lbl">📁 קטגוריה מובילה</span><span class="kpi-val" id="kpi-cat">—</span></div>
+  <div class="kpi-sep"></div>
+  <div class="kpi-chip"><span class="kpi-lbl">🕒 נוסף לאחרונה</span><span class="kpi-val" id="kpi-last">—</span></div>
+  <div class="kpi-sep"></div>
+  <div class="kpi-chip"><span class="kpi-lbl">🔗 קשרים</span><span class="kpi-val" id="kpi-edges">—</span></div>
+</div>
+
+<!-- CATEGORY FILTER PILLS -->
+<div class="filter-strip" id="filterStrip">
+  <div class="cat-pill active" style="background:var(--accent);border-color:var(--accent)" data-cat="הכל" onclick="setFilter('הכל',this)">הכל</div>
+  <div class="cat-pill" data-cat="עבודה" onclick="setFilter('עבודה',this)" style="--cc:#60a5fa">עבודה</div>
+  <div class="cat-pill" data-cat="משפחה" onclick="setFilter('משפחה',this)" style="--cc:#22c55e">משפחה</div>
+  <div class="cat-pill" data-cat="בריאות" onclick="setFilter('בריאות',this)" style="--cc:#f59e0b">בריאות</div>
+  <div class="cat-pill" data-cat="תחביב" onclick="setFilter('תחביב',this)" style="--cc:#a78bfa">תחביב</div>
+  <div class="cat-pill" data-cat="כללי" onclick="setFilter('כללי',this)" style="--cc:#C8913A">כללי</div>
+</div>
+
+<!-- CONTENT -->
+<div class="content-area">
+
+  <!-- GRAPH -->
+  <div id="panel-graph" class="subpanel active graph-wrap">
+    <div class="graph-toolbar">
+      <button class="gbtn" onclick="resetGraph()">⟳ איפוס</button>
+      <button class="gbtn primary" onclick="openPanel(null)">+ זיכרון חדש</button>
+    </div>
+    <svg id="graphSvg" class="graph-svg"></svg>
+    <div class="side-panel" id="sidePanel">
+      <div class="sp-head">
+        <span class="sp-title" id="spTitle">✏️ זיכרון</span>
+        <button class="sp-close" onclick="closePanel()">✕</button>
+      </div>
+      <div class="sp-body" id="spBody"></div>
+    </div>
+  </div>
+
+  <!-- CLUSTERS -->
+  <div id="panel-clusters" class="subpanel">
+    <div id="clustersWrap" class="clusters-wrap">
+      <div class="loading-state" style="width:100%;height:200px"><div class="spinner"></div><span>טוען...</span></div>
+    </div>
+  </div>
+
+  <!-- WORD CLOUD -->
+  <div id="panel-cloud" class="subpanel cloud-wrap">
+    <div id="cloudInner" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px 14px;padding:20px 14px;min-height:200px"></div>
+  </div>
+
+  <!-- TIMELINE -->
+  <div id="panel-timeline" class="subpanel">
+    <div class="panel-scroll">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <span style="font-size:.88rem;font-weight:700;color:var(--text)">📚 ציר למידה שבועי</span>
+        <span id="learnTotal" style="font-size:.74rem;color:var(--muted)">—</span>
+      </div>
+      <svg id="learnSvg" style="width:100%;overflow:visible"></svg>
+    </div>
+  </div>
+
+</div>
+
+<!-- MOBILE BOTTOM NAV -->
+<nav class="bottom-nav">
+  <div class="bnav-item active" id="bnav-graph" onclick="switchTab('graph',null)" role="button">
+    <span class="bico">🕸️</span><span class="blbl">גרף</span>
+  </div>
+  <div class="bnav-item" id="bnav-clusters" onclick="switchTab('clusters',null)" role="button">
+    <span class="bico">🗂️</span><span class="blbl">קלאסטרים</span>
+  </div>
+  <div class="bnav-item" id="bnav-cloud" onclick="switchTab('cloud',null)" role="button">
+    <span class="bico">☁️</span><span class="blbl">ענן</span>
+  </div>
+  <div class="bnav-item" id="bnav-timeline" onclick="switchTab('timeline',null)" role="button">
+    <span class="bico">📅</span><span class="blbl">ציר</span>
+  </div>
+</nav>
+
+<script>
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+const S = {
+  allMemories: [],   // raw from server (session filtered out)
+  memories: [],      // currently displayed (after search + cat filter)
+  loaded: false,
+  currentTab: 'graph',
+  currentFilter: 'הכל',
+  currentSearch: '',
+  graphNodes: [],
+  graphEdges: [],
+};
+
+const TABS = ['graph','clusters','cloud','timeline'];
+
+// ═══════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════
+function switchTab(tab, btn) {
+  S.currentTab = tab;
+  TABS.forEach(t => {
+    document.getElementById('panel-'+t)?.classList.toggle('active', t===tab);
+    document.getElementById('stab-'+t)?.classList.toggle('active', t===tab);
+    const bnav = document.getElementById('bnav-'+t);
+    if (bnav) bnav.classList.toggle('active', t===tab);
+  });
+  // If a desktop subtab button was passed, mark it active
+  if (btn) {
+    document.querySelectorAll('.subtab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  if (S.loaded) renderTab(tab);
+}
+
+function renderTab(tab) {
+  if (tab === 'graph')    buildGraph();
+  if (tab === 'clusters') buildClusters();
+  if (tab === 'cloud')    buildWordCloud();
+  if (tab === 'timeline') buildLearnTimeline();
+}
+
+// ═══════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════
+function showToast(msg, type='info', ms=3500) {
+  const c = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast '+type; el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => { el.style.opacity='0'; setTimeout(() => el.remove(), 350); }, ms);
+}
+
+// ═══════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════
+const STOP = new Set(['של','עם','את','הוא','היא','הם','כי','אני','לא','על','אבל','כן','לי','יש','מה','זה','זו','גם','כך','אם','עד','בין','כל','אחד','היה','הן','להיות','כאשר','אחרי','לפני','עכשיו','רוצה','צריך','אפשר','יכול','מאוד','הכי','הזה','הזו','ולא','שאני','שהוא','שהיא','אלא','כדי','יהיה']);
+
+function getWords(content) {
+  return content.split(/[\s,;.!?–\-()[\]"'״׳]+/)
+    .map(w => w.replace(/[^֐-׿a-zA-Z0-9]/g,''))
+    .filter(w => w.length > 3 && !STOP.has(w));
+}
+
+const CAT_KEYS = {
+  'עבודה':  ['עבודה','פרויקט','קוד','תוכנה','מתכנת','פגישה','לקוח','מנהל','משרד','ישיבה'],
+  'משפחה':  ['משפחה','אמא','אבא','אח','אחות','ילד','ילדה','בן','בת','בית','הורים'],
+  'בריאות': ['ספורט','ריצה','כושר','אוכל','שינה','רופא','תרופה','בריאות','קפה','אימון'],
+  'תחביב':  ['מוזיקה','ספר','סרט','משחק','גיטרה','תמונה','אמנות','יצירה','קריאה','טיול'],
+};
+const COLORS = ['#C8913A','#60a5fa','#22c55e','#a78bfa','#f59e0b','#ec4899','#14b8a6','#f97316'];
+const CAT_COLOR = {'עבודה':'#60a5fa','משפחה':'#22c55e','בריאות':'#f59e0b','תחביב':'#a78bfa','כללי':'#C8913A'};
+
+function inferCat(ws) {
+  for (const [cat, keys] of Object.entries(CAT_KEYS))
+    if (ws.some(w => keys.some(k => w.includes(k)))) return cat;
+  return 'כללי';
+}
+function hexRgb(hex) {
+  return `${parseInt(hex.slice(1,3),16)},${parseInt(hex.slice(3,5),16)},${parseInt(hex.slice(5,7),16)}`;
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function relativeTime(iso) {
+  if (!iso) return '—';
+  const diff = (Date.now() - new Date(iso)) / 1000;
+  if (diff < 60) return 'הרגע';
+  if (diff < 3600) return `לפני ${Math.round(diff/60)} דק'`;
+  if (diff < 86400) return `לפני ${Math.round(diff/3600)} שע'`;
+  return `לפני ${Math.round(diff/86400)} ימים`;
+}
+function wordCount(s) { return s.trim().split(/\s+/).length; }
+
+// ═══════════════════════════════════════════════
+// FILTER & SEARCH
+// ═══════════════════════════════════════════════
+function applyFilters() {
+  let mems = S.allMemories;
+  if (S.currentSearch) {
+    const q = S.currentSearch.toLowerCase();
+    mems = mems.filter(m => m.content.toLowerCase().includes(q));
+  }
+  if (S.currentFilter !== 'הכל') {
+    mems = mems.filter(m => inferCat(getWords(m.content)) === S.currentFilter);
+  }
+  S.memories = mems;
+  if (S.loaded) renderTab(S.currentTab);
+}
+
+function handleSearch(q) {
+  S.currentSearch = q.trim();
+  applyFilters();
+}
+
+function setFilter(cat, pill) {
+  S.currentFilter = cat;
+  document.querySelectorAll('.cat-pill').forEach(p => {
+    p.classList.remove('active');
+    p.style.background = '';
+    p.style.borderColor = '';
+    p.style.color = '';
+  });
+  pill.classList.add('active');
+  const col = CAT_COLOR[cat] || 'var(--accent)';
+  pill.style.background = col;
+  pill.style.borderColor = col;
+  pill.style.color = '#000';
+  applyFilters();
+}
+
+// ═══════════════════════════════════════════════
+// API
+// ═══════════════════════════════════════════════
+async function api(path, opts={}) {
+  const r = await fetch(path, {
+    ...opts,
+    signal: opts.signal || AbortSignal.timeout(14000),
+    headers: { 'Content-Type':'application/json', ...(opts.headers||{}) },
+  });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+// ═══════════════════════════════════════════════
+// LOAD MEMORIES
+// ═══════════════════════════════════════════════
+async function loadMemories() {
+  // Show skeleton
+  const gw = document.getElementById('panel-graph');
+  gw.innerHTML = `
+    <div class="skel-wrap" style="position:absolute;inset:0;z-index:3;background:var(--card)">
+      <div class="skel-line" style="height:18px;width:60%"></div>
+      <div class="skel-line" style="height:14px;width:80%"></div>
+      <div class="skel-line" style="height:14px;width:70%"></div>
+      <div class="skel-line" style="height:14px;width:55%"></div>
+    </div>
+    <div class="graph-toolbar" style="z-index:5">
+      <button class="gbtn" onclick="resetGraph()">⟳ איפוס</button>
+      <button class="gbtn primary" onclick="openPanel(null)">+ זיכרון חדש</button>
+    </div>
+    <svg id="graphSvg" class="graph-svg"></svg>
+    <div class="side-panel" id="sidePanel">
+      <div class="sp-head"><span class="sp-title" id="spTitle">✏️ זיכרון</span><button class="sp-close" onclick="closePanel()">✕</button></div>
+      <div class="sp-body" id="spBody"></div>
+    </div>`;
+
+  document.getElementById('memBadge').textContent = 'טוען...';
+
+  try {
+    const raw = await fetch('/memories', { signal: AbortSignal.timeout(25000) });
+    const status = raw.status;
+    const text = await raw.text();
+    let d;
+    try { d = JSON.parse(text); } catch { d = null; }
+
+    if (!raw.ok || !d) {
+      const is5xx = status >= 500;
+      showMemError(is5xx
+        ? `השרת מתחיל (${status}), נסה שוב...`
+        : `שגיאת שרת ${status}`, is5xx);
+      if (is5xx) setTimeout(loadMemories, 15000);
+      return;
+    }
+
+    const all = d.memories || [];
+    S.allMemories = all.filter(m => m.scope !== 'session');
+    S.loaded = true;
+
+    const hidden = all.length - S.allMemories.length;
+    document.getElementById('memBadge').textContent =
+      `${S.allMemories.length} זיכרונות${hidden ? ` (+${hidden} session)` : ''}`;
+    document.getElementById('graph-badge').textContent = S.allMemories.length;
+
+    applyFilters();
+    updateKpi();
+
+    // Remove skeleton overlay
+    const skel = gw.querySelector('.skel-wrap');
+    if (skel) skel.remove();
+
+    if (!S.allMemories.length) showEmptyState();
+
+  } catch(e) {
+    showMemError('שגיאת רשת: ' + (e?.message || 'timeout'), false);
+  }
+}
+
+function showMemError(msg, retry) {
+  const gw = document.getElementById('panel-graph');
+  if (gw) {
+    gw.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px">
+        <span style="font-size:2rem;opacity:.5">${retry?'⏳':'⚠️'}</span>
+        <div style="color:${retry?'var(--amber)':'var(--red)'};font-size:.84rem">${esc(msg)}</div>
+        <button class="gbtn primary" onclick="loadMemories()">נסה שוב</button>
+      </div>`;
+  }
+  document.getElementById('memBadge').textContent = 'שגיאה';
+}
+
+function showEmptyState() {
+  const gw = document.getElementById('panel-graph');
+  if (!gw) return;
+  gw.innerHTML = `
+    <div class="empty-full">
+      <span style="font-size:2.5rem">🧠</span>
+      <div class="es-title">אין זיכרונות עדיין</div>
+      <div class="es-sub">שוחח עם ג'רוויס ובקש "תזכור ש..." — או השתמש באחת האפשרויות כאן:</div>
+      <div class="action-cards">
+        <div class="action-card" onclick="openPanel(null)">
+          <div class="ac-icon">✍️</div>
+          <div class="ac-title">הוסף ידנית</div>
+          <div class="ac-desc">הוסף זיכרון חדש ישירות כאן</div>
+        </div>
+        <div class="action-card" onclick="recoverFromPinecone()">
+          <div class="ac-icon">🔄</div>
+          <div class="ac-title">שחזר מ-Pinecone</div>
+          <div class="ac-desc">חפש זיכרונות שמורים בענן Pinecone</div>
+        </div>
+        <div class="action-card" onclick="rebuildFromChat()">
+          <div class="ac-icon">💬</div>
+          <div class="ac-title">בנה מהיסטוריה</div>
+          <div class="ac-desc">חלץ זיכרונות מהיסטוריית השיחות</div>
+        </div>
+      </div>
+    </div>
+    <div class="graph-toolbar" style="z-index:5">
+      <button class="gbtn primary" onclick="openPanel(null)">+ זיכרון חדש</button>
+    </div>
+    <svg id="graphSvg" class="graph-svg" style="opacity:0"></svg>
+    <div class="side-panel" id="sidePanel">
+      <div class="sp-head"><span class="sp-title" id="spTitle">✏️ זיכרון</span><button class="sp-close" onclick="closePanel()">✕</button></div>
+      <div class="sp-body" id="spBody"></div>
+    </div>`;
+}
+
+async function recoverFromPinecone() {
+  showToast('מחפש ב-Pinecone...', 'info', 2500);
+  try {
+    const d = await api('/memories/recover-from-pinecone', { method:'POST' });
+    if (!d.ok) { showToast(d.reason || 'Pinecone לא זמין', 'error'); return; }
+    if (d.recovered === 0 && d.total === 0) {
+      showToast('Pinecone ריק — מנסה לבנות מהיסטוריית שיחות...', 'info', 3000);
+      setTimeout(rebuildFromChat, 600);
+    } else if (d.recovered === 0) {
+      showToast(`לא נמצאו חדשים (${d.total} ב-Pinecone)`, 'info');
+    } else {
+      showToast(`שוחזרו ${d.recovered} זיכרונות מ-Pinecone!`, 'success');
+      S.loaded = false; loadMemories();
+    }
+  } catch { showToast('שגיאה בשחזור מ-Pinecone', 'error'); }
+}
+
+async function rebuildFromChat() {
+  showToast('מחלץ זיכרונות מהיסטוריה... (עשוי לקחת כמה שניות)', 'info', 5000);
+  try {
+    const d = await api('/memories/rebuild-from-chat', { method:'POST' });
+    if (!d.ok) { showToast(d.error || 'שגיאה בבנייה מחדש', 'error'); return; }
+    if (d.saved === 0) {
+      showToast(`עובד על ${d.processed} שיחות — לא נמצא מידע חדש`, 'info');
+    } else {
+      showToast(`נשמרו ${d.saved} זיכרונות מ-${d.processed} שיחות!`, 'success');
+      S.loaded = false; loadMemories();
+    }
+  } catch { showToast('שגיאה בבנייה מחדש', 'error'); }
+}
+
+async function refreshAll() {
+  S.loaded = false; S.allMemories = []; S.memories = []; S.currentSearch = '';
+  document.getElementById('globalSearch').value = '';
+  loadMemories();
+  showToast('מרענן...', 'info', 2000);
+}
+
+// ═══════════════════════════════════════════════
+// KPI
+// ═══════════════════════════════════════════════
+function updateKpi() {
+  const mems = S.allMemories;
+  document.getElementById('kpi-total').textContent = mems.length || '0';
+  if (!mems.length) return;
+
+  const cats = {};
+  mems.forEach(m => { const c = inferCat(getWords(m.content)); cats[c] = (cats[c]||0)+1; });
+  const top = Object.entries(cats).sort(([,a],[,b])=>b-a)[0];
+  if (top) document.getElementById('kpi-cat').textContent = `${top[0]} (${top[1]})`;
+
+  const latest = mems.slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+  document.getElementById('kpi-last').textContent = relativeTime(latest?.created_at);
+
+  const lim = mems.slice(0,55);
+  const wsets = lim.map(m => new Set(getWords(m.content)));
+  let edgeCount = 0;
+  for (let i=0;i<lim.length;i++)
+    for (let j=i+1;j<lim.length;j++)
+      if ([...wsets[i]].filter(w=>wsets[j].has(w)).length>=2) edgeCount++;
+  document.getElementById('kpi-edges').textContent = edgeCount;
+}
+
+// ═══════════════════════════════════════════════
+// FORCE LAYOUT
+// ═══════════════════════════════════════════════
+function forceLayout(nodes,edges,W,H,iters=110){
+  const pad=35;
+  nodes.forEach((n,i)=>{
+    const a=(2*Math.PI*i)/nodes.length, r=Math.min(W,H)*.34;
+    n.x=W/2+r*Math.cos(a); n.y=H/2+r*Math.sin(a); n.vx=0; n.vy=0;
+  });
+  const k=Math.sqrt((W*H)/Math.max(nodes.length,1));
+  for(let it=0;it<iters;it++){
+    const cool=1-it/iters;
+    for(let i=0;i<nodes.length;i++)
+      for(let j=i+1;j<nodes.length;j++){
+        const dx=(nodes[j].x-nodes[i].x)||.01, dy=(nodes[j].y-nodes[i].y)||.01;
+        const d=Math.sqrt(dx*dx+dy*dy)||.01, f=k*k/d;
+        nodes[i].vx-=f*dx/d; nodes[i].vy-=f*dy/d;
+        nodes[j].vx+=f*dx/d; nodes[j].vy+=f*dy/d;
+      }
+    for(const e of edges){
+      const a=nodes[e.source],b=nodes[e.target];
+      if(!a||!b) continue;
+      const dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||.01,f=d*d/k*.25;
+      a.vx+=f*dx/d; a.vy+=f*dy/d; b.vx-=f*dx/d; b.vy-=f*dy/d;
+    }
+    nodes.forEach(n=>{
+      n.x+=Math.max(-8,Math.min(8,n.vx))*cool; n.y+=Math.max(-8,Math.min(8,n.vy))*cool;
+      n.vx*=.84; n.vy*=.84;
+      n.x=Math.max(pad,Math.min(W-pad,n.x)); n.y=Math.max(pad,Math.min(H-pad,n.y));
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════
+// GRAPH
+// ═══════════════════════════════════════════════
+function buildGraph() { renderGraph(S.memories); }
+function resetGraph() { S.currentSearch=''; document.getElementById('globalSearch').value=''; applyFilters(); }
+
+function renderGraph(memories) {
+  const svg = document.getElementById('graphSvg');
+  if (!svg) return;
+  const W = svg.clientWidth||650, H = svg.clientHeight||420;
+  const lim = memories.slice(0,55);
+  if (!lim.length) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#6E7F96" font-family="Heebo" font-size="13">אין זיכרונות להצגה</text>`;
+    return;
+  }
+  const wsets = lim.map(m => new Set(getWords(m.content)));
+  const nodes = lim.map((m,i) => {
+    const ws=[...wsets[i]], cat=inferCat(ws);
+    return { id:m.id||i, idx:i, label:m.content.slice(0,35), content:m.content, created_at:m.created_at, cat, color:CAT_COLOR[cat] };
+  });
+  const edges=[];
+  for(let i=0;i<nodes.length;i++)
+    for(let j=i+1;j<nodes.length;j++){
+      const sh=[...wsets[i]].filter(w=>wsets[j].has(w));
+      if(sh.length>=2) edges.push({source:i,target:j,w:sh.length});
+    }
+  S.graphNodes=nodes; S.graphEdges=edges;
+  forceLayout(nodes,edges,W,H);
+  let h='';
+  for(const e of edges){
+    const a=nodes[e.source],b=nodes[e.target];
+    if(!a||!b) continue;
+    h+=`<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(200,145,58,${Math.min(.12+e.w*.06,.45).toFixed(2)})" stroke-width="${Math.min(e.w*.5+.5,2.5).toFixed(1)}"/>`;
+  }
+  for(const n of nodes){
+    h+=`<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="6" fill="${n.color}" opacity=".85" style="cursor:pointer" onclick="nodeClick(${n.idx})"><title>${esc(n.label)}</title></circle>`;
+    if(nodes.length<28)
+      h+=`<text x="${n.x.toFixed(1)}" y="${(n.y-9).toFixed(1)}" text-anchor="middle" font-size="8" fill="rgba(224,212,190,.6)" font-family="Heebo" pointer-events="none">${esc(n.label.slice(0,16))}</text>`;
+  }
+  const cats=['עבודה','משפחה','בריאות','תחביב','כללי'];
+  cats.forEach((c,i)=>{
+    h+=`<circle cx="14" cy="${H-72+i*14}" r="4" fill="${CAT_COLOR[c]}"/>`;
+    h+=`<text x="22" y="${H-68+i*14}" font-size="9" fill="#6E7F96" font-family="Heebo">${c}</text>`;
+  });
+  svg.innerHTML=h;
+}
+
+function nodeClick(idx) { openPanel(S.graphNodes[idx]); }
+
+function openPanel(node) {
+  const sp=document.getElementById('sidePanel');
+  const title=document.getElementById('spTitle');
+  const body=document.getElementById('spBody');
+  if (!sp || !title || !body) return;
+  if (node) {
+    title.textContent='✏️ עריכת זיכרון';
+    const d = new Date(node.created_at);
+    const ds = isNaN(d) ? '' : `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;
+    const catColor = CAT_COLOR[node.cat] || 'var(--accent)';
+    const wc = wordCount(node.content);
+    body.innerHTML=`
+      <div>
+        <div class="sp-field-label">תוכן</div>
+        <textarea class="sp-textarea" id="spContent">${esc(node.content)}</textarea>
+      </div>
+      <div class="sp-meta">
+        <span>📅 ${ds}</span>
+        <span>🕒 ${relativeTime(node.created_at)}</span>
+        <span style="background:rgba(${hexRgb(catColor)},.15);color:${catColor};padding:2px 8px;border-radius:10px;font-weight:700" class="sp-cat-badge">🏷️ ${node.cat}</span>
+        <span>📝 ${wc} מילים</span>
+      </div>
+      <div class="sp-actions">
+        <button class="sp-btn primary" onclick="saveMemory('${node.id}')">💾 שמור</button>
+        <button class="sp-btn danger" onclick="deleteMemory('${node.id}')">🗑️ מחק</button>
+      </div>`;
+  } else {
+    title.textContent='+ זיכרון חדש';
+    body.innerHTML=`
+      <div>
+        <div class="sp-field-label">תוכן הזיכרון</div>
+        <textarea class="sp-textarea" id="spContent" placeholder="כתוב משהו שג'רוויס יזכור..."></textarea>
+      </div>
+      <div class="sp-actions">
+        <button class="sp-btn primary" onclick="createMemory()">💾 שמור</button>
+        <button class="sp-btn" onclick="closePanel()">ביטול</button>
+      </div>`;
+  }
+  sp.classList.add('open');
+}
+
+function closePanel() {
+  document.getElementById('sidePanel')?.classList.remove('open');
+}
+
+async function saveMemory(id) {
+  const c = document.getElementById('spContent')?.value.trim();
+  if (!c) return showToast('תוכן ריק', 'error');
+  try {
+    await api(`/memories/${id}`, { method:'PUT', body:JSON.stringify({content:c}) });
+    showToast('נשמר ✓', 'success'); closePanel(); S.loaded=false; loadMemories();
+  } catch { showToast('שגיאה בשמירה', 'error'); }
+}
+
+async function createMemory() {
+  const c = document.getElementById('spContent')?.value.trim();
+  if (!c) return showToast('תוכן ריק', 'error');
+  try {
+    await api('/memories', { method:'POST', body:JSON.stringify({content:c}) });
+    showToast('נוסף ✓', 'success'); closePanel(); S.loaded=false; loadMemories();
+  } catch { showToast('שגיאה בשמירה', 'error'); }
+}
+
+async function deleteMemory(id) {
+  if (!confirm('למחוק זיכרון זה?')) return;
+  try {
+    await api(`/memories/${id}`, { method:'DELETE' });
+    showToast('נמחק', 'success'); closePanel(); S.loaded=false; loadMemories();
+  } catch { showToast('שגיאה במחיקה', 'error'); }
+}
+
+// ═══════════════════════════════════════════════
+// CLUSTERS
+// ═══════════════════════════════════════════════
+function buildClusters() {
+  const wrap = document.getElementById('clustersWrap');
+  if (!wrap) return;
+  wrap.innerHTML='';
+  const filtered = S.memories;
+  if (!filtered.length) {
+    wrap.innerHTML='<div style="width:100%;padding:40px;text-align:center;color:var(--muted)"><span style="font-size:2rem;display:block;margin-bottom:8px;opacity:.4">🧩</span>אין זיכרונות להצגה</div>';
+    return;
+  }
+  const clusters={};
+  for (const m of filtered) {
+    const cat = inferCat(getWords(m.content));
+    if (!clusters[cat]) clusters[cat]={label:cat,items:[],color:CAT_COLOR[cat]};
+    clusters[cat].items.push(m);
+  }
+  Object.values(clusters).sort((a,b)=>b.items.length-a.items.length).forEach(cl=>{
+    const el=document.createElement('div');
+    el.className='cluster-bubble';
+    el.style.cssText=`background:rgba(${hexRgb(cl.color)},.06);border-color:${cl.color}28`;
+    el.innerHTML=`
+      <div class="cb-label" style="color:${cl.color}">${cl.label} <span style="opacity:.55;font-weight:400;font-size:.7rem">(${cl.items.length})</span></div>
+      <div class="cb-count" style="cursor:pointer">${cl.items[0]?.content.slice(0,70)||''}</div>
+      <div class="cluster-items" id="ci-${cl.label}">
+        ${cl.items.slice(1).map(it=>`<div class="cluster-item" onclick="openPanel(${JSON.stringify({id:it.id,idx:0,label:it.content.slice(0,35),content:it.content,created_at:it.created_at,cat:cl.label,color:cl.color})})" style="cursor:pointer">${esc(it.content)}</div>`).join('')}
+      </div>`;
+    el.querySelector('.cb-count').addEventListener('click',()=>{
+      document.getElementById('ci-'+cl.label)?.classList.toggle('open');
+    });
+    wrap.appendChild(el);
+  });
+}
+
+// ═══════════════════════════════════════════════
+// WORD CLOUD
+// ═══════════════════════════════════════════════
+function buildWordCloud() {
+  const wrap = document.getElementById('cloudInner');
+  if (!wrap) return;
+  wrap.innerHTML='';
+  const freq={};
+  for (const m of S.memories) for (const w of getWords(m.content)) freq[w]=(freq[w]||0)+1;
+  const list = Object.entries(freq).sort(([,a],[,b])=>b-a).slice(0,55);
+  if (!list.length) {
+    wrap.innerHTML='<div style="color:var(--muted);font-size:.82rem;padding:40px;text-align:center"><span style="font-size:2rem;display:block;margin-bottom:8px;opacity:.4">☁️</span>אין מספיק זיכרונות</div>';
+    return;
+  }
+  const maxF = list[0][1];
+  list.forEach(([word,count],i)=>{
+    const frac=count/maxF, size=Math.round(11+frac*28);
+    const el=document.createElement('span');
+    el.className='cloud-word'; el.textContent=word;
+    el.style.cssText=`font-size:${size}px;color:${COLORS[i%COLORS.length]};opacity:${(.38+frac*.62).toFixed(2)}`;
+    el.title=`${word}: ${count}×`;
+    wrap.appendChild(el);
+  });
+}
+
+// ═══════════════════════════════════════════════
+// LEARNING TIMELINE
+// ═══════════════════════════════════════════════
+function buildLearnTimeline() {
+  const svg = document.getElementById('learnSvg');
+  const tot = document.getElementById('learnTotal');
+  if (!svg) return;
+  const mems = S.memories;
+  const byWeek={};
+  for (const m of mems) {
+    if (!m.created_at) continue;
+    const d = new Date(m.created_at); if (isNaN(d)) continue;
+    const wk = new Date(d); wk.setDate(d.getDate()-d.getDay());
+    const key = wk.toISOString().slice(0,10);
+    byWeek[key]=(byWeek[key]||0)+1;
+  }
+  const entries = Object.entries(byWeek).sort().slice(-16);
+  if (tot) tot.textContent = `${mems.length} זיכרונות`;
+  if (!entries.length) {
+    svg.innerHTML=`<text x="50%" y="40" text-anchor="middle" fill="#6E7F96" font-family="Heebo" font-size="13">אין נתונים</text>`;
+    svg.setAttribute('height',60); return;
+  }
+  const W=svg.clientWidth||500, H=160, maxC=Math.max(...entries.map(([,c])=>c)), step=(W-60)/Math.max(entries.length-1,1);
+  let h='';
+  [.25,.5,.75,1].forEach(f=>{
+    const y=(H-30-(H-55)*f).toFixed(1);
+    h+=`<line x1="30" y1="${y}" x2="${W-10}" y2="${y}" stroke="rgba(255,255,255,.05)" stroke-width="1" stroke-dasharray="4,4"/>`;
+    h+=`<text x="24" y="${(+y+4).toFixed(1)}" text-anchor="end" font-size="8" fill="#6E7F96" font-family="Heebo">${Math.round(maxC*f)}</text>`;
+  });
+  h+=`<line x1="30" y1="${H-30}" x2="${W-10}" y2="${H-30}" stroke="rgba(255,255,255,.1)" stroke-width="1"/>`;
+  entries.forEach(([date,count],i)=>{
+    const cx=30+i*step, barH=Math.round((H-55)*count/maxC), cy=H-30-barH;
+    h+=`<rect x="${(cx-8).toFixed(1)}" y="${cy}" width="16" height="${barH}" rx="3" fill="rgba(200,145,58,${(.3+.6*count/maxC).toFixed(2)})"/>`;
+    h+=`<circle cx="${cx.toFixed(1)}" cy="${cy}" r="3.5" fill="var(--accent)"/>`;
+    if (i%Math.max(1,Math.floor(entries.length/8))===0) {
+      const d=new Date(date);
+      h+=`<text x="${cx.toFixed(1)}" y="${H-12}" text-anchor="middle" font-size="8" fill="#6E7F96" font-family="Heebo">${d.getDate()}/${d.getMonth()+1}</text>`;
+    }
+    h+=`<text x="${cx.toFixed(1)}" y="${cy-6}" text-anchor="middle" font-size="8" fill="var(--accent2)" font-family="Heebo">${count}</text>`;
+  });
+  svg.innerHTML=h; svg.setAttribute('height',H);
+}
+
+// ═══════════════════════════════════════════════
+// SAMPLE DATA (fallback when server unreachable)
+// ═══════════════════════════════════════════════
+const SAMPLE_MEMS = [
+  {id:1,content:'אני אוהב לשתות קפה בבוקר לפני העבודה',created_at:new Date(Date.now()-1*86400000).toISOString()},
+  {id:2,content:'אני עובד כמתכנת בחברת טכנולוגיה',created_at:new Date(Date.now()-3*86400000).toISOString()},
+  {id:3,content:'יש לי כלב בשם מקס שאני מטייל איתו',created_at:new Date(Date.now()-5*86400000).toISOString()},
+  {id:4,content:'אני מתעמל שלוש פעמים בשבוע בספורט',created_at:new Date(Date.now()-7*86400000).toISOString()},
+  {id:5,content:'הפרויקט שלי הוא אפליקציית ניהול עבודה',created_at:new Date(Date.now()-10*86400000).toISOString()},
+  {id:6,content:'אני גר בתל אביב עם המשפחה שלי',created_at:new Date(Date.now()-12*86400000).toISOString()},
+  {id:7,content:'אני אוהב ספרי בלשות ומדע בדיוני',created_at:new Date(Date.now()-15*86400000).toISOString()},
+];
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  // Try live server; fall back to sample data
+  loadMemories().catch(() => {
+    S.allMemories = SAMPLE_MEMS;
+    S.memories = SAMPLE_MEMS;
+    S.loaded = true;
+    document.getElementById('memBadge').textContent = `${SAMPLE_MEMS.length} זיכרונות (דמו)`;
+    document.getElementById('graph-badge').textContent = SAMPLE_MEMS.length;
+    updateKpi();
+    renderTab(S.currentTab);
+  });
+
+  let rt;
+  window.addEventListener('resize', () => {
+    clearTimeout(rt); rt = setTimeout(() => {
+      if (!S.loaded) return;
+      if (S.currentTab === 'graph') buildGraph();
+      if (S.currentTab === 'cloud') buildWordCloud();
+      if (S.currentTab === 'timeline') buildLearnTimeline();
+    }, 280);
+  });
+});
+</script>
+</body>
+</html>

@@ -287,8 +287,21 @@ const _corsOrigins = process.env.ALLOWED_ORIGINS
 if (!_corsOrigins) {
     console.warn('⚠️  CORS: ALLOWED_ORIGINS not set — allowing all origins. Set ALLOWED_ORIGINS in production.');
 }
+function isLocalDevOrigin(origin) {
+    if (!origin) return true;
+    try {
+        const { hostname } = new URL(origin);
+        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+    } catch {
+        return false;
+    }
+}
+function isAllowedCorsOrigin(origin) {
+    if (!_corsOrigins) return true;
+    return _corsOrigins.includes(origin) || isLocalDevOrigin(origin);
+}
 app.use(cors({
-    origin: _corsOrigins || '*',
+    origin: (origin, cb) => cb(null, isAllowedCorsOrigin(origin)),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-User-Id', 'X-User-Role', 'X-User-Plan', 'X-User-Consent', 'X-Confirm-Action', 'X-Jarvis-Key'],
 }));
@@ -764,6 +777,31 @@ function applySaverMode(settings) {
     settings.temperature = Math.min(t, 0.3);
     settings._maxTokensCap = 350;
     return settings;
+}
+
+function getRequestProviderSettings(req) {
+    const settings = (req.body && typeof req.body.settings === 'object' && req.body.settings)
+        ? req.body.settings
+        : {};
+    applySaverMode(settings);
+    return settings;
+}
+
+function getProviderOpts(settings) {
+    return {
+        cloudProvider:   settings.cloudProvider,
+        openrouterModel: settings.openrouterModel,
+        temperature:     settings.temperature,
+        localServerUrl:  settings.localServerUrl,
+        localModelName:  settings.localModelName,
+    };
+}
+
+async function callDashboardLLM(req, prompt, maxTokens) {
+    const settings = getRequestProviderSettings(req);
+    return providerContext.run({ opts: getProviderOpts(settings) }, () =>
+        callGemma4(prompt, settings.useLocalModel === true, maxTokens)
+    );
 }
 
 // ─── Route ────────────────────────────────────────────────────────────────────
@@ -1763,7 +1801,7 @@ app.post('/dashboard/analytics/insights', _rl(10), async (req, res) => {
 
         let insights = [];
         try {
-            const raw = await callGemma4(prompt, false, 700);
+            const raw = await callDashboardLLM(req, prompt, 700);
             const m = String(raw).match(/\{[\s\S]*\}/);
             if (m) insights = JSON.parse(m[0]).insights || [];
             if ((!Array.isArray(insights) || !insights.length) && raw) {
@@ -3273,7 +3311,7 @@ source: "survey" (מבוסס על תלונה), "usage" (מבוסס על שימו
 category: "improvement", "feature", "bug_fix", "ux", "performance"
 priority_score: 1-10 (בהתאם לדחיפות ולהשפעה על המשתמש)`;
 
-        const raw = await callGemma4(prompt, false, 1400);
+        const raw = await callDashboardLLM(req, prompt, 1400);
         const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
         const start = stripped.indexOf('[');
         const end   = stripped.lastIndexOf(']');
@@ -4295,7 +4333,8 @@ app.get('/chart.js', (_req, res) => {
 });
 
 const { createAgentCenterRouter } = require('./routes/agentCenter');
-app.use('/progress-map', _rl(20), createAgentCenterRouter({ callGemma4, agentMetrics }));
+app.get('/', (_req, res) => res.redirect(302, '/progress-map'));
+app.use('/progress-map', _rl(20), createAgentCenterRouter({ callGemma4, agentMetrics, providerContext }));
 app.get('/agent-center', (_req, res) => res.redirect(301, '/progress-map'));
 app.get('/control-center', (_req, res) => res.redirect(301, '/progress-map'));
 
@@ -4720,7 +4759,7 @@ app.post('/dashboard/features/suggest-description', async (req, res) => {
 כתוב תיאור קצר וברור של היכולת — 1-2 משפטים בעברית.
 התיאור צריך להסביר: מה היכולת עושה ואיך היא מועילה למשתמש.
 ענה בתיאור בלבד, ללא כותרת, ללא JSON.`;
-        const raw = await callGemma4(prompt, false, 200);
+        const raw = await callDashboardLLM(req, prompt, 200);
         const description = raw.trim().replace(/^["']|["']$/g, '').slice(0, 300);
         res.json({ description });
     } catch (err) {
@@ -4743,7 +4782,7 @@ ${list}
 
 ענה JSON בלבד (ללא markdown):
 [{"name":"שם היכולת","description":"תיאור קצר"}]`;
-        const raw = await callGemma4(prompt, false, 800);
+        const raw = await callDashboardLLM(req, prompt, 800);
         const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
         const start = stripped.indexOf('[');
         const end   = stripped.lastIndexOf(']');
@@ -4792,7 +4831,7 @@ app.post('/dashboard/smart-proposals/clarify', async (req, res) => {
 ${rationale ? `רציונל: ${rationale}` : ''}
 צור 2-3 שאלות אבחוניות ממוקדות.`;
     try {
-        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 600);
+        const raw = await callDashboardLLM(req, `${sysPrompt}\n\n${userMsg}`, 600);
         const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
         const start = stripped.indexOf('[');
         const end   = stripped.lastIndexOf(']');
@@ -4851,7 +4890,7 @@ app.post('/dashboard/smart-proposals/refine-prompt', async (req, res) => {
 ${rationale ? `רציונל: ${rationale}` : ''}
 ${answersBlock ? `\nפרטים שהמשתמש סיפק:\n${answersBlock}` : ''}`;
     try {
-        const raw = await callGemma4(`${sysPrompt}\n\n${userMsg}`, false, 800);
+        const raw = await callDashboardLLM(req, `${sysPrompt}\n\n${userMsg}`, 800);
         res.json({ prompt: raw.trim() });
     } catch (err) {
         console.warn('POST /dashboard/smart-proposals/refine-prompt LLM failed, using fallback:', err.message);
@@ -5178,7 +5217,7 @@ ${memoriesContext}${chatThemesContext}
 ענה JSON בלבד (ללא markdown):
 [{"title":"כותרת קצרה בעברית (עד 60 תווים)","plan":"תוכנית מפורטת בעברית (3-4 משפטים: מה לעשות, למה זה חשוב, איך לממש טכנית)","priority":"high","category":"improvement"},{"title":"...","plan":"...","priority":"medium","category":"feature"}]`;
 
-        const raw = await callGemma4(prompt, false, 1000);
+        const raw = await callDashboardLLM(req, prompt, 1000);
 
         // Extract JSON array — strip markdown code fences, find first [ ... ] block
         const stripped = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '');
@@ -5293,7 +5332,7 @@ app.post('/dashboard/generate-prompt', async (req, res) => {
 
 כתוב את הפרומפט בעברית, מוכן להדבקה ב-Claude Code:`;
 
-        const result = await callGemma4(prompt, false, 1000);
+        const result = await callDashboardLLM(req, prompt, 1000);
         res.json({ prompt: result });
     } catch (e) {
         console.error('generate-prompt error:', e.message);
@@ -5372,7 +5411,43 @@ cron.schedule('17 2 * * *', async () => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-module.exports = { app, cacheInvalidate, evaluatePolicy, requirePolicy, fireDueReminders };
+function getWsFetchLongTermMemories() {
+    if (typeof fetchLongTermMemories === 'function') return fetchLongTermMemories;
+    console.error('[startup] fetchLongTermMemories is unavailable; WS memory context disabled.');
+    return async () => 'אין עדיין זיכרונות שמורים.';
+}
+
+function createLiveTalkDeps() {
+    return {
+        classifyIntent,
+        contextResolver,
+        loadChatHistory,
+        fetchLongTermMemories: getWsFetchLongTermMemories(),
+        conversationSummary,
+        buildSystemPrompt,
+        callGemma4Stream,
+        runChatAgent,
+        runWeatherAgent,
+        runNewsAgent,
+        runStocksAgent,
+        runTranslationAgent,
+        saveChatMessage,
+        cacheInvalidate,
+        autoExtractMemory,
+        generateSpeech,
+        supabase,
+    };
+}
+
+module.exports = {
+    app,
+    cacheInvalidate,
+    evaluatePolicy,
+    requirePolicy,
+    fireDueReminders,
+    fetchLongTermMemories: getWsFetchLongTermMemories(),
+    createLiveTalkDeps,
+};
 
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
@@ -5399,28 +5474,10 @@ if (require.main === module) {
         verifyClient: ({ origin }) => {
             if (!_wsAllowedOrigins) return true; // dev mode: allow all
             if (!origin) return true;            // non-browser clients (mobile app)
-            return _wsAllowedOrigins.includes(origin);
+            return isAllowedCorsOrigin(origin);
         },
     });
-    const wsHandler = createWsHandler({
-        classifyIntent,
-        contextResolver,
-        loadChatHistory,
-        fetchLongTermMemories,
-        conversationSummary,
-        buildSystemPrompt,
-        callGemma4Stream,
-        runChatAgent,
-        runWeatherAgent,
-        runNewsAgent,
-        runStocksAgent,
-        runTranslationAgent,
-        saveChatMessage,
-        cacheInvalidate,
-        autoExtractMemory,
-        generateSpeech,
-        supabase,
-    });
+    const wsHandler = createWsHandler(createLiveTalkDeps());
     wss.on('connection', wsHandler);
     console.log(`🔊 Live talk WebSocket mounted at /ws-jarvis`);
 

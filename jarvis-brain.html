@@ -757,10 +757,10 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
   <div class="know-tab-layout">
     <div class="know-scroll">
 
-      <!-- A: Identity Card -->
+      <!-- A: Identity Card — full width -->
       <div class="identity-card">
         <div class="id-top">
-          <div class="id-avatar" id="idAvatar">?</div>
+          <div class="id-avatar" id="idAvatar" onclick="pulseAvatar()">?</div>
           <div class="id-meta">
             <div class="id-name" id="idName">—</div>
             <div class="id-tagline" id="idTagline">טוען פרופיל...</div>
@@ -771,42 +771,56 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
           <div class="id-stat"><div class="id-stat-n" id="ids-total">—</div><div class="id-stat-l">זיכרונות</div></div>
           <div class="id-stat"><div class="id-stat-n" id="ids-cats">—</div><div class="id-stat-l">קטגוריות</div></div>
           <div class="id-stat"><div class="id-stat-n" id="ids-days">—</div><div class="id-stat-l">ימי שימוש</div></div>
+          <div class="id-stat"><div class="id-stat-n" id="ids-streak" style="color:var(--amber)">—</div><div class="id-stat-l">ימים ברצף 🔥</div></div>
           <div class="id-stat"><div class="id-stat-n" id="ids-pending">—</div><div class="id-stat-l">ממתינים</div></div>
         </div>
       </div>
 
-      <!-- B: Topic Clusters -->
-      <div class="sec-head">
-        <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-tag"/></svg> נושאים</div>
-      </div>
-      <div class="clusters-row" id="clustersRow"></div>
-      <div class="cluster-expand" id="clusterExpand" style="display:none">
-        <div class="ce-head">
-          <div class="ce-title" id="ceTitle"></div>
-          <button class="ce-close" onclick="closeCluster()">✕</button>
+      <!-- Two-column body -->
+      <div class="know-two-col">
+
+        <!-- LEFT: clusters + insights -->
+        <div class="know-col">
+          <div>
+            <div class="sec-head">
+              <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-tag"/></svg> נושאים</div>
+            </div>
+            <div class="cc-cards" id="clustersRow"></div>
+            <div class="cluster-expand" id="clusterExpand" style="display:none">
+              <div class="ce-head">
+                <div class="ce-title" id="ceTitle"></div>
+                <button class="ce-close" onclick="closeCluster()">✕</button>
+              </div>
+              <div class="ce-grid" id="ceGrid"></div>
+            </div>
+          </div>
+          <div>
+            <div class="sec-head">
+              <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-light"/></svg> תובנות שג׳רוויס הסיק</div>
+            </div>
+            <div class="insights-scroll" id="insightsScroll"></div>
+          </div>
         </div>
-        <div class="ce-grid" id="ceGrid"></div>
-      </div>
 
-      <!-- C: Insight Cards -->
-      <div class="sec-head">
-        <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-light"/></svg> תובנות שג׳רוויס הסיק</div>
-      </div>
-      <div class="insights-scroll" id="insightsScroll"></div>
-
-      <!-- D: Timeline -->
-      <div class="sec-head">
-        <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> ציר ידע — מתי למד ג׳רוויס</div>
-      </div>
-      <div class="timeline-wrap">
-        <div class="tl-chart" id="tlChart">
-          <svg class="tl-svg" id="tlSvg"></svg>
-          <div class="tl-tooltip" id="tlTip"></div>
+        <!-- RIGHT: timeline + learning curve -->
+        <div class="know-col">
+          <div>
+            <div class="sec-head">
+              <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> ציר ידע — מתי למד ג׳רוויס</div>
+            </div>
+            <div class="timeline-wrap">
+              <div class="tl-chart" id="tlChart">
+                <svg class="tl-svg" id="tlSvg"></svg>
+                <div class="tl-tooltip" id="tlTip"></div>
+              </div>
+              <div class="tl-months" id="tlMonths"></div>
+            </div>
+          </div>
         </div>
-        <div class="tl-months" id="tlMonths"></div>
-      </div>
 
-      <!-- E: Memory Management -->
+      </div><!-- /.know-two-col -->
+
+      <!-- E: Memory Management — full width -->
       <div style="margin-top:16px">
         <div class="sec-head">
           <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-check"/></svg> בדיקה ואימות זיכרונות</div>
@@ -827,17 +841,30 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
           <div id="mm-pending-cards"></div>
         </div>
 
-        <!-- Search + full memory list -->
+        <!-- Search + sort + full memory list -->
         <div class="mm-search">
           <svg class="icon icon-sm"><use href="#ic-search"/></svg>
           <input id="mmSearch" placeholder="חיפוש בזיכרונות..." oninput="renderMmList()">
+          <div class="mm-sort-wrap">
+            <button class="mm-sort-btn active" id="sortByDate" onclick="setMmSort('date')">↓ תאריך</button>
+            <button class="mm-sort-btn" id="sortByCat" onclick="setMmSort('cat')">א-ת קטגוריה</button>
+          </div>
         </div>
         <div id="mm-all-list"></div>
       </div>
 
-    </div>
-  </div>
-</div>
+      <!-- F: Duplicate Detection — full width, new -->
+      <div style="margin-top:16px;padding-bottom:20px">
+        <div class="sec-head">
+          <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-search"/></svg> זיכרונות דומים</div>
+          <button class="dup-scan-btn" id="dupScanBtn" onclick="scanDuplicates()">סרוק כפילויות</button>
+        </div>
+        <div id="dupResults"><div class="mm-empty">לחץ "סרוק כפילויות" לאיתור זיכרונות דומים</div></div>
+      </div>
+
+    </div><!-- /.know-scroll -->
+  </div><!-- /.know-tab-layout -->
+</div><!-- /#panel-knowledge -->
 
 </div>
 

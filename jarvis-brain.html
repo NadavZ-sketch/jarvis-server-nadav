@@ -1528,21 +1528,46 @@ function renderClusters() {
   const cats = {};
   S.memories.forEach(m => { const c = inferCat(m.content); (cats[c] = cats[c] || []).push(m); });
 
-  row.innerHTML = Object.entries(CLUST_META).map(([name, meta]) => {
+  row.innerHTML = Object.entries(CLUST_META).map(([name, meta], idx) => {
     const items = cats[name] || [];
-    const preview = items[0]?.content?.slice(0, 60) || 'אין זיכרונות';
-    return `<div class="cluster-tile" style="--tc:${meta.color};--tg:${meta.tg}" onclick="toggleCluster(this,'${name}')">
-      <span class="ct-icon">${meta.icon}</span>
-      <div class="ct-label">${name}</div>
-      <div class="ct-count" style="color:${meta.color}">${items.length}</div>
-      <div class="ct-preview">${esc(preview)}</div>
+    const preview = items[0]?.content?.slice(0, 40) || 'אין זיכרונות';
+
+    // 7-day sparkline: count memories per day for this category
+    const now = Date.now();
+    const dayCounts = Array.from({ length: 7 }, (_, i) => {
+      const dayStart = new Date(now - (6 - i) * 86400000);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart.getTime() + 86400000);
+      return items.filter(m => {
+        const t = m.created_at ? new Date(m.created_at).getTime() : 0;
+        return t >= dayStart.getTime() && t < dayEnd.getTime();
+      }).length;
+    });
+    const maxDay = Math.max(...dayCounts, 1);
+    const bW = 8, bGap = 2, svgW = 7 * (bW + bGap) - bGap, svgH = 20;
+    const sparkBars = dayCounts.map((v, i) => {
+      const h = Math.max(2, Math.round((v / maxDay) * svgH));
+      const x = i * (bW + bGap);
+      const opacity = i === 6 ? '1' : '0.55';
+      return `<rect x="${x}" y="${svgH - h}" width="${bW}" height="${h}" rx="1" fill="${meta.color}" opacity="${opacity}"/>`;
+    }).join('');
+    const sparkSvg = `<svg class="cc-sparkline" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">${sparkBars}</svg>`;
+
+    return `<div class="cc-card" style="border-top-color:${meta.color};animation-delay:${idx * 50}ms" onclick="toggleCluster(this,'${name}')">
+      <div class="cc-card-head">
+        <span class="cc-card-icon">${meta.icon}</span>
+        <span class="cc-card-count" style="color:${meta.color}">${items.length}</span>
+      </div>
+      <div class="cc-card-name">${name}</div>
+      ${sparkSvg}
+      <div class="cc-preview">${esc(preview)}</div>
     </div>`;
   }).join('');
 }
 
 window.toggleCluster = function(tile, name) {
   const exp = document.getElementById('clusterExpand');
-  document.querySelectorAll('.cluster-tile').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.cc-card').forEach(t => t.classList.remove('active'));
   if (_activeCluster === name && exp.style.display !== 'none') {
     exp.style.display = 'none'; _activeCluster = null; return;
   }

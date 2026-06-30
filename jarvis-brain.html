@@ -279,21 +279,6 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 ::-webkit-scrollbar{width:3px;height:3px}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 
-/* NODE POPUP – mobile bottom sheet */
-.node-popup-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199}
-.node-popup{position:fixed;bottom:0;right:0;left:0;background:var(--surface);border-top:1px solid var(--border);border-radius:12px 12px 0 0;padding-bottom:max(env(safe-area-inset-bottom,0px),12px);z-index:200;box-shadow:0 -4px 32px rgba(0,0,0,.6);animation:slideUp .22s ease}
-@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-.np-handle{width:36px;height:3px;background:var(--border);border-radius:2px;margin:8px auto 12px}
-.np-body{padding:0 16px 12px}
-.np-cat{font-size:var(--tx-xs);font-weight:700;margin-bottom:5px;display:flex;align-items:center;gap:5px}
-.np-text{font-size:var(--tx-sm);color:var(--text);line-height:1.6;margin-bottom:5px;word-break:break-word}
-.np-time{font-size:.6rem;color:var(--muted)}
-.np-acts{display:flex;gap:7px;padding:0 14px}
-.np-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:10px;border-radius:var(--r4);font-family:inherit;font-size:var(--tx-sm);font-weight:600;cursor:pointer;min-height:44px;transition:all .15s}
-.np-btn.primary{background:linear-gradient(135deg,#C8913A,#e0b86a);border:none;color:#0d1117}
-.np-btn.danger{border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.05);color:var(--red)}
-.np-btn.cancel{border:1px solid var(--border);background:var(--card);color:var(--muted)}
-
 /* RESPONSIVE – mobile ≤640px */
 @media(max-width:640px){
   .topbar{padding:0 10px;gap:5px;height:44px}
@@ -364,6 +349,20 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .mm-icon-btn.save{border-color:rgba(34,197,94,.3);color:var(--green)}
 .mm-icon-btn.del{border-color:rgba(239,68,68,.25);color:var(--red)}
 .mm-empty{padding:20px 12px;text-align:center;color:var(--muted);font-size:var(--tx-sm)}
+
+/* KPI interactive */
+.kpi-chip.clickable{cursor:pointer;transition:background .15s,transform .1s}
+.kpi-chip.clickable:hover{background:rgba(200,145,58,.09);border-bottom:2px solid rgba(200,145,58,.35)}
+.kpi-chip.clickable:active{transform:scale(.98)}
+
+/* Graph tooltip */
+.g-tooltip{position:absolute;z-index:50;background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:10px 12px;max-width:220px;min-width:180px;pointer-events:auto;box-shadow:0 4px 20px rgba(0,0,0,.45);animation:expandIn .15s ease}
+
+/* Focus/resume pill */
+.focus-pill{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:var(--amber);border-radius:20px;padding:4px 14px;font-size:var(--tx-xs);cursor:pointer;z-index:10;white-space:nowrap;display:none}
+
+/* Orphan pulse */
+@keyframes orphanPulse{0%,100%{opacity:.3}50%{opacity:.58}}
 </style>
 </head>
 <body>
@@ -423,28 +422,28 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 
 <!-- KPI: CONSTELLATION -->
 <div class="kpi-strip" id="kpi-constellation">
-  <div class="kpi-chip pulse">
-    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-cpu"/></svg></span>
+  <div class="kpi-chip pulse clickable" onclick="kpiMemClick()">
+    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-cpu"/></svg> סה״כ זיכרונות</span>
     <span class="kv" id="kpi-mem-count"><span class="skel">00</span></span>
     <span class="kl">עובדות ופרטים שג׳רוויס זוכר עלייך</span>
   </div>
-  <div class="kpi-chip warn">
-    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-clock"/></svg></span>
+  <div class="kpi-chip warn clickable" onclick="kpiPendingClick()">
+    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> ממתינים לאישור</span>
     <span class="kv warn" id="kpi-pending-count"><span class="skel">0</span></span>
     <span class="kl">זיכרונות שזוהו אוטומטית — ממתינים לאישורך</span>
   </div>
-  <div class="kpi-chip">
-    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-tag"/></svg></span>
+  <div class="kpi-chip clickable" onclick="kpiCatClick()">
+    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-tag"/></svg> קטגוריה מובילה</span>
     <span class="kv" id="kpi-top-cat"><span class="skel">——</span></span>
     <span class="kl">הנושא הנפוץ ביותר בבסיס הידע</span>
   </div>
   <div class="kpi-chip up">
-    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-link"/></svg></span>
+    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-link"/></svg> קשרים סמנטיים</span>
     <span class="kv green" id="kpi-conn-count"><span class="skel">000</span></span>
     <span class="kl">קשרים בגרף הזיכרון</span>
   </div>
-  <div class="kpi-chip">
-    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-clock"/></svg></span>
+  <div class="kpi-chip clickable" onclick="kpiLastClick()">
+    <span class="kpi-head"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> אחרון שנשמר</span>
     <span class="kv" id="kpi-last-mem"><span class="skel">———</span></span>
     <span class="kl">מתי נוסף הזיכרון האחרון</span>
   </div>
@@ -548,7 +547,7 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
       <div id="mp-list-view" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
         <div class="mp-search">
           <svg class="icon icon-sm"><use href="#ic-search"/></svg>
-          <input id="memSearch" placeholder="חיפוש זיכרון..." oninput="renderMemList()">
+          <input id="memSearch" placeholder="חיפוש זיכרון..." oninput="renderMemList();S.searchQ=(this.value||'').trim().toLowerCase()">
         </div>
         <div class="mp-list" id="memList"><div class="mp-empty">טוען זיכרונות...</div></div>
         <button class="mp-add-btn" onclick="newMemory()">
@@ -593,6 +592,7 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 
     <!-- GRAPH -->
     <div class="graph-pane">
+      <div id="focusPill" class="focus-pill" onclick="clearFocus()">מצב מיקוד — לחץ לביטול</div>
       <div class="graph-toolbar">
         <span class="gt-label">תצוגה</span>
         <div class="seg-grp">
@@ -613,6 +613,7 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
       <div class="graph-canvas">
         <svg id="graphSvg"></svg>
         <canvas id="canvas3d" style="display:none"></canvas>
+        <div id="graphTooltip" class="g-tooltip" style="display:none"></div>
         <button class="add-mem-btn" onclick="newMemory()">
           <svg class="icon icon-sm"><use href="#ic-plus"/></svg> זיכרון חדש
         </button>
@@ -806,28 +807,13 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 
 </div>
 
-<!-- Node popup — mobile bottom sheet when tapping a memory node -->
-<div class="node-popup-overlay" id="nodeOverlay" style="display:none" onclick="closeNodePopup()"></div>
-<div class="node-popup" id="nodePopup" style="display:none">
-  <div class="np-handle"></div>
-  <div class="np-body">
-    <div class="np-cat" id="npCat"></div>
-    <div class="np-text" id="npText"></div>
-    <div class="np-time" id="npTime"></div>
-  </div>
-  <div class="np-acts">
-    <button class="np-btn primary" onclick="nodePopupEdit()"><svg class="icon icon-sm"><use href="#ic-pencil"/></svg> ערוך</button>
-    <button class="np-btn danger" onclick="nodePopupDelete()"><svg class="icon icon-sm"><use href="#ic-trash"/></svg> מחק</button>
-    <button class="np-btn cancel" onclick="closeNodePopup()">סגור</button>
-  </div>
-</div>
-
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 const S = {
   memories: [], pending: [], trace: [], log: [], providers: {},
   stats: {}, profile: {}, filter: 'all', view3d: false,
   editId: null, pollTimer: null, provTimer: null,
+  searchQ: '', highlight: null,
 };
 
 // ── Utils ──────────────────────────────────────────────────────────────────
@@ -881,7 +867,7 @@ async function loadMemories() {
     const r = await api('/memories');
     S.memories = (r.memories || r || []).filter(m => m.status !== 'pending');
     renderMemList();
-    drawGraph();
+    startGraph2D();
     updateConstellationKpi();
   } catch (e) { console.warn('memories:', e); }
 }
@@ -944,7 +930,7 @@ function updateConstellationKpi() {
   document.getElementById('kpi-pending-count').textContent =
     S.pending.length ? `${S.pending.length} ממתינים` : '✓ הכל אושר';
   document.getElementById('kpi-conn-count').textContent =
-    Math.round(total * 2.6) + ' קשרים';
+    (_g2dEdges ? _g2dEdges.length : Math.round(total * 2.1)) + ' קשרים';
 
   const cats = {};
   S.memories.forEach(m => { const c = inferCat(m.content); cats[c] = (cats[c] || 0) + 1; });
@@ -1090,7 +1076,7 @@ async function saveMemory() {
     S.editId = null;
     mpTab('list', document.querySelectorAll('.mp-tab')[0]);
     renderMemList();
-    drawGraph();
+    startGraph2D();
     updateConstellationKpi();
   } catch (e) { alert('שגיאה בשמירה: ' + e.message); }
 }
@@ -1103,7 +1089,7 @@ async function deleteMemory() {
     S.editId = null;
     mpTab('list', document.querySelectorAll('.mp-tab')[0]);
     renderMemList();
-    drawGraph();
+    startGraph2D();
     updateConstellationKpi();
   } catch (e) { alert('שגיאה במחיקה: ' + e.message); }
 }
@@ -1116,7 +1102,7 @@ async function approveMem(id) {
     S.pending = S.pending.filter(x => x.id !== id);
     renderPendingList();
     renderMemList();
-    drawGraph();
+    startGraph2D();
     updateConstellationKpi();
     document.getElementById('pendingBadge').textContent = S.pending.length;
   } catch (e) { alert('שגיאה באישור: ' + e.message); }
@@ -1397,7 +1383,7 @@ async function mmSaveEdit(id) {
     if (item) item.classList.remove('editing');
     if (disp) disp.textContent = content;
     if (saveBtn) saveBtn.style.display = 'none';
-    drawGraph();
+    startGraph2D();
   } catch(e) { alert('שגיאה בשמירה: ' + e.message); }
 }
 
@@ -1408,7 +1394,7 @@ async function mmDelete(id) {
   try {
     await api(`/memories/${id}`, { method: 'DELETE' });
     S.memories = S.memories.filter(m => m.id !== id);
-    renderMmList(); updateKnowBadge(); updateConstellationKpi(); drawGraph();
+    renderMmList(); updateKnowBadge(); updateConstellationKpi(); startGraph2D();
   } catch(e) {
     if (item) { item.style.opacity = '1'; item.style.pointerEvents = ''; }
     alert('שגיאה: ' + e.message);
@@ -1839,182 +1825,490 @@ function drawLearnTimeline(data) {
   svg.innerHTML = h; svg.setAttribute('width', W); svg.setAttribute('height', H);
 }
 
-// ── Graph ──────────────────────────────────────────────────────────────────
-function drawGraph() {
+// ── Graph Shared Utils ─────────────────────────────────────────────────────
+const HEB_STOP = new Set(['של','את','הוא','היא','הם','הן','אני','אתה','זה','זו','לא','כן','עם','על','אל','מה','שם','כל','עוד','כי','אם','גם','רק','אבל']);
+
+function recencyRadius(ts) {
+  const isMob = window.innerWidth < 640;
+  const days = (Date.now() - new Date(ts)) / 86400000;
+  if (days < 1)  return isMob ? 13 : 11;
+  if (days < 7)  return isMob ? 11 : 9;
+  if (days < 30) return isMob ? 9  : 7;
+  return isMob ? 7 : 5;
+}
+
+function buildSemanticEdges(mems) {
+  const tokens = mems.map(m =>
+    new Set((m.content || '').split(/\s+/).filter(w => w.length >= 3 && !HEB_STOP.has(w)).map(w => w.toLowerCase()))
+  );
+  const edges = [];
+  for (let i = 0; i < mems.length; i++) {
+    for (let j = i + 1; j < mems.length; j++) {
+      let shared = 0;
+      for (const t of tokens[i]) if (tokens[j].has(t)) shared++;
+      if (shared > 0) edges.push({ a: i, b: j, w: shared });
+    }
+  }
+  edges.sort((a, b) => b.w - a.w);
+  return edges.slice(0, 80);
+}
+
+// ── Graph Tooltip ──────────────────────────────────────────────────────────
+function showGraphTooltip(id, clientX, clientY) {
+  const m = S.memories.find(x => x.id === id);
+  if (!m) return;
+  const tt = document.getElementById('graphTooltip');
+  const cat = inferCat(m.content), col = CAT_COLOR[cat] || '#C8913A';
+  tt.innerHTML = `
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px">
+      <span style="font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:10px;background:${col}22;color:${col};border:1px solid ${col}44">${esc(cat)}</span>
+      <span style="font-size:.58rem;color:var(--muted);margin-right:auto">${relTime(m.created_at)}</span>
+    </div>
+    <div style="font-size:var(--tx-sm);color:var(--text);line-height:1.5;margin-bottom:8px;word-break:break-word">${esc(m.content.slice(0,100))}${m.content.length > 100 ? '…' : ''}</div>
+    <div style="display:flex;gap:5px">
+      <button class="act-btn primary" style="font-size:.6rem;padding:5px 8px;min-height:28px;flex:1" onclick="ttEdit('${esc(id)}')"><svg class="icon icon-sm"><use href="#ic-pencil"/></svg> ערוך</button>
+      <button class="act-btn danger" style="font-size:.6rem;padding:5px 8px;min-height:28px" onclick="ttDelete('${esc(id)}')"><svg class="icon icon-sm"><use href="#ic-trash"/></svg></button>
+    </div>`;
+  const canvas = document.querySelector('.graph-canvas');
+  const rect = canvas.getBoundingClientRect();
+  let left = clientX - rect.left + 12, top = clientY - rect.top - 12;
+  if (left + 224 > rect.width) left = clientX - rect.left - 232;
+  if (top + 130 > rect.height) top = clientY - rect.top - 138;
+  tt.style.left = Math.max(4, left) + 'px';
+  tt.style.top  = Math.max(4, top)  + 'px';
+  tt.style.display = 'block';
+}
+
+function closeGraphTooltip() { document.getElementById('graphTooltip').style.display = 'none'; }
+
+function ttEdit(id) { closeGraphTooltip(); selectMem(id); }
+
+async function ttDelete(id) {
+  if (!confirm('למחוק זיכרון זה?')) return;
+  closeGraphTooltip();
+  try {
+    await api(`/memories/${id}`, { method: 'DELETE' });
+    S.memories = S.memories.filter(m => m.id !== id);
+    startGraph2D(); renderMemList(); updateConstellationKpi();
+  } catch (e) { alert('שגיאה במחיקה: ' + e.message); }
+}
+
+function clearFocus() {
+  _g2dFocus = null; _g3dFocus = null; _g3dPaused = false;
+  document.getElementById('focusPill').style.display = 'none';
+  closeGraphTooltip();
+}
+
+// ── 2D Graph ───────────────────────────────────────────────────────────────
+let _g2dRaf = null, _g2dNodes = null, _g2dEdges = null;
+let _g2dDrag = null, _g2dFocus = null;
+
+function startGraph2D() {
+  stopGraph2D();
   const svg = document.getElementById('graphSvg');
   const W = svg.clientWidth || 700, H = svg.clientHeight || 350;
   const isMob = window.innerWidth < 640;
   const MAX_VIS = 60;
   const allMems = S.filter === 'all' ? S.memories : S.memories.filter(m => inferCat(m.content) === S.filter);
   const mems = allMems.slice(0, MAX_VIS);
-  const truncated = mems.length < allMems.length;
   document.getElementById('nodeCount').textContent =
-    `${mems.length}${truncated ? ` מ-${allMems.length}` : ''} צמתים · ${Math.round(mems.length * 2.6)} קשרים`;
+    `${mems.length}${mems.length < allMems.length ? ` מ-${allMems.length}` : ''} צמתים`;
 
-  if (!mems.length) { svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="13" fill="rgba(255,255,255,.15)" font-family="Heebo">אין זיכרונות להצגה</text>`; return; }
+  if (!mems.length) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="13" fill="rgba(255,255,255,.15)" font-family="Heebo">אין זיכרונות להצגה</text>`;
+    return;
+  }
+
+  _g2dEdges = buildSemanticEdges(mems);
+
+  // Update edge count in KPI
+  const connEl = document.getElementById('kpi-conn-count');
+  if (connEl) connEl.textContent = _g2dEdges.length + ' קשרים';
 
   const catGroups = {};
   mems.forEach(m => { const c = inferCat(m.content); (catGroups[c] = catGroups[c] || []).push(m); });
+  const cats = Object.keys(catGroups);
 
-  const nodeR = isMob ? 9 : 5 + Math.random() * 3;
-  const hubR  = isMob ? 15 : 10;
-  const repel = isMob ? 55 : 45;
-
-  const nodes = mems.map(m => ({
-    id: m.id, l: m.content.slice(0, 14), c: CAT_COLOR[inferCat(m.content)] || '#C8913A',
-    r: isMob ? 9 : (5 + Math.random() * 3), hub: false,
+  const hubs = cats.map((cat, i) => ({
+    id: 'hub-' + cat, cat, label: cat, c: CAT_COLOR[cat] || '#C8913A',
+    r: isMob ? 14 : 12, hub: true,
+    x: W/2 + Math.cos(2*Math.PI*i/cats.length) * Math.min(W,H)*0.18,
+    y: H/2 + Math.sin(2*Math.PI*i/cats.length) * Math.min(W,H)*0.14,
+    vx: 0, vy: 0,
   }));
-  const hubs = Object.keys(catGroups).map(cat => ({
-    id: 'hub-' + cat, l: cat, c: CAT_COLOR[cat] || '#C8913A', r: hubR, hub: true,
-  }));
-  const all = [...nodes, ...hubs];
 
-  all.forEach((n, i) => {
-    const isHub = n.hub, idx = isHub ? hubs.indexOf(n) : i;
-    const total = isHub ? hubs.length : nodes.length;
-    const a = (2 * Math.PI * idx / total) + (isHub ? 0 : Math.random() * .4);
-    const r = (isHub ? Math.min(W, H) * .15 : Math.min(W, H) * .32) + (Math.random() - .5) * (isHub ? 20 : 50);
-    n.x = W / 2 + r * Math.cos(a); n.y = H / 2 + r * Math.sin(a); n.vx = 0; n.vy = 0;
+  const leafNodes = mems.map((m, i) => {
+    const a = 2*Math.PI*i/mems.length + Math.random()*0.4;
+    const rd = Math.min(W,H)*0.3 + (Math.random()-0.5)*60;
+    return {
+      id: m.id, cat: inferCat(m.content), label: m.content.slice(0,12),
+      c: CAT_COLOR[inferCat(m.content)] || '#C8913A',
+      r: recencyRadius(m.created_at), baseR: recencyRadius(m.created_at),
+      hub: false, strength: 0,
+      x: W/2 + rd*Math.cos(a), y: H/2 + rd*Math.sin(a),
+      vx: 0, vy: 0,
+    };
   });
 
-  const margin = isMob ? 28 : 20;
-  for (let it = 0; it < 80; it++) {
-    const cool = 1 - it / 80;
-    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
-      const a = nodes[i], b = nodes[j], dx = (b.x - a.x) || .01, dy = (b.y - a.y) || .01;
-      const d = Math.sqrt(dx * dx + dy * dy) || .01, f = repel * repel / d * .1 * cool;
-      a.vx -= f * dx / d; a.vy -= f * dy / d; b.vx += f * dx / d; b.vy += f * dy / d;
+  _g2dEdges.forEach(e => { leafNodes[e.a].strength++; leafNodes[e.b].strength++; });
+  const maxStr = Math.max(1, ...leafNodes.map(n => n.strength));
+  leafNodes.forEach(n => { n.r = n.baseR + Math.round(n.strength / maxStr * 4); });
+
+  _g2dNodes = [...leafNodes, ...hubs];
+  const leafCount = leafNodes.length;
+
+  // Build initial SVG
+  let h = '<g id="g-hubedges">';
+  leafNodes.forEach((n, i) => {
+    const hub = hubs.find(hb => hb.cat === n.cat);
+    if (hub) h += `<line id="ghe${i}" x1="${n.x.toFixed(1)}" y1="${n.y.toFixed(1)}" x2="${hub.x.toFixed(1)}" y2="${hub.y.toFixed(1)}" stroke="rgba(200,145,58,.05)" stroke-width="0.5"/>`;
+  });
+  h += '</g><g id="g-edges">';
+  _g2dEdges.forEach((e, i) => {
+    const a = leafNodes[e.a], b = leafNodes[e.b];
+    const op = Math.min(0.28, 0.08 + e.w * 0.06).toFixed(2);
+    h += `<line id="ge${i}" x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(200,145,58,${op})" stroke-width="${e.w > 1 ? 1.2 : 0.7}"/>`;
+  });
+  h += '</g><g id="g-hubrings">';
+  hubs.forEach((hub, i) => {
+    h += `<circle id="ghr${i}" cx="${hub.x.toFixed(1)}" cy="${hub.y.toFixed(1)}" r="${hub.r+12}" fill="none" stroke="${hub.c}" stroke-width="0.5" opacity="0.18"/>`;
+  });
+  h += '</g><g id="g-nodes">';
+  _g2dNodes.forEach((n, i) => {
+    const hitR = window.innerWidth < 640 ? Math.max(n.r, 18) : Math.max(n.r, 8);
+    const isOrphan = !n.hub && n.strength === 0;
+    h += `<g id="gn${i}" transform="translate(${n.x.toFixed(1)},${n.y.toFixed(1)})" data-nidx="${i}" style="cursor:pointer">`;
+    h += `<circle r="${hitR}" fill="transparent"/>`;
+    if (n.strength >= 3 || n.hub)
+      h += `<circle r="${n.r+6}" fill="none" stroke="${n.c}" stroke-width="${n.hub?1:.7}" opacity="${n.hub?.35:.18}" class="gngl"/>`;
+    if (isOrphan) {
+      h += `<circle r="${n.r}" fill="${n.c}" opacity=".35"/>`;
+      h += `<circle r="${n.r+4}" fill="none" stroke="${n.c}" stroke-width=".6" opacity=".18" stroke-dasharray="2 2"/>`;
+    } else {
+      h += `<circle r="${n.r}" fill="${n.c}" opacity="${n.hub?.95:.82}"/>`;
     }
-    /* gentle pull toward center to counteract corner drift */
-    all.forEach(n => {
-      n.vx = ((n.vx || 0) + (W / 2 - n.x) * .002) * .82;
-      n.vy = ((n.vy || 0) + (H / 2 - n.y) * .002) * .82;
-      n.x += n.vx; n.y += n.vy;
-      n.x = Math.max(margin, Math.min(W - margin, n.x));
-      n.y = Math.max(margin, Math.min(H - margin, n.y));
-    });
-  }
-
-  let h = '';
-  nodes.forEach(m => {
-    const hub = hubs.find(h => h.l === inferCat(S.memories.find(x => x.id === m.id)?.content));
-    if (hub) h += `<line x1="${m.x.toFixed(1)}" y1="${m.y.toFixed(1)}" x2="${hub.x.toFixed(1)}" y2="${hub.y.toFixed(1)}" stroke="rgba(200,145,58,.08)" stroke-width="${isMob ? 1 : .8}"/>`;
+    if (n.hub || !isMob)
+      h += `<text y="${-n.r-4}" text-anchor="middle" font-size="${n.hub?(isMob?9:8):6.5}" font-weight="${n.hub?700:400}" fill="rgba(224,212,190,.85)" font-family="Heebo" pointer-events="none">${esc(n.label)}</text>`;
+    h += '</g>';
   });
-  for (let i = 0; i < Math.min(nodes.length * 2, 20); i++) {
-    const a = nodes[Math.floor(Math.random() * nodes.length)];
-    const b = nodes[Math.floor(Math.random() * nodes.length)];
-    if (a && b && a !== b) h += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(200,145,58,.13)" stroke-width="1"/>`;
-  }
-  hubs.forEach(n => {
-    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r + (isMob ? 14 : 10)}" fill="none" stroke="${n.c}" stroke-width=".5" opacity=".2"/>`;
-    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r + (isMob ? 28 : 22)}" fill="none" stroke="${n.c}" stroke-width=".25" opacity=".07"/>`;
-  });
-  all.forEach(n => {
-    /* larger invisible hit area on mobile for easy tapping */
-    const hitR = isMob ? Math.max(n.r, 18) : n.r;
-    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${hitR}" fill="transparent" style="cursor:pointer" onclick="onNodeClick('${esc(n.id)}')"/>`;
-    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r}" fill="${n.c}" opacity="${n.hub ? .9 : .82}" pointer-events="none"/>`;
-    /* hub labels always; leaf labels only on desktop */
-    if (n.hub) h += `<text x="${n.x.toFixed(1)}" y="${(n.y - n.r - 5).toFixed(1)}" text-anchor="middle" font-size="${isMob ? 9 : 7.5}" font-weight="${isMob ? 700 : 400}" fill="rgba(224,212,190,.85)" font-family="Heebo" pointer-events="none">${n.l}</text>`;
-    else if (!isMob) h += `<text x="${n.x.toFixed(1)}" y="${(n.y - n.r - 3).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="rgba(224,212,190,.5)" font-family="Heebo" pointer-events="none">${n.l}</text>`;
-  });
+  h += '</g>';
   svg.innerHTML = h;
-}
 
-function onNodeClick(id) {
-  if (id.startsWith('hub-')) return;
-  if (window.innerWidth < 640) {
-    showNodePopup(id);
-  } else {
-    selectMem(id);
+  // Pointer events
+  let _dblTap = null;
+  svg.onpointerdown = e => {
+    const g = e.target.closest('[data-nidx]');
+    if (!g) return;
+    const idx = parseInt(g.dataset.nidx);
+    const n = _g2dNodes[idx];
+    if (!n || n.hub) return;
+    _g2dDrag = { idx }; svg.setPointerCapture(e.pointerId); e.preventDefault();
+  };
+  svg.onpointermove = e => {
+    if (!_g2dDrag) return;
+    const rect = svg.getBoundingClientRect();
+    const n = _g2dNodes[_g2dDrag.idx];
+    if (n) { n.x = e.clientX - rect.left; n.y = e.clientY - rect.top; n.vx = 0; n.vy = 0; }
+  };
+  svg.onpointerup = e => { _g2dDrag = null; };
+  svg.onclick = e => {
+    const g = e.target.closest('[data-nidx]');
+    if (!g) { closeGraphTooltip(); S.highlight = null; _g2dFocus = null; document.getElementById('focusPill').style.display='none'; return; }
+    const idx = parseInt(g.dataset.nidx);
+    const n = _g2dNodes[idx];
+    if (!n) return;
+    if (n.hub) { S.highlight = S.highlight === n.cat ? null : n.cat; closeGraphTooltip(); }
+    else showGraphTooltip(n.id, e.clientX, e.clientY);
+  };
+  svg.ondblclick = e => {
+    const g = e.target.closest('[data-nidx]');
+    if (!g) return;
+    const idx = parseInt(g.dataset.nidx);
+    const n = _g2dNodes[idx];
+    if (!n || n.hub) return;
+    _g2dFocus = _g2dFocus === n.id ? null : n.id;
+    closeGraphTooltip();
+    const pill = document.getElementById('focusPill');
+    pill.textContent = 'מצב מיקוד — לחץ לביטול';
+    pill.style.display = _g2dFocus ? 'block' : 'none';
+  };
+
+  const margin = isMob ? 20 : 14;
+  const REPEL = isMob ? 48 : 40;
+
+  function frame() {
+    const leafs = _g2dNodes.filter(n => !n.hub);
+    const hubNodes = _g2dNodes.filter(n => n.hub);
+
+    // Repulsion
+    for (let i = 0; i < leafs.length; i++) for (let j = i+1; j < leafs.length; j++) {
+      if (_g2dDrag?.idx === i || _g2dDrag?.idx === j) continue;
+      const a = leafs[i], b = leafs[j];
+      const dx = (b.x - a.x) || .01, dy = (b.y - a.y) || .01;
+      const d = Math.sqrt(dx*dx + dy*dy) || .01;
+      if (d < REPEL * 2) {
+        const f = REPEL*REPEL/d*.08;
+        a.vx -= f*dx/d; a.vy -= f*dy/d; b.vx += f*dx/d; b.vy += f*dy/d;
+      }
+    }
+    // Semantic spring
+    _g2dEdges.forEach(e => {
+      const a = leafs[e.a], b = leafs[e.b]; if (!a||!b) return;
+      const dx = b.x-a.x, dy = b.y-a.y, d = Math.sqrt(dx*dx+dy*dy)||.01;
+      const f = (d - (80 - e.w*8)) * .004;
+      a.vx += f*dx/d; a.vy += f*dy/d; b.vx -= f*dx/d; b.vy -= f*dy/d;
+    });
+    // Hub pull
+    leafs.forEach(n => {
+      const hub = hubNodes.find(h => h.cat === n.cat); if (!hub) return;
+      const dx = hub.x-n.x, dy = hub.y-n.y, d = Math.sqrt(dx*dx+dy*dy)||.01;
+      if (d > 70) { const f=(d-70)*.002; n.vx+=f*dx/d; n.vy+=f*dy/d; }
+    });
+    // Integrate
+    const sq = S.searchQ, hl = S.highlight;
+    // Build focus neighborhood
+    let focusSet = null;
+    if (_g2dFocus) {
+      const fi = leafs.findIndex(n => n.id === _g2dFocus);
+      if (fi >= 0) { focusSet = new Set([fi]); _g2dEdges.forEach(e => { if(e.a===fi||e.b===fi){focusSet.add(e.a);focusSet.add(e.b);} }); }
+    }
+    _g2dNodes.forEach((n, gi) => {
+      if (_g2dDrag && _g2dDrag.idx === gi) return;
+      n.vx = ((n.vx||0) + (W/2 - n.x)*.003) * .85;
+      n.vy = ((n.vy||0) + (H/2 - n.y)*.003) * .85;
+      n.x = Math.max(margin, Math.min(W-margin, n.x + n.vx));
+      n.y = Math.max(margin, Math.min(H-margin, n.y + n.vy));
+      const el = document.getElementById('gn' + gi);
+      if (!el) return;
+      el.setAttribute('transform', `translate(${n.x.toFixed(1)},${n.y.toFixed(1)})`);
+      // Opacity
+      let op = 1;
+      const li = leafs.indexOf(n);
+      if (!n.hub) {
+        if (hl && n.cat !== hl) op = .1;
+        if (focusSet && !focusSet.has(li)) op = Math.min(op, .08);
+        if (sq) { const mem = S.memories.find(m => m.id === n.id); op = mem && mem.content.toLowerCase().includes(sq) ? Math.min(op, 1) : Math.min(op, .08); }
+        // search glow via filter
+        const mem2 = S.memories.find(m => m.id === n.id);
+        el.style.filter = (sq && mem2 && mem2.content.toLowerCase().includes(sq)) ? 'drop-shadow(0 0 6px #fbbf24)' : '';
+      } else {
+        if (hl && n.cat !== hl) op = .12;
+      }
+      el.style.opacity = op;
+    });
+    // Update edges
+    leafs.forEach((n, i) => {
+      const hub = hubNodes.find(h => h.cat === n.cat); if (!hub) return;
+      const l = document.getElementById('ghe'+i);
+      if (l) { l.setAttribute('x1',n.x.toFixed(1)); l.setAttribute('y1',n.y.toFixed(1)); l.setAttribute('x2',hub.x.toFixed(1)); l.setAttribute('y2',hub.y.toFixed(1)); }
+    });
+    _g2dEdges.forEach((e, i) => {
+      const a = leafs[e.a], b = leafs[e.b]; if (!a||!b) return;
+      const l = document.getElementById('ge'+i);
+      if (l) { l.setAttribute('x1',a.x.toFixed(1)); l.setAttribute('y1',a.y.toFixed(1)); l.setAttribute('x2',b.x.toFixed(1)); l.setAttribute('y2',b.y.toFixed(1)); }
+    });
+    hubNodes.forEach((hub, i) => {
+      const r = document.getElementById('ghr'+i);
+      if (r) { r.setAttribute('cx',hub.x.toFixed(1)); r.setAttribute('cy',hub.y.toFixed(1)); }
+    });
+    _g2dRaf = requestAnimationFrame(frame);
   }
+  _g2dRaf = requestAnimationFrame(frame);
 }
 
-let _npMemId = null;
-
-function showNodePopup(id) {
-  const m = S.memories.find(x => x.id === id);
-  if (!m) return;
-  _npMemId = id;
-  const cat = inferCat(m.content);
-  const col = CAT_COLOR[cat] || '#C8913A';
-  document.getElementById('npCat').innerHTML = `<svg class="icon icon-sm"><use href="#ic-tag"/></svg><span style="color:${col}">${esc(cat)}</span>`;
-  document.getElementById('npText').textContent = m.content;
-  document.getElementById('npTime').textContent = relTime(m.created_at);
-  document.getElementById('nodeOverlay').style.display = 'block';
-  document.getElementById('nodePopup').style.display = 'block';
+function stopGraph2D() {
+  if (_g2dRaf) { cancelAnimationFrame(_g2dRaf); _g2dRaf = null; }
+  const svg = document.getElementById('graphSvg');
+  if (svg) { svg.onpointerdown = svg.onpointermove = svg.onpointerup = svg.onclick = svg.ondblclick = null; }
 }
 
-function closeNodePopup() {
-  document.getElementById('nodePopup').style.display = 'none';
-  document.getElementById('nodeOverlay').style.display = 'none';
-  _npMemId = null;
-}
+// ── 3D Graph ───────────────────────────────────────────────────────────────
+let _g3dRaf = null, _g3dNodes = null, _g3dEdges = null;
+let _g3dAngleH = 0, _g3dAngleV = 0;
+let _g3dOrbit = null, _g3dPaused = false;
+let _g3dHighlight = null, _g3dFocus = null;
+let _g3dProjected = [];
 
-function nodePopupEdit() {
-  if (!_npMemId) return;
-  const id = _npMemId;
-  closeNodePopup();
-  selectMem(id);
-}
-
-async function nodePopupDelete() {
-  if (!_npMemId || !confirm('למחוק זיכרון זה?')) return;
-  const id = _npMemId;
-  closeNodePopup();
-  try {
-    await api(`/memories/${id}`, { method: 'DELETE' });
-    S.memories = S.memories.filter(m => m.id !== id);
-    renderMemList(); drawGraph(); updateConstellationKpi();
-  } catch (e) { alert('שגיאה במחיקה: ' + e.message); }
-}
-
-function draw3d() {
+function startGraph3D() {
+  stopGraph3D();
   const canvas = document.getElementById('canvas3d');
   const W = canvas.offsetWidth || 700, H = canvas.offsetHeight || 350;
   canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  const cols = ['#60a5fa', '#22c55e', '#f59e0b', '#a78bfa', '#C8913A', '#6366f1', '#14b8a6'];
-  const nodes3d = [];
-  const count = Math.min(S.memories.length || 38, 50);
-  for (let i = 0; i < count; i++) {
-    const phi = Math.acos(1 - 2 * (i + .5) / count), theta = Math.PI * (1 + Math.sqrt(5)) * i;
-    nodes3d.push({
-      c: cols[i % cols.length], r: 3 + Math.random() * 4,
-      ox: Math.sin(phi) * Math.cos(theta), oy: Math.sin(phi) * Math.sin(theta), oz: Math.cos(phi),
+  const mems = S.memories.slice(0, 60);
+  if (!mems.length) return;
+  _g3dEdges = buildSemanticEdges(mems);
+  // Build strength per node
+  const str = new Array(mems.length).fill(0);
+  _g3dEdges.forEach(e => { str[e.a]++; str[e.b]++; });
+  const count = mems.length;
+  _g3dNodes = mems.map((m, i) => {
+    const phi = Math.acos(1 - 2*(i+.5)/count), theta = Math.PI*(1+Math.sqrt(5))*i;
+    return {
+      mem: m, idx: i, cat: inferCat(m.content), c: CAT_COLOR[inferCat(m.content)]||'#C8913A',
+      r: recencyRadius(m.created_at) * 0.65 + str[i] * 0.4,
+      strength: str[i], hub: false,
+      ox: Math.sin(phi)*Math.cos(theta), oy: Math.sin(phi)*Math.sin(theta), oz: Math.cos(phi),
+    };
+  });
+  // Hub nodes
+  const cats = [...new Set(mems.map(m => inferCat(m.content)))];
+  cats.forEach((cat, i) => {
+    const a = 2*Math.PI*i/cats.length;
+    _g3dNodes.push({ hub: true, cat, label: cat, c: CAT_COLOR[cat]||'#C8913A', r: 7, strength: 0, idx: _g3dNodes.length, ox: Math.cos(a)*.35, oy: .8, oz: Math.sin(a)*.35, mem: null });
+  });
+
+  canvas.onpointerdown = e => {
+    _g3dOrbit = { startX: e.clientX, startY: e.clientY, startH: _g3dAngleH, startV: _g3dAngleV, moved: false };
+  };
+  canvas.onpointermove = e => {
+    if (!_g3dOrbit) return;
+    const dx = e.clientX - _g3dOrbit.startX, dy = e.clientY - _g3dOrbit.startY;
+    if (Math.abs(dx)+Math.abs(dy) > 4) _g3dOrbit.moved = true;
+    _g3dAngleH = _g3dOrbit.startH + dx*.006;
+    _g3dAngleV = Math.max(-1.3, Math.min(1.3, _g3dOrbit.startV + dy*.004));
+  };
+  canvas.onpointerup = e => {
+    if (_g3dOrbit && !_g3dOrbit.moved) _g3dHandleClick(e.clientX, e.clientY);
+    _g3dOrbit = null;
+  };
+  canvas.ondblclick = e => {
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    let best = null, bestD = 32;
+    _g3dProjected.forEach(p => {
+      if (p.hub) return;
+      const d = Math.sqrt((p.sx-cx)**2 + (p.sy-cy)**2);
+      if (d < bestD) { bestD = d; best = p; }
     });
-  }
-  let angle = 0;
-  let rafId = null;
-  function frame() {
-    ctx.clearRect(0, 0, W, H);
-    const g = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, 200);
-    g.addColorStop(0, 'rgba(200,145,58,.04)'); g.addColorStop(1, 'transparent');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    angle += .008;
-    const cos = Math.cos(angle), sin = Math.sin(angle);
-    const projected = nodes3d.map(n => {
-      const rx = n.ox * cos - n.oz * sin, rz = n.ox * sin + n.oz * cos;
-      const scale = 1.8 / (2 - rz * .5);
-      return { x: W / 2 + rx * 130 * scale, y: H / 2 + n.oy * 75 * scale, z: rz, c: n.c, r: n.r, scale };
-    }).sort((a, b) => a.z - b.z);
-    ctx.lineWidth = .6;
-    for (let i = 0; i < projected.length; i++) for (let j = i + 1; j < Math.min(i + 4, projected.length); j++) {
-      const a = projected[i], b = projected[j];
-      const alpha = Math.max(.04, (a.z + b.z + 2) / 4 * .12);
-      ctx.strokeStyle = `rgba(200,145,58,${alpha.toFixed(2)})`;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    if (best) {
+      _g3dFocus = _g3dFocus === best.idx ? null : best.idx;
+      const pill = document.getElementById('focusPill');
+      if (_g3dFocus) { pill.textContent = 'מצב מיקוד — לחץ לביטול'; pill.style.display = 'block'; }
+      else pill.style.display = 'none';
     }
-    projected.forEach(n => {
-      const alpha = (.3 + (n.z + 1) * .35).toFixed(2), r = Math.max(n.r * n.scale * 1.4, 1.5);
-      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = n.c + (Math.round(parseFloat(alpha) * 255).toString(16).padStart(2, '0'));
-      ctx.fill();
-    });
-    rafId = requestAnimationFrame(frame);
+  };
+
+  function frame() {
+    if (!_g3dPaused) _g3dAngleH += .006;
+    _draw3dFrame(canvas, W, H);
+    _g3dRaf = requestAnimationFrame(frame);
   }
-  canvas._stop = () => { if (rafId) cancelAnimationFrame(rafId); };
-  frame();
+  _g3dRaf = requestAnimationFrame(frame);
+}
+
+function _g3dHandleClick(clientX, clientY) {
+  const canvas = document.getElementById('canvas3d');
+  const rect = canvas.getBoundingClientRect();
+  const cx = clientX - rect.left, cy = clientY - rect.top;
+  let best = null, bestD = 28;
+  _g3dProjected.forEach(p => {
+    const d = Math.sqrt((p.sx-cx)**2 + (p.sy-cy)**2);
+    if (d < bestD + p.r*.5) { bestD = d; best = p; }
+  });
+  if (best) {
+    if (best.hub) { _g3dHighlight = _g3dHighlight === best.cat ? null : best.cat; }
+    else {
+      _g3dPaused = true;
+      showGraphTooltip(best.mem.id, clientX, clientY);
+      const pill = document.getElementById('focusPill');
+      pill.textContent = '▶ המשך סיבוב — לחץ לביטול'; pill.style.display = 'block';
+    }
+  } else {
+    closeGraphTooltip(); _g3dPaused = false; _g3dHighlight = null;
+    if (!_g3dFocus) document.getElementById('focusPill').style.display = 'none';
+  }
+}
+
+function _draw3dFrame(canvas, W, H) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const gr = ctx.createRadialGradient(W/2,H/2,10,W/2,H/2,200);
+  gr.addColorStop(0,'rgba(200,145,58,.03)'); gr.addColorStop(1,'transparent');
+  ctx.fillStyle = gr; ctx.fillRect(0,0,W,H);
+  const cosH = Math.cos(_g3dAngleH), sinH = Math.sin(_g3dAngleH);
+  const cosV = Math.cos(_g3dAngleV), sinV = Math.sin(_g3dAngleV);
+  const sq = S.searchQ || '';
+  // Focus neighborhood
+  let focusSet = null;
+  if (_g3dFocus !== null) {
+    focusSet = new Set([_g3dFocus]);
+    _g3dEdges.forEach(e => { if(e.a===_g3dFocus||e.b===_g3dFocus){focusSet.add(e.a);focusSet.add(e.b);} });
+  }
+  const RW = Math.min(W,H)*0.38, RH = H*0.42;
+  _g3dProjected = _g3dNodes.map((n) => {
+    const rx = n.ox*cosH - n.oz*sinH, rz = n.ox*sinH + n.oz*cosH;
+    const ry2 = n.oy*cosV - rz*sinV, rz2 = n.oy*sinV + rz*cosV;
+    const sc = 1.8/(2-rz2*.5);
+    return { sx: W/2+rx*RW*sc, sy: H/2+ry2*RH*sc, z: rz2, c: n.c, r: n.r*sc*1.5, scale: sc, idx: n.idx, hub: n.hub, cat: n.cat, mem: n.mem, strength: n.strength };
+  }).sort((a,b) => a.z-b.z);
+  // Draw edges
+  _g3dEdges.forEach(e => {
+    const pa = _g3dProjected.find(p => p.idx === e.a), pb = _g3dProjected.find(p => p.idx === e.b);
+    if (!pa||!pb) return;
+    const alpha = Math.max(.02,(pa.z+pb.z+2)/4*(e.w*.06));
+    ctx.strokeStyle = `rgba(200,145,58,${alpha.toFixed(2)})`;
+    ctx.lineWidth = e.w>1?.9:.4;
+    ctx.beginPath(); ctx.moveTo(pa.sx,pa.sy); ctx.lineTo(pb.sx,pb.sy); ctx.stroke();
+  });
+  // Draw nodes
+  _g3dProjected.forEach(p => {
+    const n = _g3dNodes[p.idx]; if (!n) return;
+    const alpha = Math.max(.2,.35+(p.z+1)*.3);
+    let dimmed = false;
+    if (_g3dHighlight && n.cat !== _g3dHighlight) dimmed = true;
+    if (focusSet && !n.hub && !focusSet.has(p.idx)) dimmed = true;
+    if (sq && !n.hub) { const matches = n.mem && n.mem.content.toLowerCase().includes(sq); if (!matches) dimmed = true; }
+    ctx.save();
+    ctx.globalAlpha = dimmed ? .08 : alpha;
+    if (!dimmed) {
+      if (n.strength >= 3 || n.hub) { ctx.shadowBlur = n.hub?12:7; ctx.shadowColor = n.c; }
+      if (sq && n.mem && n.mem.content.toLowerCase().includes(sq)) { ctx.shadowBlur = 14; ctx.shadowColor = '#fbbf24'; }
+    }
+    const r = Math.max(p.r, n.hub ? 5 : 2);
+    ctx.beginPath(); ctx.arc(p.sx,p.sy,r,0,Math.PI*2);
+    ctx.fillStyle = n.c + (Math.round((dimmed?.1:alpha)*255).toString(16).padStart(2,'0'));
+    ctx.fill();
+    if (!n.hub && n.strength === 0 && !dimmed) {
+      ctx.beginPath(); ctx.arc(p.sx,p.sy,r+3,0,Math.PI*2);
+      ctx.strokeStyle = n.c+'40'; ctx.lineWidth=.6;
+      ctx.setLineDash([2,2]); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (n.hub) {
+      ctx.globalAlpha = dimmed?.08:.88; ctx.shadowBlur=0;
+      ctx.fillStyle='rgba(224,212,190,.9)';
+      ctx.font = `700 ${Math.max(8,8*p.scale)}px Heebo,sans-serif`;
+      ctx.textAlign='center'; ctx.fillText(n.label,p.sx,p.sy-r-3);
+    }
+    ctx.restore();
+  });
+}
+
+function stopGraph3D() {
+  if (_g3dRaf) { cancelAnimationFrame(_g3dRaf); _g3dRaf = null; }
+  const c = document.getElementById('canvas3d');
+  if (c) { c.onpointerdown = c.onpointermove = c.onpointerup = c.ondblclick = null; }
+}
+
+// ── KPI Click Handlers ─────────────────────────────────────────────────────
+function kpiMemClick() {
+  mpTab('list', document.querySelectorAll('.mp-tab')[0]);
+  document.getElementById('memSearch')?.focus();
+}
+function kpiPendingClick() { mpTab('pending', document.querySelectorAll('.mp-tab')[2]); }
+function kpiCatClick() {
+  const cats = {};
+  S.memories.forEach(m => { const c = inferCat(m.content); cats[c] = (cats[c]||0)+1; });
+  const top = Object.entries(cats).sort((a,b)=>b[1]-a[1])[0];
+  if (!top) return;
+  const btn = [...document.querySelectorAll('#catBtns .seg-btn')].find(b => b.textContent.trim() === top[0]);
+  if (btn) setFilter(top[0], btn);
+}
+function kpiLastClick() {
+  const sorted = [...S.memories].sort((a,b) => new Date(b.created_at)-new Date(a.created_at));
+  if (!sorted[0]) return;
+  S.searchQ = sorted[0].content.slice(0,10).toLowerCase();
+  const inp = document.getElementById('memSearch');
+  if (inp) { inp.value = S.searchQ; renderMemList(); }
 }
 
 // ── UI Controls ────────────────────────────────────────────────────────────
@@ -2046,7 +2340,7 @@ function setFilter(cat, btn) {
   document.querySelectorAll('#catBtns .seg-btn').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
   renderMemList();
-  drawGraph();
+  startGraph2D();
 }
 
 function setView(v, btn) {
@@ -2057,7 +2351,9 @@ function setView(v, btn) {
   const c3d = document.getElementById('canvas3d');
   svg.style.display = S.view3d ? 'none' : 'block';
   c3d.style.display = S.view3d ? 'block' : 'none';
-  if (S.view3d) draw3d(); else { if (c3d._stop) c3d._stop(); drawGraph(); }
+  closeGraphTooltip(); clearFocus();
+  if (S.view3d) { stopGraph2D(); startGraph3D(); }
+  else { stopGraph3D(); startGraph2D(); }
 }
 
 // ── Polling ────────────────────────────────────────────────────────────────

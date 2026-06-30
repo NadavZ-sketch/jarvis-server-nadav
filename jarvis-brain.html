@@ -278,6 +278,50 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 
 ::-webkit-scrollbar{width:3px;height:3px}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* NODE POPUP – mobile bottom sheet */
+.node-popup-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199}
+.node-popup{position:fixed;bottom:0;right:0;left:0;background:var(--surface);border-top:1px solid var(--border);border-radius:12px 12px 0 0;padding-bottom:max(env(safe-area-inset-bottom,0px),12px);z-index:200;box-shadow:0 -4px 32px rgba(0,0,0,.6);animation:slideUp .22s ease}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.np-handle{width:36px;height:3px;background:var(--border);border-radius:2px;margin:8px auto 12px}
+.np-body{padding:0 16px 12px}
+.np-cat{font-size:var(--tx-xs);font-weight:700;margin-bottom:5px;display:flex;align-items:center;gap:5px}
+.np-text{font-size:var(--tx-sm);color:var(--text);line-height:1.6;margin-bottom:5px;word-break:break-word}
+.np-time{font-size:.6rem;color:var(--muted)}
+.np-acts{display:flex;gap:7px;padding:0 14px}
+.np-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:10px;border-radius:var(--r4);font-family:inherit;font-size:var(--tx-sm);font-weight:600;cursor:pointer;min-height:44px;transition:all .15s}
+.np-btn.primary{background:linear-gradient(135deg,#C8913A,#e0b86a);border:none;color:#0d1117}
+.np-btn.danger{border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.05);color:var(--red)}
+.np-btn.cancel{border:1px solid var(--border);background:var(--card);color:var(--muted)}
+
+/* RESPONSIVE – mobile ≤640px */
+@media(max-width:640px){
+  .topbar{padding:0 10px;gap:5px;height:44px}
+  .brand-sub{display:none}
+  .tab{padding:7px 9px;gap:3px;font-size:.6rem}
+  .kpi-chip{padding:5px 10px}
+  .kl{display:none}
+
+  /* Constellation: graph first (order:-1), list panel below */
+  .const-layout{flex-direction:column}
+  .graph-pane{order:-1;height:50vh;flex:none}
+  .mem-panel{width:100%;flex:1;min-height:0;border-right:none;border-top:1px solid var(--border)}
+
+  /* Thinking: trace list on top, side charts as horizontal scroll strip */
+  .think-layout{flex-direction:column}
+  .think-main{flex:none;height:55vh}
+  .think-side{width:100%;flex:1;min-height:0;border-right:none;border-top:1px solid var(--border);flex-direction:row;overflow-x:auto;overflow-y:hidden}
+  .side-chart{border-bottom:none;border-right:1px solid var(--border);min-width:185px;flex-shrink:0}
+  .activity-pulse{border-bottom:none;border-right:1px solid var(--border);min-width:200px;flex-shrink:0;padding:11px 13px}
+
+  /* Profile: single column, scrollable */
+  .profile-layout{grid-template-columns:1fr;grid-template-rows:auto;overflow-y:auto}
+  .pc{border-bottom:1px solid var(--border);overflow:visible}
+  .pc:nth-child(odd){border-left:none}
+
+  /* Knowledge: 3-column cluster grid */
+  .clusters-row{grid-template-columns:repeat(3,1fr)}
+}
 </style>
 </head>
 <body>
@@ -689,6 +733,22 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
   </div>
 </div>
 
+</div>
+
+<!-- Node popup — mobile bottom sheet when tapping a memory node -->
+<div class="node-popup-overlay" id="nodeOverlay" style="display:none" onclick="closeNodePopup()"></div>
+<div class="node-popup" id="nodePopup" style="display:none">
+  <div class="np-handle"></div>
+  <div class="np-body">
+    <div class="np-cat" id="npCat"></div>
+    <div class="np-text" id="npText"></div>
+    <div class="np-time" id="npTime"></div>
+  </div>
+  <div class="np-acts">
+    <button class="np-btn primary" onclick="nodePopupEdit()"><svg class="icon icon-sm"><use href="#ic-pencil"/></svg> ערוך</button>
+    <button class="np-btn danger" onclick="nodePopupDelete()"><svg class="icon icon-sm"><use href="#ic-trash"/></svg> מחק</button>
+    <button class="np-btn cancel" onclick="closeNodePopup()">סגור</button>
+  </div>
 </div>
 
 <script>
@@ -1570,6 +1630,7 @@ function drawLearnTimeline(data) {
 function drawGraph() {
   const svg = document.getElementById('graphSvg');
   const W = svg.clientWidth || 700, H = svg.clientHeight || 350;
+  const isMob = window.innerWidth < 640;
   const mems = S.filter === 'all' ? S.memories : S.memories.filter(m => inferCat(m.content) === S.filter);
   document.getElementById('nodeCount').textContent = `${mems.length} צמתים · ${Math.round(mems.length * 2.6)} קשרים`;
 
@@ -1578,12 +1639,16 @@ function drawGraph() {
   const catGroups = {};
   mems.forEach(m => { const c = inferCat(m.content); (catGroups[c] = catGroups[c] || []).push(m); });
 
+  const nodeR = isMob ? 9 : 5 + Math.random() * 3;
+  const hubR  = isMob ? 15 : 10;
+  const repel = isMob ? 48 : 35;
+
   const nodes = mems.map(m => ({
     id: m.id, l: m.content.slice(0, 14), c: CAT_COLOR[inferCat(m.content)] || '#C8913A',
-    r: 5 + Math.random() * 3, hub: false,
+    r: isMob ? 9 : (5 + Math.random() * 3), hub: false,
   }));
   const hubs = Object.keys(catGroups).map(cat => ({
-    id: 'hub-' + cat, l: cat, c: CAT_COLOR[cat] || '#C8913A', r: 10, hub: true,
+    id: 'hub-' + cat, l: cat, c: CAT_COLOR[cat] || '#C8913A', r: hubR, hub: true,
   }));
   const all = [...nodes, ...hubs];
 
@@ -1599,7 +1664,7 @@ function drawGraph() {
     const cool = 1 - it / 60;
     for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
       const a = nodes[i], b = nodes[j], dx = (b.x - a.x) || .01, dy = (b.y - a.y) || .01;
-      const d = Math.sqrt(dx * dx + dy * dy) || .01, f = 35 * 35 / d * .1 * cool;
+      const d = Math.sqrt(dx * dx + dy * dy) || .01, f = repel * repel / d * .1 * cool;
       a.vx -= f * dx / d; a.vy -= f * dy / d; b.vx += f * dx / d; b.vy += f * dy / d;
     }
     all.forEach(n => {
@@ -1611,7 +1676,7 @@ function drawGraph() {
   let h = '';
   nodes.forEach(m => {
     const hub = hubs.find(h => h.l === inferCat(S.memories.find(x => x.id === m.id)?.content));
-    if (hub) h += `<line x1="${m.x.toFixed(1)}" y1="${m.y.toFixed(1)}" x2="${hub.x.toFixed(1)}" y2="${hub.y.toFixed(1)}" stroke="rgba(200,145,58,.08)" stroke-width=".8"/>`;
+    if (hub) h += `<line x1="${m.x.toFixed(1)}" y1="${m.y.toFixed(1)}" x2="${hub.x.toFixed(1)}" y2="${hub.y.toFixed(1)}" stroke="rgba(200,145,58,.08)" stroke-width="${isMob ? 1 : .8}"/>`;
   });
   for (let i = 0; i < Math.min(nodes.length * 2, 20); i++) {
     const a = nodes[Math.floor(Math.random() * nodes.length)];
@@ -1619,19 +1684,67 @@ function drawGraph() {
     if (a && b && a !== b) h += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(200,145,58,.13)" stroke-width="1"/>`;
   }
   hubs.forEach(n => {
-    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r + 10}" fill="none" stroke="${n.c}" stroke-width=".5" opacity=".2"/>`;
-    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r + 22}" fill="none" stroke="${n.c}" stroke-width=".25" opacity=".07"/>`;
+    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r + (isMob ? 14 : 10)}" fill="none" stroke="${n.c}" stroke-width=".5" opacity=".2"/>`;
+    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r + (isMob ? 28 : 22)}" fill="none" stroke="${n.c}" stroke-width=".25" opacity=".07"/>`;
   });
   all.forEach(n => {
-    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r}" fill="${n.c}" opacity="${n.hub ? .9 : .82}" style="cursor:pointer" onclick="onNodeClick('${esc(n.id)}')"/>`;
-    if (n.hub) h += `<text x="${n.x.toFixed(1)}" y="${(n.y - n.r - 4).toFixed(1)}" text-anchor="middle" font-size="7.5" fill="rgba(224,212,190,.75)" font-family="Heebo">${n.l}</text>`;
-    else h += `<text x="${n.x.toFixed(1)}" y="${(n.y - n.r - 3).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="rgba(224,212,190,.5)" font-family="Heebo">${n.l}</text>`;
+    /* larger invisible hit area on mobile for easy tapping */
+    const hitR = isMob ? Math.max(n.r, 18) : n.r;
+    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${hitR}" fill="transparent" style="cursor:pointer" onclick="onNodeClick('${esc(n.id)}')"/>`;
+    h += `<circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${n.r}" fill="${n.c}" opacity="${n.hub ? .9 : .82}" pointer-events="none"/>`;
+    /* hub labels always; leaf labels only on desktop */
+    if (n.hub) h += `<text x="${n.x.toFixed(1)}" y="${(n.y - n.r - 5).toFixed(1)}" text-anchor="middle" font-size="${isMob ? 9 : 7.5}" font-weight="${isMob ? 700 : 400}" fill="rgba(224,212,190,.85)" font-family="Heebo" pointer-events="none">${n.l}</text>`;
+    else if (!isMob) h += `<text x="${n.x.toFixed(1)}" y="${(n.y - n.r - 3).toFixed(1)}" text-anchor="middle" font-size="6.5" fill="rgba(224,212,190,.5)" font-family="Heebo" pointer-events="none">${n.l}</text>`;
   });
   svg.innerHTML = h;
 }
 
 function onNodeClick(id) {
-  if (!id.startsWith('hub-')) selectMem(id);
+  if (id.startsWith('hub-')) return;
+  if (window.innerWidth < 640) {
+    showNodePopup(id);
+  } else {
+    selectMem(id);
+  }
+}
+
+let _npMemId = null;
+
+function showNodePopup(id) {
+  const m = S.memories.find(x => x.id === id);
+  if (!m) return;
+  _npMemId = id;
+  const cat = inferCat(m.content);
+  const col = CAT_COLOR[cat] || '#C8913A';
+  document.getElementById('npCat').innerHTML = `<svg class="icon icon-sm"><use href="#ic-tag"/></svg><span style="color:${col}">${esc(cat)}</span>`;
+  document.getElementById('npText').textContent = m.content;
+  document.getElementById('npTime').textContent = relTime(m.created_at);
+  document.getElementById('nodeOverlay').style.display = 'block';
+  document.getElementById('nodePopup').style.display = 'block';
+}
+
+function closeNodePopup() {
+  document.getElementById('nodePopup').style.display = 'none';
+  document.getElementById('nodeOverlay').style.display = 'none';
+  _npMemId = null;
+}
+
+function nodePopupEdit() {
+  if (!_npMemId) return;
+  const id = _npMemId;
+  closeNodePopup();
+  selectMem(id);
+}
+
+async function nodePopupDelete() {
+  if (!_npMemId || !confirm('למחוק זיכרון זה?')) return;
+  const id = _npMemId;
+  closeNodePopup();
+  try {
+    await api(`/memories/${id}`, { method: 'DELETE' });
+    S.memories = S.memories.filter(m => m.id !== id);
+    renderMemList(); drawGraph(); updateConstellationKpi();
+  } catch (e) { alert('שגיאה במחיקה: ' + e.message); }
 }
 
 function draw3d() {

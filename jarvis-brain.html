@@ -189,22 +189,81 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
 
 /* KNOWLEDGE TAB */
 .know-tab-layout{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.cat-filter-bar{display:flex;align-items:center;gap:6px;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
-.cat-filter-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:var(--tx-xs);font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .15s;font-weight:500}
-.cat-filter-btn.on{color:var(--accent2);border-color:rgba(200,145,58,.45);background:rgba(200,145,58,.08);font-weight:700}
-.cat-filter-btn .cf-count{font-size:.58rem;background:rgba(255,255,255,.06);border-radius:8px;padding:1px 5px;margin-right:2px}
-.know-grid{flex:1;overflow-y:auto;padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;align-content:start}
-.know-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:11px 12px;display:flex;flex-direction:column;gap:7px;border-right:3px solid var(--border);transition:border-color .2s,background .15s;cursor:default}
-.know-card:hover{background:var(--surface)}
-.know-card.cat-עבודה{border-right-color:var(--blue)}
-.know-card.cat-משפחה{border-right-color:var(--green)}
-.know-card.cat-בריאות{border-right-color:var(--amber)}
-.know-card.cat-תחביב{border-right-color:var(--purple)}
-.know-card.cat-כללי{border-right-color:var(--accent)}
-.kc-cat{display:inline-flex;align-items:center;gap:4px;font-size:.6rem;font-weight:700;padding:2px 8px;border-radius:10px;align-self:flex-start}
-.kc-text{font-size:var(--tx-sm);color:var(--text);line-height:1.5}
-.kc-date{font-size:.58rem;color:var(--muted)}
-.know-empty{grid-column:1/-1;display:flex;align-items:center;justify-content:center;padding:60px 0;color:var(--muted);font-size:var(--tx-sm)}
+.know-scroll{flex:1;overflow-y:auto;padding:14px}
+
+/* Identity Card */
+.identity-card{background:linear-gradient(135deg,rgba(200,145,58,.08) 0%,rgba(22,27,34,.9) 60%);border:1px solid rgba(200,145,58,.25);border-radius:var(--r8);padding:15px 17px;margin-bottom:13px;position:relative;overflow:hidden}
+.identity-card::before{content:'';position:absolute;top:-40px;left:-40px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(200,145,58,.1) 0%,transparent 70%);pointer-events:none}
+.id-top{display:flex;align-items:flex-start;gap:12px;margin-bottom:11px}
+.id-avatar{width:46px;height:46px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,#C8913A,#1e3a5f);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#0d1117;box-shadow:0 0 14px rgba(200,145,58,.3)}
+.id-meta{flex:1;min-width:0}
+.id-name{font-size:.9rem;font-weight:800;color:var(--accent2);margin-bottom:2px}
+.id-tagline{font-size:var(--tx-xs);color:var(--muted);line-height:1.5}
+.id-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.id-badge{display:inline-flex;align-items:center;gap:3px;font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--muted)}
+.id-badge.blue{background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.25);color:var(--blue)}
+.id-badge.green{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.25);color:var(--green)}
+.id-badge.amber{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.25);color:var(--amber)}
+.id-badge.purple{background:rgba(167,139,250,.1);border-color:rgba(167,139,250,.25);color:var(--purple)}
+.id-stats{display:flex;border-top:1px solid rgba(200,145,58,.15);padding-top:10px}
+.id-stat{flex:1;text-align:center;border-left:1px solid var(--border)}
+.id-stat:last-child{border-left:none}
+.id-stat-n{font-size:.9rem;font-weight:800;color:var(--accent2)}
+.id-stat-l{font-size:.58rem;color:var(--muted);margin-top:1px}
+
+/* Section header */
+.sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.sec-title{font-size:var(--tx-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:5px}
+
+/* Topic Clusters */
+.clusters-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:10px}
+.cluster-tile{background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:10px 8px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;border-top:2px solid transparent}
+.cluster-tile:hover,.cluster-tile.active{border-top-color:var(--tc,var(--accent));background:var(--surface);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.cluster-tile::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at top,var(--tg,rgba(200,145,58,.05)) 0%,transparent 70%);pointer-events:none}
+.ct-icon{font-size:15px;margin-bottom:4px;display:block}
+.ct-label{font-size:var(--tx-xs);font-weight:700;color:var(--text);margin-bottom:2px}
+.ct-count{font-size:.82rem;font-weight:800;margin-bottom:3px;font-variant-numeric:tabular-nums}
+.ct-preview{font-size:.6rem;color:var(--muted);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+/* Expanded cluster */
+.cluster-expand{background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);margin-bottom:12px;overflow:hidden;animation:expandIn .25s ease-out}
+@keyframes expandIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.ce-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.15)}
+.ce-title{font-size:var(--tx-sm);font-weight:700;color:var(--accent2);display:flex;align-items:center;gap:5px}
+.ce-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:2px 6px;border-radius:3px;transition:color .15s;font-family:inherit}
+.ce-close:hover{color:var(--text)}
+.ce-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:5px;padding:8px 12px}
+.ce-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r4);padding:8px 10px;border-right:3px solid var(--tc,var(--accent))}
+.ce-text{font-size:var(--tx-sm);color:var(--text);line-height:1.4;margin-bottom:3px}
+.ce-date{font-size:.58rem;color:var(--muted)}
+
+/* Insights */
+.insights-scroll{display:flex;gap:7px;overflow-x:auto;padding-bottom:3px;margin-bottom:12px}
+.insights-scroll::-webkit-scrollbar{height:2px}
+.insights-scroll::-webkit-scrollbar-thumb{background:var(--border)}
+.insight-card{flex-shrink:0;width:165px;background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:11px 12px;cursor:pointer;transition:all .2s}
+.insight-card:hover{border-color:rgba(200,145,58,.35);background:var(--surface)}
+.insight-card.expanded{border-color:rgba(200,145,58,.5);background:var(--surface);width:255px}
+.ic-glyph{font-size:19px;margin-bottom:6px;display:block}
+.ic-label{font-size:var(--tx-xs);font-weight:700;color:var(--accent2);margin-bottom:2px}
+.ic-desc{font-size:.6rem;color:var(--muted);line-height:1.5;margin-bottom:7px}
+.ic-conf{display:flex;align-items:center;gap:5px}
+.ic-conf-bar{flex:1;height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+.ic-conf-fill{height:100%;border-radius:2px;transition:width .6s ease}
+.ic-conf-pct{font-size:.58rem;color:var(--muted)}
+.ic-sources{margin-top:7px;display:none;border-top:1px solid var(--border);padding-top:7px}
+.insight-card.expanded .ic-sources{display:block}
+.ic-src{font-size:.6rem;color:var(--muted);padding:2px 0;border-bottom:1px solid rgba(48,54,61,.5);line-height:1.4}
+.ic-src:last-child{border-bottom:none}
+
+/* Timeline */
+.timeline-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:12px 14px}
+.tl-chart{position:relative;height:64px;margin-bottom:6px}
+.tl-months{display:flex;justify-content:space-between}
+.tl-month{font-size:.58rem;color:var(--muted);text-align:center;flex:1;cursor:pointer;padding:2px 0;border-radius:3px;transition:background .15s}
+.tl-month:hover,.tl-month.sel{background:rgba(200,145,58,.1);color:var(--accent)}
+svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.tl-tooltip{position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:var(--r4);padding:5px 9px;font-size:.6rem;pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;z-index:10;color:var(--text)}
 
 /* PROFILE SETTINGS */
 .prof-settings{display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1}
@@ -575,16 +634,57 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
 <!-- ══ TAB 4: KNOWLEDGE ══ -->
 <div class="tab-panel" id="panel-knowledge">
   <div class="know-tab-layout">
-    <div class="cat-filter-bar" id="catFilterBar">
-      <button class="cat-filter-btn on" onclick="filterKnow('הכל',this)">הכל <span class="cf-count" id="cf-all">0</span></button>
-      <button class="cat-filter-btn" onclick="filterKnow('עבודה',this)" style="--cc:var(--blue)">עבודה <span class="cf-count" id="cf-עבודה">0</span></button>
-      <button class="cat-filter-btn" onclick="filterKnow('משפחה',this)" style="--cc:var(--green)">משפחה <span class="cf-count" id="cf-משפחה">0</span></button>
-      <button class="cat-filter-btn" onclick="filterKnow('בריאות',this)" style="--cc:var(--amber)">בריאות <span class="cf-count" id="cf-בריאות">0</span></button>
-      <button class="cat-filter-btn" onclick="filterKnow('תחביב',this)" style="--cc:var(--purple)">תחביב <span class="cf-count" id="cf-תחביב">0</span></button>
-      <button class="cat-filter-btn" onclick="filterKnow('כללי',this)" style="--cc:var(--accent)">כללי <span class="cf-count" id="cf-כללי">0</span></button>
-    </div>
-    <div class="know-grid" id="knowGrid">
-      <div class="know-empty">טוען זיכרונות...</div>
+    <div class="know-scroll">
+
+      <!-- A: Identity Card -->
+      <div class="identity-card">
+        <div class="id-top">
+          <div class="id-avatar" id="idAvatar">?</div>
+          <div class="id-meta">
+            <div class="id-name" id="idName">—</div>
+            <div class="id-tagline" id="idTagline">טוען פרופיל...</div>
+            <div class="id-badges" id="idBadges"></div>
+          </div>
+        </div>
+        <div class="id-stats">
+          <div class="id-stat"><div class="id-stat-n" id="ids-total">—</div><div class="id-stat-l">זיכרונות</div></div>
+          <div class="id-stat"><div class="id-stat-n" id="ids-cats">—</div><div class="id-stat-l">קטגוריות</div></div>
+          <div class="id-stat"><div class="id-stat-n" id="ids-days">—</div><div class="id-stat-l">ימי שימוש</div></div>
+          <div class="id-stat"><div class="id-stat-n" id="ids-pending">—</div><div class="id-stat-l">ממתינים</div></div>
+        </div>
+      </div>
+
+      <!-- B: Topic Clusters -->
+      <div class="sec-head">
+        <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-tag"/></svg> נושאים</div>
+      </div>
+      <div class="clusters-row" id="clustersRow"></div>
+      <div class="cluster-expand" id="clusterExpand" style="display:none">
+        <div class="ce-head">
+          <div class="ce-title" id="ceTitle"></div>
+          <button class="ce-close" onclick="closeCluster()">✕</button>
+        </div>
+        <div class="ce-grid" id="ceGrid"></div>
+      </div>
+
+      <!-- C: Insight Cards -->
+      <div class="sec-head">
+        <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-light"/></svg> תובנות שג׳רוויס הסיק</div>
+      </div>
+      <div class="insights-scroll" id="insightsScroll"></div>
+
+      <!-- D: Timeline -->
+      <div class="sec-head">
+        <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> ציר ידע — מתי למד ג׳רוויס</div>
+      </div>
+      <div class="timeline-wrap">
+        <div class="tl-chart" id="tlChart">
+          <svg class="tl-svg" id="tlSvg"></svg>
+          <div class="tl-tooltip" id="tlTip"></div>
+        </div>
+        <div class="tl-months" id="tlMonths"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1000,14 +1100,6 @@ function renderProfile() {
   drawLearnTimeline(learnData);
 }
 
-function getKnowIcon(text) {
-  if (/מתכנת|קוד|תוכנה|developer|code/i.test(text)) return 'code';
-  if (/ספר|קריאה|book|read/i.test(text)) return 'book';
-  if (/מקום|עיר|גר|location|city/i.test(text)) return 'location';
-  if (/בריאות|ספורט|ריצה|health|sport/i.test(text)) return 'fire';
-  return 'light';
-}
-
 // ── Profile Settings Rendering ──────────────────────────────────────────────
 function renderProfileSettings() {
   const p = S.profile;
@@ -1020,8 +1112,15 @@ function renderProfileSettings() {
   set('pf-local', p.useLocalModel ? 'כן (Ollama)' : 'לא');
 }
 
-// ── Knowledge Tab ───────────────────────────────────────────────────────────
-let _knowFilter = 'הכל';
+// ── Knowledge Tab — Enhanced ─────────────────────────────────────────────────
+const CLUST_META = {
+  עבודה: { icon: '💻', color: '#60a5fa', tg: 'rgba(96,165,250,.07)' },
+  משפחה: { icon: '👨‍👩‍👧', color: '#22c55e', tg: 'rgba(34,197,94,.07)' },
+  בריאות: { icon: '🏃', color: '#f59e0b', tg: 'rgba(245,158,11,.07)' },
+  תחביב: { icon: '📚', color: '#a78bfa', tg: 'rgba(167,139,250,.07)' },
+  כללי:  { icon: '📌', color: '#C8913A', tg: 'rgba(200,145,58,.07)' },
+};
+let _activeCluster = null;
 
 function updateKnowledgeKpi() {
   const all = S.memories;
@@ -1033,48 +1132,240 @@ function updateKnowledgeKpi() {
   document.getElementById('kpi-know-top-cat').textContent = top ? `${top[0]} (${top[1]})` : '—';
   const sorted = [...all].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   document.getElementById('kpi-know-last').textContent = sorted[0] ? relTime(sorted[0].created_at) : '—';
-
-  // Update filter counts
-  const countEls = { הכל: 'cf-all', עבודה: 'cf-עבודה', משפחה: 'cf-משפחה', בריאות: 'cf-בריאות', תחביב: 'cf-תחביב', כללי: 'cf-כללי' };
-  const counts = { הכל: all.length };
-  all.forEach(m => { const c = inferCat(m.content); counts[c] = (counts[c] || 0) + 1; });
-  for (const [k, elId] of Object.entries(countEls)) {
-    const el = document.getElementById(elId);
-    if (el) el.textContent = counts[k] || 0;
-  }
 }
 
-function renderKnowledge(filter) {
-  _knowFilter = filter || _knowFilter;
+function renderKnowledge() {
   updateKnowledgeKpi();
-  const grid = document.getElementById('knowGrid');
-  const mems = _knowFilter === 'הכל'
-    ? S.memories
-    : S.memories.filter(m => inferCat(m.content) === _knowFilter);
+  renderIdentityCard();
+  renderClusters();
+  renderInsights();
+  drawKnowledgeTimeline();
+}
 
-  if (!mems.length) {
-    grid.innerHTML = `<div class="know-empty">אין זיכרונות בקטגוריה זו</div>`;
-    return;
-  }
+function renderIdentityCard() {
+  const p = S.profile;
+  const name = p.userName || 'משתמש';
+  const initial = (name.charAt(0) || '?').toUpperCase();
 
-  const sorted = [...mems].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  const CAT_BG = { עבודה: 'rgba(96,165,250,.12)', משפחה: 'rgba(34,197,94,.12)', בריאות: 'rgba(245,158,11,.12)', תחביב: 'rgba(167,139,250,.12)', כללי: 'rgba(200,145,58,.12)' };
-  const CAT_FG = { עבודה: 'var(--blue)', משפחה: 'var(--green)', בריאות: 'var(--amber)', תחביב: 'var(--purple)', כללי: 'var(--accent)' };
+  const cats = {};
+  S.memories.forEach(m => { const c = inferCat(m.content); cats[c] = (cats[c] || 0) + 1; });
 
-  grid.innerHTML = sorted.map(m => {
-    const cat = inferCat(m.content);
-    return `<div class="know-card cat-${esc(cat)}">
-      <span class="kc-cat" style="background:${CAT_BG[cat]};color:${CAT_FG[cat]}">${esc(cat)}</span>
-      <div class="kc-text">${esc(m.content)}</div>
-      <div class="kc-date">${relTime(m.created_at)}</div>
+  const parts = [];
+  if (cats['עבודה'] >= 3) parts.push('מפתח תוכנה');
+  if (p.personality) parts.push(`אישיות ${p.personality}`);
+  const tagline = parts.join(' · ') || 'משתמש ג׳רוויס';
+
+  const badges = [];
+  if ((cats['עבודה'] || 0) >= 2) badges.push({ label: '💻 מפתח', cls: 'blue' });
+  if ((cats['משפחה'] || 0) >= 2) badges.push({ label: '👨‍👩‍👧 משפחה', cls: 'green' });
+  if ((cats['בריאות'] || 0) >= 2) badges.push({ label: '🏃 בריאות', cls: 'amber' });
+  if ((cats['תחביב'] || 0) >= 2) badges.push({ label: '📚 תחביב', cls: 'purple' });
+  const nightCount = S.log.filter(l => { const h = l.created_at ? new Date(l.created_at).getHours() : 12; return h >= 22 || h < 4; }).length;
+  if (S.log.length && nightCount / S.log.length > 0.25) badges.push({ label: '🌙 לילה פעיל', cls: '' });
+
+  const days = new Set(S.log.map(l => l.created_at ? new Date(l.created_at).toDateString() : null).filter(Boolean));
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('idAvatar', initial);
+  set('idName', name);
+  set('idTagline', tagline);
+  document.getElementById('idBadges').innerHTML = badges.map(b => `<span class="id-badge ${b.cls}">${b.label}</span>`).join('');
+  set('ids-total', S.memories.length);
+  set('ids-cats', Object.keys(cats).length);
+  set('ids-days', days.size || '—');
+  set('ids-pending', S.pending.length);
+}
+
+function renderClusters() {
+  const row = document.getElementById('clustersRow');
+  const cats = {};
+  S.memories.forEach(m => { const c = inferCat(m.content); (cats[c] = cats[c] || []).push(m); });
+
+  row.innerHTML = Object.entries(CLUST_META).map(([name, meta]) => {
+    const items = cats[name] || [];
+    const preview = items[0]?.content?.slice(0, 60) || 'אין זיכרונות';
+    return `<div class="cluster-tile" style="--tc:${meta.color};--tg:${meta.tg}" onclick="toggleCluster(this,'${name}')">
+      <span class="ct-icon">${meta.icon}</span>
+      <div class="ct-label">${name}</div>
+      <div class="ct-count" style="color:${meta.color}">${items.length}</div>
+      <div class="ct-preview">${esc(preview)}</div>
     </div>`;
   }).join('');
 }
 
-window.filterKnow = function(cat, btn) {
-  document.querySelectorAll('.cat-filter-btn').forEach(b => b.classList.remove('on'));
-  btn.classList.add('on');
-  renderKnowledge(cat);
+window.toggleCluster = function(tile, name) {
+  const exp = document.getElementById('clusterExpand');
+  document.querySelectorAll('.cluster-tile').forEach(t => t.classList.remove('active'));
+  if (_activeCluster === name && exp.style.display !== 'none') {
+    exp.style.display = 'none'; _activeCluster = null; return;
+  }
+  tile.classList.add('active');
+  _activeCluster = name;
+  const meta = CLUST_META[name];
+  const items = S.memories.filter(m => inferCat(m.content) === name);
+  document.getElementById('ceTitle').innerHTML = `${meta.icon} ${name} — ${items.length} זיכרונות`;
+  document.getElementById('ceTitle').style.color = meta.color;
+  document.getElementById('ceGrid').innerHTML = items.length
+    ? items.map(m => `<div class="ce-card" style="border-right-color:${meta.color}">
+        <div class="ce-text">${esc(m.content)}</div>
+        <div class="ce-date">${relTime(m.created_at)}</div>
+      </div>`).join('')
+    : '<div style="padding:12px;font-size:var(--tx-xs);color:var(--muted)">אין זיכרונות בקטגוריה זו</div>';
+  exp.style.display = 'block';
+};
+
+window.closeCluster = function() {
+  document.getElementById('clusterExpand').style.display = 'none';
+  document.querySelectorAll('.cluster-tile').forEach(t => t.classList.remove('active'));
+  _activeCluster = null;
+};
+
+function renderInsights() {
+  const scroll = document.getElementById('insightsScroll');
+  const insights = [];
+
+  // Night owl
+  const nightCount = S.log.filter(l => { if (!l.created_at) return false; const h = new Date(l.created_at).getHours(); return h >= 22 || h < 4; }).length;
+  const nightPct = S.log.length ? Math.round(nightCount / S.log.length * 100) : 0;
+  if (nightPct > 20) insights.push({
+    glyph: '🌙', label: 'פעיל בשעות הלילה',
+    desc: `${nightPct}% מהפניות מגיעות אחרי 22:00`,
+    conf: nightPct, confColor: '#60a5fa',
+    sources: [`📊 ${nightPct}% מהשיחות: 22:00–04:00`],
+  });
+
+  // Developer
+  const devMems = S.memories.filter(m => /מתכנת|קוד|flutter|node|python|react|developer|code|api/i.test(m.content));
+  if (devMems.length >= 2) insights.push({
+    glyph: '💻', label: 'מפתח תוכנה',
+    desc: `${devMems.length} זיכרונות קשורים לפיתוח`,
+    conf: Math.min(95, 55 + devMems.length * 5), confColor: '#22c55e',
+    sources: devMems.slice(0, 2).map(m => `🧠 ${m.content.slice(0, 45)}`),
+  });
+
+  // Pet owner
+  const petMems = S.memories.filter(m => /כלב|חתול|dog|cat|pet|חיה/i.test(m.content));
+  if (petMems.length) insights.push({
+    glyph: '🐕', label: 'בעל חיה',
+    desc: 'הוזכרה חיה מחמד בשיחות',
+    conf: Math.min(95, 60 + petMems.length * 10), confColor: '#f59e0b',
+    sources: petMems.slice(0, 2).map(m => `💬 ${m.content.slice(0, 45)}`),
+  });
+
+  // Short answers
+  const shortPref = S.memories.filter(m => /קצר|תמציתי|brief|short|בקצרה/i.test(m.content));
+  const avgLen = S.log.length ? S.log.reduce((s, l) => s + (l.cmd || '').split(' ').length, 0) / S.log.length : 0;
+  if (shortPref.length || avgLen > 0 && avgLen < 15) insights.push({
+    glyph: '⚡', label: 'מעדיף תמציתיות',
+    desc: 'שאלות קצרות, תשובות ממוקדות',
+    conf: 70, confColor: '#a78bfa',
+    sources: [...shortPref.slice(0, 1).map(m => `💬 ${m.content.slice(0, 45)}`), avgLen > 0 ? `📏 ממוצע ${Math.round(avgLen)} מילים בהודעה` : null].filter(Boolean),
+  });
+
+  // Health / sport
+  const sportMems = S.memories.filter(m => /ריצה|ספורט|כושר|gym|run|sport|בריאות/i.test(m.content));
+  if (sportMems.length) insights.push({
+    glyph: '🏃', label: 'פעיל בגוף',
+    desc: `${sportMems.length} זיכרונות קשורים לבריאות`,
+    conf: Math.min(90, 50 + sportMems.length * 12), confColor: '#22c55e',
+    sources: sportMems.slice(0, 2).map(m => `🏅 ${m.content.slice(0, 45)}`),
+  });
+
+  if (!insights.length) insights.push({
+    glyph: '🔍', label: 'ממתין לנתונים',
+    desc: 'הוסף זיכרונות כדי לראות תובנות',
+    conf: 0, confColor: '#7a8fa6', sources: [],
+  });
+
+  scroll.innerHTML = insights.map(ins => `
+    <div class="insight-card" onclick="toggleInsight(this)">
+      <span class="ic-glyph">${ins.glyph}</span>
+      <div class="ic-label">${esc(ins.label)}</div>
+      <div class="ic-desc">${esc(ins.desc)}</div>
+      <div class="ic-conf">
+        <div class="ic-conf-bar"><div class="ic-conf-fill" style="width:${ins.conf}%;background:${ins.confColor}"></div></div>
+        <span class="ic-conf-pct">${ins.conf}%</span>
+      </div>
+      <div class="ic-sources">${ins.sources.map(s => `<div class="ic-src">${esc(s)}</div>`).join('')}</div>
+    </div>`).join('');
+}
+
+window.toggleInsight = function(card) {
+  const wasExpanded = card.classList.contains('expanded');
+  document.querySelectorAll('.insight-card').forEach(c => c.classList.remove('expanded'));
+  if (!wasExpanded) card.classList.add('expanded');
+};
+
+function drawKnowledgeTimeline() {
+  const svg = document.getElementById('tlSvg');
+  const monthsEl = document.getElementById('tlMonths');
+  if (!svg || !monthsEl) return;
+
+  const W = svg.parentElement?.offsetWidth || 300, H = 64;
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    return { label: d.toLocaleString('he-IL', { month: 'short' }), year: d.getFullYear(), month: d.getMonth(), items: [] };
+  });
+
+  S.memories.forEach(m => {
+    if (!m.created_at) return;
+    const d = new Date(m.created_at);
+    const mi = months.findIndex(mo => mo.year === d.getFullYear() && mo.month === d.getMonth());
+    if (mi >= 0) months[mi].items.push({ cat: inferCat(m.content), text: m.content.slice(0, 30) });
+  });
+
+  const maxItems = Math.max(...months.map(m => m.items.length), 1);
+  const colW = W / months.length;
+  let html = '';
+
+  for (let i = 0; i <= maxItems; i++) {
+    const y = (H - 8 - (i / maxItems) * (H - 16)).toFixed(1);
+    html += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="rgba(48,54,61,.35)" stroke-width="1"/>`;
+  }
+
+  const linePts = months.map((m, i) => {
+    const x = (i * colW + colW / 2).toFixed(1);
+    const y = (H - 8 - (m.items.length / maxItems) * (H - 16)).toFixed(1);
+    return `${x},${y}`;
+  }).join(' ');
+  html += `<polyline points="${linePts}" fill="none" stroke="rgba(200,145,58,.3)" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+
+  months.forEach((m, i) => {
+    const x = i * colW + colW / 2;
+    const y = H - 8 - (m.items.length / maxItems) * (H - 16);
+    m.items.forEach((it, j) => {
+      html += `<circle cx="${x.toFixed(1)}" cy="${(y - j * 5).toFixed(1)}" r="3.5" fill="${CAT_COLOR[it.cat] || CAT_COLOR['כללי']}" opacity="0.85"/>`;
+    });
+    const hitY = Math.max(4, y - (m.items.length - 1) * 2.5);
+    html += `<circle cx="${x.toFixed(1)}" cy="${hitY.toFixed(1)}" r="${5 + m.items.length}" fill="transparent" style="cursor:pointer" onclick="showKnowTip(${i},${x.toFixed(1)},${y.toFixed(1)})"/>`;
+  });
+
+  svg.innerHTML = html;
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  monthsEl.innerHTML = months.map((m, i) =>
+    `<div class="tl-month" onclick="showKnowTip(${i},${(i * colW + colW / 2).toFixed(1)},0)">${m.label}</div>`
+  ).join('');
+  window._tlMonths = months;
+}
+
+window.showKnowTip = function(idx, x) {
+  const months = window._tlMonths || [];
+  const m = months[idx];
+  if (!m) return;
+  document.querySelectorAll('.tl-month').forEach(el => el.classList.remove('sel'));
+  document.querySelectorAll('.tl-month')[idx]?.classList.add('sel');
+  const tip = document.getElementById('tlTip');
+  if (!tip) return;
+  tip.innerHTML = m.items.length
+    ? `<strong>${m.label} — ${m.items.length} זיכרונות</strong><br>` +
+      m.items.slice(0, 4).map(it => `<span style="color:${CAT_COLOR[it.cat] || '#C8913A'}">${it.cat}</span>: ${esc(it.text)}`).join('<br>')
+    : `<strong>${m.label}</strong><br><span style="color:var(--muted)">אין זיכרונות</span>`;
+  tip.style.opacity = '1';
+  const chartW = document.getElementById('tlChart')?.offsetWidth || 300;
+  tip.style.left = Math.min(parseFloat(x), chartW - 190) + 'px';
+  tip.style.top = '4px';
 };
 
 // ── Charts ─────────────────────────────────────────────────────────────────
@@ -1400,7 +1691,7 @@ window.switchTab = function(name, btn) {
   document.getElementById('panel-' + name).classList.add('active');
   document.getElementById('kpi-' + name).style.display = 'flex';
   if (name === 'thinking' && !S.pollTimer) startPolling();
-  if (name === 'knowledge') renderKnowledge('הכל');
+  if (name === 'knowledge') { renderKnowledge(); setTimeout(drawKnowledgeTimeline, 80); }
 };
 
 function mpTab(name, btn) {

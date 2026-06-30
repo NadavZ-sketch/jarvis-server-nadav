@@ -1474,6 +1474,15 @@ async function mmDelete(id) {
   }
 }
 
+function pulseAvatar() {
+  const el = document.getElementById('idAvatar');
+  if (!el) return;
+  el.classList.remove('pulse-anim');
+  void el.offsetWidth; // reflow to restart animation
+  el.classList.add('pulse-anim');
+  el.addEventListener('animationend', () => el.classList.remove('pulse-anim'), { once: true });
+}
+
 function renderIdentityCard() {
   const p = S.profile;
   const name = p.userName || 'משתמש';
@@ -1497,6 +1506,11 @@ function renderIdentityCard() {
 
   const days = new Set(S.log.map(l => l.created_at ? new Date(l.created_at).toDateString() : null).filter(Boolean));
 
+  // Streak: consecutive days backwards from today with ≥1 memory
+  const memDays = new Set(S.memories.map(m => m.created_at ? new Date(m.created_at).toDateString() : null).filter(Boolean));
+  let streak = 0, streakD = new Date();
+  while (memDays.has(streakD.toDateString())) { streak++; streakD.setDate(streakD.getDate() - 1); }
+
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('idAvatar', initial);
   set('idName', name);
@@ -1505,6 +1519,7 @@ function renderIdentityCard() {
   set('ids-total', S.memories.length);
   set('ids-cats', Object.keys(cats).length);
   set('ids-days', days.size || '—');
+  set('ids-streak', streak > 1 ? streak : '—');
   set('ids-pending', S.pending.length);
 }
 

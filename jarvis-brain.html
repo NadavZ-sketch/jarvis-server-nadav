@@ -874,7 +874,7 @@ const S = {
   memories: [], pending: [], trace: [], log: [], providers: {},
   stats: {}, profile: {}, filter: 'all', view3d: false,
   editId: null, pollTimer: null, provTimer: null,
-  searchQ: '', highlight: null,
+  searchQ: '', highlight: null, mmSort: 'date',
 };
 
 // ── Utils ──────────────────────────────────────────────────────────────────
@@ -1367,7 +1367,12 @@ function renderMmList() {
   const list = document.getElementById('mm-all-list');
   if (!list) return;
   const q = (document.getElementById('mmSearch')?.value || '').trim().toLowerCase();
-  const mems = q ? S.memories.filter(m => m.content.toLowerCase().includes(q)) : S.memories;
+  let mems = q ? S.memories.filter(m => m.content.toLowerCase().includes(q)) : [...S.memories];
+  if (S.mmSort === 'cat') {
+    mems.sort((a, b) => inferCat(a.content).localeCompare(inferCat(b.content), 'he'));
+  } else {
+    mems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
   if (!mems.length) { list.innerHTML = '<div class="mm-empty">אין זיכרונות</div>'; return; }
   list.innerHTML = mems.slice(0, 120).map(m => {
     const cat = inferCat(m.content), col = CAT_COLOR[cat] || '#C8913A';
@@ -1384,6 +1389,13 @@ function renderMmList() {
       </div>
     </div>`;
   }).join('');
+}
+
+function setMmSort(mode) {
+  S.mmSort = mode;
+  document.querySelectorAll('.mm-sort-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(mode === 'date' ? 'sortByDate' : 'sortByCat')?.classList.add('active');
+  renderMmList();
 }
 
 async function mmApprove(id) {

@@ -2048,6 +2048,83 @@ function clearFocus() {
   closeGraphTooltip();
 }
 
+// ── Duplicate Detection ────────────────────────────────────────────────────
+function scanDuplicates() {
+  const btn = document.getElementById('dupScanBtn');
+  const results = document.getElementById('dupResults');
+  if (!results) return;
+  if (S.memories.length < 2) {
+    results.innerHTML = '<div class="mm-empty">צריך לפחות 2 זיכרונות לסריקה</div>';
+    return;
+  }
+  if (btn) btn.textContent = 'סורק...';
+  results.innerHTML = '';
+
+  // Tokenize each memory: words ≥3 chars, not in HEB_STOP
+  const tokens = S.memories.map(m =>
+    new Set((m.content || '').split(/\s+/).filter(w => w.length >= 3 && !HEB_STOP.has(w.toLowerCase())).map(w => w.toLowerCase()))
+  );
+
+  const pairs = [];
+  for (let i = 0; i < S.memories.length; i++) {
+    for (let j = i + 1; j < S.memories.length; j++) {
+      let shared = 0;
+      for (const t of tokens[i]) if (tokens[j].has(t)) shared++;
+      if (shared === 0) continue;
+      // Dice-like coefficient: 2*|intersection| / (|A| + |B|)
+      const score = (2 * shared) / Math.max(1, tokens[i].size + tokens[j].size);
+      if (score >= 0.35 || shared >= 3) {
+        pairs.push({ i, j, shared, score });
+      }
+    }
+  }
+
+  pairs.sort((a, b) => b.score - a.score);
+  const top = pairs.slice(0, 15);
+
+  if (btn) btn.textContent = 'סרוק שוב';
+
+  if (!top.length) {
+    results.innerHTML = '<div class="mm-empty">לא נמצאו זיכרונות דומים ✓</div>';
+    return;
+  }
+
+  results.innerHTML = top.map(({ i, j, shared, score }) => {
+    const mA = S.memories[i], mB = S.memories[j];
+    const pct = Math.round(score * 100);
+    return `<div class="dup-pair" id="dup-${esc(mA.id)}-${esc(mB.id)}">
+      <div class="dup-side">
+        <div class="dup-text">${esc(mA.content)}</div>
+        <div class="dup-meta">${relTime(mA.created_at)}</div>
+        <button class="mm-icon-btn del" onclick="dupDelete('${esc(mA.id)}','${esc(mB.id)}')"><svg class="icon icon-sm"><use href="#ic-trash"/></svg> מחק זה</button>
+      </div>
+      <div class="dup-side">
+        <div class="dup-text">${esc(mB.content)}</div>
+        <div class="dup-meta">${relTime(mB.created_at)}</div>
+        <button class="mm-icon-btn del" onclick="dupDelete('${esc(mB.id)}','${esc(mA.id)}')"><svg class="icon icon-sm"><use href="#ic-trash"/></svg> מחק זה</button>
+      </div>
+      <div class="dup-score">דמיון: ${pct}% — ${shared} מילים משותפות</div>
+    </div>`;
+  }).join('');
+}
+
+async function dupDelete(deleteId, keepId) {
+  if (!confirm('למחוק זיכרון זה?')) return;
+  try {
+    await api(`/memories/${deleteId}`, { method: 'DELETE' });
+    S.memories = S.memories.filter(m => m.id !== deleteId);
+    renderMmList(); updateKnowBadge(); updateConstellationKpi(); startGraph2D();
+    // Remove all dup-pair cards containing the deleted id
+    document.querySelectorAll('.dup-pair').forEach(el => {
+      if (el.id.includes(deleteId)) el.remove();
+    });
+    const results = document.getElementById('dupResults');
+    if (results && !results.querySelector('.dup-pair')) {
+      results.innerHTML = '<div class="mm-empty">לא נמצאו זיכרונות דומים ✓</div>';
+    }
+  } catch(e) { alert('שגיאה: ' + e.message); }
+}
+
 // ── 2D Graph ───────────────────────────────────────────────────────────────
 let _g2dRaf = null, _g2dNodes = null, _g2dEdges = null;
 let _g2dDrag = null, _g2dFocus = null;

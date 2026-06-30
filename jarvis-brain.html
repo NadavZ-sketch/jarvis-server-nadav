@@ -195,7 +195,7 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
 .identity-card{background:linear-gradient(135deg,rgba(200,145,58,.08) 0%,rgba(22,27,34,.9) 60%);border:1px solid rgba(200,145,58,.25);border-radius:var(--r8);padding:15px 17px;margin-bottom:13px;position:relative;overflow:hidden}
 .identity-card::before{content:'';position:absolute;top:-40px;left:-40px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(200,145,58,.1) 0%,transparent 70%);pointer-events:none}
 .id-top{display:flex;align-items:flex-start;gap:12px;margin-bottom:11px}
-.id-avatar{width:46px;height:46px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,#C8913A,#1e3a5f);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#0d1117;box-shadow:0 0 14px rgba(200,145,58,.3)}
+.id-avatar{width:46px;height:46px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,#C8913A,#1e3a5f);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#0d1117;box-shadow:0 0 14px rgba(200,145,58,.3);cursor:pointer;transition:transform .1s}
 .id-meta{flex:1;min-width:0}
 .id-name{font-size:.9rem;font-weight:800;color:var(--accent2);margin-bottom:2px}
 .id-tagline{font-size:var(--tx-xs);color:var(--muted);line-height:1.5}
@@ -366,7 +366,7 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .know-two-col{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:0}
 .know-col{padding:14px;display:flex;flex-direction:column;gap:12px}
 .know-col+.know-col{border-inline-start:1px solid var(--border)}
-@media(max-width:767px){.know-two-col{grid-template-columns:1fr}.know-col+.know-col{border-inline-start:none;border-top:1px solid var(--border)}}
+@media(max-width:640px){.know-two-col{grid-template-columns:1fr}.know-col+.know-col{border-inline-start:none;border-top:1px solid var(--border)}}
 
 /* Cluster cards with sparklines */
 .cc-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:4px}
@@ -381,7 +381,6 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 @keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 /* Identity card — avatar pulse + streak */
-.id-avatar{cursor:pointer;transition:transform .1s}
 @keyframes avatarPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(200,145,58,.4)}50%{transform:scale(1.1);box-shadow:0 0 0 8px rgba(200,145,58,0)}}
 .id-avatar.pulse-anim{animation:avatarPulse .4s ease}
 

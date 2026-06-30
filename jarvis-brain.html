@@ -215,15 +215,6 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
 .sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;position:sticky;top:0;z-index:5;background:var(--bg);padding:4px 0 6px;border-bottom:1px solid var(--border)}
 .sec-title{font-size:var(--tx-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:5px}
 
-/* Topic Clusters */
-.clusters-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:10px}
-.cluster-tile{background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:10px 8px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;border-top:2px solid transparent}
-.cluster-tile:hover,.cluster-tile.active{border-top-color:var(--tc,var(--accent));background:var(--surface);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.3)}
-.cluster-tile::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at top,var(--tg,rgba(200,145,58,.05)) 0%,transparent 70%);pointer-events:none}
-.ct-icon{font-size:15px;margin-bottom:4px;display:block}
-.ct-label{font-size:var(--tx-xs);font-weight:700;color:var(--text);margin-bottom:2px}
-.ct-count{font-size:.82rem;font-weight:800;margin-bottom:3px;font-variant-numeric:tabular-nums}
-.ct-preview{font-size:.6rem;color:var(--muted);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
 /* Expanded cluster */
 .cluster-expand{background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);margin-bottom:12px;overflow:hidden;animation:expandIn .25s ease-out}
@@ -306,9 +297,6 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
   .pc:nth-child(2){order:1}
   .pc:nth-child(3){order:4}
   .pc:nth-child(4){order:2}
-
-  /* Knowledge: 3-column cluster grid */
-  .clusters-row{grid-template-columns:repeat(3,1fr)}
 }
 
 /* TAB BADGE */
@@ -1588,7 +1576,7 @@ window.toggleCluster = function(tile, name) {
 
 window.closeCluster = function() {
   document.getElementById('clusterExpand').style.display = 'none';
-  document.querySelectorAll('.cluster-tile').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.cc-card').forEach(t => t.classList.remove('active'));
   _activeCluster = null;
 };
 

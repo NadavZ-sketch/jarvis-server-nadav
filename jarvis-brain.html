@@ -1708,6 +1708,54 @@ function drawKnowledgeTimeline() {
     `<div class="tl-month" onclick="showKnowTip(${i},${(i * colW + colW / 2).toFixed(1)},0)">${m.label}</div>`
   ).join('');
   window._tlMonths = months;
+  initTimelineHover(months, colW, W);
+}
+
+function initTimelineHover(months, colW, W) {
+  const chart = document.getElementById('tlChart');
+  const tip = document.getElementById('tlTip');
+  const svg = document.getElementById('tlSvg');
+  if (!chart || !tip || !svg) return;
+
+  // remove previous listener if any
+  if (chart._hoverFn) chart.removeEventListener('pointermove', chart._hoverFn);
+  if (chart._leaveFn) chart.removeEventListener('pointerleave', chart._leaveFn);
+
+  chart._hoverFn = function(e) {
+    const rect = chart.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const idx = Math.min(months.length - 1, Math.max(0, Math.floor(x / (W / months.length))));
+    const m = months[idx];
+    if (!m) return;
+    tip.innerHTML = m.items.length
+      ? `<strong>${m.label} — ${m.items.length} זיכרונות</strong><br>` +
+        m.items.slice(0, 4).map(it => `<span style="color:${CAT_COLOR[it.cat] || '#C8913A'}">${it.cat}</span>: ${esc(it.text)}`).join('<br>')
+      : `<strong>${m.label}</strong><br><span style="color:var(--muted)">אין זיכרונות</span>`;
+    tip.style.opacity = '1';
+    const tipW = tip.offsetWidth || 180;
+    tip.style.left = Math.min(x + 8, rect.width - tipW - 4) + 'px';
+    tip.style.top = '4px';
+    // highlight hovered column in SVG
+    document.querySelectorAll('.tl-hover-bar').forEach(el => el.remove());
+    const bar = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bar.setAttribute('class', 'tl-hover-bar');
+    bar.setAttribute('x', (idx * colW).toFixed(1));
+    bar.setAttribute('y', '0');
+    bar.setAttribute('width', colW.toFixed(1));
+    bar.setAttribute('height', '64');
+    bar.setAttribute('fill', 'rgba(200,145,58,.08)');
+    bar.setAttribute('rx', '3');
+    bar.setAttribute('pointer-events', 'none');
+    svg.insertBefore(bar, svg.firstChild);
+  };
+
+  chart._leaveFn = function() {
+    tip.style.opacity = '0';
+    document.querySelectorAll('.tl-hover-bar').forEach(el => el.remove());
+  };
+
+  chart.addEventListener('pointermove', chart._hoverFn);
+  chart.addEventListener('pointerleave', chart._leaveFn);
 }
 
 window.showKnowTip = function(idx, x) {

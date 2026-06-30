@@ -361,6 +361,43 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 
 /* Orphan pulse */
 @keyframes orphanPulse{0%,100%{opacity:.3}50%{opacity:.58}}
+
+/* Knowledge Tab v2 — two-column layout */
+.know-two-col{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:0}
+.know-col{padding:14px;display:flex;flex-direction:column;gap:12px}
+.know-col+.know-col{border-inline-start:1px solid var(--border)}
+@media(max-width:767px){.know-two-col{grid-template-columns:1fr}.know-col+.know-col{border-inline-start:none;border-top:1px solid var(--border)}}
+
+/* Cluster cards with sparklines */
+.cc-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:4px}
+.cc-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:10px 12px;cursor:pointer;transition:transform .15s,border-color .15s;overflow:hidden;border-top:2px solid transparent;animation:cardIn .2s ease both}
+.cc-card:hover{transform:translateY(-2px);border-color:rgba(200,145,58,.4)}
+.cc-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+.cc-card-icon{font-size:14px}
+.cc-card-count{font-size:.85rem;font-weight:800;font-variant-numeric:tabular-nums}
+.cc-card-name{font-size:var(--tx-xs);font-weight:700;color:var(--text);margin-bottom:4px}
+.cc-sparkline{margin:4px 0;display:block}
+.cc-preview{font-size:.58rem;color:var(--muted);line-height:1.4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+@keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Identity card — avatar pulse + streak */
+.id-avatar{cursor:pointer;transition:transform .1s}
+@keyframes avatarPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(200,145,58,.4)}50%{transform:scale(1.1);box-shadow:0 0 0 8px rgba(200,145,58,0)}}
+.id-avatar.pulse-anim{animation:avatarPulse .4s ease}
+
+/* Sort controls */
+.mm-sort-wrap{display:flex;gap:4px;margin-right:auto}
+.mm-sort-btn{background:none;border:1px solid var(--border);border-radius:var(--r2);color:var(--muted);font-size:var(--tx-xs);padding:3px 9px;cursor:pointer;font-family:inherit;transition:all .15s;min-height:26px}
+.mm-sort-btn.active,.mm-sort-btn:hover{border-color:rgba(200,145,58,.4);color:var(--accent2)}
+
+/* Duplicate detection */
+.dup-scan-btn{background:rgba(200,145,58,.1);border:1px solid rgba(200,145,58,.35);color:var(--amber);border-radius:var(--r2);padding:4px 12px;font-size:var(--tx-xs);cursor:pointer;font-family:inherit;transition:all .15s;min-height:28px}
+.dup-scan-btn:hover{background:rgba(200,145,58,.2)}
+.dup-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:10px 12px;animation:expandIn .2s ease}
+.dup-side{display:flex;flex-direction:column;gap:5px}
+.dup-text{font-size:var(--tx-sm);color:var(--text);line-height:1.45;flex:1}
+.dup-meta{font-size:.58rem;color:var(--muted)}
+.dup-score{grid-column:1/-1;text-align:center;font-size:var(--tx-xs);color:var(--muted);border-top:1px solid var(--border);padding-top:6px;margin-top:2px}
 </style>
 </head>
 <body>

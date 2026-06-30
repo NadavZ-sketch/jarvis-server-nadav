@@ -327,6 +327,43 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
   /* Knowledge: 3-column cluster grid */
   .clusters-row{grid-template-columns:repeat(3,1fr)}
 }
+
+/* TAB BADGE */
+.tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:rgba(245,158,11,.85);color:#0d1117;font-size:.55rem;font-weight:800;padding:0 4px;margin-right:4px;line-height:1}
+
+/* MEMORY MANAGEMENT SECTION */
+.mm-stat-badge{font-size:.6rem;font-weight:700;padding:2px 8px;border-radius:10px;display:inline-flex;align-items:center;gap:3px}
+.mm-stat-badge.approved{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.mm-stat-badge.pending{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.2)}
+.mm-pend-head{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.18);border-radius:var(--r4);margin-bottom:7px}
+.mm-pend-title{font-size:var(--tx-xs);font-weight:700;color:var(--amber);display:flex;align-items:center;gap:5px}
+.mm-approve-all-btn{font-size:var(--tx-xs);font-weight:700;color:#0d1117;background:linear-gradient(135deg,rgba(34,197,94,.8),rgba(34,197,94,.6));border:none;border-radius:var(--r2);padding:4px 10px;cursor:pointer;font-family:inherit;transition:filter .15s;min-height:26px}
+.mm-approve-all-btn:hover{filter:brightness(1.12)}
+.mm-pend-card{background:var(--card);border:1px solid rgba(245,158,11,.2);border-right:3px solid var(--amber);border-radius:var(--r4);padding:10px 12px;margin-bottom:6px;animation:expandIn .2s ease}
+.mm-pend-text{font-size:var(--tx-sm);color:var(--text);line-height:1.45;margin-bottom:5px}
+.mm-pend-meta{font-size:.58rem;color:var(--muted);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.mm-pend-acts{display:flex;gap:5px}
+.mm-act-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:7px 6px;border-radius:var(--r2);font-family:inherit;font-size:var(--tx-xs);font-weight:700;cursor:pointer;min-height:32px;transition:all .15s}
+.mm-act-btn.approve{border:1px solid rgba(34,197,94,.35);background:rgba(34,197,94,.08);color:var(--green)}
+.mm-act-btn.reject{border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.05);color:var(--red)}
+.mm-act-btn:hover{filter:brightness(1.15)}
+.mm-search{display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:var(--r4);margin-bottom:7px}
+.mm-search input{flex:1;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:var(--tx-sm);outline:none;min-width:0}
+.mm-search input::placeholder{color:var(--muted)}
+.mm-mem-item{background:var(--card);border:1px solid var(--border);border-right:3px solid transparent;border-radius:var(--r4);padding:10px 12px;margin-bottom:5px;transition:border-color .15s}
+.mm-mem-item:hover{border-color:rgba(200,145,58,.3)}
+.mm-mem-text{font-size:var(--tx-sm);color:var(--text);line-height:1.45;margin-bottom:6px;word-break:break-word}
+.mm-mem-textarea{width:100%;background:var(--surface);border:1px solid rgba(200,145,58,.45);border-radius:var(--r2);color:var(--text);font-family:inherit;font-size:var(--tx-sm);padding:7px 9px;resize:none;height:66px;outline:none;display:none;margin-bottom:6px;line-height:1.45}
+.mm-mem-item.editing .mm-mem-text{display:none}
+.mm-mem-item.editing .mm-mem-textarea{display:block}
+.mm-mem-foot{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.mm-mem-cat{font-size:.58rem;font-weight:700;padding:1px 7px;border-radius:10px}
+.mm-mem-time{font-size:.58rem;color:var(--muted);margin-right:auto}
+.mm-icon-btn{display:inline-flex;align-items:center;gap:3px;background:none;border:1px solid var(--border);border-radius:var(--r2);color:var(--muted);font-size:var(--tx-xs);padding:3px 8px;cursor:pointer;font-family:inherit;transition:all .15s;min-height:26px;font-weight:600}
+.mm-icon-btn:hover{color:var(--text);border-color:rgba(200,145,58,.4)}
+.mm-icon-btn.save{border-color:rgba(34,197,94,.3);color:var(--green)}
+.mm-icon-btn.del{border-color:rgba(239,68,68,.25);color:var(--red)}
+.mm-empty{padding:20px 12px;text-align:center;color:var(--muted);font-size:var(--tx-sm)}
 </style>
 </head>
 <body>
@@ -381,7 +418,7 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
   <div class="tab active" onclick="switchTab('constellation',this)"><svg class="icon icon-sm"><use href="#ic-stars"/></svg> קונסטלציה</div>
   <div class="tab" onclick="switchTab('thinking',this)"><svg class="icon icon-sm"><use href="#ic-bolt"/></svg> חשיבה</div>
   <div class="tab" onclick="switchTab('profile',this)"><svg class="icon icon-sm"><use href="#ic-user"/></svg> פרופיל</div>
-  <div class="tab" onclick="switchTab('knowledge',this)"><svg class="icon icon-sm"><use href="#ic-book"/></svg> ידע</div>
+  <div class="tab" onclick="switchTab('knowledge',this)"><svg class="icon icon-sm"><use href="#ic-book"/></svg> ידע<span class="tab-badge" id="knowBadge" style="display:none">0</span></div>
 </div>
 
 <!-- KPI: CONSTELLATION -->
@@ -734,6 +771,35 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
         <div class="tl-months" id="tlMonths"></div>
       </div>
 
+      <!-- E: Memory Management -->
+      <div style="margin-top:16px">
+        <div class="sec-head">
+          <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-check"/></svg> בדיקה ואימות זיכרונות</div>
+          <div style="display:flex;align-items:center;gap:5px">
+            <span class="mm-stat-badge approved" id="mm-stat-approved"></span>
+            <span class="mm-stat-badge pending" id="mm-stat-pending" style="display:none"></span>
+          </div>
+        </div>
+
+        <!-- Pending approval sub-section -->
+        <div id="mm-pending-wrap" style="display:none;margin-bottom:10px">
+          <div class="mm-pend-head">
+            <span class="mm-pend-title"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> ממתינים לאישורך</span>
+            <button class="mm-approve-all-btn" onclick="mmApproveAll()">
+              <svg class="icon icon-sm"><use href="#ic-check"/></svg> אשר הכל
+            </button>
+          </div>
+          <div id="mm-pending-cards"></div>
+        </div>
+
+        <!-- Search + full memory list -->
+        <div class="mm-search">
+          <svg class="icon icon-sm"><use href="#ic-search"/></svg>
+          <input id="mmSearch" placeholder="חיפוש בזיכרונות..." oninput="renderMmList()">
+        </div>
+        <div id="mm-all-list"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -829,6 +895,7 @@ async function loadPending() {
       `${S.pending.length} זיכרונות ממתינים לאישורך`;
     renderPendingList();
     updateConstellationKpi();
+    updateKnowBadge();
   } catch (e) { console.warn('pending:', e); }
 }
 
@@ -1205,6 +1272,147 @@ function renderKnowledge() {
   renderClusters();
   renderInsights();
   drawKnowledgeTimeline();
+  renderMmSection();
+}
+
+// ── Memory Management ───────────────────────────────────────────────────────
+function renderMmSection() {
+  updateKnowBadge();
+  renderMmPending();
+  renderMmList();
+}
+
+function updateKnowBadge() {
+  const n = S.pending.length;
+  const badge = document.getElementById('knowBadge');
+  if (badge) { badge.textContent = n; badge.style.display = n > 0 ? 'inline-flex' : 'none'; }
+  const sa = document.getElementById('mm-stat-approved');
+  const sp = document.getElementById('mm-stat-pending');
+  if (sa) sa.textContent = `✓ ${S.memories.length} מאושרים`;
+  if (sp) { sp.textContent = `⏳ ${n} ממתינים`; sp.style.display = n > 0 ? 'inline-flex' : 'none'; }
+}
+
+function renderMmPending() {
+  const wrap = document.getElementById('mm-pending-wrap');
+  const list = document.getElementById('mm-pending-cards');
+  if (!wrap || !list) return;
+  if (!S.pending.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  list.innerHTML = S.pending.map(m => `
+    <div class="mm-pend-card" id="mpc-${esc(m.id)}">
+      <div class="mm-pend-text">${esc(m.content)}</div>
+      <div class="mm-pend-meta">
+        <svg class="icon icon-sm"><use href="#ic-clock"/></svg>${relTime(m.created_at)}
+        <span style="opacity:.5">·</span> זוהה אוטומטית
+      </div>
+      <div class="mm-pend-acts">
+        <button class="mm-act-btn approve" onclick="mmApprove('${esc(m.id)}')">
+          <svg class="icon icon-sm"><use href="#ic-check"/></svg> אשר
+        </button>
+        <button class="mm-act-btn reject" onclick="mmReject('${esc(m.id)}')">
+          <svg class="icon icon-sm"><use href="#ic-x"/></svg> דחה
+        </button>
+      </div>
+    </div>`).join('');
+}
+
+function renderMmList() {
+  const list = document.getElementById('mm-all-list');
+  if (!list) return;
+  const q = (document.getElementById('mmSearch')?.value || '').trim().toLowerCase();
+  const mems = q ? S.memories.filter(m => m.content.toLowerCase().includes(q)) : S.memories;
+  if (!mems.length) { list.innerHTML = '<div class="mm-empty">אין זיכרונות</div>'; return; }
+  list.innerHTML = mems.slice(0, 120).map(m => {
+    const cat = inferCat(m.content), col = CAT_COLOR[cat] || '#C8913A';
+    const safeId = esc(m.id);
+    return `<div class="mm-mem-item" id="mmi-${safeId}" style="border-right-color:${col}">
+      <div class="mm-mem-text" id="mmt-display-${safeId}">${esc(m.content)}</div>
+      <textarea class="mm-mem-textarea" id="mmt-${safeId}">${esc(m.content)}</textarea>
+      <div class="mm-mem-foot">
+        <span class="mm-mem-cat" style="background:${col}22;color:${col};border:1px solid ${col}44">${esc(cat)}</span>
+        <span class="mm-mem-time">${relTime(m.created_at)}</span>
+        <button class="mm-icon-btn" title="ערוך" onclick="mmStartEdit('${safeId}')"><svg class="icon icon-sm"><use href="#ic-pencil"/></svg></button>
+        <button class="mm-icon-btn save" id="mms-${safeId}" style="display:none" onclick="mmSaveEdit('${safeId}')"><svg class="icon icon-sm"><use href="#ic-save"/></svg> שמור</button>
+        <button class="mm-icon-btn del" title="מחק" onclick="mmDelete('${safeId}')"><svg class="icon icon-sm"><use href="#ic-trash"/></svg></button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function mmApprove(id) {
+  const card = document.getElementById('mpc-' + id);
+  if (card) { card.style.opacity = '.35'; card.style.pointerEvents = 'none'; }
+  try {
+    await api(`/memories/${id}/approve`, { method: 'POST' });
+    const m = S.pending.find(x => x.id === id);
+    if (m) { m.status = 'approved'; S.memories.unshift(m); }
+    S.pending = S.pending.filter(x => x.id !== id);
+    document.getElementById('pendingBadge').textContent = S.pending.length;
+    renderMmPending(); renderMmList(); updateKnowBadge(); updateConstellationKpi();
+  } catch(e) {
+    if (card) { card.style.opacity = '1'; card.style.pointerEvents = ''; }
+    alert('שגיאה: ' + e.message);
+  }
+}
+
+async function mmReject(id) {
+  const card = document.getElementById('mpc-' + id);
+  if (card) { card.style.opacity = '.35'; card.style.pointerEvents = 'none'; }
+  try {
+    await api(`/memories/${id}`, { method: 'DELETE' });
+    S.pending = S.pending.filter(x => x.id !== id);
+    document.getElementById('pendingBadge').textContent = S.pending.length;
+    renderMmPending(); updateKnowBadge(); updateConstellationKpi();
+  } catch(e) {
+    if (card) { card.style.opacity = '1'; card.style.pointerEvents = ''; }
+    alert('שגיאה: ' + e.message);
+  }
+}
+
+async function mmApproveAll() {
+  for (const m of [...S.pending]) await mmApprove(m.id);
+}
+
+function mmStartEdit(id) {
+  const item = document.getElementById('mmi-' + id);
+  const saveBtn = document.getElementById('mms-' + id);
+  const ta = document.getElementById('mmt-' + id);
+  if (!item) return;
+  item.classList.add('editing');
+  if (saveBtn) saveBtn.style.display = 'inline-flex';
+  if (ta) { ta.style.display = 'block'; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+async function mmSaveEdit(id) {
+  const ta = document.getElementById('mmt-' + id);
+  const content = ta?.value.trim();
+  if (!content) return;
+  try {
+    await api(`/memories/${id}`, { method: 'PUT', body: JSON.stringify({ content }) });
+    const idx = S.memories.findIndex(m => m.id === id);
+    if (idx >= 0) S.memories[idx].content = content;
+    const item = document.getElementById('mmi-' + id);
+    const disp = document.getElementById('mmt-display-' + id);
+    const saveBtn = document.getElementById('mms-' + id);
+    if (item) item.classList.remove('editing');
+    if (disp) disp.textContent = content;
+    if (saveBtn) saveBtn.style.display = 'none';
+    drawGraph();
+  } catch(e) { alert('שגיאה בשמירה: ' + e.message); }
+}
+
+async function mmDelete(id) {
+  if (!confirm('למחוק זיכרון זה?')) return;
+  const item = document.getElementById('mmi-' + id);
+  if (item) { item.style.opacity = '.3'; item.style.pointerEvents = 'none'; }
+  try {
+    await api(`/memories/${id}`, { method: 'DELETE' });
+    S.memories = S.memories.filter(m => m.id !== id);
+    renderMmList(); updateKnowBadge(); updateConstellationKpi(); drawGraph();
+  } catch(e) {
+    if (item) { item.style.opacity = '1'; item.style.pointerEvents = ''; }
+    alert('שגיאה: ' + e.message);
+  }
 }
 
 function renderIdentityCard() {

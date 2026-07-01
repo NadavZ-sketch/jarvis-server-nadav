@@ -1893,11 +1893,28 @@ function renderDonut() {
     const x3 = cx + r * Math.cos(angle + a), y3 = cy + r * Math.sin(angle + a);
     const x4 = cx + r * Math.cos(angle), y4 = cy + r * Math.sin(angle);
     const lg = a > Math.PI ? 1 : 0;
-    h += `<path d="M${x1.toFixed(1)},${y1.toFixed(1)} A${R},${R} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${x3.toFixed(1)},${y3.toFixed(1)} A${r},${r} 0 ${lg},0 ${x4.toFixed(1)},${y4.toFixed(1)} Z" fill="${d.c}" opacity=".88"/>`;
+    const pct = Math.round(d.v / sum * 100);
+    const dimmed = S.traceIntentFilter && S.traceIntentFilter !== d.label;
+    h += `<path data-intent="${esc(d.label)}" data-count="${d.v}" data-pct="${pct}" d="M${x1.toFixed(1)},${y1.toFixed(1)} A${R},${R} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${x3.toFixed(1)},${y3.toFixed(1)} A${r},${r} 0 ${lg},0 ${x4.toFixed(1)},${y4.toFixed(1)} Z" fill="${d.c}" opacity="${dimmed ? .25 : .88}" style="cursor:pointer"/>`;
     angle += a;
   });
   if (top[0]) h += `<text x="${cx}" y="${cy+3}" text-anchor="middle" font-size="7.5" fill="rgba(224,212,190,.7)" font-family="Heebo" font-weight="700">${top[0][0]}</text>`;
   svg.innerHTML = h;
+
+  svg.onclick = e => {
+    const p = e.target.closest('[data-intent]');
+    if (!p) return;
+    const intent = p.dataset.intent;
+    S.traceIntentFilter = S.traceIntentFilter === intent ? null : intent;
+    renderDonut();
+    renderTrace();
+  };
+  svg.onpointermove = e => {
+    const p = e.target.closest('[data-intent]');
+    if (!p) { hideChartTip(); return; }
+    showChartTip(`${p.dataset.intent}\n${p.dataset.count} פעמים (${p.dataset.pct}%)`, e.clientX, e.clientY);
+  };
+  svg.onpointerleave = () => hideChartTip();
 
   legendEl.innerHTML = data.map(d =>
     `<div class="dl-row"><div class="dl-dot" style="background:${d.c}"></div><span class="dl-val">${Math.round(d.v / sum * 100)}%</span> ${esc(d.label)}</div>`

@@ -1391,7 +1391,15 @@ function renderProfile() {
     Math.min(1, Object.keys(usage).length / 10),
     Math.min(1, S.log.length / 100),
   ];
-  drawRadar(vals);
+  const rawVals = [
+    S.memories.length,
+    usage.chatAgent || 0,
+    usage.taskAgent || 0,
+    usage.reminderAgent || 0,
+    Object.keys(usage).length,
+    S.log.length,
+  ];
+  drawRadar(vals, rawVals);
   ['mem','chat','task','rem','agents','act'].forEach((k, i) => {
     const el = document.getElementById('rl-' + k);
     if (el) el.textContent = Math.round(vals[i] * 100) + '%';
@@ -2081,10 +2089,11 @@ function renderSparklines() {
   });
 }
 
-function drawRadar(vals) {
+function drawRadar(vals, rawVals) {
   const svg = document.getElementById('radarSvg');
   if (!svg) return;
   const axes = ['זיכרון', 'שיחות', 'משימות', 'תזכורות', 'סוכנים', 'פעילות'];
+  const axisUnits = ['זיכרונות', 'שיחות', 'משימות', 'תזכורות', 'סוכנים פעילים', 'פעולות'];
   const cx = 82, cy = 82, R = 65, angle = i => (2 * Math.PI * i / 6) - Math.PI / 2;
   let h = '';
   [.25, .5, .75, 1].forEach(f => {
@@ -2094,9 +2103,27 @@ function drawRadar(vals) {
   axes.forEach((_, i) => { h += `<line x1="${cx}" y1="${cy}" x2="${(cx + R * Math.cos(angle(i))).toFixed(1)}" y2="${(cy + R * Math.sin(angle(i))).toFixed(1)}" stroke="rgba(255,255,255,.07)" stroke-width="1"/>`; });
   const dpts = vals.map((v, i) => `${(cx + R * v * Math.cos(angle(i))).toFixed(1)},${(cy + R * v * Math.sin(angle(i))).toFixed(1)}`).join(' ');
   h += `<polygon points="${dpts}" fill="rgba(200,145,58,.13)" stroke="#C8913A" stroke-width="1.8"/>`;
-  vals.forEach((v, i) => { h += `<circle cx="${(cx + R * v * Math.cos(angle(i))).toFixed(1)}" cy="${(cy + R * v * Math.sin(angle(i))).toFixed(1)}" r="3" fill="#e0b86a"/>`; });
+  const pointCoords = [];
+  vals.forEach((v, i) => {
+    const px = cx + R * v * Math.cos(angle(i)), py = cy + R * v * Math.sin(angle(i));
+    pointCoords.push({ x: px, y: py });
+    h += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3" fill="#e0b86a"/>`;
+  });
   axes.forEach((l, i) => { h += `<text x="${(cx + (R + 14) * Math.cos(angle(i))).toFixed(1)}" y="${(cy + (R + 14) * Math.sin(angle(i)) + 4).toFixed(1)}" text-anchor="middle" font-size="8.5" fill="#7a8fa6" font-family="Heebo">${l}</text>`; });
   svg.innerHTML = h;
+
+  svg.onpointermove = e => {
+    const rect = svg.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    let best = -1, bestD = 12;
+    pointCoords.forEach((p, i) => {
+      const d = Math.hypot(p.x - mx, p.y - my);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    if (best === -1 || !rawVals) { hideChartTip(); return; }
+    showChartTip(`${axes[best]}\n${rawVals[best]} ${axisUnits[best]}`, e.clientX, e.clientY);
+  };
+  svg.onpointerleave = () => hideChartTip();
 }
 
 function drawClock(hours) {
@@ -2120,6 +2147,18 @@ function drawClock(hours) {
   });
   h += `<text x="${cx}" y="${cy + 4}" text-anchor="middle" font-size="9" fill="#e0b86a" font-family="Heebo" font-weight="700">24H</text>`;
   svg.innerHTML = h;
+
+  svg.onpointermove = e => {
+    const rect = svg.getBoundingClientRect();
+    const mx = e.clientX - rect.left - cx, my = e.clientY - rect.top - cy;
+    const dist = Math.hypot(mx, my);
+    if (dist < rIn - 4 || dist > rOut + 14) { hideChartTip(); return; }
+    let a = Math.atan2(my, mx) + Math.PI / 2;
+    if (a < 0) a += 2 * Math.PI;
+    const hourIdx = Math.floor(a / sl) % 24;
+    showChartTip(`${String(hourIdx).padStart(2,'0')}:00\n${hours[hourIdx]} פעולות`, e.clientX, e.clientY);
+  };
+  svg.onpointerleave = () => hideChartTip();
 }
 
 function drawHeatmap(actByDate) {
@@ -2167,6 +2206,16 @@ function drawLearnTimeline(data) {
   h += `<polyline points="${pts}" fill="none" stroke="#C8913A" stroke-width="1.4" stroke-linecap="round"/>`;
   data.forEach((v, i) => { if (v === maxV) { const x = 6 + i * step, y = H - 6 - (v / maxV) * (H - 14); h += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#e0b86a"/>`; } });
   svg.innerHTML = h; svg.setAttribute('width', W); svg.setAttribute('height', H);
+
+  svg.onpointermove = e => {
+    const rect = svg.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const idx = Math.max(0, Math.min(data.length - 1, Math.round((x - 6) / step)));
+    const weeksAgo = data.length - 1 - idx;
+    const label = weeksAgo === 0 ? 'השבוע' : `לפני ${weeksAgo} שבועות`;
+    showChartTip(`${label}\n${data[idx]} זיכרונות`, e.clientX, e.clientY);
+  };
+  svg.onpointerleave = () => hideChartTip();
 }
 
 // ── Graph Shared Utils ─────────────────────────────────────────────────────

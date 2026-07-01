@@ -766,6 +766,14 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
         <svg id="learnSvg" width="100%" height="48"></svg>
       </div>
     </div>
+    <div class="pc pc-wide" style="border-bottom:none;border-top:1px solid var(--border)">
+      <div class="pc-head"><svg class="icon icon-sm"><use href="#ic-chart"/></svg> שיפור שבועי</div>
+      <div>
+        <div class="ws-score" id="wsScore">—</div>
+        <div class="ws-sub" id="wsSub">—</div>
+      </div>
+      <svg id="wsSpark" width="120" height="34"></svg>
+    </div>
   </div>
 </div>
 
@@ -1011,12 +1019,62 @@ async function loadProviders() {
 
 async function loadStats() {
   try {
-    const [st, prof] = await Promise.all([api('/stats'), api('/user-profile').catch(() => ({}))]);
+    const [st, prof, ws] = await Promise.all([
+      api('/stats'),
+      api('/user-profile').catch(() => ({})),
+      api('/stats/weekly-score?weeks=6').catch(() => ({ history: [] })),
+    ]);
     S.stats = st || {};
     S.profile = prof || {};
     updateProfileKpi();
     renderProfile();
+    renderWeeklyScore(ws.history || []);
   } catch (e) { console.warn('stats:', e); }
+}
+
+function renderWeeklyScore(history) {
+  const svg = document.getElementById('wsSpark');
+  const scoreEl = document.getElementById('wsScore');
+  const subEl = document.getElementById('wsSub');
+  if (!svg || !scoreEl || !subEl) return;
+  if (!history.length) { scoreEl.textContent = '—'; subEl.textContent = 'אין נתונים'; svg.innerHTML = ''; return; }
+
+  const last = history[history.length - 1];
+  scoreEl.textContent = last.score === null ? 'אין נתונים' : last.score + '%';
+  subEl.textContent = `${last.ups} 👍 / ${last.downs} 👎`;
+
+  const W = 120, H = 34, pad = 4;
+  const scoredVals = history.filter(h => h.score !== null).map(h => h.score);
+  const maxV = Math.max(...scoredVals, 1), minV = Math.min(...scoredVals, 0);
+  const range = Math.max(1, maxV - minV);
+  const step = (W - pad * 2) / Math.max(1, history.length - 1);
+
+  const segments = [];
+  let current = [];
+  history.forEach((pt, i) => {
+    if (pt.score === null) {
+      if (current.length) segments.push(current);
+      current = [];
+    } else {
+      const x = pad + i * step;
+      const y = H - pad - ((pt.score - minV) / range) * (H - pad * 2);
+      current.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    }
+  });
+  if (current.length) segments.push(current);
+
+  svg.innerHTML = segments.map(seg =>
+    `<polyline points="${seg.join(' ')}" fill="none" stroke="#C8913A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`
+  ).join('');
+
+  svg.onpointermove = e => {
+    const rect = svg.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const idx = Math.max(0, Math.min(history.length - 1, Math.round((x - pad) / step)));
+    const pt = history[idx];
+    showChartTip(`${pt.label}\nציון: ${pt.score === null ? '—' : pt.score + '%'}`, e.clientX, e.clientY);
+  };
+  svg.onpointerleave = () => hideChartTip();
 }
 
 async function reload() {

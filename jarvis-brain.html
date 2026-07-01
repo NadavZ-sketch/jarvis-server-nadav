@@ -2670,21 +2670,20 @@ function startGraph3D() {
   // Build strength per node
   const str = new Array(mems.length).fill(0);
   _g3dEdges.forEach(e => { str[e.a]++; str[e.b]++; });
-  const count = mems.length;
   _g3dNodes = mems.map((m, i) => {
-    const phi = Math.acos(1 - 2*(i+.5)/count), theta = Math.PI*(1+Math.sqrt(5))*i;
     return {
       mem: m, idx: i, cat: inferCat(m.content), c: CAT_COLOR[inferCat(m.content)]||'#C8913A',
       r: recencyRadius(m.created_at) * 0.65 + str[i] * 0.4,
       strength: str[i], hub: false,
-      ox: Math.sin(phi)*Math.cos(theta), oy: Math.sin(phi)*Math.sin(theta), oz: Math.cos(phi),
+      ox: (Math.random()-0.5)*0.05, oy: (Math.random()-0.5)*0.05, oz: (Math.random()-0.5)*0.05,
+      vx: 0, vy: 0, vz: 0, pulse: 0, spawnTime: performance.now(),
     };
   });
   // Hub nodes
   const cats = [...new Set(mems.map(m => inferCat(m.content)))];
   cats.forEach((cat, i) => {
     const a = 2*Math.PI*i/cats.length;
-    _g3dNodes.push({ hub: true, cat, label: cat, c: CAT_COLOR[cat]||'#C8913A', r: 7, strength: 0, idx: _g3dNodes.length, ox: Math.cos(a)*.35, oy: .8, oz: Math.sin(a)*.35, mem: null });
+    _g3dNodes.push({ hub: true, cat, label: cat, c: CAT_COLOR[cat]||'#C8913A', r: 7, strength: 0, idx: _g3dNodes.length, ox: Math.cos(a)*.35, oy: .8, oz: Math.sin(a)*.35, mem: null, pulse: 0 });
   });
 
   canvas.onpointerdown = e => {

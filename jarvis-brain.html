@@ -298,7 +298,6 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
   .pc:nth-child(3){order:4}
   .pc:nth-child(4){order:2}
   .pc:nth-child(5){order:5}
-  .pc-wide{flex-direction:column;align-items:flex-start}
 }
 
 /* Thinking + Profile v2 — shared chart tooltip */
@@ -319,6 +318,7 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .pc-wide{grid-column:1/-1;flex-direction:row;align-items:center;gap:18px}
 .ws-score{font-size:1.6rem;font-weight:800;color:var(--accent2);font-variant-numeric:tabular-nums}
 .ws-sub{font-size:var(--tx-xs);color:var(--muted)}
+@media(max-width:640px){.pc-wide{flex-direction:column;align-items:flex-start}}
 
 /* Profile: heatmap day-filter pill */
 .day-filter-pill{display:none;margin-bottom:6px;cursor:pointer;font-size:var(--tx-xs);color:var(--amber);background:rgba(200,145,58,.1);border:1px solid rgba(200,145,58,.35);border-radius:var(--r4);padding:4px 9px}

@@ -2779,6 +2779,8 @@ function _g3dHandleClick(clientX, clientY) {
     if (d < bestD + p.r*.5) { bestD = d; best = p; }
   });
   if (best) {
+    const clickedNode = _g3dNodes[best.idx];
+    if (clickedNode) clickedNode.pulse = 1;
     if (best.hub) { _g3dHighlight = _g3dHighlight === best.cat ? null : best.cat; }
     else {
       _g3dPaused = true;
@@ -2831,13 +2833,15 @@ function _draw3dFrame(canvas, W, H) {
     if (_g3dHighlight && n.cat !== _g3dHighlight) dimmed = true;
     if (focusSet && !n.hub && !focusSet.has(p.idx)) dimmed = true;
     if (sq && !n.hub) { const matches = n.mem && n.mem.content.toLowerCase().includes(sq); if (!matches) dimmed = true; }
+    const fadeIn = n.spawnTime ? Math.min(1, (performance.now() - n.spawnTime) / 400) : 1;
+    if (n.pulse > 0.01) n.pulse *= 0.9; else if (n.pulse) n.pulse = 0;
     ctx.save();
-    ctx.globalAlpha = dimmed ? .08 : alpha;
+    ctx.globalAlpha = (dimmed ? .08 : alpha) * fadeIn;
     if (!dimmed) {
       if (n.strength >= 3 || n.hub) { ctx.shadowBlur = n.hub?12:7; ctx.shadowColor = n.c; }
       if (sq && n.mem && n.mem.content.toLowerCase().includes(sq)) { ctx.shadowBlur = 14; ctx.shadowColor = '#fbbf24'; }
     }
-    const r = Math.max(p.r, n.hub ? 5 : 2);
+    const r = Math.max(p.r, n.hub ? 5 : 2) + (n.pulse || 0) * 4;
     ctx.beginPath(); ctx.arc(p.sx,p.sy,r,0,Math.PI*2);
     ctx.fillStyle = n.c + (Math.round((dimmed?.1:alpha)*255).toString(16).padStart(2,'0'));
     ctx.fill();
@@ -2847,7 +2851,7 @@ function _draw3dFrame(canvas, W, H) {
       ctx.setLineDash([2,2]); ctx.stroke(); ctx.setLineDash([]);
     }
     if (n.hub) {
-      ctx.globalAlpha = dimmed?.08:.88; ctx.shadowBlur=0;
+      ctx.globalAlpha = (dimmed?.08:.88) * fadeIn; ctx.shadowBlur=0;
       ctx.fillStyle='rgba(224,212,190,.9)';
       ctx.font = `700 ${Math.max(8,8*p.scale)}px Heebo,sans-serif`;
       ctx.textAlign='center'; ctx.fillText(n.label,p.sx,p.sy-r-3);

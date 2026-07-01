@@ -751,6 +751,7 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
       <div class="pc-head"><svg class="icon icon-sm"><use href="#ic-fire"/></svg> פעילות 6 שבועות</div>
       <div id="heatGrid" class="heatgrid" style="margin-bottom:7px"></div>
       <div id="streakRow" class="streak-row" style="margin-bottom:5px"></div>
+      <div id="dayFilterPill" class="day-filter-pill" onclick="clearDayFilter()"></div>
       <div class="heat-legend">
         <span>פחות</span>
         <span style="display:flex;gap:2px">
@@ -2172,15 +2173,17 @@ function drawHeatmap(actByDate) {
       const d = new Date();
       d.setDate(d.getDate() - (col * 7 + row));
       const key = d.toISOString().slice(0, 10);
-      vals.push(actByDate[key] || 0);
+      vals.push({ key, v: actByDate[key] || 0 });
     }
   }
-  const maxV = Math.max(...vals, 1);
-  vals.forEach(v => {
+  const maxV = Math.max(...vals.map(x => x.v), 1);
+  vals.forEach(({ key, v }) => {
     const alpha = v === 0 ? .04 : (.14 + .8 * v / maxV).toFixed(2);
     const el = document.createElement('div');
     el.className = 'heat-cell';
     el.style.background = `rgba(200,145,58,${alpha})`;
+    el.dataset.date = key;
+    el.dataset.count = v;
     g.appendChild(el);
   });
   // Last 30 days streak
@@ -2193,6 +2196,38 @@ function drawHeatmap(actByDate) {
     el.style.background = active ? 'rgba(200,145,58,.55)' : 'rgba(255,255,255,.06)';
     sr.appendChild(el);
   }
+
+  g.onpointermove = e => {
+    const cell = e.target.closest('.heat-cell');
+    if (!cell) { hideChartTip(); return; }
+    const label = new Date(cell.dataset.date).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
+    showChartTip(`${label}\n${cell.dataset.count} פעולות`, e.clientX, e.clientY);
+  };
+  g.onpointerleave = () => hideChartTip();
+  g.onclick = e => {
+    const cell = e.target.closest('.heat-cell');
+    if (!cell) return;
+    const key = cell.dataset.date;
+    S.profileDayFilter = S.profileDayFilter === key ? null : key;
+    renderDayFilterPill();
+  };
+}
+
+function renderDayFilterPill() {
+  const pill = document.getElementById('dayFilterPill');
+  if (!pill) return;
+  if (!S.profileDayFilter) { pill.style.display = 'none'; return; }
+  const key = S.profileDayFilter;
+  const memCount = S.memories.filter(m => m.created_at && new Date(m.created_at).toISOString().slice(0, 10) === key).length;
+  const logCount = S.log.filter(l => l.created_at && new Date(l.created_at).toISOString().slice(0, 10) === key).length;
+  const label = new Date(key).toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' });
+  pill.textContent = `פעילות ב-${label}: ${memCount} זיכרונות, ${logCount} הודעות — נקה ✕`;
+  pill.style.display = 'block';
+}
+
+function clearDayFilter() {
+  S.profileDayFilter = null;
+  renderDayFilterPill();
 }
 
 function drawLearnTimeline(data) {

@@ -1225,19 +1225,52 @@ function renderTrace() {
   const el = document.getElementById('traceList');
   if (!S.trace.length && !S.log.length) { el.innerHTML = '<div class="mp-empty">אין נתוני חשיבה</div>'; return; }
 
+  const q = (document.getElementById('traceSearch')?.value || '').trim().toLowerCase();
+
   // Merge trace + log, deduplicate by closest time
-  const entries = S.trace.map(t => ({
-    time: fmtTime(t.created_at),
-    input: t.input || '—',
-    intent: t.intent,
-    agent: t.agent,
-    ms: S.log.find(l => l.agent === t.agent && Math.abs(new Date(l.created_at) - new Date(t.created_at)) < 5000)?.duration_ms || t.duration_ms,
-  }));
+  let entries = S.trace.map(t => {
+    let candidates = [];
+    try { candidates = JSON.parse(t.candidates || '[]'); } catch (e) { candidates = []; }
+    return {
+      time: fmtTime(t.created_at),
+      input: t.input || '—',
+      intent: t.intent,
+      agent: t.agent,
+      ms: S.log.find(l => l.agent === t.agent && Math.abs(new Date(l.created_at) - new Date(t.created_at)) < 5000)?.duration_ms || t.duration_ms,
+      candidates,
+      ambiguous: !!t.ambiguous,
+      routeMode: t.route_mode || '',
+    };
+  });
+
+  if (S.traceIntentFilter) entries = entries.filter(e => e.intent === S.traceIntentFilter);
+  if (q) entries = entries.filter(e =>
+    e.input.toLowerCase().includes(q) || (e.agent || '').toLowerCase().includes(q) || (e.intent || '').toLowerCase().includes(q)
+  );
+
+  const pill = document.getElementById('traceFilterPill');
+  if (pill) {
+    if (S.traceIntentFilter) {
+      pill.style.display = 'inline-block';
+      pill.textContent = `מציג: ${S.traceIntentFilter} — נקה ✕`;
+    } else {
+      pill.style.display = 'none';
+    }
+  }
+
+  if (!entries.length) { el.innerHTML = '<div class="mp-empty">אין תוצאות</div>'; return; }
 
   el.innerHTML = entries.slice(0, 50).map((e, i) => {
     const ms = e.ms || 0;
     const msCls = ms > 800 ? 'bad' : ms > 400 ? 'warn' : '';
-    return `<div class="trace-entry${i === 0 ? ' new-entry sel' : ''}" onclick="this.classList.toggle('sel')">
+    const expandable = e.ambiguous || e.candidates.length > 1;
+    const detail = expandable ? `
+        <div class="te-detail">
+          ${e.candidates.length > 1 ? `<div class="te-candidates">מועמדים: ${e.candidates.map(c => `<span class="badge intent">${esc(c)}</span>`).join(' ')}</div>` : ''}
+          ${e.ambiguous ? `<span class="badge ms bad">⚠ עמום</span>` : ''}
+          ${e.routeMode ? `<span class="badge ms">מצב ניתוב: ${esc(e.routeMode)}</span>` : ''}
+        </div>` : '';
+    return `<div class="trace-entry${expandable ? ' expandable' : ''}${i === 0 ? ' new-entry sel' : ''}" onclick="this.classList.toggle('sel');this.classList.toggle('expanded')">
       <div class="te-time">${esc(e.time)}</div>
       <div class="te-body">
         <div class="te-input">${esc(e.input)}</div>
@@ -1246,9 +1279,16 @@ function renderTrace() {
           ${e.agent ? `<span class="badge agent">${esc(e.agent)}</span>` : ''}
           ${ms ? `<span class="te-arr">→</span><span class="badge ms ${msCls}">${ms}ms</span>` : ''}
         </div>
+        ${detail}
       </div>
     </div>`;
   }).join('');
+}
+
+function clearTraceFilter() {
+  S.traceIntentFilter = null;
+  renderDonut();
+  renderTrace();
 }
 
 function renderProviders() {

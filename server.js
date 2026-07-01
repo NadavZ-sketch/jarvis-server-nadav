@@ -63,8 +63,8 @@ const { runMessagingAgent }   = require('./agents/messagingAgent');
 const { runDraftAgent }       = require('./agents/draftAgent');
 const { runSecurityAgent }    = require('./agents/securityAgent');
 const { runCodeErrorAgent }   = require('./agents/codeErrorAgent');
-const { runE2EAgent, buildClaudePrompt, countsBySeverity, computeScore, persistFindings } = require('./agents/e2eAgent');
-const { SURVEY_QUESTIONS, selectSurveyQuestions, buildSurveyJson, buildSurveySummary, aggregateSurveys, insightsFromAggregation, isNegativeAnswer } = require('./agents/surveyAgent');
+const { runE2EAgent, countsBySeverity, persistFindings } = require('./agents/e2eAgent');
+const { SURVEY_QUESTIONS, isNegativeAnswer } = require('./agents/surveyAgent');
 const { runManusAgent, isManusConfigured } = require('./agents/manusAgent');
 const { analyzePatterns, optimizeDayPlan, runInsightAgent } = require('./agents/insightAgent');
 const priorityEngine          = require('./services/priorityEngine');
@@ -85,7 +85,7 @@ const feedbackStore   = require('./services/feedbackStore');
 const dashboardLearner = require('./services/dashboardLearner');
 const { selectByTokenBudget } = require('./services/contextWindow');
 const documentParser = require('./services/documentParser');
-const { runCalendarAgent, buildAuthUrl, getAccessToken } = require('./agents/calendarAgent');
+const { runCalendarAgent, getAccessToken } = require('./agents/calendarAgent');
 const { runPromptAgent }      = require('./agents/promptAgent');
 const { runSettingsAgent }    = require('./agents/settingsAgent');
 const { runProjectAgent } = require('./agents/projectAgent');
@@ -117,6 +117,9 @@ const { createTasksRouter } = require('./routes/tasks');
 const { createRemindersRouter } = require('./routes/reminders');
 const { createProjectsRouter } = require('./routes/projects');
 const { createMemoriesRouter } = require('./routes/memories');
+const { createE2ERouter } = require('./routes/e2e');
+const { createSurveysRouter } = require('./routes/surveys');
+const { createCalendarRouter } = require('./routes/calendar');
 const { createRemindersController } = require('./controllers/remindersController');
 const { createChatRouter } = require('./routes/chat');
 const { isAllowedByRolePlan, isBlockedAction } = require('./services/policyEngine');
@@ -385,6 +388,9 @@ app.use('/tasks', createTasksRouter({ supabase }));
 app.use('/reminders', createRemindersRouter({ supabase, pinecone, requirePolicy }));
 app.use('/projects', createProjectsRouter({ supabase, repos }));
 app.use('/memories', createMemoriesRouter({ supabase, repos }));
+app.use('/', createE2ERouter({ supabase, repos, cacheInvalidate, _rl }));
+app.use('/', createSurveysRouter({ supabase, repos, _rl }));
+app.use('/', createCalendarRouter({ supabase, repos, cacheInvalidate }));
 app.use('/', createChatRouter({ supabase, askJarvisHandler, streamJarvisHandler }));
 const remindersController = createRemindersController({ supabase, pinecone });
 app.get('/check-reminders', remindersController.check);
@@ -1661,37 +1667,6 @@ app.get('/stats/weekly-score', _rl(20), async (req, res) => {
     }
 });
 
-// GET /e2e-schedule — read e2e run schedule from user profile preferences
-app.get('/e2e-schedule', _rl(20), async (_req, res) => {
-    try {
-        const rows = await repos.profile.latest();
-        const prefs = rows[0]?.preferences || {};
-        res.json({ schedule: prefs['e2e-schedule'] ?? null });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// PUT /e2e-schedule — write e2e run schedule to user profile preferences
-app.put('/e2e-schedule', _rl(10), async (req, res) => {
-    try {
-        const { schedule } = req.body || {};
-        if (!schedule || typeof schedule !== 'object' || Array.isArray(schedule))
-            return res.status(400).json({ error: 'schedule object required' });
-        const rows = await repos.profile.latest();
-        const existing = rows[0] || {};
-        const prefs = { ...(existing.preferences || {}), 'e2e-schedule': schedule };
-        if (existing.id) {
-            await repos.profile.update(existing.id, { preferences: prefs });
-        } else {
-            await repos.profile.create({ preferences: prefs });
-        }
-        res.json({ ok: true, schedule });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
 // GET /changelog/generate — last 20 git commits as structured changelog
 app.get('/changelog/generate', _rl(5), async (_req, res) => {
     try {
@@ -1705,48 +1680,6 @@ app.get('/changelog/generate', _rl(5), async (_req, res) => {
             return { hash, message: rest.join(' ') };
         });
         res.json({ entries });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// GET /surveys/export — export survey responses as CSV
-app.get('/surveys/export', _rl(5), async (_req, res) => {
-    try {
-        const rows = await repos.surveys.listAll();
-        const header = 'id,question_id,response,created_at';
-        const csvRows = rows.map(r =>
-            [r.id, r.question_id, JSON.stringify(r.response ?? ''), r.created_at].join(',')
-        );
-        const csv = [header, ...csvRows].join('\n');
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename="surveys.csv"');
-        res.send(csv);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// POST /surveys/analyze-sentiment — keyword-based sentiment counts (no LLM)
-app.post('/surveys/analyze-sentiment', _rl(10), async (req, res) => {
-    try {
-        const { responses } = req.body || {};
-        if (!Array.isArray(responses))
-            return res.status(400).json({ error: 'responses array required' });
-
-        const POS = ['טוב', 'מעולה', 'אוהב', 'נהדר', 'מצוין', 'great', 'good', 'love', 'excellent', 'awesome'];
-        const NEG = ['רע', 'גרוע', 'שונא', 'נורא', 'bad', 'terrible', 'hate', 'awful', 'poor'];
-
-        let positive = 0, negative = 0, neutral = 0;
-        for (const r of responses) {
-            const text = String(r).toLowerCase();
-            const isPos = POS.some(w => text.includes(w));
-            const isNeg = NEG.some(w => text.includes(w));
-            if (isPos && !isNeg) positive++;
-            else if (isNeg && !isPos) negative++;
-            else neutral++;
-        }
-        res.json({ positive, negative, neutral, total: responses.length });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -2541,52 +2474,6 @@ app.get('/smart-suggestions', _rl(10), async (req, res) => {
     }
 });
 
-// ─── Google Calendar OAuth ────────────────────────────────────────────────────
-// Short-lived nonces for CSRF protection on the OAuth flow (TTL: 10 min).
-const _oauthNonces = new Map(); // nonce -> expiresAt
-const _OAUTH_NONCE_TTL = 10 * 60 * 1000;
-
-app.get('/auth/google/start', (_req, res) => {
-    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-        return res.status(400).json({ error: 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not configured' });
-    }
-    const state = require('crypto').randomBytes(32).toString('hex');
-    _oauthNonces.set(state, Date.now() + _OAUTH_NONCE_TTL);
-    const redirectUri = `${process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`}/auth/google/callback`;
-    const authUrl = buildAuthUrl(redirectUri, state);
-    res.redirect(authUrl);
-});
-
-app.get('/auth/google/callback', async (req, res) => {
-    const { code, error, state } = req.query;
-    if (error) return res.status(400).send('OAuth error');
-    if (!code) return res.status(400).send('No code received');
-
-    const nonceExpiry = _oauthNonces.get(state);
-    if (!nonceExpiry || Date.now() > nonceExpiry) {
-        return res.status(400).send('Invalid or expired OAuth state');
-    }
-    _oauthNonces.delete(state);
-
-    try {
-        const redirectUri = `${process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`}/auth/google/callback`;
-        const tokenRes = await require('axios').post('https://oauth2.googleapis.com/token', {
-            client_id: process.env.GOOGLE_CLIENT_ID,
-            client_secret: process.env.GOOGLE_CLIENT_SECRET,
-            code,
-            grant_type: 'authorization_code',
-            redirect_uri: redirectUri,
-        });
-        const tokenData = tokenRes.data;
-        // Store refresh token in user_profiles
-        await repos.profile.saveCalendarToken(JSON.stringify(tokenData));
-        cacheInvalidate('userProfile');
-        res.send('<h2>✅ יומן Google חובר בהצלחה! אפשר לסגור את החלון.</h2>');
-    } catch (err) {
-        console.error('Google OAuth callback error:', err.message);
-        res.status(500).send('OAuth failed');
-    }
-});
 
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
@@ -2709,331 +2596,6 @@ app.delete('/notes/:id', async (req, res) => {
     } catch (err) {
         console.error('DELETE /notes:id error:', err.message);
         res.status(500).json({ ok: false, error: 'Internal server error' });
-    }
-});
-
-// ─── E2E Reports — list / detail / delete ────────────────────────────────────
-
-app.get('/e2e-reports', async (_req, res) => {
-    try {
-        const data = await repos.e2e.listRecent(2000);
-
-        // Group by run_id and compute summary per run
-        const byRun = new Map();
-        for (const row of data || []) {
-            if (!byRun.has(row.run_id)) {
-                byRun.set(row.run_id, {
-                    run_id: row.run_id,
-                    kind: row.kind || 'e2e',
-                    created_at: row.created_at,
-                    count: 0,
-                    critical: 0, high: 0, medium: 0, low: 0,
-                    measured: 0, evaluated: 0,
-                    done: 0,
-                });
-            }
-            const g = byRun.get(row.run_id);
-            if (row.kind) g.kind = row.kind;
-            if (row.created_at > g.created_at) g.created_at = row.created_at;
-            if (row.status === 'done') { g.done++; continue; }
-            g.count++;
-            if (g[row.severity] !== undefined) g[row.severity]++;
-            // 'source' may be absent on rows from before the migration → treat as measured.
-            if (row.source === 'evaluated') g.evaluated++; else g.measured++;
-        }
-        const reports = Array.from(byRun.values())
-            .map(r => {
-                const w = { critical: 25, high: 10, medium: 4, low: 1 };
-                const penalty = r.critical * w.critical + r.high * w.high + r.medium * w.medium + r.low * w.low;
-                r.score = Math.max(0, 100 - penalty);
-                return r;
-            })
-            .sort((a, b) => b.created_at.localeCompare(a.created_at));
-        res.json({ reports });
-    } catch (err) {
-        console.error('GET /e2e-reports error:', err.message);
-        res.status(500).json({ reports: [], error: 'Internal server error' });
-    }
-});
-
-app.get('/e2e-reports/:runId', async (req, res) => {
-    try {
-        const findings = await repos.e2e.byRun(req.params.runId);
-
-        const counts = countsBySeverity(findings);
-        const score  = computeScore(findings);
-        const claudePrompt = buildClaudePrompt({ runId: req.params.runId, findings, score, counts });
-        res.json({
-            run_id:  req.params.runId,
-            kind:    findings[0]?.kind || 'e2e',
-            findings,
-            counts,
-            score,
-            claudePrompt,
-        });
-    } catch (err) {
-        console.error('GET /e2e-reports/:id error:', err.message);
-        res.status(500).json({ findings: [], error: 'Internal server error' });
-    }
-});
-
-app.delete('/e2e-reports/:runId', async (req, res) => {
-    try {
-        const { error } = await repos.e2e.deleteRun(req.params.runId);
-        if (error) throw error;
-        cacheInvalidate('chatHistory'); // not strictly needed but cheap
-        res.json({ ok: true });
-    } catch (err) {
-        console.error('DELETE /e2e-reports/:id error:', err.message);
-        res.status(500).json({ ok: false, error: 'Internal server error' });
-    }
-});
-
-// ─── POST /e2e-reports/:runId/prompt — generate Claude prompt for selected findings
-app.post('/e2e-reports/:runId/prompt', async (req, res) => {
-    try {
-        const { fingerprints } = req.body || {};
-        if (!Array.isArray(fingerprints) || !fingerprints.length) {
-            return res.status(400).json({ error: 'fingerprints array required' });
-        }
-        const findings = await repos.e2e.byRunAndFingerprints(req.params.runId, fingerprints);
-        const counts   = countsBySeverity(findings);
-        const score    = computeScore(findings);
-        const claudePrompt = buildClaudePrompt({ runId: req.params.runId, findings, score, counts });
-        res.json({ claudePrompt });
-    } catch (err) {
-        console.error('POST /e2e-reports/:id/prompt error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── POST /e2e-reports/:runId/mark-done — mark specific findings as done
-app.post('/e2e-reports/:runId/mark-done', async (req, res) => {
-    try {
-        const { fingerprints } = req.body || {};
-        if (!Array.isArray(fingerprints) || !fingerprints.length) {
-            return res.status(400).json({ error: 'fingerprints array required' });
-        }
-        const { error } = await repos.e2e.markDone(req.params.runId, fingerprints);
-        if (error) throw error;
-        res.json({ ok: true, updated: fingerprints.length });
-    } catch (err) {
-        console.error('POST /e2e-reports/:id/mark-done error:', err.message);
-        res.status(500).json({ ok: false, error: 'Internal server error' });
-    }
-});
-
-// ─── Survey check (should user take survey?) ──────────────────────────────
-// Per-user 48h cooldown after a completed submission; questions answered in
-// the last 7 days are excluded from the next survey so it feels fresh.
-const SURVEY_COOLDOWN_HOURS = 48;
-const SURVEY_EXCLUDE_WINDOW_DAYS = 7;
-// Minimum number of completed surveys before we show aggregated conclusions.
-// Below this we report "not enough data" instead of inventing insights.
-const SURVEY_MIN_FOR_INSIGHTS = 2;
-
-app.get('/survey-check', async (req, res) => {
-    try {
-        const { sessionMinutes, agentCallCount, force, userName } = req.query;
-        const minutes = parseInt(sessionMinutes) || 0;
-        const calls = parseInt(agentCallCount) || 0;
-        const forced = force === 'true' || force === '1';
-
-        // Trigger survey after 25+ minutes OR 8+ agent calls (or forced by user).
-        // Higher thresholds keep the survey from interrupting short, active sessions.
-        const shouldShowSurvey = forced || minutes >= 25 || calls >= 8;
-        if (!shouldShowSurvey) return res.json({ showSurvey: false });
-
-        // Cooldown + recent-question exclusion (requires userName).
-        let excludeIds = [];
-        if (userName) {
-            try {
-                const cooldownCutoff = new Date(Date.now() - SURVEY_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
-                const excludeCutoff  = new Date(Date.now() - SURVEY_EXCLUDE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-                // 1) Cooldown: any completed survey since cutoff blocks new prompts.
-                if (!forced) {
-                    const recent = await repos.surveys.recentCompleted(userName, cooldownCutoff);
-                    if (recent && recent.length > 0) {
-                        return res.json({ showSurvey: false, cooldown: true });
-                    }
-                }
-
-                // 2) Build exclude list from question_ids of surveys in the last 7 days.
-                const recentWeek = await repos.surveys.recentQuestionIds(userName, excludeCutoff);
-                for (const row of (recentWeek || [])) {
-                    for (const qid of (row.question_ids || [])) excludeIds.push(qid);
-                }
-            } catch (cooldownErr) {
-                // If the cooldown columns don't exist yet (migration not applied), proceed without filtering.
-                console.warn('⚠️ /survey-check cooldown query failed (will still serve survey):', cooldownErr.message);
-            }
-        }
-
-        const questions = selectSurveyQuestions({ minutes, calls }, excludeIds);
-        if (Object.keys(questions).length === 0) {
-            return res.json({ showSurvey: false, exhausted: true });
-        }
-        const surveyJson = buildSurveyJson(questions);
-        res.json({ showSurvey: true, questions: surveyJson });
-    } catch (err) {
-        console.error('⚠️ /survey-check error:', err.message);
-        res.json({ showSurvey: false });
-    }
-});
-
-// ─── Survey submission ─────────────────────────────────────────────────────
-app.post('/survey-submit', async (req, res) => {
-    try {
-        const { responses, userName } = req.body;
-        if (!responses || !userName) {
-            return res.status(400).json({ error: 'Missing responses or userName' });
-        }
-
-        // Build survey structure from the actually-answered questions.
-        const surveyQIds = Object.keys(responses);
-        const survey = surveyQIds.map(id => ({
-            id,
-            question: SURVEY_QUESTIONS[id]?.question || id,
-        }));
-
-        // Build a factual summary straight from the answers — no LLM, no invented text.
-        const { text: summary, breakdown } = buildSurveySummary(survey, responses, userName);
-
-        // Save survey to DB with completion tracking so future /survey-check
-        // calls can enforce the per-user cooldown and exclude answered question_ids.
-        const nowIso = new Date().toISOString();
-        const insertRow = {
-            user_name: userName,
-            responses: JSON.stringify(responses),
-            summary,
-            created_at: nowIso,
-            completed_at: nowIso,
-            question_ids: surveyQIds,
-        };
-        const { error } = await repos.surveys.insertGraceful(insertRow);
-        if (error) throw error;
-
-        res.json({ success: true, summary, breakdown });
-    } catch (err) {
-        console.error('⚠️ /survey-submit error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── Survey history (past surveys for a user) ─────────────────────────────
-app.get('/survey-history', async (req, res) => {
-    try {
-        const { userName } = req.query;
-        if (!userName) return res.status(400).json({ error: 'userName required' });
-
-        const data = await repos.surveys.historyForUser(userName);
-
-        const surveys = (data || []).map(s => {
-            let parsed = s.responses;
-            if (typeof parsed === 'string') {
-                try { parsed = JSON.parse(parsed); } catch (_) { parsed = {}; }
-            }
-            return { id: s.id, createdAt: s.created_at, summary: s.summary, responses: parsed };
-        });
-
-        res.json({ surveys });
-    } catch (err) {
-        console.error('⚠️ /survey-history error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── Survey aggregate insights ─────────────────────────────────────────────
-// Real aggregation of stored responses (counts + percentages) — NOT LLM text.
-// Returns enough:false (and no conclusions) until there are enough surveys.
-app.get('/survey-insights', async (req, res) => {
-    try {
-        const { userName } = req.query;
-        if (!userName) return res.status(400).json({ error: 'userName required' });
-
-        const data = await repos.surveys.responsesForUser(userName);
-
-        const agg = aggregateSurveys(data || []);
-        if (agg.surveyCount < SURVEY_MIN_FOR_INSIGHTS) {
-            return res.json({
-                enough: false,
-                surveyCount: agg.surveyCount,
-                minRequired: SURVEY_MIN_FOR_INSIGHTS,
-                insights: [],
-                aggregation: agg,
-            });
-        }
-
-        res.json({
-            enough: true,
-            surveyCount: agg.surveyCount,
-            insights: insightsFromAggregation(agg),
-            aggregation: agg,
-            generatedAt: new Date().toISOString(),
-        });
-    } catch (err) {
-        console.error('⚠️ /survey-insights error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── GET /survey-smart-check — generate contextual questions using LLM ────────
-// Reads usage data (agent metrics + past concerns) and lets the LLM craft
-// personalised questions, making each survey feel relevant rather than generic.
-app.get('/survey-smart-check', async (req, res) => {
-    const { userName = '' } = req.query;
-    try {
-        const snap = await agentMetrics.snapshot().catch(() => ({ latency: [] }));
-        const topAgents = (snap.latency || [])
-            .filter(r => r.count > 0)
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 5)
-            .map(r => ({ agent: r.agent, count: r.count }));
-
-        let pastConcerns = [];
-        if (userName) {
-            const surveyRows = await repos.surveys.recentResponsesById(userName, 5);
-            for (const s of surveyRows || []) {
-                let resp = s.responses;
-                if (typeof resp === 'string') { try { resp = JSON.parse(resp); } catch (_) { resp = {}; } }
-                for (const [qId, answer] of Object.entries(resp || {})) {
-                    if (isNegativeAnswer(answer) && SURVEY_QUESTIONS[qId]) {
-                        pastConcerns.push({ area: SURVEY_QUESTIONS[qId].question, answer });
-                    }
-                }
-            }
-        }
-
-        const { generateSmartSurvey } = require('./agents/surveyAgent');
-        const questions = await generateSmartSurvey(callGemma4, { topAgents, pastConcerns });
-        res.json({ showSurvey: true, questions, smart: true });
-    } catch (err) {
-        console.error('⚠️ /survey-smart-check error:', err.message);
-        res.json({ showSurvey: false });
-    }
-});
-
-// ─── GET /survey-impact — feedback loop: what concerns came from surveys ───────
-app.get('/survey-impact', async (req, res) => {
-    const { userName = '' } = req.query;
-    try {
-        const surveyRows = await repos.surveys.recentResponsesWithDateById(userName, 20);
-
-        const concerns = [];
-        for (const s of surveyRows || []) {
-            let resp = s.responses;
-            if (typeof resp === 'string') { try { resp = JSON.parse(resp); } catch (_) { resp = {}; } }
-            for (const [qId, answer] of Object.entries(resp || {})) {
-                if (isNegativeAnswer(answer) && SURVEY_QUESTIONS[qId]) {
-                    concerns.push({ area: SURVEY_QUESTIONS[qId].question, answer, date: s.created_at });
-                }
-            }
-        }
-        res.json({ concerns, totalSurveys: (surveyRows || []).length });
-    } catch (err) {
-        console.error('⚠️ /survey-impact error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -3332,26 +2894,6 @@ app.post('/scan/errors/run', _rl(5), async (_req, res) => {
         });
     } catch (err) {
         console.error('❌ /scan/errors/run:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── POST /e2e/trigger — fire-and-forget e2e run ─────────────────────────────
-// Used by the mobile control center "run e2e now" quick action and by the
-// re-trigger automation when the last report's score drops sharply.
-app.post('/e2e/trigger', _rl(3), async (_req, res) => {
-    try {
-        const { runE2EAgent } = require('./agents/e2eAgent');
-        // Fire-and-forget so the HTTP response is fast — the agent persists
-        // its report when it finishes, which the next /control-center/events
-        // poll will surface as a new badge.
-        setImmediate(() => {
-            try { runE2EAgent('הרץ סקירת קצה', supabase, false, {}); }
-            catch (e) { console.error('e2e trigger run error:', e.message); }
-        });
-        res.json({ triggered: true, startedAt: new Date().toISOString() });
-    } catch (err) {
-        console.error('❌ /e2e/trigger:', err.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -4144,84 +3686,6 @@ app.get('/projects-dashboard', (_req, res) => {
 app.get('/notes.json', (_req, res) => {
     res.sendFile(path.join(__dirname, 'notes.json'),
         err => { if (err && !res.headersSent) res.status(404).json({ notes: [], lastUpdated: null }); });
-});
-
-// ─── Calendar events ─────────────────────────────────────────────────────────
-app.get('/calendar-events', async (_req, res) => {
-    try {
-        const [taskRows, reminderRows] = await Promise.all([
-            repos.tasks.datedAll(),
-            repos.reminders.allOrdered(),
-        ]);
-
-        const formatDate = (dateStr) => {
-            if (!dateStr) return null;
-            try {
-                const d = new Date(dateStr);
-                return d.toISOString();
-            } catch {
-                return null;
-            }
-        };
-
-        const tasks = (taskRows || [])
-            .filter(t => formatDate(t.due_date))
-            .map(t => ({
-                id:    `task-${t.id}`,
-                type:  'task',
-                title: t.content || 'משימה ללא כותרת',
-                date:  formatDate(t.due_date),
-                done:  t.done === true,
-            }));
-
-        const reminders = (reminderRows || [])
-            .filter(r => formatDate(r.scheduled_time))
-            .map(r => ({
-                id:    `reminder-${r.id}`,
-                type:  'reminder',
-                title: r.text || 'תזכורת ללא טקסט',
-                date:  formatDate(r.scheduled_time),
-                done:  r.fired === true,
-            }));
-
-        const events = [...tasks, ...reminders];
-        console.log(`📅 Calendar: returning ${events.length} events (${tasks.length} tasks, ${reminders.length} reminders)`);
-        res.json({ events });
-    } catch (err) {
-        console.error('GET /calendar-events error:', err.message);
-        res.status(500).json({ events: [] });
-    }
-});
-
-// ─── Upcoming tasks/reminders (for proactive suggestions) ───────────────────
-app.get('/upcoming-items', async (_req, res) => {
-    try {
-        const now = new Date();
-        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-        const [taskRows, reminderRows] = await Promise.all([
-            repos.tasks.upcomingDated(now.toISOString(), tomorrow.toISOString(), 5),
-            repos.reminders.upcomingUnfired(now.toISOString(), tomorrow.toISOString(), 5),
-        ]);
-
-        const upcoming = [
-            ...(taskRows || []).map(t => ({
-                type: 'task',
-                title: t.content,
-                date: t.due_date,
-            })),
-            ...(reminderRows || []).map(r => ({
-                type: 'reminder',
-                title: r.text,
-                date: r.scheduled_time,
-            })),
-        ].sort((a, b) => new Date(a.date) - new Date(b.date));
-
-        res.json({ upcoming });
-    } catch (err) {
-        console.error('GET /upcoming-items error:', err.message);
-        res.status(500).json({ upcoming: [] });
-    }
 });
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────

@@ -16,6 +16,20 @@ describe('projectRepo', () => {
         expect(fromSpy).not.toHaveBeenCalled();
     });
 
+    test('searchByName escapes ilike wildcards in the hint', async () => {
+        const chain = makeChain([]);
+        const repo = createProjectRepo({ from: () => chain });
+        await repo.searchByName('50% _done_');
+        expect(chain.ilike).toHaveBeenCalledWith('name', '%50\\% \\_done\\_%');
+    });
+
+    test('findOpenMilestones escapes ilike wildcards in the title hint', async () => {
+        const chain = makeChain([]);
+        const repo = createProjectRepo({ from: () => chain });
+        await repo.findOpenMilestones('p1', '100%_');
+        expect(chain.ilike).toHaveBeenCalledWith('title', '%100\\%\\_%');
+    });
+
     test('listNonArchived excludes archived, newest first', async () => {
         const chain = makeChain([{ id: 'p1' }]);
         const repo = createProjectRepo({ from: () => chain });

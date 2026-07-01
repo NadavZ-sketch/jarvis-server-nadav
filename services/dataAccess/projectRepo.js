@@ -5,6 +5,8 @@
 // `reminders`. The progress math, briefing formatting, and sprint/conflict logic
 // stay in agents/projectAgent.js — this repo owns only the Supabase queries.
 
+const { sanitizeLike } = require('../../agents/utils');
+
 const P = 'projects';
 const M = 'project_milestones';
 const T = 'tasks';
@@ -17,7 +19,7 @@ function createProjectRepo(supabase) {
         // ── projects ─────────────────────────────────────────────────────────
         async searchByName(nameHint) {
             if (!nameHint) return [];
-            const { data } = await supabase.from(P).select('*').ilike('name', `%${nameHint.trim()}%`).limit(5);
+            const { data } = await supabase.from(P).select('*').ilike('name', `%${sanitizeLike(nameHint.trim())}%`).limit(5);
             return data || [];
         },
 
@@ -126,7 +128,7 @@ function createProjectRepo(supabase) {
                 .select('id, title')
                 .eq('project_id', projectId)
                 .eq('completed', false)
-                .ilike('title', `%${titleHint || ''}%`);
+                .ilike('title', `%${sanitizeLike(titleHint || '')}%`);
             return data || [];
         },
         async completeMilestone(id) {

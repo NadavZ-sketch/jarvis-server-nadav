@@ -2719,10 +2719,54 @@ function startGraph3D() {
 
   function frame() {
     if (!_g3dPaused) _g3dAngleH += .006;
+    _stepGraph3DPhysics();
     _draw3dFrame(canvas, W, H);
     _g3dRaf = requestAnimationFrame(frame);
   }
   _g3dRaf = requestAnimationFrame(frame);
+}
+
+function _stepGraph3DPhysics() {
+  if (!_g3dNodes) return;
+  const leafs = _g3dNodes.filter(n => !n.hub);
+  const hubNodes = _g3dNodes.filter(n => n.hub);
+  const REPEL_3D = 0.16;
+
+  // Repulsion
+  for (let i = 0; i < leafs.length; i++) for (let j = i+1; j < leafs.length; j++) {
+    const a = leafs[i], b = leafs[j];
+    const dx = (b.ox-a.ox)||.001, dy = (b.oy-a.oy)||.001, dz = (b.oz-a.oz)||.001;
+    const d = Math.sqrt(dx*dx+dy*dy+dz*dz) || .001;
+    if (d < REPEL_3D * 2) {
+      const f = REPEL_3D*REPEL_3D/d*.08;
+      a.vx -= f*dx/d; a.vy -= f*dy/d; a.vz -= f*dz/d;
+      b.vx += f*dx/d; b.vy += f*dy/d; b.vz += f*dz/d;
+    }
+  }
+  // Semantic spring
+  _g3dEdges.forEach(e => {
+    const a = leafs[e.a], b = leafs[e.b]; if (!a||!b) return;
+    const dx = b.ox-a.ox, dy = b.oy-a.oy, dz = b.oz-a.oz;
+    const d = Math.sqrt(dx*dx+dy*dy+dz*dz)||.001;
+    const f = (d - (0.5 - e.w*0.05)) * .01;
+    a.vx += f*dx/d; a.vy += f*dy/d; a.vz += f*dz/d;
+    b.vx -= f*dx/d; b.vy -= f*dy/d; b.vz -= f*dz/d;
+  });
+  // Hub pull
+  leafs.forEach(n => {
+    const hub = hubNodes.find(h => h.cat === n.cat); if (!hub) return;
+    const dx = hub.ox-n.ox, dy = hub.oy-n.oy, dz = hub.oz-n.oz;
+    const d = Math.sqrt(dx*dx+dy*dy+dz*dz)||.001;
+    if (d > 0.5) { const f=(d-0.5)*.015; n.vx+=f*dx/d; n.vy+=f*dy/d; n.vz+=f*dz/d; }
+  });
+  // Radial containment + damping + integrate
+  leafs.forEach(n => {
+    const dist = Math.sqrt(n.ox*n.ox + n.oy*n.oy + n.oz*n.oz) || .001;
+    const f = (1.0 - dist) * .02;
+    n.vx += f*n.ox/dist; n.vy += f*n.oy/dist; n.vz += f*n.oz/dist;
+    n.vx *= 0.85; n.vy *= 0.85; n.vz *= 0.85;
+    n.ox += n.vx; n.oy += n.vy; n.oz += n.vz;
+  });
 }
 
 function _g3dHandleClick(clientX, clientY) {

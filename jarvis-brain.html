@@ -166,7 +166,7 @@ body{background:var(--bg);color:var(--text);font-family:Heebo,system-ui,sans-ser
 #pulseSvg{width:100%;overflow:visible}
 
 /* PROFILE */
-.profile-layout{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;overflow:hidden}
+.profile-layout{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr auto;overflow:hidden}
 .pc{padding:14px;border-bottom:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;gap:8px}
 .pc:nth-child(odd){border-left:1px solid var(--border)}
 .pc-head{display:flex;align-items:center;gap:6px;font-size:var(--tx-xs);color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
@@ -297,7 +297,31 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
   .pc:nth-child(2){order:1}
   .pc:nth-child(3){order:4}
   .pc:nth-child(4){order:2}
+  .pc:nth-child(5){order:5}
+  .pc-wide{flex-direction:column;align-items:flex-start}
 }
+
+/* Thinking + Profile v2 — shared chart tooltip */
+.chart-tip{position:fixed;z-index:200;background:var(--card);border:1px solid var(--border);border-radius:var(--r4);padding:5px 9px;font-size:var(--tx-xs);color:var(--text);pointer-events:none;white-space:pre-line;box-shadow:0 4px 12px rgba(0,0,0,.3);display:none}
+
+/* Trace entry expand (candidates / ambiguous / route_mode) */
+.trace-entry.expandable{cursor:pointer;max-height:54px;overflow:hidden;transition:max-height .2s ease}
+.trace-entry.expandable.expanded{max-height:160px}
+.te-detail{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.te-candidates{display:flex;gap:4px;flex-wrap:wrap;align-items:center;font-size:var(--tx-xs);color:var(--muted)}
+
+/* Trace search bar + intent filter pill */
+.trace-search-bar{display:flex;gap:8px;align-items:center;padding:6px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.trace-search-bar input{flex:1;background:none;border:none;color:var(--text);font-family:inherit;font-size:var(--tx-sm);outline:none}
+.trace-filter-pill{display:none;cursor:pointer;font-size:var(--tx-xs);color:var(--amber);background:rgba(200,145,58,.1);border:1px solid rgba(200,145,58,.35);border-radius:20px;padding:3px 10px;white-space:nowrap}
+
+/* Profile: weekly score card (5th, full-width row) */
+.pc-wide{grid-column:1/-1;flex-direction:row;align-items:center;gap:18px}
+.ws-score{font-size:1.6rem;font-weight:800;color:var(--accent2);font-variant-numeric:tabular-nums}
+.ws-sub{font-size:var(--tx-xs);color:var(--muted)}
+
+/* Profile: heatmap day-filter pill */
+.day-filter-pill{display:none;margin-bottom:6px;cursor:pointer;font-size:var(--tx-xs);color:var(--amber);background:rgba(200,145,58,.1);border:1px solid rgba(200,145,58,.35);border-radius:var(--r4);padding:4px 9px}
 
 /* TAB BADGE */
 .tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:rgba(245,158,11,.85);color:#0d1117;font-size:.55rem;font-weight:800;padding:0 4px;margin-right:4px;line-height:1}

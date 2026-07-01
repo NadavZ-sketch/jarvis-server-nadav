@@ -1,5 +1,6 @@
 const { callGemma4 } = require('../agents/models');
 const { buildProjectsBriefing } = require('../agents/projectAgent');
+const { extractJSON } = require('../agents/utils');
 
 // Short-lived caches for the two LLM-backed endpoints below — same behavior
 // as when this lived inline in server.js (per-process, no TTL sweep needed).
@@ -258,16 +259,13 @@ function createProjectsController({ repos }) {
         }
         const prompt = `הפרויקט: ${name}. ${description}. איזו שיטת עבודה תמליץ: kanban/scrum/eisenhower/gantt? הסבר בקצרה. החזר JSON: {"methodology":"...","reason":"..."} בלבד.`;
         const raw = await callGemma4(prompt, false, 150);
-        const match = raw.match(/\{[\s\S]*\}/);
+        const parsed = extractJSON(raw);
         let data = { methodology: '', reason: '' };
-        if (match) {
-          try {
-            const p = JSON.parse(match[0]);
-            data = {
-              methodology: (p.methodology || '').toLowerCase(),
-              reason: p.reason || '',
-            };
-          } catch (_) {}
+        if (parsed) {
+          data = {
+            methodology: (parsed.methodology || '').toLowerCase(),
+            reason: parsed.reason || '',
+          };
         }
         _methodRecCache.set(key, { data, ts: Date.now() });
         res.json({ ...data, cached: false });
@@ -319,11 +317,8 @@ function createProjectsController({ repos }) {
 
         const prompt = contextLines.join('\n') + '\nתן 3 תובנות קצרות בעברית על מצב הפרויקט ומה כדאי לשפר. החזר JSON: {"insights":["...","...","..."]}';
         const raw = await callGemma4(prompt, false, 300);
-        const match = raw.match(/\{[\s\S]*\}/);
-        let insights = [];
-        if (match) {
-          try { insights = JSON.parse(match[0]).insights || []; } catch (_) {}
-        }
+        const parsed = extractJSON(raw);
+        let insights = parsed?.insights || [];
         if (!insights.length) insights = [raw.trim()];
 
         _projectInsightsCache.set(cacheKey, { text: insights, ts: Date.now() });

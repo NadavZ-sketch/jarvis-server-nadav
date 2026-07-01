@@ -1302,6 +1302,15 @@ function renderProviders() {
     if (!el) continue;
     el.className = 'prov-dot ' + (S.providers[key] ? 'ok' : 'off');
   }
+  const bar = document.querySelector('.prov-bar');
+  if (bar) {
+    bar.onpointermove = e => {
+      const dot = e.target.closest('[data-key]');
+      if (!dot) { hideChartTip(); return; }
+      showChartTip(S.providers[dot.dataset.key] || 'אין נתונים', e.clientX, e.clientY);
+    };
+    bar.onpointerleave = () => hideChartTip();
+  }
 }
 
 // ── Profile Rendering ──────────────────────────────────────────────────────
@@ -1932,18 +1941,25 @@ function renderAgentBars() {
     byAgent[l.agent].count++;
   });
   const rows = Object.entries(byAgent)
-    .map(([agent, { total, count }]) => ({ agent: agent.replace('Agent', ''), avg: Math.round(total / count) }))
+    .map(([agent, { total, count }]) => ({ agent: agent.replace('Agent', ''), avg: Math.round(total / count), count }))
     .sort((a, b) => b.avg - a.avg).slice(0, 5);
   const maxMs = rows[0]?.avg || 1;
   const barColors = ['#ef4444', '#f59e0b', '#60a5fa', '#22c55e', '#C8913A'];
   el.innerHTML = rows.map((r, i) => {
     const pct = Math.round(r.avg / maxMs * 100);
-    return `<div class="bar-row">
+    return `<div class="bar-row" data-agent="${esc(r.agent)}" data-avg="${r.avg}" data-count="${r.count}">
       <div class="bar-label">${esc(r.agent)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${barColors[i]}"></div></div>
       <div class="bar-count">${r.avg}ms</div>
     </div>`;
   }).join('');
+
+  el.onpointermove = e => {
+    const row = e.target.closest('.bar-row');
+    if (!row) { hideChartTip(); return; }
+    showChartTip(`${row.dataset.agent}\nממוצע ${row.dataset.avg}ms, ${row.dataset.count} קריאות`, e.clientX, e.clientY);
+  };
+  el.onpointerleave = () => hideChartTip();
 }
 
 function renderPulse() {
@@ -1969,6 +1985,15 @@ function renderPulse() {
   h += `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="3.5" fill="#e0b86a"/>`;
   h += `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="7" fill="none" stroke="#e0b86a" stroke-width=".8" opacity=".4"/>`;
   svg.innerHTML = h; svg.setAttribute('width', W); svg.setAttribute('height', H);
+
+  svg.onpointermove = e => {
+    const rect = svg.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const idx = Math.max(0, Math.min(data.length - 1, Math.round((mx - 10) / step)));
+    const secondsAgo = (data.length - 1 - idx) * 3;
+    showChartTip(`לפני ${secondsAgo}-${secondsAgo + 3} שנ'\n${data[idx]} פעולות`, e.clientX, e.clientY);
+  };
+  svg.onpointerleave = () => hideChartTip();
 }
 
 function renderSparklines() {

@@ -100,9 +100,22 @@ describe('list agents', () => {
 
 describe('create agent', () => {
     beforeEach(() => {
+        process.env.AGENT_FACTORY_ENABLED = 'true';
         callGemma4.mockResolvedValue(SAFE_CODE);
         mockEmptyRegistry();
         mockWriteOps();
+    });
+
+    afterEach(() => {
+        delete process.env.AGENT_FACTORY_ENABLED;
+    });
+
+    test('creation is frozen behind AGENT_FACTORY_ENABLED (off by default)', async () => {
+        delete process.env.AGENT_FACTORY_ENABLED;
+        const res = await runAgentFactoryAgent('צור סוכן testbot שיענה בברכה', {}, false, {});
+        expect(res.answer).toContain('AGENT_FACTORY_ENABLED');
+        expect(res.action).toBeUndefined();
+        expect(fs.writeFileSync).not.toHaveBeenCalled();
     });
 
     test('creates agent and returns action', async () => {

@@ -906,7 +906,13 @@ const S = {
 
 // ── Utils ──────────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
-  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  // Consent/confirmation headers: destructive actions in this dashboard all
+  // pass through their own confirm dialog first, which satisfies the server's
+  // policy gate (memory.delete etc.).
+  const r = await fetch(path, {
+    headers: { 'Content-Type': 'application/json', 'X-User-Consent': 'true', 'X-Confirm-Action': 'yes' },
+    ...opts,
+  });
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }

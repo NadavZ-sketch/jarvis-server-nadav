@@ -38,19 +38,23 @@ function toISO(date) {
 
 // ─── LLM output helpers ───────────────────────────────────────────────────────
 
-// Robustly extract the last JSON object from an LLM response that may wrap the
-// JSON in explanatory text. Returns the parsed object, or null on failure.
-// Replaces the repeated lastIndexOf('{')…JSON.parse(substring) boilerplate.
+// Robustly extract a JSON object from an LLM response that may wrap the JSON
+// in explanatory text. Returns the parsed object, or null on failure.
+// Two passes: last '{'…last '}' (catches a trailing flat object even when the
+// preamble contains stray braces), then first '{'…last '}' (catches nested
+// objects, where the last '{' is an inner brace). Replaces the repeated
+// indexOf/lastIndexOf…JSON.parse boilerplate that agents used to carry.
 function extractJSON(aiText) {
     if (!aiText) return null;
-    const lastOpen = aiText.lastIndexOf('{');
     const lastClose = aiText.lastIndexOf('}');
-    if (lastOpen === -1 || lastClose === -1 || lastClose < lastOpen) return null;
-    try {
-        return JSON.parse(aiText.substring(lastOpen, lastClose + 1));
-    } catch {
-        return null;
+    if (lastClose === -1) return null;
+    for (const open of [aiText.lastIndexOf('{'), aiText.indexOf('{')]) {
+        if (open === -1 || lastClose < open) continue;
+        try {
+            return JSON.parse(aiText.substring(open, lastClose + 1));
+        } catch { /* try the next candidate range */ }
     }
+    return null;
 }
 
 module.exports = { sanitizeLike, nowJerusalem, todayISODate, toISO, jerusalemOffset, extractJSON };

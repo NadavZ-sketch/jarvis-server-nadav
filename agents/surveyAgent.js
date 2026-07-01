@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { extractJSON } = require('./utils');
 
 // Survey question templates. Options are ordered best → worst where it makes
 // sense, so the first option is treated as the most positive answer.
@@ -217,9 +218,8 @@ ${concernText ? `בסקרים קודמים ציין בעיות ב:\n${concernTex
       false,
       600,
     );
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]);
+    const parsed = extractJSON(raw);
+    if (parsed) {
       if (Array.isArray(parsed?.questions) && parsed.questions.length >= 2) {
         const anchor = {
           id: 'responseQuality',

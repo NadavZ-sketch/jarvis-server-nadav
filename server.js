@@ -12,6 +12,7 @@ const { execSync } = require('child_process');
 
 const pushService = require('./services/pushService');
 const systemLog   = require('./services/systemLog');
+const { writeJsonAtomic } = require('./services/jsonFileStore');
 
 const groqWhisper = new OpenAI({
     apiKey: process.env.GROQ_API_KEY,
@@ -317,14 +318,26 @@ const _JARVIS_API_KEY = process.env.JARVIS_API_KEY || '';
 // at every configured LLM provider, so leaving it open invites quota-burning.
 const _AUTH_EXEMPT = new Set(['/health', '/google-auth-callback']);
 if (_JARVIS_API_KEY) {
+    const _readAuthCookie = (req) => {
+        const m = /(?:^|;\s*)jarvis_key=([^;]+)/.exec(req.headers.cookie || '');
+        return m ? decodeURIComponent(m[1]) : '';
+    };
     app.use((req, res, next) => {
         // Exempt health checks, OAuth callback, and webhook paths
         if (_AUTH_EXEMPT.has(req.path)) return next();
         if (req.path.startsWith('/webhooks/')) return next();
-        // Dashboard HTML served via /progress-map — accept ?key= query param
-        const key = req.headers['x-jarvis-key'] || req.query.key || '';
+        // Accepted credentials, in order: header (API clients), HttpOnly
+        // cookie (dashboard fetches), ?key= query param (initial dashboard
+        // page load only — it then upgrades to the cookie so in-page fetch()
+        // calls are authenticated too and the key stops riding on every URL).
+        const key = req.headers['x-jarvis-key'] || _readAuthCookie(req) || req.query.key || '';
         if (key !== _JARVIS_API_KEY) {
             return res.status(401).json({ ok: false, error: 'Unauthorized' });
+        }
+        if (req.query.key && !_readAuthCookie(req)) {
+            res.setHeader('Set-Cookie',
+                `jarvis_key=${encodeURIComponent(_JARVIS_API_KEY)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000`
+                + (req.secure ? '; Secure' : ''));
         }
         next();
     });
@@ -390,7 +403,7 @@ const AGENT_DISABLED_REPLY = { answer: 'הסוכן הזה כבוי כרגע במ
 app.use('/tasks', createTasksRouter({ supabase }));
 app.use('/reminders', createRemindersRouter({ supabase, pinecone, requirePolicy }));
 app.use('/projects', createProjectsRouter({ supabase, repos }));
-app.use('/memories', createMemoriesRouter({ supabase, repos }));
+app.use('/memories', createMemoriesRouter({ supabase, repos, requirePolicy }));
 app.use('/', createE2ERouter({ supabase, repos, cacheInvalidate, _rl }));
 app.use('/', createSurveysRouter({ supabase, repos, _rl }));
 app.use('/', createCalendarRouter({ supabase, repos, cacheInvalidate }));
@@ -411,7 +424,7 @@ function readLocalProfile() {
 function writeLocalProfile(profile) {
     try {
         fs.mkdirSync(path.dirname(LOCAL_PROFILE_FILE), { recursive: true });
-        fs.writeFileSync(LOCAL_PROFILE_FILE, JSON.stringify(profile, null, 2), 'utf8');
+        writeJsonAtomic(LOCAL_PROFILE_FILE, profile);
     } catch (_) {}
 }
 
@@ -1315,7 +1328,7 @@ app.post('/send-email', requirePolicy('messaging.send', { sensitive: true, irrev
 });
 
 // ─── Delete chat history for a conversation ───────────────────────────────────
-app.delete('/chat-history/:chatId', async (req, res) => {
+app.delete('/chat-history/:chatId', requirePolicy('chat.delete', { sensitive: true, irreversible: true }), async (req, res) => {
     try {
         const { chatId } = req.params;
         if (!chatId) return res.status(400).json({ error: 'chatId required' });
@@ -1463,7 +1476,7 @@ app.post('/user-profile', async (req, res) => {
     }
 });
 
-app.delete('/user-profile', async (_req, res) => {
+app.delete('/user-profile', requirePolicy('profile.delete', { sensitive: true, irreversible: true }), async (_req, res) => {
     try {
         const existing = await getUserProfile();
         if (!existing?.id || existing.id === 'local-fallback') {
@@ -1855,7 +1868,7 @@ function readRouterOverrides() {
 }
 
 function writeRouterOverrides(overrides) {
-    fs.writeFileSync(ROUTER_OVERRIDES_PATH, JSON.stringify({ overrides }, null, 2), 'utf8');
+    writeJsonAtomic(ROUTER_OVERRIDES_PATH, { overrides });
     invalidateOverridesCache();
 }
 
@@ -3659,6 +3672,14 @@ if (!isTestEnv) scheduledJob('profile_learning', '45 3 * * *', async () => {
     if (s.updated) console.log('🎯 Style prefs learned from feedback:', JSON.stringify(s.learned));
 }, { timezone: 'Asia/Jerusalem' });
 
+// Weekly E2E self-test — Sunday 04:10 Jerusalem (after the nightly cleanup
+// window). Same path as POST /e2e/trigger: the agent persists its report and
+// feeds the e2e learning loop, so regressions surface without a manual run.
+if (!isTestEnv) scheduledJob('weekly_e2e', '10 4 * * 0', async () => {
+    await runE2EAgent('הרץ סקירת קצה', supabase, false, {});
+    console.log('🧪 weekly E2E self-test completed');
+}, { timezone: 'Asia/Jerusalem' });
+
 app.get('/chart.js', (_req, res) => {
     res.sendFile(path.join(__dirname, 'node_modules/chart.js/dist/chart.umd.min.js'),
         err => { if (err && !res.headersSent) res.status(404).send('Not found'); });
@@ -3794,7 +3815,7 @@ function readBacklog() {
     }
 }
 function writeBacklog(data) {
-    require('fs').writeFileSync(BACKLOG_PATH(), JSON.stringify(data, null, 2));
+    writeJsonAtomic(BACKLOG_PATH(), data);
 }
 
 
@@ -3944,7 +3965,7 @@ app.patch('/dashboard/features', (req, res) => {
         if (!feats[dst]) feats[dst] = [];
         feats[dst].push(feature);
         data.lastUpdated = new Date().toISOString().slice(0, 10);
-        require('fs').writeFileSync(filePath, JSON.stringify(data, null, 2));
+        writeJsonAtomic(filePath, data);
         res.json({ ok: true, feature, movedFrom: oldStatus, movedTo: dst });
     } catch (err) {
         console.error('PATCH /dashboard/features error:', err.message);
@@ -3968,7 +3989,7 @@ app.post('/dashboard/features', (req, res) => {
         if (exists) return res.status(409).json({ error: 'Feature with this name already exists' });
         data.features[bucket].push({ name: name.trim(), desc: desc.trim() });
         data.lastUpdated = new Date().toISOString().slice(0, 10);
-        require('fs').writeFileSync(filePath, JSON.stringify(data, null, 2));
+        writeJsonAtomic(filePath, data);
         res.json({ ok: true });
     } catch (err) {
         console.error('POST /dashboard/features error:', err.message);
@@ -3987,7 +4008,7 @@ app.delete('/dashboard/features', (req, res) => {
         data.features[status] = (data.features[status] || []).filter(f => f.name !== name);
         if (data.features[status].length === before) return res.status(404).json({ error: 'Not found' });
         data.lastUpdated = new Date().toISOString().slice(0, 10);
-        require('fs').writeFileSync(filePath, JSON.stringify(data, null, 2));
+        writeJsonAtomic(filePath, data);
         res.json({ ok: true });
     } catch (err) {
         console.error('DELETE /dashboard/features error:', err.message);

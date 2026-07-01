@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { callGemma4 } = require('./models');
+const { extractJSON } = require('./utils');
 
 const DETECT_PROMPT = `You are an intent analyzer for a Hebrew personal assistant.
 Analyze the user message and determine if it contains MULTIPLE distinct actionable intents.
@@ -27,9 +28,8 @@ async function detectMultiIntent(userMessage) {
     try {
         const raw = await callGemma4(DETECT_PROMPT + userMessage, false, 300);
         const text = typeof raw === 'string' ? raw : (raw?.answer || raw?.content || '');
-        const m = text.match(/\{[\s\S]*\}/);
-        if (!m) return null;
-        const parsed = JSON.parse(m[0]);
+        const parsed = extractJSON(text);
+        if (!parsed) return null;
         if (!parsed.isMultiIntent || !Array.isArray(parsed.tasks) || parsed.tasks.length < 2) return null;
         return parsed;
     } catch {

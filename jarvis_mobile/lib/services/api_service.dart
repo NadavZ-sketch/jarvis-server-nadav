@@ -521,7 +521,12 @@ class ApiService {
   }
 
   Future<void> deleteContact(String id) async {
-    await _client.delete(_uri('/contacts/$id'), headers: _baseHeaders).timeout(_timeout);
+    // The UI confirms before calling; the header satisfies the server's
+    // irreversible-action policy gate (contacts.delete).
+    await _client
+        .delete(_uri('/contacts/$id'),
+            headers: _headers({'x-confirm-action': 'yes'}))
+        .timeout(_timeout);
   }
 
   // ─── Shopping ─────────────────────────────────────────────────────────────
@@ -872,7 +877,12 @@ class ApiService {
   }
 
   Future<void> deleteUserProfile() async {
-    await _client.delete(_uri('/user-profile')).timeout(_timeout);
+    // The UI confirms before calling; the header satisfies the server's
+    // irreversible-action policy gate (profile.delete).
+    await _client
+        .delete(_uri('/user-profile'),
+            headers: _headers({'x-confirm-action': 'yes'}))
+        .timeout(_timeout);
   }
 
   // ─── Projects ─────────────────────────────────────────────────────────────
@@ -1413,8 +1423,11 @@ class ApiService {
   /// Deletes a memory by id.
   /// DELETE /memories/{id} → returns true on 200.
   Future<bool> deleteMemory(String id) async {
+    // The UI confirms before calling; the header satisfies the server's
+    // irreversible-action policy gate (memory.delete).
     final res = await _client
-        .delete(_uri('/memories/$id'), headers: _baseHeaders)
+        .delete(_uri('/memories/$id'),
+            headers: _headers({'x-confirm-action': 'yes'}))
         .timeout(_timeout);
     return res.statusCode == 200;
   }

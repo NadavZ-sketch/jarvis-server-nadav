@@ -53,7 +53,20 @@ describe('extractJSON', () => {
         expect(extractJSON('sure! {"a":1} done')).toEqual({ a: 1 });
     });
 
+    test('extracts nested objects (last "{" is an inner brace)', () => {
+        expect(extractJSON('הנה: {"a":{"b":1},"c":2}')).toEqual({ a: { b: 1 }, c: 2 });
+    });
+
+    test('prefers a trailing object over earlier stray braces', () => {
+        expect(extractJSON('{oops} explanation {"intent":"task"}')).toEqual({ intent: 'task' });
+    });
+
     test('returns null on malformed JSON', () => {
         expect(extractJSON('no json here {broken')).toBeNull();
+    });
+
+    test('returns null on empty/missing input', () => {
+        expect(extractJSON('')).toBeNull();
+        expect(extractJSON(null)).toBeNull();
     });
 });

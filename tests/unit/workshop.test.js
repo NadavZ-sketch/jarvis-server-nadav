@@ -41,6 +41,9 @@ jest.mock('fs', () => ({
     return jest.requireActual('fs').readFileSync(path);
   }),
   writeFileSync: jest.fn(),
+  // writeJsonAtomic writes to a .tmp file then renames it into place — the
+  // mocked writeFileSync never creates a real file, so rename must be a no-op.
+  renameSync: jest.fn(),
   existsSync: jest.fn(() => true),
 }));
 

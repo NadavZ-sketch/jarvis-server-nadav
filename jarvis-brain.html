@@ -2487,10 +2487,10 @@ function startGraph2D() {
     if (n.strength >= 3 || n.hub)
       h += `<circle r="${n.r+6}" fill="none" stroke="${n.c}" stroke-width="${n.hub?1:.7}" opacity="${n.hub?.35:.18}" class="gngl"/>`;
     if (isOrphan) {
-      h += `<circle r="${n.r}" fill="${n.c}" opacity=".35"/>`;
+      h += `<circle class="gn-main" r="${n.r}" fill="${n.c}" opacity=".35"/>`;
       h += `<circle r="${n.r+4}" fill="none" stroke="${n.c}" stroke-width=".6" opacity=".18" stroke-dasharray="2 2"/>`;
     } else {
-      h += `<circle r="${n.r}" fill="${n.c}" opacity="${n.hub?.95:.82}"/>`;
+      h += `<circle class="gn-main" r="${n.r}" fill="${n.c}" opacity="${n.hub?.95:.82}"/>`;
     }
     if (n.hub || !isMob)
       h += `<text y="${-n.r-4}" text-anchor="middle" font-size="${n.hub?(isMob?9:8):6.5}" font-weight="${n.hub?700:400}" fill="rgba(224,212,190,.85)" font-family="Heebo" pointer-events="none">${esc(n.label)}</text>`;
@@ -2507,6 +2507,7 @@ function startGraph2D() {
     const idx = parseInt(g.dataset.nidx);
     const n = _g2dNodes[idx];
     if (!n || n.hub) return;
+    n.pulse = 1;
     _g2dDrag = { idx, lastT: performance.now() }; svg.setPointerCapture(e.pointerId); e.preventDefault();
   };
   svg.onpointermove = e => {
@@ -2536,6 +2537,7 @@ function startGraph2D() {
     const idx = parseInt(g.dataset.nidx);
     const n = _g2dNodes[idx];
     if (!n) return;
+    n.pulse = 1;
     if (n.hub) { S.highlight = S.highlight === n.cat ? null : n.cat; closeGraphTooltip(); }
     else showGraphTooltip(n.id, e.clientX, e.clientY);
   };
@@ -2601,6 +2603,15 @@ function startGraph2D() {
       const el = document.getElementById('gn' + gi);
       if (!el) return;
       el.setAttribute('transform', `translate(${n.x.toFixed(1)},${n.y.toFixed(1)})`);
+      if (n.pulse > 0.01) {
+        n.pulse *= 0.9;
+        const mainCircle = el.querySelector('.gn-main');
+        if (mainCircle) mainCircle.setAttribute('r', (n.r + n.pulse * 6).toFixed(1));
+      } else if (n.pulse) {
+        n.pulse = 0;
+        const mainCircle = el.querySelector('.gn-main');
+        if (mainCircle) mainCircle.setAttribute('r', n.r.toFixed(1));
+      }
       // Opacity
       let op = 1;
       const li = leafs.indexOf(n);

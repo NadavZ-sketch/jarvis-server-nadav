@@ -887,6 +887,7 @@ const S = {
   stats: {}, profile: {}, filter: 'all', view3d: false,
   editId: null, pollTimer: null, provTimer: null,
   searchQ: '', highlight: null, mmSort: 'date',
+  traceIntentFilter: null, profileDayFilter: null,
 };
 
 // ── Utils ──────────────────────────────────────────────────────────────────
@@ -932,6 +933,29 @@ function isToday(iso) {
   if (!iso) return false;
   const d = new Date(iso), now = new Date();
   return d.toDateString() === now.toDateString();
+}
+
+// ── Shared Chart Tooltip ───────────────────────────────────────────────────
+function showChartTip(text, clientX, clientY) {
+  let tip = document.getElementById('chartTip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'chartTip';
+    tip.className = 'chart-tip';
+    document.body.appendChild(tip);
+  }
+  tip.textContent = text;
+  tip.style.display = 'block';
+  const pad = 12;
+  let x = clientX + pad, y = clientY + pad;
+  if (x + 160 > window.innerWidth) x = clientX - 160 - pad;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+
+function hideChartTip() {
+  const tip = document.getElementById('chartTip');
+  if (tip) tip.style.display = 'none';
 }
 
 // ── Load Functions ─────────────────────────────────────────────────────────

@@ -2507,15 +2507,29 @@ function startGraph2D() {
     const idx = parseInt(g.dataset.nidx);
     const n = _g2dNodes[idx];
     if (!n || n.hub) return;
-    _g2dDrag = { idx }; svg.setPointerCapture(e.pointerId); e.preventDefault();
+    _g2dDrag = { idx, lastT: performance.now() }; svg.setPointerCapture(e.pointerId); e.preventDefault();
   };
   svg.onpointermove = e => {
     if (!_g2dDrag) return;
     const rect = svg.getBoundingClientRect();
     const n = _g2dNodes[_g2dDrag.idx];
-    if (n) { n.x = e.clientX - rect.left; n.y = e.clientY - rect.top; n.vx = 0; n.vy = 0; }
+    if (n) {
+      const now = performance.now();
+      const dt = Math.max(1, now - _g2dDrag.lastT);
+      const nx = e.clientX - rect.left, ny = e.clientY - rect.top;
+      n.vx = (nx - n.x) / dt * 16;
+      n.vy = (ny - n.y) / dt * 16;
+      n.x = nx; n.y = ny;
+      _g2dDrag.lastT = now;
+    }
   };
-  svg.onpointerup = e => { _g2dDrag = null; };
+  svg.onpointerup = e => {
+    if (_g2dDrag) {
+      const n = _g2dNodes[_g2dDrag.idx];
+      if (n) n.releaseGlide = 20;
+    }
+    _g2dDrag = null;
+  };
   svg.onclick = e => {
     const g = e.target.closest('[data-nidx]');
     if (!g) { closeGraphTooltip(); S.highlight = null; _g2dFocus = null; document.getElementById('focusPill').style.display='none'; return; }
@@ -2579,6 +2593,7 @@ function startGraph2D() {
     }
     _g2dNodes.forEach((n, gi) => {
       if (_g2dDrag && _g2dDrag.idx === gi) return;
+      if (n.releaseGlide > 0) { n.vx *= 0.95; n.vy *= 0.95; n.releaseGlide--; }
       n.vx = ((n.vx||0) + (W/2 - n.x)*.003) * .85;
       n.vy = ((n.vy||0) + (H/2 - n.y)*.003) * .85;
       n.x = Math.max(margin, Math.min(W-margin, n.x + n.vx));

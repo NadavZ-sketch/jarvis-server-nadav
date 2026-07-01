@@ -674,12 +674,17 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
     <div class="think-main">
       <div class="prov-bar">
         <span class="prov-lbl">ספקים</span>
-        <div class="prov-item"><div class="prov-dot off" id="prov-groq"></div>Groq</div>
-        <div class="prov-item"><div class="prov-dot off" id="prov-deepseek"></div>DeepSeek</div>
-        <div class="prov-item"><div class="prov-dot off" id="prov-gemini"></div>Gemini</div>
-        <div class="prov-item"><div class="prov-dot off" id="prov-ollama"></div>Ollama</div>
+        <div class="prov-item"><div class="prov-dot off" id="prov-groq" data-key="groq"></div>Groq</div>
+        <div class="prov-item"><div class="prov-dot off" id="prov-deepseek" data-key="deepseek"></div>DeepSeek</div>
+        <div class="prov-item"><div class="prov-dot off" id="prov-gemini" data-key="gemini_google"></div>Gemini</div>
+        <div class="prov-item"><div class="prov-dot off" id="prov-ollama" data-key="ollama"></div>Ollama</div>
         <div style="flex:1"></div>
         <span style="font-size:var(--tx-xs);color:var(--muted);display:flex;align-items:center;gap:5px">polling 8s <span class="live-dot"></span></span>
+      </div>
+      <div class="trace-search-bar">
+        <svg class="icon icon-sm"><use href="#ic-search"/></svg>
+        <input id="traceSearch" placeholder="חיפוש בהיסטוריית ניתוב..." oninput="renderTrace()">
+        <span class="trace-filter-pill" id="traceFilterPill" onclick="clearTraceFilter()"></span>
       </div>
       <div class="trace-list" id="traceList"><div class="mp-empty">טוען...</div></div>
     </div>

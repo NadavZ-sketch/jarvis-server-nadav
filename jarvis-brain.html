@@ -2443,15 +2443,13 @@ function startGraph2D() {
   }));
 
   const leafNodes = mems.map((m, i) => {
-    const a = 2*Math.PI*i/mems.length + Math.random()*0.4;
-    const rd = Math.min(W,H)*0.3 + (Math.random()-0.5)*60;
     return {
       id: m.id, cat: inferCat(m.content), label: m.content.slice(0,12),
       c: CAT_COLOR[inferCat(m.content)] || '#C8913A',
       r: recencyRadius(m.created_at), baseR: recencyRadius(m.created_at),
       hub: false, strength: 0,
-      x: W/2 + rd*Math.cos(a), y: H/2 + rd*Math.sin(a),
-      vx: 0, vy: 0,
+      x: W/2 + (Math.random()-0.5)*2, y: H/2 + (Math.random()-0.5)*2,
+      vx: 0, vy: 0, spawnTime: performance.now(),
     };
   });
 
@@ -2625,7 +2623,8 @@ function startGraph2D() {
       } else {
         if (hl && n.cat !== hl) op = .12;
       }
-      el.style.opacity = op;
+      const fadeIn = n.spawnTime ? Math.min(1, (performance.now() - n.spawnTime) / 400) : 1;
+      el.style.opacity = op * fadeIn;
     });
     // Update edges
     leafs.forEach((n, i) => {

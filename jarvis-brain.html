@@ -1003,7 +1003,8 @@ async function loadTrace() {
 
 async function loadProviders() {
   try {
-    S.providers = await api('/health/providers');
+    const res = await api('/health/providers');
+    S.providers = res.providers || {};
     renderProviders();
   } catch (e) { console.warn('providers:', e); }
 }
@@ -1300,7 +1301,7 @@ function renderProviders() {
   for (const [key, elId] of Object.entries(map)) {
     const el = document.getElementById(elId);
     if (!el) continue;
-    el.className = 'prov-dot ' + (S.providers[key] ? 'ok' : 'off');
+    el.className = 'prov-dot ' + (S.providers[key] === 'ok' ? 'ok' : 'off');
   }
   const bar = document.querySelector('.prov-bar');
   if (bar) {

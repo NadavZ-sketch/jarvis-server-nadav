@@ -1230,7 +1230,8 @@ function renderTrace() {
   // Merge trace + log, deduplicate by closest time
   let entries = S.trace.map(t => {
     let candidates = [];
-    try { candidates = JSON.parse(t.candidates || '[]'); } catch (e) { candidates = []; }
+    if (Array.isArray(t.candidates)) candidates = t.candidates;
+    else if (typeof t.candidates === 'string') { try { candidates = JSON.parse(t.candidates || '[]'); } catch (e) { candidates = []; } }
     return {
       time: fmtTime(t.created_at),
       input: t.input || '—',

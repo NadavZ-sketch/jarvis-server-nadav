@@ -19,10 +19,21 @@ function todayISODate() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Format a Date to an ISO timestamp with the +03:00 Jerusalem offset.
+// UTC offset ("+02:00"/"+03:00") of Asia/Jerusalem at the given moment.
+// Israel observes DST, so the offset must be derived per-date — a hardcoded
+// +03:00 makes every winter reminder fire an hour off.
+function jerusalemOffset(date) {
+    const part = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', timeZoneName: 'longOffset' })
+        .formatToParts(date)
+        .find(p => p.type === 'timeZoneName');
+    const m = /GMT([+-]\d{2}:\d{2})/.exec(part?.value || '');
+    return m ? m[1] : '+02:00';
+}
+
+// Format a Date to an ISO timestamp with the Jerusalem offset for that date.
 function toISO(date) {
     const pad = n => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00+03:00`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00${jerusalemOffset(date)}`;
 }
 
 // ─── LLM output helpers ───────────────────────────────────────────────────────
@@ -42,4 +53,4 @@ function extractJSON(aiText) {
     }
 }
 
-module.exports = { sanitizeLike, nowJerusalem, todayISODate, toISO, extractJSON };
+module.exports = { sanitizeLike, nowJerusalem, todayISODate, toISO, jerusalemOffset, extractJSON };

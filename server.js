@@ -313,7 +313,9 @@ app.use(express.json({ limit: '10mb' }));
 // Set JARVIS_API_KEY in production. When the var is unset the middleware is a
 // no-op so all 78 test files keep passing without changes.
 const _JARVIS_API_KEY = process.env.JARVIS_API_KEY || '';
-const _AUTH_EXEMPT = new Set(['/health', '/health/providers', '/google-auth-callback']);
+// NOTE: /health/providers is deliberately NOT exempt — it fires live requests
+// at every configured LLM provider, so leaving it open invites quota-burning.
+const _AUTH_EXEMPT = new Set(['/health', '/google-auth-callback']);
 if (_JARVIS_API_KEY) {
     app.use((req, res, next) => {
         // Exempt health checks, OAuth callback, and webhook paths
@@ -331,6 +333,7 @@ if (_JARVIS_API_KEY) {
 
 const _rl = (max, windowMs = 60_000) => rateLimit({ windowMs, max, standardHeaders: true, legacyHeaders: false });
 app.use('/ask-jarvis',    _rl(30));
+app.use('/health/providers', _rl(5)); // each call probes every LLM provider live
 app.use('/send-email',    _rl(5));
 app.use('/stream-jarvis', _rl(20));
 app.use('/tasks',         _rl(60));
@@ -5055,15 +5058,32 @@ if (require.main === module) {
     wss.on('connection', wsHandler);
     console.log(`🔊 Live talk WebSocket mounted at /ws-jarvis`);
 
-    function shutdown(signal) {
+    function shutdown(signal, exitCode = 0) {
         console.log(`\n${signal} received — shutting down gracefully...`);
         server.close(() => {
             console.log('✅ HTTP server closed. Goodbye.');
-            process.exit(0);
+            process.exit(exitCode);
         });
         setTimeout(() => { console.error('⚠️ Forced exit after timeout.'); process.exit(1); }, 10_000).unref();
     }
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT',  () => shutdown('SIGINT'));
+
+    // ── Last-resort error safety net ─────────────────────────────────────────
+    // With this many fire-and-forget promises, an async error that escapes a
+    // try/catch would otherwise kill the process (or corrupt state) with
+    // nothing in system_events explaining why.
+    process.on('unhandledRejection', (reason) => {
+        const err = reason instanceof Error ? reason : new Error(String(reason));
+        console.error('🔥 Unhandled promise rejection:', err);
+        systemLog.logError('process:unhandledRejection', err).catch(() => {});
+    });
+    process.on('uncaughtException', (err) => {
+        console.error('🔥 Uncaught exception — shutting down:', err);
+        // Best-effort log, then exit non-zero so the host restarts a clean process.
+        systemLog.logCritical('process:uncaughtException', err)
+            .catch(() => {})
+            .finally(() => shutdown('uncaughtException', 1));
+    });
 }

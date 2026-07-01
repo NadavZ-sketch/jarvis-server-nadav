@@ -1379,8 +1379,10 @@ class ApiService {
   /// timeout (20 s) instead of the default 30 s one because providers
   /// themselves can be slow to respond.
   Future<Map<String, dynamic>> fetchHealthProviders() async {
+    // _headers() (not _baseHeaders): this endpoint is no longer auth-exempt
+    // on the server, so the API key must be sent when configured.
     final res = await _client
-        .get(_uri('/health/providers'), headers: _baseHeaders)
+        .get(_uri('/health/providers'), headers: _headers())
         .timeout(const Duration(seconds: 20));
     return jsonDecode(_safeBody(res)) as Map<String, dynamic>;
   }

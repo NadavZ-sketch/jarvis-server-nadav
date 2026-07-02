@@ -64,17 +64,27 @@ const PROVIDERS = {
 };
 
 // Default cloud failover order when no specific provider is requested.
-const CLOUD_DEFAULT_ORDER = ['groq', 'deepseek', 'openrouter', 'gemini'];
+// OpenRouter is deliberately excluded: it's itself a broker fanning requests
+// out to dozens of underlying providers, so auto-attempting it on every
+// Groq+DeepSeek failure trades a real privacy cost for a marginal reliability
+// gain (Gemini is already the terminal fallback). It stays fully usable —
+// see resolveChain below — for anyone who explicitly picks it as their
+// preferred provider (mobile Settings → cloudProvider).
+const CLOUD_DEFAULT_ORDER = ['groq', 'deepseek', 'gemini'];
 
 // Build the ordered provider chain for a request.
 //   - useLocal === true → strict local: ['ollama'] only, no cloud fallback.
 //     (A local failure surfaces as an error rather than silently using cloud.)
 //   - otherwise → cloud order with the chosen `cloudProvider` moved to the front,
-//     the rest kept as fallback.
+//     the rest kept as fallback. `cloudProvider` may name a provider outside
+//     CLOUD_DEFAULT_ORDER (e.g. 'openrouter') — an explicit choice is always
+//     honored even though that provider isn't auto-attempted by default.
+//     'ollama' is excluded here on purpose: it's selected via `useLocal`, not
+//     `cloudProvider`, since it needs a locally-reachable URL, not a cloud key.
 function resolveChain({ useLocal = false, cloudProvider = null } = {}) {
     if (useLocal) return ['ollama'];
     let cloud = [...CLOUD_DEFAULT_ORDER];
-    if (cloudProvider && cloud.includes(cloudProvider)) {
+    if (cloudProvider && cloudProvider !== 'ollama' && PROVIDERS[cloudProvider]) {
         cloud = [cloudProvider, ...cloud.filter(p => p !== cloudProvider)];
     }
     return cloud;

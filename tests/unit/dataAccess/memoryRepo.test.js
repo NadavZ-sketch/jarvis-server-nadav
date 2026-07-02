@@ -175,3 +175,67 @@ describe('memoryRepo.insert — status column fallback', () => {
         expect(rows).toEqual([{ id: 20 }]);
     });
 });
+
+describe('memoryRepo.category', () => {
+    test('listAll includes category in the row when present', async () => {
+        const chain = makeChain([{ id: 1, content: 'a', scope: 'long_term', category: 'עבודה', created_at: '2026-01-01' }]);
+        const repo = createMemoryRepo({ from: () => chain });
+        const rows = await repo.listAll();
+        expect(rows[0].category).toBe('עבודה');
+    });
+
+    test('listAll falls back to the pre-category column set when category is missing', async () => {
+        const noCatChain = makeChain(null, { message: 'column "category" does not exist', code: '42703' });
+        const okChain = makeChain([{ id: 1, content: 'a', scope: 'long_term', created_at: '2026-01-01' }]);
+        let call = 0;
+        const repo = createMemoryRepo({ from: () => (call++ === 0 ? noCatChain : okChain) });
+        const rows = await repo.listAll();
+        expect(rows).toEqual([{ id: 1, content: 'a', scope: 'long_term', created_at: '2026-01-01' }]);
+    });
+
+    test('create includes category in the insert payload and echoes it back', async () => {
+        const chain = makeChain([{ id: 9, content: 'x', scope: 'long_term', category: 'תחביב', created_at: '2026-01-01' }]);
+        const repo = createMemoryRepo({ from: () => chain });
+        const rows = await repo.create({ content: 'x', scope: 'long_term', category: 'תחביב' });
+        expect(chain.insert).toHaveBeenCalledWith([{ content: 'x', scope: 'long_term', category: 'תחביב' }]);
+        expect(rows[0].category).toBe('תחביב');
+    });
+
+    test('create retries without category when the column is missing', async () => {
+        const catErrChain = makeChain(null, { message: 'column "category" does not exist', code: '42703' });
+        const okChain = makeChain([{ id: 9, content: 'x', scope: 'long_term', created_at: '2026-01-01' }]);
+        let call = 0;
+        const repo = createMemoryRepo({ from: () => (call++ === 0 ? catErrChain : okChain) });
+        const rows = await repo.create({ content: 'x', scope: 'long_term', category: 'תחביב' });
+        expect(rows[0].id).toBe(9);
+    });
+
+    test('insert retries without category when missing, then still applies the scope/status fallback chain', async () => {
+        const catErrChain    = makeChain(null, { message: 'column "category" does not exist' });
+        const scopeErrChain  = makeChain(null, { message: 'scope column missing', code: '42703' });
+        const statusErrChain = makeChain(null, { message: 'status column missing', code: '42703' });
+        const okChain        = makeChain([{ id: 20 }]);
+        const chains = [catErrChain, scopeErrChain, statusErrChain, okChain];
+        let call = 0;
+        const repo = createMemoryRepo({ from: () => chains[call++] });
+        const rows = await repo.insert({ content: 'c', scope: 'session', status: 'pending', category: 'כללי' });
+        expect(rows).toEqual([{ id: 20 }]);
+    });
+
+    test('updateById includes category in the select and patch', async () => {
+        const chain = makeChain([{ id: 7, content: 'new', scope: 'long_term', category: 'בריאות' }]);
+        const repo = createMemoryRepo({ from: () => chain });
+        const rows = await repo.updateById('7', { category: 'בריאות' });
+        expect(chain.update).toHaveBeenCalledWith({ category: 'בריאות' });
+        expect(rows[0].category).toBe('בריאות');
+    });
+
+    test('updateById falls back without category when the column is missing', async () => {
+        const catErrChain = makeChain(null, { message: 'column "category" does not exist' });
+        const okChain = makeChain([{ id: 7, content: 'new', scope: 'long_term' }]);
+        let call = 0;
+        const repo = createMemoryRepo({ from: () => (call++ === 0 ? catErrChain : okChain) });
+        const rows = await repo.updateById('7', { content: 'new' });
+        expect(rows[0].id).toBe(7);
+    });
+});

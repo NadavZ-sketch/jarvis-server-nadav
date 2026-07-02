@@ -44,7 +44,7 @@ async function sendEmail(to, body) {
     console.info(`[email] sent to ${to}`);
 }
 
-const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCustomRegistry, invalidateOverridesCache, VALID_INTENTS } = require('./agents/router');
+const { classifyIntent, classifyIntentDetailed, classifyIntentWithLLM, loadCustomRegistry } = require('./agents/router');
 const routeTracker = require('./services/routeTracker');
 const { runTaskAgent }        = require('./agents/taskAgent');
 const { runReminderAgent }    = require('./agents/reminderAgent');
@@ -124,6 +124,7 @@ const { createCalendarRouter } = require('./routes/calendar');
 const { createNotesRouter } = require('./routes/notes');
 const { createShoppingRouter } = require('./routes/shopping');
 const { createContactsRouter } = require('./routes/contacts');
+const { createRouterTrainerRouter } = require('./routes/routerTrainer');
 const { createRemindersController } = require('./controllers/remindersController');
 const { createChatRouter } = require('./routes/chat');
 const { isAllowedByRolePlan, isBlockedAction } = require('./services/policyEngine');
@@ -410,6 +411,7 @@ app.use('/memories', createMemoriesRouter({ supabase, repos, requirePolicy }));
 app.use('/notes', createNotesRouter({ supabase, repos }));
 app.use('/shopping', createShoppingRouter({ supabase, repos }));
 app.use('/contacts', createContactsRouter({ supabase, repos, requirePolicy }));
+app.use('/router', createRouterTrainerRouter({ supabase, _rl }));
 app.use('/', createE2ERouter({ supabase, repos, cacheInvalidate, _rl }));
 app.use('/', createSurveysRouter({ supabase, repos, _rl }));
 app.use('/', createCalendarRouter({ supabase, repos, cacheInvalidate }));
@@ -1858,118 +1860,6 @@ app.get('/dashboard/smart-telemetry', _rl(60), async (req, res) => {
         sinceDays: Math.min(Number(req.query.days) || 30, 90),
     });
     res.json({ counts: r.counts, total: r.total });
-});
-
-// ── Router Trainer ────────────────────────────────────────────────────────────
-
-const ROUTER_OVERRIDES_PATH = path.join(__dirname, 'config', 'router-overrides.json');
-
-function readRouterOverrides() {
-    try {
-        const parsed = JSON.parse(fs.readFileSync(ROUTER_OVERRIDES_PATH, 'utf8'));
-        return Array.isArray(parsed.overrides) ? parsed.overrides : [];
-    } catch {
-        return [];
-    }
-}
-
-function writeRouterOverrides(overrides) {
-    writeJsonAtomic(ROUTER_OVERRIDES_PATH, { overrides });
-    invalidateOverridesCache();
-}
-
-app.get('/router/training-events', _rl(30), async (req, res) => {
-    try {
-        const limit = Math.min(Number(req.query.limit) || 50, 100);
-        const { data, error } = await supabase
-            .from('smart_telemetry_events')
-            .select('id, metadata, created_at')
-            .eq('event_name', 'router_chat_default')
-            .order('created_at', { ascending: false })
-            .limit(limit);
-        if (error) throw error;
-        const events = (data || []).map(row => ({
-            id: row.id,
-            message: (row.metadata && row.metadata.message) ? row.metadata.message : '',
-            created_at: row.created_at,
-        }));
-        res.json({ events });
-    } catch (err) {
-        console.error('GET /router/training-events error:', err.message);
-        res.status(500).json({ error: 'failed to fetch training events' });
-    }
-});
-
-// Closes the router feedback loop: 👎 events carry the intent that produced
-// the reply (routeTracker, see POST /feedback above). This surfaces messages
-// that were mis-routed the same way more than once — a human still picks the
-// correct intent and applies it via POST /router/keywords; this endpoint only
-// detects and proposes, it never writes an override itself.
-app.get('/router/misroutes', _rl(30), async (req, res) => {
-    try {
-        const limit = Math.min(Number(req.query.limit) || 500, 1000);
-        const minOccurrences = Math.max(Number(req.query.minOccurrences) || 2, 2);
-        const { data, error } = await supabase
-            .from('smart_telemetry_events')
-            .select('metadata, created_at')
-            .eq('event_name', 'feedback_down')
-            .order('created_at', { ascending: false })
-            .limit(limit);
-        if (error) throw error;
-        const misroutes = feedbackStore.computeMisroutePatterns(data || [], { minOccurrences });
-        res.json({ misroutes });
-    } catch (err) {
-        console.error('GET /router/misroutes error:', err.message);
-        res.status(500).json({ error: 'failed to compute misroute patterns' });
-    }
-});
-
-app.get('/router/keywords', _rl(30), (req, res) => {
-    try {
-        const overrides = readRouterOverrides();
-        res.json({ overrides });
-    } catch (err) {
-        console.error('GET /router/keywords error:', err.message);
-        res.status(500).json({ error: 'failed to read overrides' });
-    }
-});
-
-app.post('/router/keywords', _rl(20), (req, res) => {
-    try {
-        const { keyword, intent } = req.body || {};
-        if (!keyword || typeof keyword !== 'string' || !intent || typeof intent !== 'string') {
-            return res.status(400).json({ error: 'keyword and intent are required strings' });
-        }
-        const kw = keyword.trim();
-        if (!kw) return res.status(400).json({ error: 'keyword must not be empty' });
-        if (!VALID_INTENTS.has(intent)) return res.status(400).json({ error: `unknown intent: ${intent}` });
-        const overrides = readRouterOverrides();
-        const deduped = overrides.filter(o => !(o.keyword === kw && o.intent === intent));
-        deduped.push({ keyword: kw, intent });
-        writeRouterOverrides(deduped);
-        res.json({ ok: true, overrides: deduped });
-    } catch (err) {
-        console.error('POST /router/keywords error:', err.message);
-        res.status(500).json({ error: 'failed to save override' });
-    }
-});
-
-app.delete('/router/keywords', _rl(20), (req, res) => {
-    try {
-        const { keyword, intent } = req.body || {};
-        if (!keyword || typeof keyword !== 'string' || !intent || typeof intent !== 'string') {
-            return res.status(400).json({ error: 'keyword and intent are required strings' });
-        }
-        const kwToDelete = keyword.trim();
-        const intentToDelete = intent.trim();
-        const overrides = readRouterOverrides();
-        const updated = overrides.filter(o => !(o.keyword === kwToDelete && o.intent === intentToDelete));
-        writeRouterOverrides(updated);
-        res.json({ ok: true, overrides: updated });
-    } catch (err) {
-        console.error('DELETE /router/keywords error:', err.message);
-        res.status(500).json({ error: 'failed to delete override' });
-    }
 });
 
 // Personalized control-center layout learned from tab-view telemetry. Returns a

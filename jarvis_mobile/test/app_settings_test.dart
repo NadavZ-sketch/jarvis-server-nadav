@@ -19,6 +19,10 @@ void main() {
       expect(s.useLocalServer, false);
       expect(s.localServerUrl, AppSettings.defaultLocalServerUrl);
       expect(s.obsidianAutoSync, true);
+      // 0.5 sits in flutter_tts's natural-sounding range; 0.7 (the old
+      // default) read as noticeably fast in live voice conversations.
+      expect(s.ttsSpeed, 0.5);
+      expect(s.ttsPitch, 1.0);
     });
 
     test('defaults brightnessMode to dark (preserves dark-first)', () {

@@ -16,6 +16,13 @@ import '../../platform/audio_support.dart';
 import '../../widgets/jarvis_orb.dart';
 import '../../screens/chat/chat_screen.dart' show ChatMessage;
 
+/// Picks the flutter_tts language to actually use: the user's preferred
+/// locale if the platform has it installed, else the universal fallback.
+/// Pulled out as a pure function so the fallback logic is unit-testable
+/// without a platform channel / real FlutterTts instance.
+String resolveTtsLanguage(String preferred, bool isPreferredAvailable) =>
+    isPreferredAvailable ? preferred : 'en-US';
+
 class VoicePanel extends StatefulWidget {
   final String chatId;
   final AppSettings settings;
@@ -109,9 +116,20 @@ class VoicePanelState extends State<VoicePanel>
   }
 
   void _initTts() async {
-    final heAvailable = await _flutterTts.isLanguageAvailable('he-IL');
-    await _flutterTts.setLanguage(heAvailable == true ? 'he-IL' : 'en-US');
-    await _flutterTts.setSpeechRate(0.7);
+    // Honor the user's Settings screen choices (language/speed/pitch/voice) —
+    // this instance used to hardcode them, so the settings sliders had no
+    // effect on a live voice conversation, only on the settings preview.
+    final preferred = widget.settings.ttsLanguage;
+    final available = await _flutterTts.isLanguageAvailable(preferred);
+    await _flutterTts.setLanguage(resolveTtsLanguage(preferred, available == true));
+    await _flutterTts.setSpeechRate(widget.settings.ttsSpeed);
+    await _flutterTts.setPitch(widget.settings.ttsPitch);
+    if (widget.settings.ttsVoiceName.isNotEmpty) {
+      try {
+        await _flutterTts.setVoice(
+            {'name': widget.settings.ttsVoiceName, 'locale': preferred});
+      } catch (_) {/* voice unavailable on this platform — keep language default */}
+    }
     await _flutterTts.setVolume(1.0);
     _flutterTts.setCompletionHandler(_onTtsDone);
     _flutterTts.setErrorHandler((_) => _onTtsDone());

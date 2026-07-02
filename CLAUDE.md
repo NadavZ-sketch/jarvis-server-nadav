@@ -15,7 +15,7 @@ node server.js                 # start the server (port 3000 by default)
 
 ```bash
 npm test                       # run all unit + integration tests (Jest)
-npm run test:coverage          # run with coverage report (thresholds: ~54% stmts/44% branches/51% funcs/57% lines)
+npm run test:coverage          # run with coverage report (thresholds: 58% stmts/46% branches/54% funcs/61% lines)
 npm run e2e                    # run end-to-end self-tests against production
 npm run e2e:local              # run e2e tests against localhost
 npx jest tests/unit/router.test.js  # run a single test file

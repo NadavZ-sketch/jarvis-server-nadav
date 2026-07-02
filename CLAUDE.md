@@ -233,9 +233,15 @@ Each file exports one `create*Repo(supabase)` factory; `index.js`'s `createRepos
 | `controllers/chatController.js` | Chat endpoints | Chat history CRUD |
 | `controllers/tasksController.js` | Task endpoints | Task CRUD + `/tasks/today`, subtasks, AI suggestions |
 | `controllers/remindersController.js` | Reminder endpoints | Reminder CRUD + firing logic (`fire()`) |
+| `controllers/notesController.js` | Note endpoints | Note CRUD |
+| `controllers/shoppingController.js` | Shopping endpoints | Shopping-item CRUD |
+| `controllers/contactsController.js` | Contact endpoints | Contact CRUD (policy-gated in the router) |
 | `routes/chat.js` | `/chat-history` | Create chat router |
 | `routes/tasks.js` | `/tasks`, `/tasks/:id`, `/tasks/today`, `/tasks/:id/subtasks`, `/tasks/:id/suggest` | Create tasks router |
 | `routes/reminders.js` | `/reminders`, `/reminders/:id`, `/reminders/check` | Create reminders router |
+| `routes/notes.js` | `/notes`, `/notes/:id` | Create notes router |
+| `routes/shopping.js` | `/shopping`, `/shopping/:id` | Create shopping router |
+| `routes/contacts.js` | `/contacts`, `/contacts/:id` | Create contacts router (requires `requirePolicy` injected from `server.js`) |
 | `routes/agentCenter.js` | Mounted at `/progress-map` | Serves the dashboard + all agent-center/progress-map sub-routes (`/agents`, `/metrics`, `/command`, `/brain`, etc.) |
 | `routes/wsJarvis.js` | `ws://` | WebSocket support for real-time streaming |
 

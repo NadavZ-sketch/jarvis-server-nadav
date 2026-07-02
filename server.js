@@ -121,6 +121,9 @@ const { createMemoriesRouter } = require('./routes/memories');
 const { createE2ERouter } = require('./routes/e2e');
 const { createSurveysRouter } = require('./routes/surveys');
 const { createCalendarRouter } = require('./routes/calendar');
+const { createNotesRouter } = require('./routes/notes');
+const { createShoppingRouter } = require('./routes/shopping');
+const { createContactsRouter } = require('./routes/contacts');
 const { createRemindersController } = require('./controllers/remindersController');
 const { createChatRouter } = require('./routes/chat');
 const { isAllowedByRolePlan, isBlockedAction } = require('./services/policyEngine');
@@ -404,6 +407,9 @@ app.use('/tasks', createTasksRouter({ supabase }));
 app.use('/reminders', createRemindersRouter({ supabase, pinecone, requirePolicy }));
 app.use('/projects', createProjectsRouter({ supabase, repos }));
 app.use('/memories', createMemoriesRouter({ supabase, repos, requirePolicy }));
+app.use('/notes', createNotesRouter({ supabase, repos }));
+app.use('/shopping', createShoppingRouter({ supabase, repos }));
+app.use('/contacts', createContactsRouter({ supabase, repos, requirePolicy }));
 app.use('/', createE2ERouter({ supabase, repos, cacheInvalidate, _rl }));
 app.use('/', createSurveysRouter({ supabase, repos, _rl }));
 app.use('/', createCalendarRouter({ supabase, repos, cacheInvalidate }));
@@ -2517,128 +2523,6 @@ app.get('/smart-suggestions', _rl(10), async (req, res) => {
 
 // ─── Contacts REST ────────────────────────────────────────────────────────────
 
-app.get('/contacts', requirePolicy('contacts.read', {}), async (_req, res) => {
-    try {
-        const contacts = await repos.contacts.listByName();
-        res.json({ contacts });
-    } catch (err) {
-        console.error('GET /contacts error:', err.message);
-        res.status(500).json({ contacts: [] });
-    }
-});
-
-app.delete('/contacts/:id', requirePolicy('contacts.delete', { sensitive: true, irreversible: true }), async (req, res) => {
-    try {
-        const { error } = await repos.contacts.removeById(req.params.id);
-        if (error) throw error;
-        res.json({ ok: true });
-    } catch (err) {
-        console.error('DELETE /contacts/:id error:', err.message);
-        res.status(500).json({ ok: false, error: 'Internal server error' });
-    }
-});
-
-// ─── PUT /notes/:id — update note ─────────────────────────────────────────────
-app.put('/notes/:id', async (req, res) => {
-    try {
-        const { title, content } = req.body;
-        const updates = {};
-        if (title   !== undefined) updates.title   = title;
-        if (content !== undefined) updates.content = content;
-        if (Object.keys(updates).length === 0)
-            return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await repos.notes.updateById(req.params.id, updates);
-        if (error) throw error;
-        res.json({ note: data });
-    } catch (err) {
-        console.error('PUT /notes/:id error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── POST /tasks — add task from app ──────────────────────────────────────────
-app.post('/tasks', async (req, res) => {
-    try {
-        const { content } = req.body;
-        if (!content) return res.status(400).json({ error: 'content required' });
-        const { data, error } = await repos.tasks.create({ content });
-        if (error) throw error;
-        res.json({ task: data });
-    } catch (err) {
-        console.error('POST /tasks error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── Shopping ─────────────────────────────────────────────────────────────────
-app.get('/shopping', async (_req, res) => {
-    try {
-        const items = await repos.shopping.listAll();
-        res.json({ items });
-    } catch (err) {
-        console.error('GET /shopping error:', err.message);
-        res.status(500).json({ items: [] });
-    }
-});
-
-app.post('/shopping', async (req, res) => {
-    try {
-        const { item } = req.body;
-        if (!item) return res.status(400).json({ error: 'item required' });
-        const { data, error } = await repos.shopping.create(item);
-        if (error) throw error;
-        res.json({ item: data });
-    } catch (err) {
-        console.error('POST /shopping error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-app.delete('/shopping/:id', async (req, res) => {
-    try {
-        const { error } = await repos.shopping.removeById(req.params.id);
-        if (error) throw error;
-        res.json({ ok: true });
-    } catch (err) {
-        console.error('DELETE /shopping:id error:', err.message);
-        res.status(500).json({ ok: false, error: 'Internal server error' });
-    }
-});
-
-// ─── Notes ────────────────────────────────────────────────────────────────────
-app.get('/notes', async (_req, res) => {
-    try {
-        const notes = await repos.notes.listAll();
-        res.json({ notes });
-    } catch (err) {
-        console.error('GET /notes error:', err.message);
-        res.status(500).json({ notes: [] });
-    }
-});
-
-app.post('/notes', async (req, res) => {
-    try {
-        const { title, content } = req.body;
-        if (!content) return res.status(400).json({ error: 'content required' });
-        const data = await repos.notes.add({ title: title || '', content });
-        res.json({ note: data });
-    } catch (err) {
-        console.error('POST /notes error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-app.delete('/notes/:id', async (req, res) => {
-    try {
-        const { error } = await repos.notes.removeById(req.params.id);
-        if (error) throw error;
-        res.json({ ok: true });
-    } catch (err) {
-        console.error('DELETE /notes:id error:', err.message);
-        res.status(500).json({ ok: false, error: 'Internal server error' });
-    }
-});
-
 // ─── GET /dashboard/conversation-insights — usage patterns from agent metrics ──
 app.get('/dashboard/conversation-insights', async (req, res) => {
     try {
@@ -3120,61 +3004,6 @@ app.get('/control-center/events', async (req, res) => {
         });
     } catch (err) {
         console.error('❌ /control-center/events:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── PUT /reminders/:id — update text and/or scheduled_time ──────────────────
-// ─── POST /contacts — add contact from app ───────────────────────────────────
-app.post('/contacts', requirePolicy('contacts.create', {}), async (req, res) => {
-    try {
-        const { name, phone, email } = req.body;
-        if (!name) return res.status(400).json({ error: 'name required' });
-        const row = { name };
-        if (phone) row.phone = phone;
-        if (email) row.email = email;
-        const { data, error } = await repos.contacts.create(row);
-        if (error) throw error;
-        res.json({ contact: data });
-    } catch (err) {
-        console.error('POST /contacts error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── PUT /contacts/:id — update contact ───────────────────────────────────────
-app.put('/contacts/:id', requirePolicy('contacts.update', {}), async (req, res) => {
-    try {
-        const { name, phone, email } = req.body;
-        const updates = {};
-        if (name  !== undefined) updates.name  = name;
-        if (phone !== undefined) updates.phone = phone;
-        if (email !== undefined) updates.email = email;
-        if (Object.keys(updates).length === 0)
-            return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await repos.contacts.updateById(req.params.id, updates);
-        if (error) throw error;
-        res.json({ contact: data });
-    } catch (err) {
-        console.error('PUT /contacts/:id error:', err.message);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// ─── PATCH /shopping/:id — toggle done flag ──────────────────────────────────
-app.patch('/shopping/:id', async (req, res) => {
-    try {
-        const { done, item } = req.body;
-        const updates = {};
-        if (done !== undefined) updates.done = done;
-        if (item !== undefined) updates.item = item;
-        if (Object.keys(updates).length === 0)
-            return res.status(400).json({ error: 'no fields to update' });
-        const { data, error } = await repos.shopping.updateById(req.params.id, updates);
-        if (error) throw error;
-        res.json({ item: data });
-    } catch (err) {
-        console.error('PATCH /shopping/:id error:', err.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

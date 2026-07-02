@@ -102,11 +102,11 @@ Every user message enters through `POST /ask-jarvis` (and `POST /stream-jarvis` 
 
 ### LLM Stack (`agents/models.js` + `agents/providerConfig.js`)
 
-`agents/providerConfig.js` is the pure-data source of truth for the failover chain (no network calls): `PROVIDERS` (ollama, groq, deepseek, openrouter, gemini), each with lazy `url()`/`model()`/`enabled()`/`keyEnv`/`timeout` resolvers. `CLOUD_DEFAULT_ORDER = ['groq', 'deepseek', 'openrouter', 'gemini']`. `resolveChain({useLocal, cloudProvider})` builds the ordered chain — strict `['ollama']` if `useLocal`, else the cloud order with a preferred provider moved first.
+`agents/providerConfig.js` is the pure-data source of truth for the failover chain (no network calls): `PROVIDERS` (ollama, groq, deepseek, openrouter, gemini), each with lazy `url()`/`model()`/`enabled()`/`keyEnv`/`timeout` resolvers. `CLOUD_DEFAULT_ORDER = ['groq', 'deepseek', 'gemini']`. `resolveChain({useLocal, cloudProvider})` builds the ordered chain — strict `['ollama']` if `useLocal`, else the cloud order with a preferred provider moved first. **OpenRouter is intentionally excluded from the automatic fallback order** — it's itself a broker fanning requests out to dozens of underlying providers, so silently routing through it on every Groq+DeepSeek failure trades real privacy exposure for a marginal reliability gain. It stays fully usable as an *explicit* choice: `resolveChain({cloudProvider: 'openrouter'})` still prepends it (mobile Settings → cloud provider dropdown).
 
 `agents/models.js` consumes that config for all LLM calls:
 
-- **`callGemma4()`** — Main inference endpoint; walks the resolved chain (Ollama local-first, then Groq → DeepSeek → OpenRouter → Gemini), OpenAI-compatible except Gemini
+- **`callGemma4()`** — Main inference endpoint; walks the resolved chain (Ollama local-first, then Groq → DeepSeek → Gemini by default, or a user-chosen provider first), OpenAI-compatible except Gemini
 - **`callGemma4Stream()`** — Streaming version used by `/stream-jarvis` for real-time responses
 - **`callGeminiWithSearch()`** — Google Search grounding (used by `sportsAgent`/`weatherAgent`/`newsAgent` fallback paths; note plain weather/news now prefer the keyless `weatherSource.js`/`newsSource.js` — see Services)
 - **`callGeminiVision()`** — Multimodal image+text inference (when `imageBase64` in request)

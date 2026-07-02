@@ -9,20 +9,29 @@ describe('resolveChain', () => {
         expect(resolveChain({ useLocal: true, cloudProvider: 'deepseek' })).toEqual(['ollama']);
     });
 
-    test('default cloud order when no provider chosen', () => {
-        expect(resolveChain({})).toEqual(['groq', 'deepseek', 'openrouter', 'gemini']);
+    test('default cloud order when no provider chosen — OpenRouter is not auto-attempted', () => {
+        expect(resolveChain({})).toEqual(['groq', 'deepseek', 'gemini']);
     });
 
     test('chosen cloud provider moves to the front, rest kept as fallback', () => {
         expect(resolveChain({ cloudProvider: 'deepseek' }))
-            .toEqual(['deepseek', 'groq', 'openrouter', 'gemini']);
+            .toEqual(['deepseek', 'groq', 'gemini']);
         expect(resolveChain({ cloudProvider: 'gemini' }))
-            .toEqual(['gemini', 'groq', 'deepseek', 'openrouter']);
+            .toEqual(['gemini', 'groq', 'deepseek']);
     });
 
     test('unknown cloud provider falls back to default order', () => {
         expect(resolveChain({ cloudProvider: 'bogus' }))
-            .toEqual(['groq', 'deepseek', 'openrouter', 'gemini']);
+            .toEqual(['groq', 'deepseek', 'gemini']);
+    });
+
+    test('explicitly choosing OpenRouter still works — prepended even though it is outside the default order', () => {
+        expect(resolveChain({ cloudProvider: 'openrouter' }))
+            .toEqual(['openrouter', 'groq', 'deepseek', 'gemini']);
+    });
+
+    test('"ollama" as a cloudProvider is ignored — it is only selected via useLocal', () => {
+        expect(resolveChain({ cloudProvider: 'ollama' })).toEqual(['groq', 'deepseek', 'gemini']);
     });
 });
 

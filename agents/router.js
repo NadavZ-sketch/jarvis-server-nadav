@@ -3,6 +3,7 @@
 const fs   = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { extractJSON } = require('./utils');
 
 const KEYWORDS = {
     past_conv: /מה דיברנו|בפעם הקודמת|מה אמרת לי|תזכיר לי מה.*אמרת|שוחחנו על|מה שאמרת/i,
@@ -208,11 +209,8 @@ async function classifyIntentWithLLM(userMessage) {
         );
 
         const raw = response.data?.choices?.[0]?.message?.content || '';
-        const open = raw.indexOf('{'), close = raw.lastIndexOf('}');
-        if (open === -1 || close === -1) return 'chat';
-
-        let parsed;
-        try { parsed = JSON.parse(raw.substring(open, close + 1)); } catch { return 'chat'; }
+        const parsed = extractJSON(raw);
+        if (!parsed) return 'chat';
 
         const intent = (parsed.intent || '').trim().toLowerCase();
         if (!VALID_INTENTS.has(intent)) return 'chat';

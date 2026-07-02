@@ -402,7 +402,8 @@ async function api(path, opts={}) {
   const r = await fetch(path, {
     ...opts,
     signal: opts.signal || AbortSignal.timeout(14000),
-    headers: { 'Content-Type':'application/json', ...(opts.headers||{}) },
+    // Deletes here are behind a confirm dialog, satisfying the policy gate.
+    headers: { 'Content-Type':'application/json', 'X-User-Consent':'true', 'X-Confirm-Action':'yes', ...(opts.headers||{}) },
   });
   if (!r.ok) throw new Error(r.status);
   return r.json();

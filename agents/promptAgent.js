@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { callGemma4 } = require('./models');
+const { extractJSON } = require('./utils');
 
 /* ── Supabase table (run once) ────────────────────────────────────────────
    CREATE TABLE user_prompts (
@@ -143,10 +144,8 @@ Message: ${userMessage}`;
 
     try {
         const extracted = await callGemma4(extractInstruction, useLocal, 200);
-        const o = extracted.indexOf('{');
-        const c = extracted.lastIndexOf('}');
-        if (o !== -1 && c !== -1) {
-            const parsed = JSON.parse(extracted.substring(o, c + 1));
+        const parsed = extractJSON(extracted);
+        if (parsed) {
             title = parsed.title || title;
             promptText = parsed.prompt || promptText;
             category = parsed.category || category;

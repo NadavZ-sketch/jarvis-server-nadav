@@ -5,6 +5,9 @@ const { createRepos } = require('../services/dataAccess');
 function createMemoriesRouter(deps) {
   const { supabase } = deps;
   const repos = deps.repos || createRepos(supabase);
+  // Policy middleware is injected by server.js; default to a pass-through so
+  // the router stays constructible in isolation (unit tests).
+  const requirePolicy = deps.requirePolicy || (() => (_req, _res, next) => next());
   const router = express.Router();
   const controller = createMemoriesController({ repos });
 
@@ -14,7 +17,7 @@ function createMemoriesRouter(deps) {
   router.get('/pending', controller.pending);
   router.post('/:id/approve', controller.approve);
   router.put('/:id', controller.update);
-  router.delete('/:id', controller.remove);
+  router.delete('/:id', requirePolicy('memory.delete', { sensitive: true, irreversible: true }), controller.remove);
   router.post('/rebuild-from-chat', controller.rebuildFromChat);
   router.post('/recover-from-pinecone', controller.recoverFromPinecone);
 

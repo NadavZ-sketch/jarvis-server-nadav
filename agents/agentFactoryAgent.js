@@ -145,6 +145,14 @@ async function runAgentFactoryAgent(userMessage, repos, useLocal, settings) {
         /(?:צור|בנה|הוסף)\s+סוכן\s+["״]?([a-zA-Z][a-zA-Z0-9]{2,29})["״]?(?:\s+(?:ש|שי|שמ|ל|:|-)\s*(.{5,300}))?/i
     );
     if (createMatch) {
+        // Creating agents writes LLM-generated code to disk and hot-loads it —
+        // a real attack surface. Frozen unless explicitly opted in via env.
+        // (Listing/deleting existing agents stays available either way.)
+        if (String(process.env.AGENT_FACTORY_ENABLED).toLowerCase() !== 'true') {
+            return {
+                answer: '🔒 יצירת סוכנים מותאמים כבויה כרגע מטעמי אבטחה.\nכדי להפעיל: הגדר AGENT_FACTORY_ENABLED=true בסביבת השרת.',
+            };
+        }
         const name = sanitizeAgentName(createMatch[1]);
         if (!name) return { answer: '⚠️ שם הסוכן אינו תקין. השתמש בשם באנגלית בלבד (לדוגמה: weatherHelper).' };
         const description = (createMatch[2] || createMatch[1]).trim();

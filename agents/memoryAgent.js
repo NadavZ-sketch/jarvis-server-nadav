@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { callGemma4 }   = require('./models');
+const { extractJSON }  = require('./utils');
 const obsidianSync     = require('../services/obsidianSync');
 const pinecone         = require('../services/pineconeMemory');
 const memoryContext    = require('../services/memoryContext');
@@ -117,12 +118,8 @@ async function autoExtractMemory(userMessage, assistantAnswer, repos, settings =
             400,
         ));
 
-        const firstOpen = aiText.indexOf('{');
-        const lastClose = aiText.lastIndexOf('}');
-        if (firstOpen === -1 || lastClose === -1) return null;
-
-        let parsed;
-        try { parsed = JSON.parse(aiText.substring(firstOpen, lastClose + 1)); } catch { return null; }
+        const parsed = extractJSON(aiText);
+        if (!parsed) return null;
 
         const items = Array.isArray(parsed.memories) ? parsed.memories : [];
         if (items.length === 0) return null;
@@ -229,16 +226,8 @@ async function updateMemory(userMessage, memories, useLocal, settings = {}) {
 
     // Ask LLM to generate the updated content
     const aiText = await callGemma4(UPDATE_PROMPT(userName) + userMessage, useLocal);
-    const firstOpen = aiText.indexOf('{');
-    const lastClose = aiText.lastIndexOf('}');
-    if (firstOpen === -1 || lastClose === -1) {
-        return { answer: 'לא הצלחתי לפרש את העדכון, נסה לנסח אחרת.' };
-    }
-
-    let parsed;
-    try {
-        parsed = JSON.parse(aiText.substring(firstOpen, lastClose + 1));
-    } catch {
+    const parsed = extractJSON(aiText);
+    if (!parsed) {
         return { answer: 'לא הצלחתי לפרש את העדכון, נסה לנסח אחרת.' };
     }
 
@@ -296,15 +285,10 @@ async function runMemoryAgent(userMessage, repos, useLocal = true, settings = {}
         // Save a memory (explicit save keyword present)
         const aiText = await callGemma4(buildSavePrompt(userName) + userMessage, useLocal);
 
-        const lastOpen = aiText.indexOf('{');
-        const lastClose = aiText.lastIndexOf('}');
+        if (!aiText.includes('{')) throw new Error('No JSON in memory agent response');
 
-        if (lastOpen === -1 || lastClose === -1) throw new Error('No JSON in memory agent response');
-
-        let parsed;
-        try {
-            parsed = JSON.parse(aiText.substring(lastOpen, lastClose + 1));
-        } catch {
+        const parsed = extractJSON(aiText);
+        if (!parsed) {
             return { answer: 'לא הצלחתי לעבד את הבקשה, נסה לנסח אחרת.' };
         }
         const dup = await checkDuplicate(parsed.memoryContent, memories);

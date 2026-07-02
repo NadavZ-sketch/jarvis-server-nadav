@@ -1,7 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 const { callGemma4 } = require('./models');
-const { nowJerusalem } = require('./utils');
+const { nowJerusalem, extractJSON } = require('./utils');
 
 const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
@@ -90,9 +90,9 @@ Return ONLY valid JSON (no explanation):
 
     const raw = await callGemma4(prompt, false, 300);
     const text = typeof raw === 'string' ? raw : (raw?.answer || '');
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error('Could not parse event data');
-    return JSON.parse(m[0]);
+    const parsed = extractJSON(text);
+    if (!parsed) throw new Error('Could not parse event data');
+    return parsed;
 }
 
 // ─── Auth URL generator ────────────────────────────────────────────────────────

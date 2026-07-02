@@ -57,7 +57,8 @@ npm run mcp:server             # node mcp-server.js — standalone MCP server ex
 - `OPENROUTER_API_KEY` — OpenRouter, part of the cloud LLM failover chain (`agents/providerConfig.js`)
 - `MANUS_API_KEY`, `MANUS_BASE`, `MANUS_MODEL`, `MANUS_AUTH_HEADER`, `MANUS_TIMEOUT_MS`, `MANUS_POLL_MAX_MS` — Manus.im integration for heavy autonomous tasks (`manusAgent.js`)
 - `PUSH_DRIVER` — Push notification transport (`fcm`, `ntfy`, or unset = no-op); see `services/pushService.js`
-- `JARVIS_API_KEY` — API key checked against the `X-API-Key`/`X-Jarvis-Key` header for server auth
+- `JARVIS_API_KEY` — API key checked against the `X-API-Key`/`X-Jarvis-Key` header for server auth. A valid `?key=` query param on a dashboard page load upgrades to an HttpOnly `jarvis_key` cookie, which authenticates the page's subsequent same-origin `fetch()` calls
+- `AGENT_FACTORY_ENABLED` — `true` to allow the `factory` intent to *create* new custom agents (writes LLM-generated code to disk and hot-loads it). Off by default; listing/deleting existing custom agents works regardless
 - `MCP_ENABLED` — `true` to have the server connect out to external MCP servers as a client (`services/mcp/`)
 - `MCP_ACTOR_ROLE`, `MCP_ACTOR_PLAN` — Actor identity used by the standalone `mcp-server.js` process when calling agents
 
@@ -263,6 +264,7 @@ All times in Jerusalem timezone (`Asia/Jerusalem`) unless noted:
 - **`30 3 * * *` (03:30)** — `memory_cleanup_nightly`: full nightly memory cleanup (Pinecone + Obsidian pass)
 - **`45 3 * * *` (03:45)** — `profile_learning`: learns user profile/style preferences from behavior/feedback
 - **`17 * * * *` (hourly at :17)** — `memory_cleanup_hourly`: prunes expired session/recent-scoped memories
+- **`10 4 * * 0` (Sunday 04:10)** — `weekly_e2e`: weekly E2E self-test run (same path as `POST /e2e/trigger`; persists a report and feeds the e2e learning loop)
 - **`17 2 * * *` (02:17, server-local tz)** — unnamed raw cron: daily backlog proposal rescoring in `backlog.json`
 
 **Removed**: the previously-documented "every 5 minutes Obsidian sync" cron and its manual-trigger endpoints (`POST /sync/obsidian`, `POST /sync/obsidian/auto`) no longer exist. Obsidian sync is now startup-only (`obsidianSync.initSync()` + `fullSyncFromDb()` called once during boot).
@@ -282,6 +284,11 @@ Example gated endpoints:
 - `POST /send-email` — requires `messaging.send` permission (sensitive, irreversible)
 - `POST /contacts` — requires `contacts.create` permission (sensitive)
 - `DELETE /contacts/:id` — requires `contacts.delete` permission (sensitive, irreversible)
+- `DELETE /memories/:id` — requires `memory.delete` permission (sensitive, irreversible)
+- `DELETE /chat-history/:chatId` — requires `chat.delete` permission (sensitive, irreversible)
+- `DELETE /user-profile` — requires `profile.delete` permission (sensitive, irreversible)
+
+Irreversible endpoints expect `X-Confirm-Action: yes` (and sensitive ones `X-User-Consent: true`) — the mobile client and the dashboard `api()` helpers send these after their own confirm dialogs.
 
 ### API Endpoints Summary
 
@@ -424,6 +431,8 @@ The mobile control center (`jarvis_mobile/lib/screens/control_center/`) is a 4-t
    - Verify keyword regex catches Hebrew variants
 
 ### Creating Custom Agents at Runtime
+
+**Creation is frozen by default** — it writes LLM-generated code to disk and hot-loads it, so it requires `AGENT_FACTORY_ENABLED=true` in the environment. Listing and deleting existing custom agents work without the flag.
 
 Users can request the `factory` intent to dynamically create custom agents:
 

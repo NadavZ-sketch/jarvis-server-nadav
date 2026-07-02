@@ -295,3 +295,80 @@ describe('GET /router/training-events', () => {
     expect(chain.limit).toHaveBeenCalledWith(100);
   });
 });
+
+describe('GET /router/misroutes', () => {
+  it('proposes an override for a message mis-routed the same way twice', async () => {
+    const fakeData = [
+      { metadata: { routedIntent: 'chat', snippet: 'תזכיר לי לקנות חלב' }, created_at: '2026-07-01T10:00:00Z' },
+      { metadata: { routedIntent: 'chat', snippet: 'תזכיר לי לקנות חלב' }, created_at: '2026-07-02T10:00:00Z' },
+    ];
+    supabaseClient.from.mockReturnValue(makeChain(fakeData, null));
+
+    const res = await request(app)
+      .get('/router/misroutes')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    expect(res.status).toBe(200);
+    expect(res.body.misroutes).toHaveLength(1);
+    expect(res.body.misroutes[0]).toMatchObject({ routedIntent: 'chat', count: 2 });
+  });
+
+  it('does not propose a pattern for a single mis-route (noise, not a pattern)', async () => {
+    const fakeData = [
+      { metadata: { routedIntent: 'chat', snippet: 'הודעה חד פעמית' }, created_at: '2026-07-01T10:00:00Z' },
+    ];
+    supabaseClient.from.mockReturnValue(makeChain(fakeData, null));
+
+    const res = await request(app)
+      .get('/router/misroutes')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    expect(res.status).toBe(200);
+    expect(res.body.misroutes).toEqual([]);
+  });
+
+  it('queries feedback_down events ordered desc with the default limit', async () => {
+    supabaseClient.from.mockReturnValue(makeChain([], null));
+
+    await request(app)
+      .get('/router/misroutes')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    const chain = supabaseClient.from.mock.results[0].value;
+    expect(chain.eq).toHaveBeenCalledWith('event_name', 'feedback_down');
+    expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    expect(chain.limit).toHaveBeenCalledWith(500);
+  });
+
+  it('caps limit at 1000 even when a higher value is requested', async () => {
+    supabaseClient.from.mockReturnValue(makeChain([], null));
+
+    await request(app)
+      .get('/router/misroutes?limit=5000')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    const chain = supabaseClient.from.mock.results[0].value;
+    expect(chain.limit).toHaveBeenCalledWith(1000);
+  });
+
+  it('returns 500 when supabase returns an error', async () => {
+    const chain = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      order: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue({ data: null, error: new Error('db down') }),
+    };
+    supabaseClient.from.mockReturnValue(chain);
+
+    const res = await request(app)
+      .get('/router/misroutes')
+      .set('x-user-role', 'member')
+      .set('x-user-plan', 'free');
+
+    expect(res.status).toBe(500);
+  });
+});

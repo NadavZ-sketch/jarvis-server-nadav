@@ -25,6 +25,9 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
   // Section 2 — Router Trainer
   List<Map<String, dynamic>> _trainingEvents = [];
   List<Map<String, dynamic>> _routerKeywords = [];
+  // Messages that got the same wrong intent + a 👎 more than once — server-side
+  // detected proposals (GET /router/misroutes), not raw events like the other two.
+  List<Map<String, dynamic>> _misroutes = [];
   bool _routerLoading = false;
   int? _openRowIndex;
   final Set<String> _handledEventIds = {};
@@ -179,11 +182,13 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
     final results = await Future.wait([
       _api.fetchRouterTrainingEvents().catchError((_) => <Map<String, dynamic>>[]),
       _api.fetchRouterKeywords().catchError((_) => <Map<String, dynamic>>[]),
+      _api.fetchRouterMisroutes().catchError((_) => <Map<String, dynamic>>[]),
     ]);
     if (!mounted) return;
     setState(() {
       _trainingEvents = results[0] as List<Map<String, dynamic>>;
       _routerKeywords = results[1] as List<Map<String, dynamic>>;
+      _misroutes = results[2] as List<Map<String, dynamic>>;
       _routerLoading = false;
     });
   }
@@ -199,6 +204,38 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
     if (ok) {
       setState(() {
         _handledEventIds.add(event['id']?.toString() ?? '');
+        _routerKeywords = [
+          ..._routerKeywords,
+          {'keyword': kw, 'intent': intent},
+        ];
+        _openRowIndex = null;
+        _selectedIntent = null;
+        _kwCtrl.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ "$kw" ← $intent — פעיל מיד',
+              style: const TextStyle(fontFamily: 'Heebo')),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// Applies a detected misroute proposal as a real override, same endpoint
+  /// as `_saveRouterKeyword` — the difference is only where the suggestion
+  /// came from (server-side pattern detection vs. a raw unhandled message).
+  Future<void> _saveMisroute(Map<String, dynamic> misroute) async {
+    final kw = _kwCtrl.text.trim();
+    final intent = _selectedIntent;
+    if (kw.isEmpty || intent == null) return;
+    final ok = await _api
+        .addRouterKeyword(keyword: kw, intent: intent)
+        .catchError((_) => false);
+    if (!mounted) return;
+    if (ok) {
+      setState(() {
+        _misroutes = _misroutes.where((m) => m != misroute).toList();
         _routerKeywords = [
           ..._routerKeywords,
           {'keyword': kw, 'intent': intent},
@@ -459,6 +496,8 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
             Row(children: [
               _routerTab('הודעות', 0),
               const SizedBox(width: 8),
+              _routerTab('הצעות', 2, badgeCount: _misroutes.length),
+              const SizedBox(width: 8),
               _routerTab('Keywords שלי', 1),
             ]),
             const Divider(height: 16),
@@ -470,6 +509,8 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
               ))
             else if (_routerTabIndex == 0)
               _messagesTabContent(unhandled)
+            else if (_routerTabIndex == 2)
+              _misroutesTabContent()
             else
               _keywordsTabContent(),
           ],
@@ -478,7 +519,7 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
     );
   }
 
-  Widget _routerTab(String label, int index) {
+  Widget _routerTab(String label, int index, {int badgeCount = 0}) {
     final active = _routerTabIndex == index;
     return GestureDetector(
       onTap: () => setState(() {
@@ -497,15 +538,29 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
             ),
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: 'Heebo',
-            fontSize: 12,
-            fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-            color: active ? Theme.of(context).colorScheme.primary : Colors.grey,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: 'Heebo',
+              fontSize: 12,
+              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+              color: active ? Theme.of(context).colorScheme.primary : Colors.grey,
+            ),
           ),
-        ),
+          if (badgeCount > 0) ...[
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade600,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text('$badgeCount',
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontFamily: 'Heebo')),
+            ),
+          ],
+        ]),
       ),
     );
   }
@@ -654,6 +709,182 @@ class _TabDevWorkshopState extends State<TabDevWorkshop>
             ElevatedButton(
               onPressed: (_selectedIntent != null && _kwCtrl.text.trim().isNotEmpty)
                   ? () => _saveRouterKeyword(event)
+                  : null,
+              child: const Text('שמור', style: TextStyle(fontFamily: 'Heebo')),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _misroutesTabContent() {
+    if (_misroutes.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Text('אין הצעות כרגע — נראה שהניתוב עובד טוב',
+            style: TextStyle(color: Colors.grey, fontFamily: 'Heebo', fontSize: 13),
+            textAlign: TextAlign.center),
+      );
+    }
+    return Column(
+      children: List.generate(_misroutes.length, (i) {
+        final misroute = _misroutes[i];
+        final isOpen = _openRowIndex == i;
+        return _misrouteRow(misroute: misroute, index: i, isOpen: isOpen, isLast: i == _misroutes.length - 1);
+      }),
+    );
+  }
+
+  Widget _misrouteRow({
+    required Map<String, dynamic> misroute,
+    required int index,
+    required bool isOpen,
+    required bool isLast,
+  }) {
+    final snippet = misroute['snippet'] as String? ?? '';
+    final routedIntent = misroute['routedIntent'] as String? ?? '';
+    final count = (misroute['count'] as num?)?.toInt() ?? 0;
+    return Column(
+      children: [
+        InkWell(
+          onTap: () {
+            setState(() {
+              if (_openRowIndex == index) {
+                _openRowIndex = null;
+                _selectedIntent = null;
+                _kwCtrl.clear();
+              } else {
+                _openRowIndex = index;
+                _selectedIntent = null;
+                // Full normalized message, not just first words — a repeated
+                // misroute is safer fixed with an exact-ish match than a
+                // short substring that might catch unrelated messages.
+                _kwCtrl.text = misroute['suggestedKeyword'] as String? ?? snippet;
+              }
+            });
+          },
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text('×$count', textDirection: TextDirection.ltr,
+                    style: TextStyle(fontSize: 10, fontFamily: 'Heebo', color: Colors.orange.shade800, fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      snippet,
+                      style: TextStyle(
+                        fontFamily: 'Heebo',
+                        fontSize: 13,
+                        color: isOpen ? null : Colors.grey.shade600,
+                      ),
+                      maxLines: isOpen ? null : 1,
+                      overflow: isOpen ? null : TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      'נותב בטעות ל-$routedIntent',
+                      style: TextStyle(fontFamily: 'Heebo', fontSize: 10.5, color: Colors.grey.shade500),
+                    ),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+        ),
+        if (isOpen) _misrouteExpandedPanel(misroute),
+        if (!isLast)
+          const Divider(height: 1),
+      ],
+    );
+  }
+
+  Widget _misrouteExpandedPanel(Map<String, dynamic> misroute) {
+    final routedIntent = misroute['routedIntent'] as String? ?? '';
+    final correction = misroute['correction'] as String?;
+    // Exclude the intent we already know was wrong — reselecting it would
+    // just recreate the same bug.
+    final chips = _intentChips.where((c) => c.$2 != routedIntent).toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 4, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (correction != null && correction.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('💬 "$correction"',
+                  style: TextStyle(fontFamily: 'Heebo', fontSize: 12, fontStyle: FontStyle.italic, color: Colors.grey.shade600)),
+            ),
+          const Text('לאיזה אינטנט זה היה אמור להיות מנותב?',
+              style: TextStyle(fontFamily: 'Heebo', fontSize: 12)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: chips.map((chip) {
+              final emoji = chip.$1;
+              final name = chip.$2;
+              final selected = _selectedIntent == name;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedIntent = name),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: selected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey.shade300,
+                    ),
+                    color: selected
+                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
+                        : null,
+                  ),
+                  child: Text(
+                    '$emoji $name',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'Heebo',
+                      color: selected ? Theme.of(context).colorScheme.primary : Colors.grey.shade600,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _kwCtrl,
+                textDirection: TextDirection.rtl,
+                style: const TextStyle(fontFamily: 'Heebo', fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: 'keyword לזיהוי...',
+                  hintStyle: TextStyle(fontFamily: 'Heebo', fontSize: 13),
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: (_selectedIntent != null && _kwCtrl.text.trim().isNotEmpty)
+                  ? () => _saveMisroute(misroute)
                   : null,
               child: const Text('שמור', style: TextStyle(fontFamily: 'Heebo')),
             ),

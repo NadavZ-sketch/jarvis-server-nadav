@@ -1320,6 +1320,27 @@ class ApiService {
     }
   }
 
+  /// Messages the router mis-routed the same way more than once, per user
+  /// 👎 feedback — GET /router/misroutes → { misroutes: [...] }. Each entry
+  /// carries a `suggestedKeyword` the trainer UI can prefill into the "add
+  /// override" form; the human still confirms the correct intent.
+  Future<List<Map<String, dynamic>>> fetchRouterMisroutes() async {
+    try {
+      final res = await _client
+          .get(_uri('/router/misroutes'), headers: _headers())
+          .timeout(_timeout);
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(_safeBody(res)) as Map<String, dynamic>;
+      final misroutes = data['misroutes'];
+      if (misroutes is List) {
+        return misroutes.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<List<Map<String, dynamic>>> fetchRouterKeywords() async {
     try {
       final res = await _client

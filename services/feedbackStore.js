@@ -55,4 +55,60 @@ async function aggregateEvents(repos, { userId = 'default', sinceDays = 30, limi
     }
 }
 
-module.exports = { recordEvent, aggregateEvents, SIGNAL_VALUE };
+function normalizeSnippet(text) {
+    return String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Closes the router feedback loop: turns repeated 👎 events into router-override
+ * *proposals* a human can approve with one click (POST /router/keywords already
+ * does the applying — this only does the detecting).
+ *
+ * `/feedback` links each 👎 to the intent that produced the reply via
+ * `metadata.routedIntent` (server.js, routeTracker) whenever the routing
+ * decision is still within its 10-minute TTL. This groups those rows by
+ * (routedIntent, normalized message) and keeps only groups that recurred at
+ * least `minOccurrences` times — a single bad reply is noise; the same message
+ * getting mis-routed the same way repeatedly is a pattern worth a fix.
+ *
+ * Pure function over already-fetched rows (no db access) so it's unit-testable
+ * without mocking Supabase — the caller is responsible for fetching
+ * `event_name = 'feedback_down'` rows first.
+ *
+ * @param {Array<{metadata?: object, created_at?: string}>} rows
+ * @param {{minOccurrences?: number}} [opts]
+ * @returns {Array<{routedIntent:string, snippet:string, suggestedKeyword:string, count:number, correction:string|null, lastSeenAt:string|null}>}
+ *   Sorted by occurrence count desc, then most-recent first.
+ */
+function computeMisroutePatterns(rows, { minOccurrences = 2 } = {}) {
+    const groups = new Map();
+    for (const row of rows || []) {
+        const meta = row && row.metadata;
+        if (!meta || !meta.routedIntent || !meta.snippet) continue;
+        const normalized = normalizeSnippet(meta.snippet);
+        if (!normalized) continue;
+        const key = `${meta.routedIntent}::${normalized}`;
+        const existing = groups.get(key);
+        if (existing) {
+            existing.count += 1;
+            if (meta.correction && !existing.correction) existing.correction = meta.correction;
+            if (row.created_at && (!existing.lastSeenAt || row.created_at > existing.lastSeenAt)) {
+                existing.lastSeenAt = row.created_at;
+            }
+        } else {
+            groups.set(key, {
+                routedIntent: meta.routedIntent,
+                snippet: meta.snippet,
+                suggestedKeyword: normalized,
+                count: 1,
+                correction: meta.correction || null,
+                lastSeenAt: row.created_at || null,
+            });
+        }
+    }
+    return Array.from(groups.values())
+        .filter(g => g.count >= minOccurrences)
+        .sort((a, b) => b.count - a.count || String(b.lastSeenAt).localeCompare(String(a.lastSeenAt)));
+}
+
+module.exports = { recordEvent, aggregateEvents, computeMisroutePatterns, SIGNAL_VALUE };

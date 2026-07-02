@@ -32,6 +32,38 @@ void main() {
     });
   });
 
+  group('fetchRouterMisroutes', () {
+    test('returns list of misroute proposals on success', () async {
+      final client = MockClient((_) async => http.Response(
+        jsonEncode({
+          'misroutes': [
+            {
+              'routedIntent': 'chat',
+              'snippet': 'תזכיר לי לקנות חלב',
+              'suggestedKeyword': 'תזכיר לי לקנות חלב',
+              'count': 2,
+              'correction': null,
+              'lastSeenAt': '2026-07-02T10:00:00Z',
+            },
+          ]
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      ));
+      final api = ApiService(settings, client: client);
+      final misroutes = await api.fetchRouterMisroutes();
+      expect(misroutes.length, 1);
+      expect(misroutes[0]['routedIntent'], 'chat');
+      expect(misroutes[0]['count'], 2);
+    });
+
+    test('returns empty list on server error', () async {
+      final client = MockClient((_) async => http.Response('error', 500));
+      final api = ApiService(settings, client: client);
+      expect(await api.fetchRouterMisroutes(), isEmpty);
+    });
+  });
+
   group('fetchRouterKeywords', () {
     test('returns overrides on success', () async {
       final client = MockClient((_) async => http.Response(

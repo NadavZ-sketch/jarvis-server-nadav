@@ -236,12 +236,14 @@ Each file exports one `create*Repo(supabase)` factory; `index.js`'s `createRepos
 | `controllers/notesController.js` | Note endpoints | Note CRUD |
 | `controllers/shoppingController.js` | Shopping endpoints | Shopping-item CRUD |
 | `controllers/contactsController.js` | Contact endpoints | Contact CRUD (policy-gated in the router) |
+| `controllers/routerTrainerController.js` | Router-trainer endpoints | Training-events/misroutes read models + keyword-override CRUD; owns `config/router-overrides.json` I/O |
 | `routes/chat.js` | `/chat-history` | Create chat router |
 | `routes/tasks.js` | `/tasks`, `/tasks/:id`, `/tasks/today`, `/tasks/:id/subtasks`, `/tasks/:id/suggest` | Create tasks router |
 | `routes/reminders.js` | `/reminders`, `/reminders/:id`, `/reminders/check` | Create reminders router |
 | `routes/notes.js` | `/notes`, `/notes/:id` | Create notes router |
 | `routes/shopping.js` | `/shopping`, `/shopping/:id` | Create shopping router |
 | `routes/contacts.js` | `/contacts`, `/contacts/:id` | Create contacts router (requires `requirePolicy` injected from `server.js`) |
+| `routes/routerTrainer.js` | `/router/training-events`, `/router/misroutes`, `/router/keywords` | Create router-trainer router |
 | `routes/agentCenter.js` | Mounted at `/progress-map` | Serves the dashboard + all agent-center/progress-map sub-routes (`/agents`, `/metrics`, `/command`, `/brain`, etc.) |
 | `routes/wsJarvis.js` | `ws://` | WebSocket support for real-time streaming |
 

@@ -128,8 +128,9 @@ function createMemoryRepo(supabase) {
                 .limit(1);
             if (!error) return data || [];
             if (error.message?.includes('category')) {
+                const { category: _cat, ...patchWithoutCategory } = patch;
                 const { data: d2, error: err2 } = await supabase.from(M)
-                    .update(patch)
+                    .update(patchWithoutCategory)
                     .eq('id', id)
                     .select('id, content, scope, created_at')
                     .limit(1);

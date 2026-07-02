@@ -238,4 +238,13 @@ describe('memoryRepo.category', () => {
         const rows = await repo.updateById('7', { content: 'new' });
         expect(rows[0].id).toBe(7);
     });
+
+    test('updateById strips category from the retried write payload, not just the select', async () => {
+        const catErrChain = makeChain(null, { message: 'column "category" does not exist' });
+        const okChain = makeChain([{ id: 7, content: 'new', scope: 'long_term' }]);
+        let call = 0;
+        const repo = createMemoryRepo({ from: () => (call++ === 0 ? catErrChain : okChain) });
+        await repo.updateById('7', { content: 'new', category: 'עבודה' });
+        expect(okChain.update).toHaveBeenCalledWith({ content: 'new' });
+    });
 });

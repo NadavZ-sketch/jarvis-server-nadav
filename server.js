@@ -1894,6 +1894,30 @@ app.get('/router/training-events', _rl(30), async (req, res) => {
     }
 });
 
+// Closes the router feedback loop: 👎 events carry the intent that produced
+// the reply (routeTracker, see POST /feedback above). This surfaces messages
+// that were mis-routed the same way more than once — a human still picks the
+// correct intent and applies it via POST /router/keywords; this endpoint only
+// detects and proposes, it never writes an override itself.
+app.get('/router/misroutes', _rl(30), async (req, res) => {
+    try {
+        const limit = Math.min(Number(req.query.limit) || 500, 1000);
+        const minOccurrences = Math.max(Number(req.query.minOccurrences) || 2, 2);
+        const { data, error } = await supabase
+            .from('smart_telemetry_events')
+            .select('metadata, created_at')
+            .eq('event_name', 'feedback_down')
+            .order('created_at', { ascending: false })
+            .limit(limit);
+        if (error) throw error;
+        const misroutes = feedbackStore.computeMisroutePatterns(data || [], { minOccurrences });
+        res.json({ misroutes });
+    } catch (err) {
+        console.error('GET /router/misroutes error:', err.message);
+        res.status(500).json({ error: 'failed to compute misroute patterns' });
+    }
+});
+
 app.get('/router/keywords', _rl(30), (req, res) => {
     try {
         const overrides = readRouterOverrides();

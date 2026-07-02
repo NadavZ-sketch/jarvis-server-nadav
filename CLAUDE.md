@@ -356,6 +356,7 @@ Core endpoints (stable, unchanged):
 | `POST` | `/test-cases/start-recording`, `/test-cases/stop-recording`, `/test-cases/:id/run` | Test case recording/replay | — |
 | `GET` | `/changelog/generate` | Auto-generate a changelog | — |
 | `GET` | `/router/training-events` | Router misroute/training signal history | — |
+| `GET` | `/router/misroutes` | Detected repeated-misroute override proposals from 👎 feedback | Read-only; see Router Feedback Loop below |
 | `GET/POST/DELETE` | `/router/keywords` | Inspect/edit router keyword patterns | — |
 | `GET` | `/dashboard/analytics`, `/dashboard/conversation-insights` | Dashboard analytics views | — |
 | `POST` | `/dashboard/analytics/insights` | Generate analytics insights | — |
@@ -458,6 +459,10 @@ When changing intent classification logic:
 - Test with `npx jest tests/unit/router.test.js`
 - Check for cross-intent keyword collisions (e.g., `תזכיר` = reminder *and* memory)
 - `GET /router/training-events` and `GET/POST/DELETE /router/keywords` expose router introspection/editing at runtime
+
+#### Router Feedback Loop (👎 → override proposal)
+
+`POST /feedback` links each 👎 to the intent that produced the reply via `routeTracker.getLastRoute(chatId)` (10-min TTL), storing it as `metadata.routedIntent` on a `feedback_down` row in `smart_telemetry_events`. `GET /router/misroutes` (`services/feedbackStore.js::computeMisroutePatterns`) groups those rows by `(routedIntent, normalized message)` and returns only patterns that recurred **2+ times** — a single bad reply is noise, the same message getting the same wrong intent repeatedly is a proposal. Each entry carries a `suggestedKeyword` (the normalized message text) a human can review and apply via the existing `POST /router/keywords` — this is detection/proposal only, nothing is auto-applied. Surfaced in the mobile control center's dev-workshop router-trainer card (third "הצעות" tab) and consumable directly via the API for any other admin surface.
 
 ### Adding Supabase Tables
 

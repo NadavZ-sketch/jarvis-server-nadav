@@ -58,4 +58,29 @@ describe('memoryHealthRepo', () => {
         const repo = createMemoryHealthRepo({ from: () => chain });
         expect(await repo.getById('missing')).toBeNull();
     });
+
+    test('updateFinding patches by id and returns the updated row', async () => {
+        const chain = makeChain([{ id: 'f4', suggested_action: 'archive' }]);
+        const repo = createMemoryHealthRepo({ from: () => chain });
+        const row = await repo.updateFinding('f4', { suggested_action: 'archive' });
+        expect(chain.update).toHaveBeenCalledWith({ suggested_action: 'archive' });
+        expect(chain.eq).toHaveBeenCalledWith('id', 'f4');
+        expect(row).toEqual({ id: 'f4', suggested_action: 'archive' });
+    });
+
+    test('setStatus does not set resolved_at when the status is pending', async () => {
+        const chain = makeChain([{ id: 'f5', status: 'pending' }]);
+        const repo = createMemoryHealthRepo({ from: () => chain });
+        await repo.setStatus('f5', 'pending');
+        const [patch] = chain.update.mock.calls[0];
+        expect(patch).toEqual({ status: 'pending' });
+        expect(patch.resolved_at).toBeUndefined();
+    });
+
+    test('getById returns the row when one matches', async () => {
+        const chain = makeChain([{ id: 'f6', type: 'stale' }]);
+        const repo = createMemoryHealthRepo({ from: () => chain });
+        const row = await repo.getById('f6');
+        expect(row).toEqual({ id: 'f6', type: 'stale' });
+    });
 });

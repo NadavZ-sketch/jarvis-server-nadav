@@ -346,6 +346,9 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .mm-toggle-chevron.open{transform:rotate(90deg)}
 .mm-collapsible-body{display:none}
 .mm-collapsible-body.open{display:block}
+.mm-filter-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px}
+.mm-cat-pill{background:transparent;border:1px solid var(--border);border-radius:20px;font-size:var(--tx-xs);padding:3px 10px;cursor:pointer;font-family:inherit;transition:all .15s;color:var(--muted);font-weight:600}
+.mm-cat-pill.on{background:var(--pill-c,var(--accent));border-color:var(--pill-c,var(--accent));color:#0d1117}
 .mm-search{display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:var(--r4);margin-bottom:7px}
 .mm-search input{flex:1;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:var(--tx-sm);outline:none;min-width:0}
 .mm-search input::placeholder{color:var(--muted)}
@@ -913,6 +916,19 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
               <button class="mm-sort-btn" id="sortByCat" onclick="setMmSort('cat')">א-ת קטגוריה</button>
             </div>
           </div>
+          <div class="mm-filter-row">
+            <button class="mm-cat-pill on" onclick="setMmCatFilter('all',this)">הכל</button>
+            <button class="mm-cat-pill" style="--pill-c:#60a5fa" onclick="setMmCatFilter('עבודה',this)">עבודה</button>
+            <button class="mm-cat-pill" style="--pill-c:#22c55e" onclick="setMmCatFilter('משפחה',this)">משפחה</button>
+            <button class="mm-cat-pill" style="--pill-c:#f59e0b" onclick="setMmCatFilter('בריאות',this)">בריאות</button>
+            <button class="mm-cat-pill" style="--pill-c:#a78bfa" onclick="setMmCatFilter('תחביב',this)">תחביב</button>
+            <button class="mm-cat-pill" style="--pill-c:#C8913A" onclick="setMmCatFilter('כללי',this)">כללי</button>
+            <span style="flex:1"></span>
+            <div class="seg-grp">
+              <button class="seg-btn on" onclick="setMmScopeFilter('active',this)">נוכחי</button>
+              <button class="seg-btn" onclick="setMmScopeFilter('archive',this)">ארכיון</button>
+            </div>
+          </div>
           <div id="mm-all-list"></div>
         </div>
       </div>
@@ -933,6 +949,7 @@ const S = {
   traceIntentFilter: null, profileDayFilter: null,
   health: { findings: [] },
   mmExpanded: null,
+  mmCatFilter: 'all', mmScopeFilter: 'active',
 };
 
 // ── Utils ──────────────────────────────────────────────────────────────────
@@ -960,6 +977,8 @@ function inferCat(text) {
   for (const [cat, re] of Object.entries(CAT_RE)) if (re.test(text || '')) return cat;
   return 'כללי';
 }
+
+function effectiveCat(m) { return m.category || inferCat(m.content); }
 
 function relTime(iso) {
   if (!iso) return '—';
@@ -1579,14 +1598,16 @@ function renderMmList() {
   if (!list) return;
   const q = (document.getElementById('mmSearch')?.value || '').trim().toLowerCase();
   let mems = q ? S.memories.filter(m => m.content.toLowerCase().includes(q)) : [...S.memories];
+  mems = mems.filter(m => (S.mmScopeFilter === 'archive') === (m.scope === 'archive'));
+  if (S.mmCatFilter !== 'all') mems = mems.filter(m => effectiveCat(m) === S.mmCatFilter);
   if (S.mmSort === 'cat') {
-    mems.sort((a, b) => inferCat(a.content).localeCompare(inferCat(b.content), 'he'));
+    mems.sort((a, b) => effectiveCat(a).localeCompare(effectiveCat(b), 'he'));
   } else {
     mems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
   if (!mems.length) { list.innerHTML = '<div class="mm-empty">אין זיכרונות</div>'; return; }
   list.innerHTML = mems.slice(0, 120).map(m => {
-    const cat = inferCat(m.content), col = CAT_COLOR[cat] || '#C8913A';
+    const cat = effectiveCat(m), col = CAT_COLOR[cat] || '#C8913A';
     const safeId = esc(m.id);
     return `<div class="mm-mem-item" id="mmi-${safeId}" style="border-right-color:${col}">
       <div class="mm-mem-text" id="mmt-display-${safeId}">${esc(m.content)}</div>
@@ -1606,6 +1627,20 @@ function setMmSort(mode) {
   S.mmSort = mode;
   document.querySelectorAll('.mm-sort-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(mode === 'date' ? 'sortByDate' : 'sortByCat')?.classList.add('active');
+  renderMmList();
+}
+
+function setMmCatFilter(cat, btn) {
+  S.mmCatFilter = cat;
+  btn.parentElement.querySelectorAll('.mm-cat-pill').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  renderMmList();
+}
+
+function setMmScopeFilter(scope, btn) {
+  S.mmScopeFilter = scope;
+  btn.parentElement.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
   renderMmList();
 }
 

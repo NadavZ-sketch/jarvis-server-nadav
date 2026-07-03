@@ -2409,25 +2409,27 @@ function renderHealthFindings() {
 
   if (countsEl) {
     countsEl.innerHTML = Object.keys(HEALTH_TYPE_LABEL).map(t => `
-      <span class="health-chip" style="color:${HEALTH_TYPE_COLOR[t]};border-color:${HEALTH_TYPE_COLOR[t]}55">
-        <span class="sw" style="background:${HEALTH_TYPE_COLOR[t]}"></span>${HEALTH_TYPE_LABEL[t]} ${(byType[t] || []).length}
+      <span class="health-chip" style="color:${HEALTH_TYPE_COLOR[t] || 'var(--accent)'};border-color:${HEALTH_TYPE_COLOR[t] || 'var(--accent)'}55">
+        <span class="sw" style="background:${HEALTH_TYPE_COLOR[t] || 'var(--accent)'}"></span>${HEALTH_TYPE_LABEL[t] || t} ${(byType[t] || []).length}
       </span>`).join('');
   }
 
   if (!S.health.findings.length) {
     resultsEl.innerHTML = '<div class="mm-empty">אין ממצאים ממתינים ✓</div>';
+    updateKnowBadge();
     return;
   }
 
   resultsEl.innerHTML = Object.entries(byType).map(([type, findings]) => `
     <div class="health-section">
-      <div class="health-section-title">${HEALTH_TYPE_LABEL[type]} · ${findings.length}</div>
+      <div class="health-section-title">${HEALTH_TYPE_LABEL[type] || type} · ${findings.length}</div>
       ${findings.map(f => renderHealthCard(f)).join('')}
     </div>`).join('');
+  updateKnowBadge();
 }
 
 function renderHealthCard(f) {
-  const color = HEALTH_TYPE_COLOR[f.type];
+  const color = HEALTH_TYPE_COLOR[f.type] || 'var(--accent)';
   const pct = f.score ? Math.round(f.score * 100) + '% דמיון' : '';
   const id = esc(f.id);
 
@@ -2478,7 +2480,7 @@ function renderHealthCard(f) {
   }
 
   return `<div class="health-card" id="health-${id}" style="--tc:${color}">
-    <div class="health-card-top"><span>${HEALTH_TYPE_LABEL[f.type]}</span><span>${pct}</span></div>
+    <div class="health-card-top"><span>${HEALTH_TYPE_LABEL[f.type] || f.type}</span><span>${pct}</span></div>
     ${body}
     <div class="health-actions">${actions}</div>
   </div>`;

@@ -159,11 +159,24 @@ describe('GET /memories/health/findings', () => {
 });
 
 describe('POST /memories/health/run', () => {
-  test('runs the scan and returns the summary', async () => {
-    memoryHealthCheck.runHealthScan.mockResolvedValue({ created: 2, updated: 1, autoResolved: 0, errors: [] });
+  test('responds immediately without waiting for the scan to finish', async () => {
+    // The scan runs in the background (setImmediate) — the response must
+    // come back before runHealthScan's promise ever resolves, otherwise a
+    // real dataset's worth of LLM calls would time out the request.
+    let resolveScan;
+    memoryHealthCheck.runHealthScan.mockReturnValue(new Promise(resolve => { resolveScan = resolve; }));
     const res = await request(mountApp(makeRepos())).post('/memories/health/run');
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ ok: true, created: 2, updated: 1 });
+    expect(res.body).toEqual({ ok: true, started: true });
+    resolveScan({ created: 0, updated: 0, autoResolved: 0, errors: [] });
+  });
+
+  test('runs the scan in the background and does not crash the process on failure', async () => {
+    memoryHealthCheck.runHealthScan.mockRejectedValue(new Error('boom'));
+    const res = await request(mountApp(makeRepos())).post('/memories/health/run');
+    expect(res.status).toBe(200);
+    // Let the setImmediate callback run and its rejection get caught internally.
+    await new Promise(r => setImmediate(r));
   });
 });
 

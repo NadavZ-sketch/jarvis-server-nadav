@@ -353,7 +353,7 @@ Core endpoints (stable, unchanged):
 | `GET/POST/PUT/DELETE` | `/memories`, `/memories/:id` | Memory CRUD | Pinecone search + keyword fallback. `DELETE /memories/:id` = "forget" |
 | `GET` | `/memories/pending` | Pending memories awaiting approval | Returns `{ memories: [] }` |
 | `GET` | `/memories/health/findings` | Pending memory-health findings | Optional `?type=`, `?status=` (default `pending`) |
-| `POST` | `/memories/health/run` | Trigger a memory health scan now | Rate-limited (5/min); same scan as the nightly `memory_health_scan` cron |
+| `POST` | `/memories/health/run` | Trigger a memory health scan now | Rate-limited (5/min); same scan as the nightly `memory_health_scan` cron. Responds immediately (`{ok:true, started:true}`) and runs in the background (`setImmediate`) — scanning every memory can take minutes on a real dataset, so the response never waits for it |
 | `POST` | `/memories/health/findings/:id/resolve` | Apply a finding's suggested (or edited) action | Body `{action, payload?}`; requires policy + `X-Confirm-Action`/`X-User-Consent` |
 | `POST` | `/memories/health/findings/:id/dismiss` | Dismiss a finding without acting | Resurfaces only if the memory's content later changes |
 | `POST` | `/memories/:id/approve` | Approve a pending memory | Sets `status='approved'`, upserts to Pinecone |

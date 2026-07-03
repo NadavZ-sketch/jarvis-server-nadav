@@ -230,14 +230,22 @@ function createMemoriesController({ repos }) {
     },
 
     async runHealthScan(_req, res) {
-      try {
-        const summary = await memoryHealthCheck.runHealthScan(repos);
-        memoryContext.invalidateCache();
-        res.json({ ok: true, ...summary });
-      } catch (err) {
-        console.error('POST /memories/health/run error:', err.message);
-        res.status(500).json({ ok: false, error: 'Internal server error' });
-      }
+      // Scanning every memory (one LLM classify call each, plus Pinecone
+      // lookups) can take minutes on a real dataset — far longer than a
+      // request/proxy timeout tolerates. Respond immediately and run the
+      // scan in the background, same dispatch pattern already used for
+      // other slow agents (code_error/e2e — see agents/dispatcher.js).
+      res.json({ ok: true, started: true });
+      setImmediate(async () => {
+        try {
+          const summary = await memoryHealthCheck.runHealthScan(repos);
+          memoryContext.invalidateCache();
+          console.log(`🩺 manual memory health scan: +${summary.created} new, ${summary.updated} updated, ${summary.autoResolved} auto-resolved`);
+          if (summary.errors.length) console.warn('🩺 manual memory health scan errors:', summary.errors);
+        } catch (err) {
+          console.error('POST /memories/health/run background error:', err.message);
+        }
+      });
     },
 
     async resolveHealthFinding(req, res) {

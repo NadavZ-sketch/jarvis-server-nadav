@@ -52,7 +52,8 @@ describe('memory health check — scan then resolve a merge', () => {
 
     const runRes = await request(app).post('/memories/health/run');
     expect(runRes.status).toBe(200);
-    expect(runRes.body.created).toBeGreaterThanOrEqual(1);
+    expect(runRes.body).toEqual({ ok: true, started: true });
+    await new Promise(r => setImmediate(r)); // let the background scan (setImmediate) run
     expect(repos.memoryHealth.insertFinding).toHaveBeenCalled();
 
     const [findingRow] = repos.memoryHealth.insertFinding.mock.calls[0];
@@ -83,6 +84,7 @@ describe('memory health check — scan then resolve a merge', () => {
 
     const app = mountApp(repos);
     await request(app).post('/memories/health/run'); // first scan creates the thin_content finding
+    await new Promise(r => setImmediate(r)); // let the background scan (setImmediate) run
 
     const [firstFinding] = repos.memoryHealth.insertFinding.mock.calls
       .map(([r]) => r).filter(r => r.type === 'thin_content');
@@ -95,6 +97,7 @@ describe('memory health check — scan then resolve a merge', () => {
     repos.memoryHealth.insertFinding.mockClear();
 
     await request(app).post('/memories/health/run'); // second scan, same content
+    await new Promise(r => setImmediate(r)); // let the background scan (setImmediate) run
 
     const reCreated = repos.memoryHealth.insertFinding.mock.calls
       .map(([r]) => r).find(r => r.type === 'thin_content');

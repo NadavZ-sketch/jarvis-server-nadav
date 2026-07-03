@@ -65,6 +65,14 @@ describe('POST /memories', () => {
     expect(pinecone.upsertMemory).toHaveBeenCalledWith(5, 'new fact');
     expect(memoryContext.invalidateCache).toHaveBeenCalled();
   });
+
+  test('classifies and persists a category on the created memory', async () => {
+    const repos = makeRepos({ memories: [{ id: 5, content: 'new fact' }] });
+    const res = await request(mountApp(repos)).post('/memories').send({ content: 'new fact' });
+    expect(res.status).toBe(200);
+    expect(repos.memories.create).toHaveBeenCalledWith(
+      expect.objectContaining({ content: 'new fact', category: 'כללי' }));
+  });
 });
 
 describe('GET /memories/pending', () => {
@@ -90,6 +98,15 @@ describe('PUT/DELETE /memories/:id', () => {
   test('PUT rejects empty content', async () => {
     const res = await request(mountApp(makeRepos())).put('/memories/1').send({ content: '' });
     expect(res.status).toBe(400);
+  });
+
+  test('PUT classifies and persists a category on the updated memory', async () => {
+    const repos = makeRepos();
+    repos.memories.updateById = jest.fn(async () => [{ id: 1, content: 'updated', category: 'כללי' }]);
+    const res = await request(mountApp(repos)).put('/memories/1').send({ content: 'updated' });
+    expect(res.status).toBe(200);
+    expect(repos.memories.updateById).toHaveBeenCalledWith('1',
+      expect.objectContaining({ content: 'updated', category: 'כללי' }));
   });
 
   test('DELETE 404s when nothing removed', async () => {

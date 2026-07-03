@@ -6,6 +6,9 @@ const memoryContext = require('../services/memoryContext');
 // Referenced (not destructured) so jest.spyOn(memoryAgent, ...) in tests can
 // intercept calls — a destructured reference would bypass the spy.
 const memoryAgent = require('../agents/memoryAgent');
+const { classifyCategory } = require('../services/memoryCategory');
+const memoryHealthCheck = require('../services/memoryHealthCheck');
+const memoryHealthActions = require('../services/memoryHealthActions');
 
 const REBUILD_EXTRACT_PROMPT = `אתה מנתח שיחה ומחלץ עובדות אישיות חשובות לשמירה.
 
@@ -43,7 +46,9 @@ function createMemoriesController({ repos }) {
         if (!content || typeof content !== 'string' || !content.trim()) {
           return res.status(400).json({ error: 'content is required' });
         }
-        const data = await repos.memories.create({ content: content.trim(), scope });
+        const trimmed = content.trim();
+        const category = await classifyCategory(trimmed, false).catch(() => null);
+        const data = await repos.memories.create({ content: trimmed, scope, category });
         const row = data?.[0];
         if (row?.id) {
           pinecone.upsertMemory(row.id, row.content).catch(() => {});
@@ -89,7 +94,9 @@ function createMemoriesController({ repos }) {
         if (!content || typeof content !== 'string' || !content.trim()) {
           return res.status(400).json({ error: 'content is required' });
         }
-        const patch = { content: content.trim() };
+        const trimmed = content.trim();
+        const category = await classifyCategory(trimmed, false).catch(() => null);
+        const patch = { content: trimmed, category };
         if (scope) patch.scope = scope;
         const data = await repos.memories.updateById(id, patch);
         if (!data || data.length === 0) return res.status(404).json({ error: 'Memory not found' });
@@ -208,6 +215,61 @@ function createMemoriesController({ repos }) {
       } catch (err) {
         console.error('❌ memories/confirm error:', err.message);
         res.status(500).json({ error: 'שגיאה בשמירת הזיכרון' });
+      }
+    },
+
+    async listHealthFindings(req, res) {
+      try {
+        const { status = 'pending', type } = req.query;
+        const data = await repos.memoryHealth.listFindings({ status, type });
+        res.json({ findings: data });
+      } catch (err) {
+        console.error('GET /memories/health/findings error:', err.message);
+        res.json({ findings: [] });
+      }
+    },
+
+    async runHealthScan(_req, res) {
+      try {
+        const summary = await memoryHealthCheck.runHealthScan(repos);
+        memoryContext.invalidateCache();
+        res.json({ ok: true, ...summary });
+      } catch (err) {
+        console.error('POST /memories/health/run error:', err.message);
+        res.status(500).json({ ok: false, error: 'Internal server error' });
+      }
+    },
+
+    async resolveHealthFinding(req, res) {
+      try {
+        const { id } = req.params;
+        const { action, payload = {} } = req.body;
+        const finding = await repos.memoryHealth.getById(id);
+        if (!finding || finding.status !== 'pending') {
+          return res.status(404).json({ error: 'Finding not found or already resolved' });
+        }
+        await memoryHealthActions.resolveFinding(finding, action, payload, repos);
+        const updated = await repos.memoryHealth.setStatus(id, 'approved');
+        memoryContext.invalidateCache();
+        res.json({ ok: true, finding: updated });
+      } catch (err) {
+        console.error('POST /memories/health/findings/:id/resolve error:', err.message);
+        res.status(err.status || 500).json({ error: err.status ? err.message : 'Internal server error' });
+      }
+    },
+
+    async dismissHealthFinding(req, res) {
+      try {
+        const { id } = req.params;
+        const finding = await repos.memoryHealth.getById(id);
+        if (!finding || finding.status !== 'pending') {
+          return res.status(404).json({ error: 'Finding not found or already resolved' });
+        }
+        const updated = await repos.memoryHealth.setStatus(id, 'rejected');
+        res.json({ ok: true, finding: updated });
+      } catch (err) {
+        console.error('POST /memories/health/findings/:id/dismiss error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
       }
     },
   };

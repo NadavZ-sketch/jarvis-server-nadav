@@ -15,6 +15,10 @@ function createMemoriesRouter(deps) {
   router.post('/', controller.create);
   router.post('/confirm', controller.confirm);
   router.get('/pending', controller.pending);
+  router.get('/health/findings', controller.listHealthFindings);
+  router.post('/health/run', controller.runHealthScan);
+  router.post('/health/findings/:id/resolve', requirePolicy('memory.delete', { sensitive: true, irreversible: true }), controller.resolveHealthFinding);
+  router.post('/health/findings/:id/dismiss', controller.dismissHealthFinding);
   router.post('/:id/approve', controller.approve);
   router.put('/:id', controller.update);
   router.delete('/:id', requirePolicy('memory.delete', { sensitive: true, irreversible: true }), controller.remove);

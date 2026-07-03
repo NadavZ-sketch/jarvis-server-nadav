@@ -13,6 +13,7 @@ jest.mock('../../services/pineconeMemory', () => ({
     deleteMemory:      jest.fn().mockResolvedValue(),
     isReady:           jest.fn().mockReturnValue(false),
 }));
+jest.mock('../../services/memoryCategory', () => ({ classifyCategory: jest.fn().mockResolvedValue('כללי') }));
 
 const { callGemma4 }      = require('../../agents/models');
 const pinecone             = require('../../services/pineconeMemory');
@@ -81,6 +82,23 @@ describe('runMemoryAgent — save', () => {
         callGemma4.mockRejectedValue(new Error('API error'));
         const result = await runMemoryAgent('זכור ש חמש', makeRepos());
         expect(result.answer).toContain('הייתה בעיה בשמירת הזיכרון');
+    });
+
+    test('classifies category fire-and-forget after saving, without blocking the reply', async () => {
+        callGemma4.mockResolvedValue('{"memoryContent":"[hobby] אני אוהב פיצה"}');
+        const repos = makeRepos({ memories: [{ id: 1, content: '[hobby] אני אוהב פיצה' }] });
+        const { classifyCategory } = require('../../services/memoryCategory');
+        classifyCategory.mockResolvedValue('תחביב');
+
+        const result = await runMemoryAgent('זכור ש אני אוהב פיצה', repos);
+
+        // insert() itself must stay unchanged — category is applied via a
+        // follow-up updateById so it never blocks the chat reply.
+        expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[hobby] אני אוהב פיצה', scope: 'long_term' });
+        expect(result.answer).toContain('שמרתי');
+        // allow the fire-and-forget promise to settle
+        await new Promise(r => setImmediate(r));
+        expect(repos.memories.updateById).toHaveBeenCalledWith(1, { category: 'תחביב' });
     });
 });
 

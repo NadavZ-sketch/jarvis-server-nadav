@@ -89,7 +89,7 @@ async function scanDuplicatesAndConflicts(memories, repos, summary, useLocal) {
         }
         if (!hits) continue;
         const match = hits.find(h => String(h.id) !== String(mem.id));
-        if (!match || match.score < CONFLICT_THRESHOLD) continue;
+        if (!match || match.score < CONFLICT_THRESHOLD || !match.content) continue;
 
         const [aId, bId] = [String(mem.id), String(match.id)].sort();
         const pairKey = `${aId}:${bId}`;
@@ -103,14 +103,18 @@ async function scanDuplicatesAndConflicts(memories, repos, summary, useLocal) {
             suggestedPayload = { mergedContent: merged };
         }
 
-        const outcome = await upsertFinding(repos, {
-            type: isDuplicate ? 'duplicate' : 'conflict',
-            memoryId: aId, relatedMemoryId: bId,
-            suggestedAction: isDuplicate ? 'merge' : 'archive',
-            suggestedPayload, score: match.score,
-            contentHash: hashPair(mem.content, match.content),
-        });
-        tally(summary, outcome);
+        try {
+            const outcome = await upsertFinding(repos, {
+                type: isDuplicate ? 'duplicate' : 'conflict',
+                memoryId: aId, relatedMemoryId: bId,
+                suggestedAction: isDuplicate ? 'merge' : 'archive',
+                suggestedPayload, score: match.score,
+                contentHash: hashPair(mem.content, match.content),
+            });
+            tally(summary, outcome);
+        } catch (err) {
+            summary.errors.push(`duplicate-scan-write ${aId}:${bId}: ${err.message}`);
+        }
     }
 }
 
@@ -138,12 +142,16 @@ async function scanCategoryMismatch(memories, repos, summary, useLocal) {
 
         if (suggested === mem.category) continue;
 
-        const outcome = await upsertFinding(repos, {
-            type: 'category_mismatch', memoryId: String(mem.id),
-            suggestedAction: 'move', suggestedPayload: { category: suggested },
-            contentHash: hashContent(mem.content),
-        });
-        tally(summary, outcome);
+        try {
+            const outcome = await upsertFinding(repos, {
+                type: 'category_mismatch', memoryId: String(mem.id),
+                suggestedAction: 'move', suggestedPayload: { category: suggested },
+                contentHash: hashContent(mem.content),
+            });
+            tally(summary, outcome);
+        } catch (err) {
+            summary.errors.push(`category-mismatch-write ${mem.id}: ${err.message}`);
+        }
     }
 }
 
@@ -154,22 +162,30 @@ async function scanStaleAndThin(memories, repos, summary) {
         const wordCount = core ? core.split(/\s+/).length : 0;
 
         if (wordCount > 0 && wordCount < THIN_WORDS) {
-            const outcome = await upsertFinding(repos, {
-                type: 'thin_content', memoryId: String(mem.id),
-                suggestedAction: 'delete', suggestedPayload: null,
-                contentHash: hashContent(mem.content),
-            });
-            tally(summary, outcome);
+            try {
+                const outcome = await upsertFinding(repos, {
+                    type: 'thin_content', memoryId: String(mem.id),
+                    suggestedAction: 'delete', suggestedPayload: null,
+                    contentHash: hashContent(mem.content),
+                });
+                tally(summary, outcome);
+            } catch (err) {
+                summary.errors.push(`thin-content-write ${mem.id}: ${err.message}`);
+            }
             continue; // thin takes priority over stale for the same memory
         }
 
         if (mem.created_at && new Date(mem.created_at).getTime() < staleCutoff) {
-            const outcome = await upsertFinding(repos, {
-                type: 'stale', memoryId: String(mem.id),
-                suggestedAction: 'archive', suggestedPayload: null,
-                contentHash: hashContent(mem.content),
-            });
-            tally(summary, outcome);
+            try {
+                const outcome = await upsertFinding(repos, {
+                    type: 'stale', memoryId: String(mem.id),
+                    suggestedAction: 'archive', suggestedPayload: null,
+                    contentHash: hashContent(mem.content),
+                });
+                tally(summary, outcome);
+            } catch (err) {
+                summary.errors.push(`stale-write ${mem.id}: ${err.message}`);
+            }
         }
     }
 }

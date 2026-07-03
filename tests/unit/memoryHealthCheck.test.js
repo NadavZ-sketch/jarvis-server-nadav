@@ -192,3 +192,51 @@ describe('runHealthScan — skips detection when Pinecone is not ready', () => {
         expect(repos.memories.updateById).toHaveBeenCalledWith(1, { category: 'כללי' });
     });
 });
+
+describe('runHealthScan — resilience and idempotent re-scan', () => {
+    test('continues the scan when one finding-write fails, and records the error', async () => {
+        const memA = longTermMem(1, 'אני אוהב לשתות קפה שחור כל בוקר', { category: 'כללי' });
+        const memB = longTermMem(2, 'אני שותה קפה שחור בכל בוקר בשבוע', { category: 'כללי' });
+        const repos = makeRepos({ memories: [memA, memB] });
+        pinecone.searchMemoriesDetailed.mockImplementation(async (query) => {
+            if (query === memA.content) return [{ id: '1', content: memA.content, score: 1 }, { id: '2', content: memB.content, score: 0.95 }];
+            return [{ id: '2', content: memB.content, score: 1 }, { id: '1', content: memA.content, score: 0.95 }];
+        });
+        callGemma4.mockResolvedValue('{"merged":"אוהב לשתות קפה שחור כל בוקר"}');
+        repos.memoryHealth.insertFinding = jest.fn(async () => { throw new Error('db unavailable'); });
+
+        const summary = await runHealthScan(repos);
+
+        // scan must not throw, and must record the failure instead of aborting
+        expect(summary.errors.some(e => e.includes('db unavailable'))).toBe(true);
+        expect(summary.created).toBe(0);
+    });
+
+    test('refreshes an existing pending finding instead of duplicating it', async () => {
+        const mem = longTermMem(1, 'אוהב פיצה', { category: 'כללי' });
+        const repos = makeRepos({ memories: [mem] });
+        repos.memoryHealth.findExisting = jest.fn(async () => ({ id: 'existing-1', status: 'pending', content_hash: 'stale-hash' }));
+
+        const summary = await runHealthScan(repos);
+
+        expect(repos.memoryHealth.updateFinding).toHaveBeenCalledWith('existing-1', expect.objectContaining({ content_hash: expect.any(String) }));
+        expect(repos.memoryHealth.insertFinding).not.toHaveBeenCalled();
+        expect(summary.updated).toBeGreaterThanOrEqual(1);
+    });
+
+    test('leaves an already-resolved finding alone when the content is unchanged', async () => {
+        const mem = longTermMem(1, 'אוהב פיצה', { category: 'כללי' });
+        const repos = makeRepos({ memories: [mem] });
+        // Compute the hash exactly the way scanStaleAndThin's thin_content branch
+        // does: hashContent(mem.content) — sha1 of the raw (unstripped) content —
+        // so this test proves the "unchanged content → skip, no DB write" branch.
+        const crypto = require('crypto');
+        const matchingHash = crypto.createHash('sha1').update(mem.content || '').digest('hex');
+        repos.memoryHealth.findExisting = jest.fn(async () => ({ id: 'existing-2', status: 'rejected', content_hash: matchingHash }));
+
+        await runHealthScan(repos);
+
+        expect(repos.memoryHealth.updateFinding).not.toHaveBeenCalled();
+        expect(repos.memoryHealth.insertFinding).not.toHaveBeenCalled();
+    });
+});

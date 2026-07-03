@@ -2434,21 +2434,24 @@ async function loadHealthFindings() {
 
 async function runHealthScanUI() {
   const btn = document.getElementById('healthRunBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'סורק...'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'מפעיל...'; }
   try {
-    const r = await api('/memories/health/run', { method: 'POST' });
-    await loadHealthFindings();
-    document.getElementById('healthLastRun').textContent = 'הרצה אחרונה: עכשיו';
-    const fix = document.getElementById('healthAutofix');
-    if (fix) {
-      if (r.autoResolved > 0) {
-        fix.style.display = 'block';
-        fix.textContent = `🔧 ${r.autoResolved} בעיות סנכרון/קטגוריה תוקנו אוטומטית`;
-      } else {
-        fix.style.display = 'none';
+    // The scan runs in the background on the server (can take minutes over a
+    // real memory count) — the request only confirms it started, it doesn't
+    // wait for a result. Poll for new findings for a couple of minutes so
+    // results still show up without the user needing to manually refresh.
+    await api('/memories/health/run', { method: 'POST' });
+    document.getElementById('healthLastRun').textContent = 'רץ ברקע — התוצאות יתעדכנו בהמשך';
+    let checks = 0;
+    const poll = setInterval(async () => {
+      checks++;
+      await loadHealthFindings();
+      if (checks >= 12) {
+        clearInterval(poll);
+        document.getElementById('healthLastRun').textContent = 'הרצה אחרונה: לפני זמן קצר';
       }
-    }
-  } catch (e) { alert('שגיאה בהרצת הבדיקה: ' + e.message); }
+    }, 10000);
+  } catch (e) { alert('שגיאה בהפעלת הבדיקה: ' + e.message); }
   finally { if (btn) { btn.disabled = false; btn.textContent = 'הרץ בדיקה עכשיו'; } }
 }
 

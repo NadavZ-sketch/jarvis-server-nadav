@@ -2,6 +2,7 @@
 
 const pinecone     = require('./pineconeMemory');
 const obsidianSync = require('./obsidianSync');
+const { classifyCategory } = require('./memoryCategory');
 
 // ── In-process TTL cache (keyword-fallback when Pinecone is absent) ───────────
 const _cache    = new Map();
@@ -84,7 +85,8 @@ function formatAsText(memories) {
  * Returns { saved: true, content: string }.
  */
 async function savePendingData(pending, repos) {
-    const inserted = await repos.memories.insert({ content: pending.content, scope: 'long_term' });
+    const category = await classifyCategory(pending.content, false).catch(() => null);
+    const inserted = await repos.memories.insert({ content: pending.content, scope: 'long_term', category });
     if (inserted?.[0]?.id) {
         await pinecone.upsertMemory(inserted[0].id, pending.content).catch(() => {});
     }

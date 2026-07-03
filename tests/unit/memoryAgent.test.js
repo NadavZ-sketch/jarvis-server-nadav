@@ -88,15 +88,19 @@ describe('runMemoryAgent — save', () => {
         callGemma4.mockResolvedValue('{"memoryContent":"[hobby] אני אוהב פיצה"}');
         const repos = makeRepos({ memories: [{ id: 1, content: '[hobby] אני אוהב פיצה' }] });
         const { classifyCategory } = require('../../services/memoryCategory');
-        classifyCategory.mockResolvedValue('תחביב');
+
+        let resolveClassify;
+        classifyCategory.mockReturnValue(new Promise(resolve => { resolveClassify = resolve; }));
 
         const result = await runMemoryAgent('זכור ש אני אוהב פיצה', repos);
 
-        // insert() itself must stay unchanged — category is applied via a
-        // follow-up updateById so it never blocks the chat reply.
-        expect(repos.memories.insert).toHaveBeenCalledWith({ content: '[hobby] אני אוהב פיצה', scope: 'long_term' });
+        // The reply already came back even though classifyCategory's promise
+        // is still pending — proves the chain is genuinely non-blocking.
         expect(result.answer).toContain('שמרתי');
-        // allow the fire-and-forget promise to settle
+        expect(repos.memories.updateById).not.toHaveBeenCalled();
+
+        // Now let classification resolve and confirm the follow-up write happens.
+        resolveClassify('תחביב');
         await new Promise(r => setImmediate(r));
         expect(repos.memories.updateById).toHaveBeenCalledWith(1, { category: 'תחביב' });
     });

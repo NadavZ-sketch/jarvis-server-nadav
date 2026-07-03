@@ -308,7 +308,7 @@ async function runMemoryAgent(userMessage, repos, useLocal = true, settings = {}
             // the chat reply, same idiom as the Pinecone upsert above.
             classifyCategory(parsed.memoryContent, useLocal)
                 .then(category => memories.updateById(savedId, { category }))
-                .catch(() => {});
+                .catch(err => console.error('[memoryAgent] category classify/update failed (non-blocking):', err.message));
         }
         _invalidateMemoryCache();
         return { answer: `שמרתי לפניי: ${parsed.memoryContent}` };

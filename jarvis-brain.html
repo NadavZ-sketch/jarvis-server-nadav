@@ -342,6 +342,10 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .mm-act-btn.approve{border:1px solid rgba(34,197,94,.35);background:rgba(34,197,94,.08);color:var(--green)}
 .mm-act-btn.reject{border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.05);color:var(--red)}
 .mm-act-btn:hover{filter:brightness(1.15)}
+.mm-toggle-chevron{transition:transform .15s;flex-shrink:0}
+.mm-toggle-chevron.open{transform:rotate(90deg)}
+.mm-collapsible-body{display:none}
+.mm-collapsible-body.open{display:block}
 .mm-search{display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-radius:var(--r4);margin-bottom:7px}
 .mm-search input{flex:1;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:var(--tx-sm);outline:none;min-width:0}
 .mm-search input::placeholder{color:var(--muted)}
@@ -862,41 +866,8 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 
       </div><!-- /.know-two-col -->
 
-      <!-- E: Memory Management — full width -->
+      <!-- G: Memory Health Check — full width (moved above the memory list) -->
       <div style="margin-top:16px">
-        <div class="sec-head">
-          <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-check"/></svg> בדיקה ואימות זיכרונות</div>
-          <div style="display:flex;align-items:center;gap:5px">
-            <span class="mm-stat-badge approved" id="mm-stat-approved"></span>
-            <span class="mm-stat-badge pending" id="mm-stat-pending" style="display:none"></span>
-          </div>
-        </div>
-
-        <!-- Pending approval sub-section -->
-        <div id="mm-pending-wrap" style="display:none;margin-bottom:10px">
-          <div class="mm-pend-head">
-            <span class="mm-pend-title"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> ממתינים לאישורך</span>
-            <button class="mm-approve-all-btn" onclick="mmApproveAll()">
-              <svg class="icon icon-sm"><use href="#ic-check"/></svg> אשר הכל
-            </button>
-          </div>
-          <div id="mm-pending-cards"></div>
-        </div>
-
-        <!-- Search + sort + full memory list -->
-        <div class="mm-search">
-          <svg class="icon icon-sm"><use href="#ic-search"/></svg>
-          <input id="mmSearch" placeholder="חיפוש בזיכרונות..." oninput="renderMmList()">
-          <div class="mm-sort-wrap">
-            <button class="mm-sort-btn active" id="sortByDate" onclick="setMmSort('date')">↓ תאריך</button>
-            <button class="mm-sort-btn" id="sortByCat" onclick="setMmSort('cat')">א-ת קטגוריה</button>
-          </div>
-        </div>
-        <div id="mm-all-list"></div>
-      </div>
-
-      <!-- G: Memory Health Check — full width -->
-      <div style="margin-top:16px;padding-bottom:20px">
         <div class="sec-head">
           <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-search"/></svg> בדיקת תקינות זיכרונות</div>
           <button class="dup-scan-btn" id="healthRunBtn" onclick="runHealthScanUI()">הרץ בדיקה עכשיו</button>
@@ -907,6 +878,43 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
         </div>
         <div class="health-autofix" id="healthAutofix"></div>
         <div id="healthResults"><div class="mm-empty">אין ממצאים ממתינים</div></div>
+      </div>
+
+      <!-- E: Memory Management — full width, collapsible -->
+      <div style="margin-top:16px;padding-bottom:20px">
+        <div class="sec-head" onclick="toggleMmSection()" style="cursor:pointer">
+          <div class="sec-title">
+            <svg class="icon icon-sm mm-toggle-chevron" id="mmToggleChevron"><use href="#ic-right"/></svg> בדיקה ואימות זיכרונות
+          </div>
+          <div style="display:flex;align-items:center;gap:5px">
+            <span class="mm-stat-badge approved" id="mm-stat-approved"></span>
+            <span class="mm-stat-badge pending" id="mm-stat-pending" style="display:none"></span>
+          </div>
+        </div>
+
+        <div class="mm-collapsible-body" id="mmCollapsibleBody">
+          <!-- Pending approval sub-section -->
+          <div id="mm-pending-wrap" style="display:none;margin-bottom:10px">
+            <div class="mm-pend-head">
+              <span class="mm-pend-title"><svg class="icon icon-sm"><use href="#ic-clock"/></svg> ממתינים לאישורך</span>
+              <button class="mm-approve-all-btn" onclick="mmApproveAll()">
+                <svg class="icon icon-sm"><use href="#ic-check"/></svg> אשר הכל
+              </button>
+            </div>
+            <div id="mm-pending-cards"></div>
+          </div>
+
+          <!-- Search + sort + full memory list -->
+          <div class="mm-search">
+            <svg class="icon icon-sm"><use href="#ic-search"/></svg>
+            <input id="mmSearch" placeholder="חיפוש בזיכרונות..." oninput="renderMmList()">
+            <div class="mm-sort-wrap">
+              <button class="mm-sort-btn active" id="sortByDate" onclick="setMmSort('date')">↓ תאריך</button>
+              <button class="mm-sort-btn" id="sortByCat" onclick="setMmSort('cat')">א-ת קטגוריה</button>
+            </div>
+          </div>
+          <div id="mm-all-list"></div>
+        </div>
       </div>
 
     </div><!-- /.know-scroll -->
@@ -924,6 +932,7 @@ const S = {
   searchQ: '', highlight: null, mmSort: 'date',
   traceIntentFilter: null, profileDayFilter: null,
   health: { findings: [] },
+  mmExpanded: null,
 };
 
 // ── Utils ──────────────────────────────────────────────────────────────────
@@ -1511,10 +1520,24 @@ function renderKnowledge() {
 
 // ── Memory Management ───────────────────────────────────────────────────────
 function renderMmSection() {
+  if (S.mmExpanded === null) S.mmExpanded = S.pending.length > 0;
+  applyMmExpandedState();
   updateKnowBadge();
   renderMmPending();
   renderMmList();
   renderHealthFindings();
+}
+
+function applyMmExpandedState() {
+  const body = document.getElementById('mmCollapsibleBody');
+  const chevron = document.getElementById('mmToggleChevron');
+  if (body) body.classList.toggle('open', !!S.mmExpanded);
+  if (chevron) chevron.classList.toggle('open', !!S.mmExpanded);
+}
+
+function toggleMmSection() {
+  S.mmExpanded = !S.mmExpanded;
+  applyMmExpandedState();
 }
 
 function updateKnowBadge() {

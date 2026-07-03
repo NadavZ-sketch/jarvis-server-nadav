@@ -4,6 +4,7 @@ const { extractJSON }  = require('./utils');
 const obsidianSync     = require('../services/obsidianSync');
 const pinecone         = require('../services/pineconeMemory');
 const memoryContext    = require('../services/memoryContext');
+const { classifyCategory } = require('../services/memoryCategory');
 
 function buildSavePrompt(userName) {
     return `You are a memory manager. The user wants to save a personal fact about ${userName}.
@@ -300,7 +301,15 @@ async function runMemoryAgent(userMessage, repos, useLocal = true, settings = {}
         console.log('🧠 MemoryAgent saving:', parsed.memoryContent);
         const saved = await memories.insert({ content: parsed.memoryContent, scope: 'long_term' });
         obsidianSync.dbToVault('memories', { content: parsed.memoryContent, scope: 'long_term' });
-        if (saved?.[0]?.id) pinecone.upsertMemory(saved[0].id, parsed.memoryContent).catch(() => {});
+        if (saved?.[0]?.id) {
+            const savedId = saved[0].id;
+            pinecone.upsertMemory(savedId, parsed.memoryContent).catch(() => {});
+            // Fire-and-forget: classifying/persisting the category never blocks
+            // the chat reply, same idiom as the Pinecone upsert above.
+            classifyCategory(parsed.memoryContent, useLocal)
+                .then(category => memories.updateById(savedId, { category }))
+                .catch(err => console.error('[memoryAgent] category classify/update failed (non-blocking):', err.message));
+        }
         _invalidateMemoryCache();
         return { answer: `שמרתי לפניי: ${parsed.memoryContent}` };
 

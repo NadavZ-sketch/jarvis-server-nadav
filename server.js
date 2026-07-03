@@ -357,6 +357,7 @@ app.use('/stream-jarvis', _rl(20));
 app.use('/tasks',         _rl(60));
 app.use('/notes',         _rl(60));
 app.use('/reminders',     _rl(60));
+app.use('/memories/health/run', _rl(5));
 app.use('/memories',      _rl(60));
 app.use('/contacts',      _rl(60));
 app.use('/shopping',      _rl(60));
@@ -3401,6 +3402,17 @@ if (!isTestEnv) scheduledJob('memory_cleanup_nightly', '30 3 * * *', async () =>
         console.log(`🧹 nightly memoryCleanup: removed ${res.deleted} expired memories`);
     }
     if (res.errors?.length) console.warn('🧹 nightly memoryCleanup errors:', res.errors);
+}, { timezone: 'Asia/Jerusalem' });
+
+// Nightly memory health scan — 03:35 Jerusalem (after the 03:30 cleanup pass).
+// Duplicates/conflicts/category mismatches become pending findings reviewed
+// in the "ידע" tab; Supabase<->Pinecone sync gaps are self-healed inline.
+if (!isTestEnv) scheduledJob('memory_health_scan', '35 3 * * *', async () => {
+    const memoryHealthCheck = require('./services/memoryHealthCheck');
+    const summary = await memoryHealthCheck.runHealthScan(repos);
+    memoryContext.invalidateCache();
+    console.log(`🩺 memory health scan: +${summary.created} new, ${summary.updated} updated, ${summary.autoResolved} auto-resolved`);
+    if (summary.errors.length) console.warn('🩺 memory health scan errors:', summary.errors);
 }, { timezone: 'Asia/Jerusalem' });
 
 // Daily user-profile learning — 03:45 Jerusalem (after the 03:00 context cleanup and 03:30 memory cleanup).

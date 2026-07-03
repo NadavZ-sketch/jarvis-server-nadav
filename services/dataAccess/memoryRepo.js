@@ -54,9 +54,14 @@ function createMemoryRepo(supabase) {
         // Falls back progressively if columns are missing in PostgREST schema cache.
         async listAll() {
             const { data, error } = await supabase.from(M)
-                .select('id, content, scope, created_at')
+                .select('id, content, scope, category, created_at')
                 .order('created_at', { ascending: false });
             if (!error) return data || [];
+            // category may be missing — fall back to the pre-category column set unchanged.
+            const { data: dataNoCat, error: errNoCat } = await supabase.from(M)
+                .select('id, content, scope, created_at')
+                .order('created_at', { ascending: false });
+            if (!errNoCat) return dataNoCat || [];
             // scope may be missing — try without it but keep created_at ordering
             const { data: data2, error: err2 } = await supabase.from(M)
                 .select('id, content, created_at')
@@ -80,9 +85,29 @@ function createMemoryRepo(supabase) {
         async create(row) {
             const { data, error } = await supabase.from(M)
                 .insert([row])
-                .select('id, content, scope, created_at')
+                .select('id, content, scope, category, created_at')
                 .limit(1);
             if (!error) return data || [];
+
+            if (error.message?.includes('category')) {
+                const { category: _cat, ...rowWithoutCategory } = row;
+                const { data: d1, error: err1 } = await supabase.from(M)
+                    .insert([rowWithoutCategory])
+                    .select('id, content, scope, created_at')
+                    .limit(1);
+                if (!err1) return d1 || [];
+                if (err1.message?.includes('scope') || err1.code === '42703') {
+                    const { scope: _s, ...rowMinimal } = rowWithoutCategory;
+                    const { data: d2, error: err2 } = await supabase.from(M)
+                        .insert([rowMinimal])
+                        .select('id, content, created_at')
+                        .limit(1);
+                    if (err2) throw err2;
+                    return d2 || [];
+                }
+                throw err1;
+            }
+
             if (error.message?.includes('scope') || error.code === '42703') {
                 const { scope: _s, ...rowWithoutScope } = row;
                 const { data: d2, error: err2 } = await supabase.from(M)
@@ -99,10 +124,20 @@ function createMemoryRepo(supabase) {
             const { data, error } = await supabase.from(M)
                 .update(patch)
                 .eq('id', id)
-                .select('id, content, scope, created_at')
+                .select('id, content, scope, category, created_at')
                 .limit(1);
-            if (error) throw error;
-            return data || [];
+            if (!error) return data || [];
+            if (error.message?.includes('category')) {
+                const { category: _cat, ...patchWithoutCategory } = patch;
+                const { data: d2, error: err2 } = await supabase.from(M)
+                    .update(patchWithoutCategory)
+                    .eq('id', id)
+                    .select('id, content, scope, created_at')
+                    .limit(1);
+                if (err2) throw err2;
+                return d2 || [];
+            }
+            throw error;
         },
 
         async removeById(id) {
@@ -146,8 +181,22 @@ function createMemoryRepo(supabase) {
         async insert(row) {
             const { data, error } = await supabase.from(M).insert([row]).select('id').limit(1);
             if (!error) return data || [];
-            if (error.message?.includes('scope') || error.code === '42703') {
-                const { scope: _s, ...rowWithoutScope } = row;
+
+            let workingRow = row;
+            let workingError = error;
+
+            // category is the newest optional column — strip it first if that's
+            // the cause, then fall through to the pre-existing fallback chain below.
+            if (workingError.message?.includes('category')) {
+                const { category: _cat, ...rest } = workingRow;
+                workingRow = rest;
+                const retry = await supabase.from(M).insert([workingRow]).select('id').limit(1);
+                if (!retry.error) return retry.data || [];
+                workingError = retry.error;
+            }
+
+            if (workingError.message?.includes('scope') || workingError.code === '42703') {
+                const { scope: _s, ...rowWithoutScope } = workingRow;
                 const { data: d2, error: err2 } = await supabase.from(M).insert([rowWithoutScope]).select('id').limit(1);
                 if (!err2) return d2 || [];
                 // status column may also be missing — try without it too
@@ -159,12 +208,12 @@ function createMemoryRepo(supabase) {
                 throw err2;
             }
             // status column may not exist yet — retry without it
-            if (error.message?.includes('status')) {
-                const { status: _st, ...rowWithoutStatus } = row;
+            if (workingError.message?.includes('status')) {
+                const { status: _st, ...rowWithoutStatus } = workingRow;
                 const { data: d2 } = await supabase.from(M).insert([rowWithoutStatus]).select('id').limit(1);
                 return d2 || [];
             }
-            throw error;
+            throw workingError;
         },
 
         async update(id, content) {

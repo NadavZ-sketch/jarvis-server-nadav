@@ -10,6 +10,7 @@
 const { createTaskRepo } = require('./taskRepo');
 const { createReminderRepo } = require('./reminderRepo');
 const { createMemoryRepo } = require('./memoryRepo');
+const { createMemoryHealthRepo } = require('./memoryHealthRepo');
 const { createNoteRepo } = require('./noteRepo');
 const { createShoppingRepo } = require('./shoppingRepo');
 const { createHabitRepo } = require('./habitRepo');
@@ -41,6 +42,7 @@ function createRepos(supabase) {
         tasks: createTaskRepo(supabase),
         reminders: createReminderRepo(supabase),
         memories: createMemoryRepo(supabase),
+        memoryHealth: createMemoryHealthRepo(supabase),
         notes: createNoteRepo(supabase),
         shopping: createShoppingRepo(supabase),
         habits: createHabitRepo(supabase),

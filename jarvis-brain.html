@@ -409,6 +409,22 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .dup-text{font-size:var(--tx-sm);color:var(--text);line-height:1.45;flex:1}
 .dup-meta{font-size:.58rem;color:var(--muted)}
 .dup-score{grid-column:1/-1;text-align:center;font-size:var(--tx-xs);color:var(--muted);border-top:1px solid var(--border);padding-top:6px;margin-top:2px}
+.health-strip{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:var(--r8);padding:9px 12px;margin-bottom:10px}
+.health-counts{display:flex;gap:6px;flex-wrap:wrap}
+.health-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;font-size:var(--tx-xs);border:1px solid var(--border);font-weight:600;font-variant-numeric:tabular-nums}
+.health-chip .sw{width:7px;height:7px;border-radius:50%}
+.health-autofix{font-size:var(--tx-xs);color:var(--muted);padding:6px 10px;border:1px dashed var(--border);border-radius:var(--r4);margin-bottom:10px;display:none}
+.health-section{margin-bottom:14px}
+.health-section-title{font-size:var(--tx-xs);font-weight:700;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.health-card{background:var(--card);border:1px solid var(--border);border-right:3px solid var(--tc,var(--accent));border-radius:var(--r8);padding:10px 12px;margin-bottom:8px}
+.health-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;font-size:var(--tx-xs);color:var(--muted)}
+.health-mem{font-size:var(--tx-sm);color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:var(--r4);padding:6px 9px;margin-bottom:5px;line-height:1.45}
+.health-cat-row{display:flex;align-items:center;gap:7px;font-size:var(--tx-xs);color:var(--muted);margin:6px 0}
+.health-cat-pill{padding:1px 8px;border-radius:20px;font-weight:700;border:1px solid var(--border)}
+.health-actions{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.health-merge-box{display:none;margin-top:7px}
+.health-merge-box.open{display:block}
+.health-merge-box textarea{width:100%;background:var(--surface);border:1px solid rgba(200,145,58,.45);border-radius:var(--r2);color:var(--text);font-family:inherit;font-size:var(--tx-sm);padding:7px 9px;resize:vertical;min-height:52px;line-height:1.45;outline:none;margin-bottom:6px}
 </style>
 </head>
 <body>
@@ -879,13 +895,18 @@ svg.tl-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
         <div id="mm-all-list"></div>
       </div>
 
-      <!-- F: Duplicate Detection — full width, new -->
+      <!-- G: Memory Health Check — full width -->
       <div style="margin-top:16px;padding-bottom:20px">
         <div class="sec-head">
-          <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-search"/></svg> זיכרונות דומים</div>
-          <button class="dup-scan-btn" id="dupScanBtn" onclick="scanDuplicates()">סרוק כפילויות</button>
+          <div class="sec-title"><svg class="icon icon-sm"><use href="#ic-search"/></svg> בדיקת תקינות זיכרונות</div>
+          <button class="dup-scan-btn" id="healthRunBtn" onclick="runHealthScanUI()">הרץ בדיקה עכשיו</button>
         </div>
-        <div id="dupResults"><div class="mm-empty">לחץ "סרוק כפילויות" לאיתור זיכרונות דומים</div></div>
+        <div class="health-strip">
+          <div class="health-counts" id="healthCounts"></div>
+          <div class="mm-mem-time" id="healthLastRun">—</div>
+        </div>
+        <div class="health-autofix" id="healthAutofix"></div>
+        <div id="healthResults"><div class="mm-empty">אין ממצאים ממתינים</div></div>
       </div>
 
     </div><!-- /.know-scroll -->
@@ -902,6 +923,7 @@ const S = {
   editId: null, pollTimer: null, provTimer: null,
   searchQ: '', highlight: null, mmSort: 'date',
   traceIntentFilter: null, profileDayFilter: null,
+  health: { findings: [] },
 };
 
 // ── Utils ──────────────────────────────────────────────────────────────────
@@ -1085,7 +1107,7 @@ function renderWeeklyScore(history) {
 }
 
 async function reload() {
-  await Promise.all([loadMemories(), loadPending(), loadTrace(), loadProviders(), loadStats()]);
+  await Promise.all([loadMemories(), loadPending(), loadHealthFindings(), loadTrace(), loadProviders(), loadStats()]);
   const now = new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
   document.getElementById('tbTime').innerHTML = `עדכון ${now} <span class="live-dot"></span>`;
 }
@@ -1492,16 +1514,17 @@ function renderMmSection() {
   updateKnowBadge();
   renderMmPending();
   renderMmList();
+  renderHealthFindings();
 }
 
 function updateKnowBadge() {
-  const n = S.pending.length;
+  const n = S.pending.length + S.health.findings.length;
   const badge = document.getElementById('knowBadge');
   if (badge) { badge.textContent = n; badge.style.display = n > 0 ? 'inline-flex' : 'none'; }
   const sa = document.getElementById('mm-stat-approved');
   const sp = document.getElementById('mm-stat-pending');
   if (sa) sa.textContent = `✓ ${S.memories.length} מאושרים`;
-  if (sp) { sp.textContent = `⏳ ${n} ממתינים`; sp.style.display = n > 0 ? 'inline-flex' : 'none'; }
+  if (sp) { sp.textContent = `⏳ ${S.pending.length} ממתינים`; sp.style.display = S.pending.length > 0 ? 'inline-flex' : 'none'; }
 }
 
 function renderMmPending() {
@@ -2333,81 +2356,166 @@ function clearFocus() {
   closeGraphTooltip();
 }
 
-// ── Duplicate Detection ────────────────────────────────────────────────────
-function scanDuplicates() {
-  const btn = document.getElementById('dupScanBtn');
-  const results = document.getElementById('dupResults');
-  if (!results) return;
-  if (S.memories.length < 2) {
-    results.innerHTML = '<div class="mm-empty">צריך לפחות 2 זיכרונות לסריקה</div>';
-    return;
-  }
-  if (btn) btn.textContent = 'סורק...';
-  results.innerHTML = '';
+// ── Memory Health Check ──────────────────────────────────────────────────
+const HEALTH_TYPE_LABEL = {
+  duplicate: 'כפילות', conflict: 'סתירה', category_mismatch: 'התאמת קטגוריה',
+  stale: 'ישן', thin_content: 'תוכן דל',
+};
+const HEALTH_TYPE_COLOR = {
+  duplicate: 'var(--accent)', conflict: 'var(--red)', category_mismatch: 'var(--blue)',
+  stale: 'var(--purple)', thin_content: 'var(--purple)',
+};
 
-  // Tokenize each memory: words ≥3 chars, not in HEB_STOP
-  const tokens = S.memories.map(m =>
-    new Set((m.content || '').split(/\s+/).filter(w => w.length >= 3 && !HEB_STOP.has(w.toLowerCase())).map(w => w.toLowerCase()))
-  );
-
-  const pairs = [];
-  for (let i = 0; i < S.memories.length; i++) {
-    for (let j = i + 1; j < S.memories.length; j++) {
-      let shared = 0;
-      for (const t of tokens[i]) if (tokens[j].has(t)) shared++;
-      if (shared === 0) continue;
-      // Dice-like coefficient: 2*|intersection| / (|A| + |B|)
-      const score = (2 * shared) / Math.max(1, tokens[i].size + tokens[j].size);
-      if (score >= 0.35 || shared >= 3) {
-        pairs.push({ i, j, shared, score });
-      }
-    }
-  }
-
-  pairs.sort((a, b) => b.score - a.score);
-  const top = pairs.slice(0, 15);
-
-  if (btn) btn.textContent = 'סרוק שוב';
-
-  if (!top.length) {
-    results.innerHTML = '<div class="mm-empty">לא נמצאו זיכרונות דומים ✓</div>';
-    return;
-  }
-
-  results.innerHTML = top.map(({ i, j, shared, score }) => {
-    const mA = S.memories[i], mB = S.memories[j];
-    const pct = Math.round(score * 100);
-    return `<div class="dup-pair" id="dup-${esc(mA.id)}-${esc(mB.id)}">
-      <div class="dup-side">
-        <div class="dup-text">${esc(mA.content)}</div>
-        <div class="dup-meta">${relTime(mA.created_at)}</div>
-        <button class="mm-icon-btn del" onclick="dupDelete('${esc(mA.id)}','${esc(mB.id)}')"><svg class="icon icon-sm"><use href="#ic-trash"/></svg> מחק זה</button>
-      </div>
-      <div class="dup-side">
-        <div class="dup-text">${esc(mB.content)}</div>
-        <div class="dup-meta">${relTime(mB.created_at)}</div>
-        <button class="mm-icon-btn del" onclick="dupDelete('${esc(mB.id)}','${esc(mA.id)}')"><svg class="icon icon-sm"><use href="#ic-trash"/></svg> מחק זה</button>
-      </div>
-      <div class="dup-score">דמיון: ${pct}% — ${shared} מילים משותפות</div>
-    </div>`;
-  }).join('');
+async function loadHealthFindings() {
+  try {
+    const r = await api('/memories/health/findings');
+    S.health.findings = r.findings || [];
+    renderHealthFindings();
+  } catch (e) { console.warn('health findings:', e); }
 }
 
-async function dupDelete(deleteId, keepId) {
-  if (!confirm('למחוק זיכרון זה?')) return;
+async function runHealthScanUI() {
+  const btn = document.getElementById('healthRunBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'סורק...'; }
   try {
-    await api(`/memories/${deleteId}`, { method: 'DELETE' });
-    S.memories = S.memories.filter(m => m.id !== deleteId);
-    renderMmList(); updateKnowBadge(); updateConstellationKpi(); startGraph2D();
-    // Remove all dup-pair cards containing the deleted id
-    document.querySelectorAll('.dup-pair').forEach(el => {
-      if (el.id.includes(deleteId)) el.remove();
-    });
-    const results = document.getElementById('dupResults');
-    if (results && !results.querySelector('.dup-pair')) {
-      results.innerHTML = '<div class="mm-empty">לא נמצאו זיכרונות דומים ✓</div>';
+    const r = await api('/memories/health/run', { method: 'POST' });
+    await loadHealthFindings();
+    document.getElementById('healthLastRun').textContent = 'הרצה אחרונה: עכשיו';
+    const fix = document.getElementById('healthAutofix');
+    if (fix) {
+      if (r.autoResolved > 0) {
+        fix.style.display = 'block';
+        fix.textContent = `🔧 ${r.autoResolved} בעיות סנכרון/קטגוריה תוקנו אוטומטית`;
+      } else {
+        fix.style.display = 'none';
+      }
     }
-  } catch(e) { alert('שגיאה: ' + e.message); }
+  } catch (e) { alert('שגיאה בהרצת הבדיקה: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'הרץ בדיקה עכשיו'; } }
+}
+
+function healthMemText(id) {
+  const m = S.memories.find(x => String(x.id) === String(id));
+  return m ? esc(m.content) : '(זיכרון לא נמצא)';
+}
+
+function renderHealthFindings() {
+  const countsEl = document.getElementById('healthCounts');
+  const resultsEl = document.getElementById('healthResults');
+  if (!resultsEl) return;
+
+  const byType = {};
+  S.health.findings.forEach(f => { (byType[f.type] = byType[f.type] || []).push(f); });
+
+  if (countsEl) {
+    countsEl.innerHTML = Object.keys(HEALTH_TYPE_LABEL).map(t => `
+      <span class="health-chip" style="color:${HEALTH_TYPE_COLOR[t] || 'var(--accent)'};border-color:${HEALTH_TYPE_COLOR[t] || 'var(--accent)'}55">
+        <span class="sw" style="background:${HEALTH_TYPE_COLOR[t] || 'var(--accent)'}"></span>${HEALTH_TYPE_LABEL[t] || t} ${(byType[t] || []).length}
+      </span>`).join('');
+  }
+
+  if (!S.health.findings.length) {
+    resultsEl.innerHTML = '<div class="mm-empty">אין ממצאים ממתינים ✓</div>';
+    updateKnowBadge();
+    return;
+  }
+
+  resultsEl.innerHTML = Object.entries(byType).map(([type, findings]) => `
+    <div class="health-section">
+      <div class="health-section-title">${HEALTH_TYPE_LABEL[type] || type} · ${findings.length}</div>
+      ${findings.map(f => renderHealthCard(f)).join('')}
+    </div>`).join('');
+  updateKnowBadge();
+}
+
+function renderHealthCard(f) {
+  const color = HEALTH_TYPE_COLOR[f.type] || 'var(--accent)';
+  const pct = f.score ? Math.round(f.score * 100) + '% דמיון' : '';
+  const id = esc(f.id);
+
+  let body = '';
+  let actions = '';
+
+  if (f.type === 'duplicate' || f.type === 'conflict') {
+    body = `
+      <div class="health-mem">A: ${healthMemText(f.memory_id)}</div>
+      <div class="health-mem">B: ${healthMemText(f.related_memory_id)}</div>`;
+    if (f.type === 'duplicate') {
+      actions = `
+        <button class="mm-icon-btn del" onclick="resolveHealthFinding('${id}','delete',{keepId:'${esc(f.related_memory_id)}'})">מחק את A</button>
+        <button class="mm-icon-btn del" onclick="resolveHealthFinding('${id}','delete',{keepId:'${esc(f.memory_id)}'})">מחק את B</button>
+        <button class="mm-icon-btn" onclick="toggleMergeBox('${id}')">✳ אחד</button>
+        <button class="mm-icon-btn" onclick="dismissHealthFinding('${id}')">התעלם</button>`;
+      body += `
+        <div class="health-merge-box" id="mergeBox-${id}">
+          <textarea id="mergeText-${id}">${esc(f.suggested_payload?.mergedContent || '')}</textarea>
+          <button class="mm-icon-btn save" onclick="submitMerge('${id}')">שמור מיזוג</button>
+          <button class="mm-icon-btn" onclick="toggleMergeBox('${id}')">ביטול</button>
+        </div>`;
+    } else {
+      actions = `
+        <button class="mm-icon-btn" onclick="resolveHealthFinding('${id}','archive',{archiveId:'${esc(f.related_memory_id)}'})">השאר את A, ארכב את B</button>
+        <button class="mm-icon-btn" onclick="resolveHealthFinding('${id}','archive',{archiveId:'${esc(f.memory_id)}'})">השאר את B, ארכב את A</button>
+        <button class="mm-icon-btn" onclick="dismissHealthFinding('${id}')">התעלם</button>`;
+    }
+  } else if (f.type === 'category_mismatch') {
+    const cur = S.memories.find(x => String(x.id) === String(f.memory_id))?.category || '—';
+    const suggested = f.suggested_payload?.category || '—';
+    body = `
+      <div class="health-mem">${healthMemText(f.memory_id)}</div>
+      <div class="health-cat-row">מסווג: <span class="health-cat-pill">${esc(cur)}</span> → מוצע: <span class="health-cat-pill" style="color:var(--green)">${esc(suggested)}</span></div>`;
+    actions = `
+      <button class="mm-icon-btn save" onclick="resolveHealthFinding('${id}','move',{category:'${esc(suggested)}'})">עדכן לקטגוריה: ${esc(suggested)}</button>
+      <button class="mm-icon-btn" onclick="dismissHealthFinding('${id}')">השאר</button>`;
+  } else if (f.type === 'stale') {
+    body = `<div class="health-mem">${healthMemText(f.memory_id)}</div>`;
+    actions = `
+      <button class="mm-icon-btn del" onclick="resolveHealthFinding('${id}','archive',{})">ארכב</button>
+      <button class="mm-icon-btn" onclick="dismissHealthFinding('${id}')">השאר — עדיין רלוונטי</button>`;
+  } else if (f.type === 'thin_content') {
+    body = `<div class="health-mem">${healthMemText(f.memory_id)}</div>`;
+    actions = `
+      <button class="mm-icon-btn del" onclick="resolveHealthFinding('${id}','delete',{})">מחק</button>
+      <button class="mm-icon-btn" onclick="dismissHealthFinding('${id}')">השאר</button>`;
+  }
+
+  return `<div class="health-card" id="health-${id}" style="--tc:${color}">
+    <div class="health-card-top"><span>${HEALTH_TYPE_LABEL[f.type] || f.type}</span><span>${pct}</span></div>
+    ${body}
+    <div class="health-actions">${actions}</div>
+  </div>`;
+}
+
+function toggleMergeBox(id) {
+  document.getElementById('mergeBox-' + id)?.classList.toggle('open');
+}
+
+function submitMerge(id) {
+  const content = document.getElementById('mergeText-' + id)?.value.trim();
+  if (!content) return;
+  resolveHealthFinding(id, 'merge', { mergedContent: content });
+}
+
+async function resolveHealthFinding(id, action, payload) {
+  const confirmMsg = action === 'delete' ? 'למחוק זיכרון זה? הפעולה בלתי הפיכה.'
+    : action === 'merge' ? 'לאחד את שני הזיכרונות לזיכרון חדש ולהעביר את המקוריים לארכיון?'
+    : action === 'archive' ? 'להעביר זיכרון זה לארכיון?'
+    : 'לעדכן את הקטגוריה?';
+  if (!confirm(confirmMsg)) return;
+  try {
+    await api(`/memories/health/findings/${id}/resolve`, { method: 'POST', body: JSON.stringify({ action, payload }) });
+    S.health.findings = S.health.findings.filter(f => String(f.id) !== String(id));
+    renderHealthFindings();
+    await loadMemories();
+  } catch (e) { alert('שגיאה: ' + e.message); }
+}
+
+async function dismissHealthFinding(id) {
+  try {
+    await api(`/memories/health/findings/${id}/dismiss`, { method: 'POST' });
+    S.health.findings = S.health.findings.filter(f => String(f.id) !== String(id));
+    renderHealthFindings();
+  } catch (e) { alert('שגיאה: ' + e.message); }
 }
 
 // ── 2D Graph ───────────────────────────────────────────────────────────────

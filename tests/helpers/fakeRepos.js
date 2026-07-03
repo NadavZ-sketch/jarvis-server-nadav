@@ -306,6 +306,18 @@ function makeCronRepo(opts = {}) {
     };
 }
 
+function makeMemoryHealthRepo(opts = {}) {
+    const { rows = [], byId = {} } = opts;
+    return {
+        listFindings:  jest.fn(async () => rows),
+        findExisting:  jest.fn(async () => null),
+        insertFinding: jest.fn(async (row) => ({ id: 'f-' + Math.random().toString(36).slice(2), ...row })),
+        updateFinding: jest.fn(async (id, patch) => ({ id, ...patch })),
+        getById:       jest.fn(async (id) => byId[id] || rows.find(r => String(r.id) === String(id)) || null),
+        setStatus:     jest.fn(async (id, status) => ({ id, status })),
+    };
+}
+
 function makeChatRepo(opts = {}) {
     const { rows = [], addResult, count = 0 } = opts;
     return {
@@ -347,6 +359,7 @@ function makeRepos(tableData = {}) {
         tasks: makeTaskRepo({ rows: tableData.tasks || [] }),
         reminders: makeReminderRepo({ rows: tableData.reminders || [] }),
         memories: makeMemoryRepo({ rows: tableData.memories || [] }),
+        memoryHealth: makeMemoryHealthRepo({ rows: tableData.memory_health_findings || [] }),
         notes: makeNoteRepo({ rows: tableData.notes || [] }),
         shopping: makeShoppingRepo({ rows: tableData.shopping || [] }),
         habits: makeHabitRepo({
@@ -390,4 +403,4 @@ function makeRepos(tableData = {}) {
     };
 }
 
-module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeTelemetryRepo, makeMetricsRepo, makeDeviceRepo, makeExecutionLogRepo, makeDecisionTraceRepo, makePromptLibraryRepo, makeTestCasesRepo, makeTableRepo };
+module.exports = { makeRepos, makeTaskRepo, makeReminderRepo, makeMemoryRepo, makeNoteRepo, makeShoppingRepo, makeHabitRepo, makeProjectRepo, makeSubtaskRepo, makeContactRepo, makeChatRepo, makeSummaryRepo, makeSurveyRepo, makeProfileRepo, makeSprintRepo, makeCronRepo, makeMemoryHealthRepo, makeTelemetryRepo, makeMetricsRepo, makeDeviceRepo, makeExecutionLogRepo, makeDecisionTraceRepo, makePromptLibraryRepo, makeTestCasesRepo, makeTableRepo };

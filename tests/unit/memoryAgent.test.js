@@ -13,6 +13,7 @@ jest.mock('../../services/pineconeMemory', () => ({
     deleteMemory:      jest.fn().mockResolvedValue(),
     isReady:           jest.fn().mockReturnValue(false),
 }));
+jest.mock('../../services/memoryCategory', () => ({ classifyCategory: jest.fn().mockResolvedValue('כללי') }));
 
 const { callGemma4 }      = require('../../agents/models');
 const pinecone             = require('../../services/pineconeMemory');
@@ -81,6 +82,27 @@ describe('runMemoryAgent — save', () => {
         callGemma4.mockRejectedValue(new Error('API error'));
         const result = await runMemoryAgent('זכור ש חמש', makeRepos());
         expect(result.answer).toContain('הייתה בעיה בשמירת הזיכרון');
+    });
+
+    test('classifies category fire-and-forget after saving, without blocking the reply', async () => {
+        callGemma4.mockResolvedValue('{"memoryContent":"[hobby] אני אוהב פיצה"}');
+        const repos = makeRepos({ memories: [{ id: 1, content: '[hobby] אני אוהב פיצה' }] });
+        const { classifyCategory } = require('../../services/memoryCategory');
+
+        let resolveClassify;
+        classifyCategory.mockReturnValue(new Promise(resolve => { resolveClassify = resolve; }));
+
+        const result = await runMemoryAgent('זכור ש אני אוהב פיצה', repos);
+
+        // The reply already came back even though classifyCategory's promise
+        // is still pending — proves the chain is genuinely non-blocking.
+        expect(result.answer).toContain('שמרתי');
+        expect(repos.memories.updateById).not.toHaveBeenCalled();
+
+        // Now let classification resolve and confirm the follow-up write happens.
+        resolveClassify('תחביב');
+        await new Promise(r => setImmediate(r));
+        expect(repos.memories.updateById).toHaveBeenCalledWith(1, { category: 'תחביב' });
     });
 });
 

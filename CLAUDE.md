@@ -199,6 +199,9 @@ Recurring tasks: `taskAgent` reuses `parseRecurrence` from `reminderAgent`; on c
 | `feedbackStore.js` | Writer/reader for `smart_telemetry_events`; records 👍/👎/corrections, aggregates counts for learners |
 | `memoryCleanup.js` | Prunes expired `session` (24h TTL) / `recent` (7d TTL) scoped memories + their Pinecone vectors + Obsidian entries |
 | `memoryContext.js` | Loads memories for a request (Pinecone → keyword fallback) and manages the short-lived "pending memory" confirmation flow per chat |
+| `memoryCategory.js` | LLM classification of a memory's content into the 5-bucket category taxonomy (עבודה/משפחה/בריאות/תחביב/כללי), used at write time and by the health scan |
+| `memoryHealthCheck.js` | Batch health scan over existing memories — duplicates, conflicts, category mismatches, stale/thin content, Supabase↔Pinecone sync gaps. Nightly cron + manual trigger |
+| `memoryHealthActions.js` | Applies a chosen action (delete/merge/move/archive) for a memory-health finding, reusing the same primitives as the manual `/memories` CRUD endpoints |
 | `newsSource.js` | Keyless Hebrew headlines via Google News RSS (regex XML parse), 1h TTL cache — replaces the old Gemini-Search-only news widget |
 | `obsidianSync.js` | Bidirectional sync between Supabase (notes, memories, tasks, reminders, chat, projects) and a local Obsidian vault, with file-watching, git pull/push. **Runs once at server startup only** — the recurring cron and manual-trigger endpoint were removed (see Cron Jobs / Known Gotchas) |
 | `pineconeMemory.js` | Semantic vector search over memories via the Pinecone SDK; no-op when `PINECONE_API_KEY` is absent |
@@ -216,7 +219,7 @@ Recurring tasks: `taskAgent` reuses `parseRecurrence` from `reminderAgent`; on c
 
 Each file exports one `create*Repo(supabase)` factory; `index.js`'s `createRepos()` bundles them all plus a generic `table()` helper. Agents that were migrated to this pattern take a `repos` object (not a raw `supabase` client) as their second argument.
 
-`chatRepo`, `contactRepo`, `cronRepo`, `decisionTraceRepo`, `deviceRepo`, `e2eRepo`, `executionLogRepo`, `habitRepo`, `memoryRepo`, `metricsRepo`, `noteRepo`, `playlistRepo`, `profileRepo`, `projectRepo`, `promptLibraryRepo`, `reminderRepo`, `shoppingRepo`, `sprintRepo`, `statsRepo`, `subtaskRepo`, `summaryRepo`, `surveyRepo`, `tableRepo` (generic shallow CRUD), `taskRepo`, `telemetryRepo`, `testCasesRepo`, `userPromptRepo` — each wraps one Supabase table (see table names in Memory & Storage below).
+`chatRepo`, `contactRepo`, `cronRepo`, `decisionTraceRepo`, `deviceRepo`, `e2eRepo`, `executionLogRepo`, `habitRepo`, `memoryHealthRepo`, `memoryRepo`, `metricsRepo`, `noteRepo`, `playlistRepo`, `profileRepo`, `projectRepo`, `promptLibraryRepo`, `reminderRepo`, `shoppingRepo`, `sprintRepo`, `statsRepo`, `subtaskRepo`, `summaryRepo`, `surveyRepo`, `tableRepo` (generic shallow CRUD), `taskRepo`, `telemetryRepo`, `testCasesRepo`, `userPromptRepo` — each wraps one Supabase table (see table names in Memory & Storage below).
 
 #### `services/mcp/` — MCP client integration (server acting as an MCP *client*)
 
@@ -253,7 +256,7 @@ Each file exports one `create*Repo(supabase)` factory; `index.js`'s `createRepos
 
 | Store | Used for |
 |-------|----------|
-| **Supabase** | `chat_history`, `chat_summaries`, `tasks`, `subtasks`, `reminders`, `notes`, `memories` (has a `status` column: `pending`\|`approved`), `contacts`, `shopping_items`, `habits`, `habit_logs`, `projects`, `project_milestones`, `project_sprints`, `e2e_reports`, `user_surveys`, `execution_log`, `decision_trace`, `prompt_library`, `test_cases`, `user_prompts`, `agent_metrics`, `cron_runs`, `device_tokens`, `system_events`, `smart_telemetry_events`, `daily_briefings`, `user_profiles` |
+| **Supabase** | `chat_history`, `chat_summaries`, `tasks`, `subtasks`, `reminders`, `notes`, `memories` (has `status`: `pending`\|`approved`, and `category`: עבודה/משפחה/בריאות/תחביב/כללי), `memory_health_findings`, `contacts`, `shopping_items`, `habits`, `habit_logs`, `projects`, `project_milestones`, `project_sprints`, `e2e_reports`, `user_surveys`, `execution_log`, `decision_trace`, `prompt_library`, `test_cases`, `user_prompts`, `agent_metrics`, `cron_runs`, `device_tokens`, `system_events`, `smart_telemetry_events`, `daily_briefings`, `user_profiles` |
 | **Pinecone** | Semantic vector search over memories (optional; falls back to keyword matching if unavailable) |
 | **In-process TTL cache** | Memories (5 min), chat history per `chatId` (30 s), conversation summary (60 s), routeTracker (10 min) |
 | **Local filesystem** | `backlog.json`, `features.json`, `notes.json`, `agents/custom/registry.json`, `capability_gap_pending.json` |
@@ -272,6 +275,7 @@ All times in Jerusalem timezone (`Asia/Jerusalem`) unless noted:
 - **`0 21 * * *` (21:00)** — `evening_nudge`: evening nudge if open tasks exist
 - **`0 3 * * *` (03:00)** — `context_memory_expiry`: expires `[context]`-tagged memories older than 7 days
 - **`30 3 * * *` (03:30)** — `memory_cleanup_nightly`: full nightly memory cleanup (Pinecone + Obsidian pass)
+- **`35 3 * * *` (03:35)** — `memory_health_scan`: batch memory-health scan (duplicates, conflicts, category mismatches, stale/thin/orphaned) — see `services/memoryHealthCheck.js`; Supabase↔Pinecone sync gaps are self-healed inline, everything else becomes a pending finding reviewed in the "ידע" tab
 - **`45 3 * * *` (03:45)** — `profile_learning`: learns user profile/style preferences from behavior/feedback
 - **`17 * * * *` (hourly at :17)** — `memory_cleanup_hourly`: prunes expired session/recent-scoped memories
 - **`10 4 * * 0` (Sunday 04:10)** — `weekly_e2e`: weekly E2E self-test run (same path as `POST /e2e/trigger`; persists a report and feeds the e2e learning loop)
@@ -348,6 +352,10 @@ Core endpoints (stable, unchanged):
 | `POST` | `/feedback` | Explicit 👍/👎/correction signal | Feeds `feedbackStore.js` / `styleLearner.js` |
 | `GET/POST/PUT/DELETE` | `/memories`, `/memories/:id` | Memory CRUD | Pinecone search + keyword fallback. `DELETE /memories/:id` = "forget" |
 | `GET` | `/memories/pending` | Pending memories awaiting approval | Returns `{ memories: [] }` |
+| `GET` | `/memories/health/findings` | Pending memory-health findings | Optional `?type=`, `?status=` (default `pending`) |
+| `POST` | `/memories/health/run` | Trigger a memory health scan now | Rate-limited (5/min); same scan as the nightly `memory_health_scan` cron |
+| `POST` | `/memories/health/findings/:id/resolve` | Apply a finding's suggested (or edited) action | Body `{action, payload?}`; requires policy + `X-Confirm-Action`/`X-User-Consent` |
+| `POST` | `/memories/health/findings/:id/dismiss` | Dismiss a finding without acting | Resurfaces only if the memory's content later changes |
 | `POST` | `/memories/:id/approve` | Approve a pending memory | Sets `status='approved'`, upserts to Pinecone |
 | `POST` | `/memories/confirm` | Confirm a pending extracted memory (chat-flow variant) | — |
 | `POST` | `/memories/rebuild-from-chat` | Rebuild memories from chat history | — |

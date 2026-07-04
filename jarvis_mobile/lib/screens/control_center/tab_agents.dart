@@ -161,6 +161,16 @@ class _TabAgentsState extends State<TabAgents>
     }
   }
 
+  // Tolerant numeric coercion — the server sometimes ships placeholder string
+  // values (e.g. 'unknown') for metrics that aren't wired up yet. A plain
+  // `as num?` cast throws on those and takes down the whole tab, so parse
+  // numeric strings and treat anything else as "no data" instead of crashing.
+  num? _num(dynamic v) {
+    if (v is num) return v;
+    if (v is String) return num.tryParse(v);
+    return null;
+  }
+
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -270,8 +280,8 @@ class _TabAgentsState extends State<TabAgents>
     final displayName = nameHe.isNotEmpty ? nameHe : name;
     final role = agent['role'] as String? ?? '';
     final metrics = agent['metrics'] as Map<String, dynamic>? ?? {};
-    final count = (metrics['count'] as num?)?.toInt() ?? 0;
-    final avgMs = (metrics['avgMs'] as num?)?.toInt() ?? 0;
+    final count = _num(metrics['count'])?.toInt() ?? 0;
+    final avgMs = _num(metrics['avgMs'])?.toInt() ?? 0;
     final status = agent['status'] as String? ?? 'disabled';
     final isActive = status == 'active';
 
@@ -411,12 +421,12 @@ class _TabAgentsState extends State<TabAgents>
     final isActive = status == 'active';
 
     final metrics = agent['metrics'] as Map<String, dynamic>? ?? {};
-    final avgMs = (metrics['avgMs'] as num?)?.toInt() ?? 0;
+    final avgMs = _num(metrics['avgMs'])?.toInt() ?? 0;
 
     final dashboard = agent['dashboard'] as Map<String, dynamic>? ?? {};
-    final tasksHandled = (dashboard['tasksHandled'] as num?)?.toInt() ?? 0;
-    final failures = (dashboard['failures'] as num?)?.toInt() ?? 0;
-    final healthScore = (agent['healthScore'] as num?)?.toInt() ?? 0;
+    final tasksHandled = _num(dashboard['tasksHandled'])?.toInt() ?? 0;
+    final failures = _num(dashboard['failures'])?.toInt() ?? 0;
+    final healthScore = _num(agent['healthScore'])?.toInt() ?? 0;
 
     final successPct = tasksHandled > 0
         ? ((tasksHandled - failures) / tasksHandled * 100).round()

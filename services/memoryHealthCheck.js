@@ -19,6 +19,16 @@ const CONFLICT_THRESHOLD  = 0.70;
 const STALE_MS   = 6 * 30 * 24 * 60 * 60 * 1000; // ~6 months
 const THIN_WORDS = 5;
 
+// Delay between LLM calls while scanning (category classify / merge synthesis).
+// The scan shares GROQ_API_KEY/DEEPSEEK_API_KEY/GOOGLE_API_KEY with live chat
+// traffic — without spacing calls out, a scan over many memories can burn
+// through the same per-minute rate limits real user requests depend on,
+// causing chat to fail over the whole provider chain while a scan is running.
+const LLM_CALL_SPACING_MS = 300;
+const sleep = (ms) => (process.env.NODE_ENV === 'test'
+    ? Promise.resolve()
+    : new Promise(resolve => setTimeout(resolve, ms)));
+
 function hashContent(str) {
     return crypto.createHash('sha1').update(str || '').digest('hex');
 }
@@ -101,6 +111,7 @@ async function scanDuplicatesAndConflicts(memories, repos, summary, useLocal) {
         if (isDuplicate) {
             const merged = await synthesizeMerge(mem.content, match.content, useLocal);
             suggestedPayload = { mergedContent: merged };
+            await sleep(LLM_CALL_SPACING_MS);
         }
 
         try {
@@ -123,6 +134,7 @@ async function scanCategoryMismatch(memories, repos, summary, useLocal) {
         let suggested;
         try {
             suggested = await classifyCategory(mem.content, useLocal);
+            await sleep(LLM_CALL_SPACING_MS);
         } catch (err) {
             summary.errors.push(`category ${mem.id}: ${err.message}`);
             continue;

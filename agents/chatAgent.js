@@ -102,27 +102,6 @@ function _tokenRankMemories(lines, userMessage) {
     return scored.slice(0, 10).map(s => s.line);
 }
 
-// Cosine similarity for ranking memory lines by embedding proximity to query.
-function _cosine(a, b) {
-    let dot = 0, na = 0, nb = 0;
-    for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
-    return na && nb ? dot / Math.sqrt(na * nb) : 0;
-}
-
-// Per-line embedding cache so the same memory text isn't re-embedded on every
-// turn — memories change rarely, queries change every message. Bounded LRU-ish.
-const _embedCache = new Map();
-const _EMBED_CACHE_MAX = 500;
-async function _cachedEmbed(text) {
-    if (_embedCache.has(text)) return _embedCache.get(text);
-    const vec = await pinecone.embed(text);
-    if (_embedCache.size >= _EMBED_CACHE_MAX) {
-        _embedCache.delete(_embedCache.keys().next().value);
-    }
-    _embedCache.set(text, vec);
-    return vec;
-}
-
 // Hit-rate telemetry for the semantic-recall path (inspectable in tests/logs).
 const memoryRecallStats = { semantic: 0, fallback: 0 };
 function getMemoryRecallStats() { return { ..._embedStats() }; }
@@ -135,9 +114,14 @@ function _embedStats() {
     };
 }
 
-// Async embedding-based ranking. Pinecone is the primary path; token ranking is
-// the last-resort fallback (Pinecone unavailable or embedding error).
-// Used by the chat agent before assembling system prompt.
+// Async semantic ranking via Pinecone's own top-K search — the index used here
+// is an integrated-inference index (services/pineconeMemory.js's
+// upsertRecords/searchRecords with `inputs: {text}`), which embeds server-side
+// and never hands back a raw vector, so there is no local `embed()` to call.
+// Query Pinecone directly and keep only the hits that are actually among this
+// request's candidate lines (it searches the whole index, not just these),
+// preserving Pinecone's relevance order. Token ranking is the last-resort
+// fallback (Pinecone unavailable, search error, or no candidate line matched).
 async function filterRelevantMemoriesAsync(memoriesText, userMessage, topK = 8) {
     if (!memoriesText || memoriesText === 'אין עדיין זיכרונות שמורים.') return memoriesText;
     const lines = memoriesText.split('\n').filter(l => l.trim());
@@ -148,17 +132,20 @@ async function filterRelevantMemoriesAsync(memoriesText, userMessage, topK = 8) 
         return _tokenRankMemories(lines, userMessage).join('\n');
     }
     try {
-        // Query is always fresh; memory lines are served from the embed cache.
-        const queryVec = await pinecone.embed(userMessage);
-        const lineVecs = await Promise.all(
-            lines.map(l => _cachedEmbed(l.replace(/^\s*-\s*/, ''))),
-        );
-        const scored = lines.map((line, i) => ({ line, score: _cosine(queryVec, lineVecs[i]) }));
-        scored.sort((a, b) => b.score - a.score);
+        const hits = await pinecone.searchMemoriesDetailed(userMessage, topK * 4);
+        if (!hits || !hits.length) throw new Error('Pinecone search returned no result');
+        const byContent = new Map(lines.map(l => [l.replace(/^\s*-\s*/, '').trim(), l]));
+        const ranked = [];
+        for (const h of hits) {
+            const line = byContent.get((h.content || '').trim());
+            if (line && !ranked.includes(line)) ranked.push(line);
+            if (ranked.length >= topK) break;
+        }
+        if (!ranked.length) throw new Error('no candidate line matched top hits');
         memoryRecallStats.semantic++;
-        return scored.slice(0, topK).map(s => s.line).join('\n');
+        return ranked.join('\n');
     } catch (err) {
-        console.warn('⚠️ filterRelevantMemoriesAsync embedding failed, using token fallback:', err.message);
+        console.warn('⚠️ filterRelevantMemoriesAsync semantic search failed, using token fallback:', err.message);
         memoryRecallStats.fallback++;
         return _tokenRankMemories(lines, userMessage).join('\n');
     }
@@ -393,7 +380,11 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
 }
 
 // ─── Structured memory ranking (used when caller passes [{content}] array) ────
-// Same embed + cosine path as filterRelevantMemoriesAsync but operates on objects.
+// Same Pinecone-search-based path as filterRelevantMemoriesAsync but operates
+// on objects — see the comment there for why this isn't a local embed+cosine
+// computation. Memory objects here don't carry a Pinecone id (memoryContext
+// only loads {content}), so hits are matched back to candidates by content
+// instead (raw or tag-stripped, since either may be what's stored).
 
 async function _rankMemoryObjects(memories, userMessage, topK = 8) {
     if (!memories || memories.length <= topK) return memories;
@@ -404,15 +395,24 @@ async function _rankMemoryObjects(memories, userMessage, topK = 8) {
         return memories.filter(m => ranked.has(m.content)).slice(0, topK);
     }
     try {
-        const queryVec = await pinecone.embed(userMessage);
-        const texts    = memories.map(m => m.content.replace(/^\[[^\]]+\]\s*/, ''));
-        const vecs     = await Promise.all(texts.map(t => _cachedEmbed(t)));
-        const scored   = memories.map((m, i) => ({ m, score: _cosine(queryVec, vecs[i]) }));
-        scored.sort((a, b) => b.score - a.score);
+        const hits = await pinecone.searchMemoriesDetailed(userMessage, topK * 4);
+        if (!hits || !hits.length) throw new Error('Pinecone search returned no result');
+        const byContent = new Map();
+        for (const m of memories) {
+            byContent.set(m.content.trim(), m);
+            byContent.set(m.content.replace(/^\[[^\]]+\]\s*/, '').trim(), m);
+        }
+        const ranked = [];
+        for (const h of hits) {
+            const m = byContent.get((h.content || '').trim());
+            if (m && !ranked.includes(m)) ranked.push(m);
+            if (ranked.length >= topK) break;
+        }
+        if (!ranked.length) throw new Error('no candidate matched top hits');
         memoryRecallStats.semantic++;
-        return scored.slice(0, topK).map(s => s.m);
+        return ranked;
     } catch (err) {
-        console.warn('⚠️ _rankMemoryObjects embedding failed, token fallback:', err.message);
+        console.warn('⚠️ _rankMemoryObjects semantic search failed, token fallback:', err.message);
         memoryRecallStats.fallback++;
         const lines  = memories.map(m => m.content);
         const ranked = new Set(_tokenRankMemories(lines, userMessage));

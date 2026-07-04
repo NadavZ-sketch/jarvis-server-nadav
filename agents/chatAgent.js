@@ -335,8 +335,15 @@ function buildLocalMessages(userMessage, chatHistory, longTermMemories, settings
         humorous: 'ידידותי עם הומור קל.',
     };
 
-    const memoriesShort = longTermMemories && longTermMemories.trim() && longTermMemories !== 'אין זיכרונות'
-        ? `עובדות על ${userName}: ${longTermMemories.slice(0, 800)}`
+    // longTermMemories may arrive as the structured [{content}] array loaded by
+    // memoryContext.loadForRequest (only reduced to a ranked array by
+    // runChatAgent when longer than 8 items — see _rankMemoryObjects), or as a
+    // plain string from older/legacy call sites. Normalize before .trim()/.slice().
+    const memoriesText = Array.isArray(longTermMemories)
+        ? formatMemories(longTermMemories)
+        : (longTermMemories || '');
+    const memoriesShort = memoriesText && memoriesText.trim() && memoriesText !== 'אין זיכרונות'
+        ? `עובדות על ${userName}: ${memoriesText.slice(0, 800)}`
         : '';
 
     const followUp = followUpContext ? `\nהקשר: ${followUpContext}` : '';

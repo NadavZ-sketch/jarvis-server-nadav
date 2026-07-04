@@ -52,6 +52,20 @@ describe('runChatAgent', () => {
         expect(prompt).toContain('[hobby] אני אוהב ריצה');
     });
 
+    test('long-term memories as a structured array (≤8 items, not ranked) does not crash', async () => {
+        // memoryContext.loadForRequest returns memories as [{content}] objects;
+        // runChatAgent only converts this to a ranked string via _rankMemoryObjects
+        // when there are MORE than 8 — at 8 or fewer it stays a raw array, and
+        // buildLocalMessages must handle that without throwing (regression: it
+        // used to call .trim() directly on the array and crash every request).
+        callGemma4.mockResolvedValue('תשובה');
+        const memories = [{ content: '[fact] אני אוהב ריצה' }];
+        const result = await runChatAgent('שלום', null, [], memories, {});
+        expect(result.answer).toBe('תשובה');
+        const prompt = callGemma4.mock.calls[0][0][0].content;
+        expect(prompt).toContain('אני אוהב ריצה');
+    });
+
     test('LLM returns empty string → fallback answer', async () => {
         callGemma4.mockResolvedValue('');
         const result = await runChatAgent('שלום', null, [], '', {});

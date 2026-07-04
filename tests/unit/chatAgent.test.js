@@ -5,9 +5,14 @@ jest.mock('../../agents/models', () => ({
     callGeminiWithSearch: jest.fn(),
     GEMINI_URL: 'https://mock.gemini.url',
 }));
+jest.mock('../../services/pineconeMemory', () => ({
+    isReady: jest.fn(),
+    searchMemoriesDetailed: jest.fn(),
+}));
 
 const { callGemma4, callGeminiVision } = require('../../agents/models');
 const { runChatAgent } = require('../../agents/chatAgent');
+const pinecone = require('../../services/pineconeMemory');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -50,6 +55,20 @@ describe('runChatAgent', () => {
         await runChatAgent('שלום', null, [], '- [hobby] אני אוהב ריצה', {});
         const prompt = callGemma4.mock.calls[0][0][0].content;
         expect(prompt).toContain('[hobby] אני אוהב ריצה');
+    });
+
+    test('long-term memories as a structured array (≤8 items, not ranked) does not crash', async () => {
+        // memoryContext.loadForRequest returns memories as [{content}] objects;
+        // runChatAgent only converts this to a ranked string via _rankMemoryObjects
+        // when there are MORE than 8 — at 8 or fewer it stays a raw array, and
+        // buildLocalMessages must handle that without throwing (regression: it
+        // used to call .trim() directly on the array and crash every request).
+        callGemma4.mockResolvedValue('תשובה');
+        const memories = [{ content: '[fact] אני אוהב ריצה' }];
+        const result = await runChatAgent('שלום', null, [], memories, {});
+        expect(result.answer).toBe('תשובה');
+        const prompt = callGemma4.mock.calls[0][0][0].content;
+        expect(prompt).toContain('אני אוהב ריצה');
     });
 
     test('LLM returns empty string → fallback answer', async () => {
@@ -136,5 +155,51 @@ describe('formatMemories', () => {
         const memories = [{ content: 'אוהב פיצה' }];
         const result = formatMemories(memories);
         expect(result).toContain('אוהב פיצה');
+    });
+});
+
+// ─── rankMemories (structured-array semantic ranking, >8 items) ───────────────
+// Memory objects here carry only {content} (no Pinecone id — see
+// services/memoryContext.js), so ranking matches Pinecone's search hits back
+// to candidates by content, not id.
+
+describe('rankMemories', () => {
+    const { rankMemories } = require('../../agents/chatAgent');
+
+    const manyMemories = Array.from({ length: 12 }, (_, i) => ({ content: `[fact] עובדה מספר ${i}` }));
+
+    test('returns memories unchanged when at or below topK', async () => {
+        const few = manyMemories.slice(0, 5);
+        const result = await rankMemories(few, 'שאלה', 8);
+        expect(result).toBe(few);
+        expect(pinecone.searchMemoriesDetailed).not.toHaveBeenCalled();
+    });
+
+    test('uses Pinecone search hits, matched back to candidates by content', async () => {
+        pinecone.isReady.mockReturnValue(true);
+        pinecone.searchMemoriesDetailed.mockResolvedValue([
+            { id: '7', content: 'עובדה מספר 7', score: 0.9 },
+            { id: '2', content: 'עובדה מספר 2', score: 0.8 },
+        ]);
+        const result = await rankMemories(manyMemories, 'שאלה', 2);
+        expect(result).toHaveLength(2);
+        expect(result[0].content).toContain('עובדה מספר 7');
+        expect(result[1].content).toContain('עובדה מספר 2');
+    });
+
+    test('falls back to token ranking when Pinecone is not ready', async () => {
+        pinecone.isReady.mockReturnValue(false);
+        const result = await rankMemories(manyMemories, 'עובדה מספר 3', 5);
+        expect(result.length).toBeGreaterThan(0);
+        expect(pinecone.searchMemoriesDetailed).not.toHaveBeenCalled();
+    });
+
+    test('falls back to token ranking when no hit matches a candidate', async () => {
+        pinecone.isReady.mockReturnValue(true);
+        pinecone.searchMemoriesDetailed.mockResolvedValue([
+            { id: 'x', content: 'תוכן שלא קיים ברשימת המועמדים', score: 0.9 },
+        ]);
+        const result = await rankMemories(manyMemories, 'עובדה מספר 3', 5);
+        expect(result.length).toBeGreaterThan(0);
     });
 });

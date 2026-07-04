@@ -77,7 +77,7 @@ const STATIC_AGENTS = [
       { agentId: 'reminderAgent', name: 'Reminder Agent', nameHe: 'סוכן תזכורות', direction: 'outgoing', type: 'dispatch', payload: 'intent=reminder', trigger: 'כל הודעה', risk: 'low', requiresApproval: false, confidence: 'inferred' },
       { agentId: 'memoryAgent', name: 'Memory Agent', nameHe: 'סוכן זיכרון', direction: 'outgoing', type: 'dispatch', payload: 'intent=memory', trigger: 'כל הודעה', risk: 'low', requiresApproval: false, confidence: 'inferred' },
     ],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'chatAgent',
@@ -97,7 +97,7 @@ const STATIC_AGENTS = [
     connections: [
       { agentId: 'memoryAgent', name: 'Memory Agent', nameHe: 'סוכן זיכרון', direction: 'outgoing', type: 'חילוץ זיכרון אוטומטי', payload: 'הודעה + תשובה → עובדות אישיות', trigger: 'אוטומטית אחרי כל שיחה', risk: 'low', requiresApproval: false, confidence: 'inferred' },
     ],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'taskAgent',
@@ -117,7 +117,7 @@ const STATIC_AGENTS = [
     connections: [
       { agentId: 'insightAgent', name: 'Insight Agent', nameHe: 'סוכן תובנות', direction: 'incoming', type: 'קריאת נתונים', payload: 'tasks table', trigger: 'כשנבקש insight', risk: 'low', requiresApproval: false, confidence: 'inferred' },
     ],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'reminderAgent',
@@ -135,7 +135,7 @@ const STATIC_AGENTS = [
     restrictions: ['לא שולח push notifications ישירות — הcron עושה זאת'],
     risk: 'medium', mode: 'operator', approval: 'medium', autonomy: 50, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'memoryAgent',
@@ -156,7 +156,7 @@ const STATIC_AGENTS = [
       { agentId: 'chatAgent', name: 'Chat Agent', nameHe: 'סוכן שיחה', direction: 'incoming', type: 'autoExtractMemory', payload: 'שיחה → עובדות', trigger: 'אחרי כל chat turn', risk: 'low', requiresApproval: false, confidence: 'inferred' },
       { agentId: 'insightAgent', name: 'Insight Agent', nameHe: 'סוכן תובנות', direction: 'incoming', type: 'קריאת זיכרונות', payload: 'memories table', trigger: 'כשנבקש insight', risk: 'low', requiresApproval: false, confidence: 'inferred' },
     ],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'weatherAgent',
@@ -174,7 +174,7 @@ const STATIC_AGENTS = [
     restrictions: ['לא שומר מידע', 'תוצאות חיפוש בלבד'],
     risk: 'low', mode: 'observer', approval: 'none', autonomy: 20, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'newsAgent',
@@ -192,7 +192,7 @@ const STATIC_AGENTS = [
     restrictions: ['לא שומר מידע'],
     risk: 'low', mode: 'observer', approval: 'none', autonomy: 20, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'stocksAgent',
@@ -210,7 +210,7 @@ const STATIC_AGENTS = [
     restrictions: ['לא שומר מידע', 'אינו ייעוץ פיננסי'],
     risk: 'low', mode: 'observer', approval: 'none', autonomy: 20, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'translationAgent',
@@ -228,7 +228,7 @@ const STATIC_AGENTS = [
     restrictions: [],
     risk: 'low', mode: 'observer', approval: 'none', autonomy: 20, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'sportsAgent',
@@ -246,7 +246,7 @@ const STATIC_AGENTS = [
     restrictions: ['לא שומר מידע'],
     risk: 'low', mode: 'observer', approval: 'none', autonomy: 20, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'shoppingAgent',
@@ -264,7 +264,7 @@ const STATIC_AGENTS = [
     restrictions: [],
     risk: 'low', mode: 'operator', approval: 'none', autonomy: 40, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'notesAgent',
@@ -284,7 +284,7 @@ const STATIC_AGENTS = [
     connections: [
       { agentId: 'insightAgent', name: 'Insight Agent', nameHe: 'סוכן תובנות', direction: 'incoming', type: 'קריאת פתקים', payload: 'notes table', trigger: 'כשנבקש insight', risk: 'low', requiresApproval: false, confidence: 'inferred' },
     ],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'musicAgent',
@@ -304,7 +304,7 @@ const STATIC_AGENTS = [
     connections: [
       { agentId: 'insightAgent', name: 'Insight Agent', nameHe: 'סוכן תובנות', direction: 'incoming', type: 'קריאת נתוני מוזיקה', payload: 'music preferences', trigger: 'כשנבקש insight', risk: 'low', requiresApproval: false, confidence: 'inferred' },
     ],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'messagingAgent',
@@ -322,7 +322,7 @@ const STATIC_AGENTS = [
     restrictions: ['דורש אישור משתמש לשליחה'],
     risk: 'high', mode: 'operator', approval: 'high', autonomy: 30, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'draftAgent',
@@ -340,7 +340,7 @@ const STATIC_AGENTS = [
     restrictions: ['לא שולח בעצמו — מחזיר טיוטה בלבד'],
     risk: 'medium', mode: 'assistant', approval: 'none', autonomy: 40, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'insightAgent',
@@ -364,7 +364,7 @@ const STATIC_AGENTS = [
       { agentId: 'notesAgent', name: 'Notes Agent', nameHe: 'סוכן פתקים', direction: 'outgoing', type: 'קריאת פתקים', payload: 'notes table', trigger: 'כשנבקש insight', risk: 'low', requiresApproval: false, confidence: 'inferred' },
       { agentId: 'musicAgent', name: 'Music Agent', nameHe: 'סוכן מוזיקה', direction: 'outgoing', type: 'קריאת העדפות', payload: 'music data', trigger: 'כשנבקש insight', risk: 'low', requiresApproval: false, confidence: 'inferred' },
     ],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'securityAgent',
@@ -382,7 +382,7 @@ const STATIC_AGENTS = [
     restrictions: ['פועל ב-background (setImmediate)', 'לא מבצע שינויים בקוד'],
     risk: 'high', mode: 'guard', approval: 'high', autonomy: 20, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'codeErrorAgent',
@@ -400,7 +400,7 @@ const STATIC_AGENTS = [
     restrictions: ['פועל ב-background', 'לא משנה קוד ישירות'],
     risk: 'high', mode: 'guard', approval: 'high', autonomy: 20, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
   {
     id: 'e2eAgent',
@@ -418,7 +418,7 @@ const STATIC_AGENTS = [
     restrictions: ['פועל ב-background', 'לא מבצע שינויים'],
     risk: 'high', mode: 'guard', approval: 'high', autonomy: 10, status: 'active',
     connections: [],
-    dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+    dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
   },
 ];
 
@@ -469,7 +469,7 @@ async function getAgentRegistry() {
           statusUpdatedAt: ov ? ov.updatedAt : undefined,
           ...(ov && ['low', 'medium', 'high'].includes(ov.riskLevel) ? { risk: ov.riskLevel } : {}),
           connections: c.connections || [],
-          dashboard: { tasksHandled: 'unknown', failures: 'unknown', avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
+          dashboard: { tasksHandled: 0, failures: 0, avgLatency: 'unknown', confidence: 'unknown', lastActive: 'unknown' },
           });
         });
       }

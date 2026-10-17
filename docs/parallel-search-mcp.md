@@ -56,10 +56,10 @@ To read a selected page, call `guardedCallTool('parallel__web_fetch',
 schemas returned by `getToolCatalog()` for the current argument definitions.
 Only send queries and URLs that you intend to share with the external service.
 
-These are programmatic MCP client calls. The current `/ask-jarvis` and
-`/stream-jarvis` chat handlers do not automatically use this catalog. An agent
-can supply it to `agents/models.js`'s `callWithTools` and route tool calls through
-`guardedCallTool` with that request's actor.
+These examples exercise the MCP client API directly. Enabling the preset adds
+tools to the existing catalog and leaves chat routing unchanged. Custom agents
+can supply the catalog to `agents/models.js`'s `callWithTools` and route tool
+calls through `guardedCallTool` with that request's actor.
 
 ## Timeouts and errors
 

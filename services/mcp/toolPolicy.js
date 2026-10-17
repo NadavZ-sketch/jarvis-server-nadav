@@ -28,6 +28,10 @@ const TOOL_POLICIES = {
     'search__tavily-search':               { actionType: 'web.search',   sensitive: false, irreversible: false },
     'search__tavily-extract':              { actionType: 'web.fetch',    sensitive: false, irreversible: false },
 
+    // Optional Parallel Search MCP (read-only tools only).
+    'parallel__web_search':               { actionType: 'web.search',   sensitive: false, irreversible: false },
+    'parallel__web_fetch':                { actionType: 'web.fetch',    sensitive: false, irreversible: false },
+
     // ─── GitHub ───────────────────────────────────────────────────────────────
     'github__get_file_contents':           { actionType: 'github.read',  sensitive: false, irreversible: false },
     'github__search_repositories':         { actionType: 'github.read',  sensitive: false, irreversible: false },

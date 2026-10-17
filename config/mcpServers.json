@@ -41,6 +41,15 @@
       "TAVILY_API_KEY": "${TAVILY_API_KEY}"
     }
   },
+  "parallel": {
+    "enabled": false,
+    "comment": "Optional keyless web search (Fast mode) and page fetching. Set enabled:true and MCP_ENABLED=true to opt in. See docs/parallel-search-mcp.md.",
+    "transport": "streamable-http",
+    "url": "https://search.parallel.ai/mcp",
+    "headers": {
+      "User-Agent": "jarvis-server/1.0.0 (https://github.com/NadavZ-sketch/jarvis-server-nadav)"
+    }
+  },
   "postgres": {
     "enabled": true,
     "comment": "PostgreSQL direct query. Requires DATABASE_URL — get from Supabase dashboard → Settings → Database → Connection string (Transaction mode).",

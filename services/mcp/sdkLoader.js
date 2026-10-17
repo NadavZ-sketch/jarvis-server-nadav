@@ -15,9 +15,10 @@ let _cache = null;
 async function getSdk() {
     if (_cache) return _cache;
 
-    const [clientMod, clientStdioMod, serverMod, serverStdioMod, typesMod] = await Promise.all([
+    const [clientMod, clientStdioMod, clientHttpMod, serverMod, serverStdioMod, typesMod] = await Promise.all([
         import('@modelcontextprotocol/sdk/client/index.js'),
         import('@modelcontextprotocol/sdk/client/stdio.js'),
+        import('@modelcontextprotocol/sdk/client/streamableHttp.js'),
         import('@modelcontextprotocol/sdk/server/index.js'),
         import('@modelcontextprotocol/sdk/server/stdio.js'),
         import('@modelcontextprotocol/sdk/types.js').catch(() => ({})),
@@ -26,6 +27,7 @@ async function getSdk() {
     _cache = {
         Client: clientMod.Client,
         StdioClientTransport: clientStdioMod.StdioClientTransport,
+        StreamableHTTPClientTransport: clientHttpMod.StreamableHTTPClientTransport,
         Server: serverMod.Server,
         StdioServerTransport: serverStdioMod.StdioServerTransport,
         ListToolsRequestSchema: typesMod.ListToolsRequestSchema,

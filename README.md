@@ -26,6 +26,11 @@ npm install
 npm start
 ```
 
+## Optional web search via MCP
+
+Enable [Parallel Search MCP](docs/parallel-search-mcp.md) for keyless web search
+and page fetching through Jarvis's MCP client API.
+
 ## Features
 
 - 

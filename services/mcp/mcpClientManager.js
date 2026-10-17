@@ -50,34 +50,62 @@ function _expandConfig(server) {
         const expanded = _expandEnv(v);
         if (expanded) env[k] = expanded; // skip empty (missing key)
     }
-    return { ...server, args, env };
+    const headers = {};
+    for (const [k, v] of Object.entries(server.headers || {})) {
+        const expanded = _expandEnv(v);
+        if (expanded) headers[k] = expanded;
+    }
+    return { ...server, args, env, url: _expandEnv(server.url), headers };
 }
 
 // ─── Single-server connection ─────────────────────────────────────────────────
 
-async function _connectServer(name, config, { Client, StdioClientTransport }) {
+async function _connectServer(name, config, { Client, StdioClientTransport, StreamableHTTPClientTransport }) {
     const expanded = _expandConfig(config);
 
-    const transport = new StdioClientTransport({
-        command: expanded.command,
-        args:    expanded.args,
-        env:     { ...process.env, ...expanded.env },
-    });
+    let transport;
+    if (expanded.transport === 'streamable-http') {
+        const url = new URL(expanded.url);
+        if (!['http:', 'https:'].includes(url.protocol)) {
+            throw new Error('MCP HTTP URL must use http or https');
+        }
+        transport = new StreamableHTTPClientTransport(url, {
+            requestInit: { headers: expanded.headers },
+        });
+    } else if (!expanded.transport || expanded.transport === 'stdio') {
+        transport = new StdioClientTransport({
+            command: expanded.command,
+            args:    expanded.args,
+            env:     { ...process.env, ...expanded.env },
+        });
+    } else {
+        throw new Error(`Unsupported MCP transport: ${expanded.transport}`);
+    }
 
     const client = new Client(
         { name: `jarvis-${name}`, version: '1.0.0' },
         { capabilities: {} }
     );
 
-    await Promise.race([
-        client.connect(transport),
-        new Promise((_, reject) =>
-            setTimeout(() => reject(new Error(`connect timeout (${CONNECT_TIMEOUT_MS}ms)`)), CONNECT_TIMEOUT_MS)
-        ),
-    ]);
-
-    const { tools } = await client.listTools();
-    return { client, tools };
+    let timer;
+    try {
+        return await Promise.race([
+            (async () => {
+                await client.connect(transport);
+                const { tools } = await client.listTools();
+                return { client, tools };
+            })(),
+            new Promise((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`connect timeout (${CONNECT_TIMEOUT_MS}ms)`)), CONNECT_TIMEOUT_MS);
+            }),
+        ]);
+    } catch (err) {
+        // Release a failed HTTP session or stdio process before skipping it.
+        try { await client.close(); } catch (_) { /* preserve the connection error */ }
+        throw err;
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 // ─── init ─────────────────────────────────────────────────────────────────────
@@ -114,12 +142,10 @@ async function _doInit() {
         return;
     }
 
-    const { Client, StdioClientTransport } = sdk;
-
     const enabled = Object.entries(config).filter(([, cfg]) => cfg.enabled);
     const results = await Promise.allSettled(
         enabled.map(([name, serverConfig]) =>
-            _connectServer(name, serverConfig, { Client, StdioClientTransport })
+            _connectServer(name, serverConfig, sdk)
                 .then(result => ({ name, result }))
                 .catch(err => Promise.reject({ name, message: err.message }))
         )
@@ -169,7 +195,7 @@ function getToolCatalog() {
 // ─── Tool execution ───────────────────────────────────────────────────────────
 
 // Raw call — no policy gate. Returns a content string, never throws.
-async function callTool(namespacedName, args) {
+async function callTool(namespacedName, args, options) {
     const sep = namespacedName.indexOf('__');
     if (sep === -1) {
         return `Error: invalid tool name "${namespacedName}" — expected "server__toolName"`;
@@ -183,7 +209,7 @@ async function callTool(namespacedName, args) {
     }
 
     try {
-        const result = await entry.client.callTool({ name: toolName, arguments: args || {} });
+        const result = await entry.client.callTool({ name: toolName, arguments: args || {} }, undefined, options);
         if (Array.isArray(result.content)) {
             return result.content.map(c => c.text || JSON.stringify(c)).join('\n');
         }
@@ -196,7 +222,7 @@ async function callTool(namespacedName, args) {
 
 // Policy-gated call. Returns { ok, content } on success or { error, code, ... } on denial.
 // actor: { role, plan, explicitConsent? }  — defaults to most-restricted free/member.
-async function guardedCallTool(namespacedName, args, actor = { role: 'member', plan: 'free' }) {
+async function guardedCallTool(namespacedName, args, actor = { role: 'member', plan: 'free' }, options) {
     const policy = getPolicy(namespacedName);
 
     // Lazy require to avoid circular-dependency at module load time.
@@ -212,7 +238,7 @@ async function guardedCallTool(namespacedName, args, actor = { role: 'member', p
         return { error: 'policy_denied', code: 403, tool: namespacedName, reason: 'consent_required' };
     }
 
-    const content = await callTool(namespacedName, args);
+    const content = await callTool(namespacedName, args, options);
     return { ok: true, content };
 }
 
